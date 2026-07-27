@@ -179,13 +179,7 @@ const CabanaPanel = (() => {
     const msgName = sigs?.[0]?.message;
     const hex = addrHex(frame.address);
     const nameCol = msgName ? `${msgName} · ${hex}` : hex;
-    let valueText = '';
-    if (opts.replay || opts.live) {
-      valueText = frame.data ? String(frame.data) : '';
-    } else {
-      const decoded = decodeFrame(frame);
-      valueText = decoded.text || frame.data || '';
-    }
+    const { display: valueText, title: valueTitle } = frameValuePresentation(frame);
     const relTime = opts.replay ? formatReplayRowTime(frame) : frame.time.toFixed(2);
     const item = { id: key, message: msgName || hex, signal: sigs?.[0]?.signal || '' };
     const cached = explainCache.get(key);
@@ -200,6 +194,7 @@ const CabanaPanel = (() => {
       nameCol,
       searchHay: `${nameCol} ${valueText} ${hex}`.toLowerCase(),
       valueText,
+      valueTitle,
       label: label || prev?.label || '',
       pending: !(label || prev?.label),
       hexHint: !msgName ? hexBucketHint(frame.address) : '',
@@ -312,7 +307,7 @@ const CabanaPanel = (() => {
       tr.children[1].textContent = row.nameCol;
       tr.children[1].title = row.nameCol;
       tr.children[2].textContent = truncateHex(row.valueText);
-      tr.children[2].title = row.valueText || '';
+      tr.children[2].title = row.valueTitle || row.valueText || '';
       tr.children[3].innerHTML = labelCellHtml(row.label, { pending: row.pending, hexHint: row.hexHint });
       frag.appendChild(tr);
     }
@@ -398,6 +393,46 @@ const CabanaPanel = (() => {
     const parts = clean.match(/.{1,2}/g);
     if (!parts) return null;
     return new Uint8Array(parts.map((b) => parseInt(b, 16)));
+  }
+
+  function formatHexBytes(hex) {
+    const clean = String(hex || '').replace(/\s/g, '');
+    if (!clean) return '';
+    const parts = clean.match(/.{1,2}/g);
+    if (!parts) return clean.toUpperCase();
+    return parts.map((b) => b.toUpperCase()).join(' ');
+  }
+
+  function formatDecBytes(hex) {
+    const bytes = hexToBytes(hex);
+    if (!bytes) return '';
+    return Array.from(bytes, (b) => String(b)).join(' ');
+  }
+
+  /** Human-readable CAN payload: decoded signals when DBC exists, else spaced hex. */
+  function frameValuePresentation(frame) {
+    const rawHex = frame.data ? String(frame.data) : '';
+    const hexSpaced = formatHexBytes(rawHex);
+    const decSpaced = formatDecBytes(rawHex);
+    const tooltipParts = [];
+    if (hexSpaced) tooltipParts.push(`HEX: ${hexSpaced}`);
+    if (decSpaced) tooltipParts.push(`DEC: ${decSpaced}`);
+
+    const sigs = signalsByAddress.get(Number(frame.address));
+    if (sigs?.length && rawHex) {
+      const decoded = decodeFrame(frame);
+      if (decoded.text) {
+        return {
+          display: decoded.text,
+          title: tooltipParts.join('\n'),
+        };
+      }
+    }
+
+    return {
+      display: hexSpaced || rawHex,
+      title: tooltipParts.join('\n') || hexSpaced || rawHex,
+    };
   }
 
   function decodeSignal(data, sig) {
