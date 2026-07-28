@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>op助手</title>
   <link rel="icon" type="image/svg+xml" href="/static/img/favicon.svg">
-  <link rel="stylesheet" href="/static/css/ai.css?v=20260723n">
+  <link rel="stylesheet" href="/static/css/ai.css?v=20260728c">
   <link rel="stylesheet" href="/static/css/office-panel.css?v=20260723y">
   <link rel="stylesheet" href="/static/css/canvas-panel.css?v=20260723e">
   <link rel="stylesheet" href="/static/css/cabana-panel.css?v=20260728a">
@@ -479,28 +479,42 @@
           <p class="settings-pane-lead" id="platformPaneDesc">工作区、记忆、MCP 桥接、已学技能与会话搜索</p>
           <section class="settings-card">
             <header class="settings-card-head"><h3 class="settings-card-title" id="platformWorkspaceTitle">工作区文件</h3></header>
-            <div class="settings-card-body">
-              <div class="field-row">
-                <select id="platformWorkspaceKey">
-                  <option value="user">USER.md</option>
-                  <option value="memory">MEMORY.md</option>
-                  <option value="soul">SOUL.md</option>
-                  <option value="heartbeat">HEARTBEAT.md</option>
-                </select>
-                <button type="button" id="platformWorkspaceLoad" class="btn small">加载</button>
-                <button type="button" id="platformWorkspaceSave" class="btn small primary">保存</button>
+            <div class="settings-card-body platform-pane-body">
+              <div class="platform-toolbar">
+                <label class="field platform-file-field">
+                  <span class="field-label" id="platformWorkspaceFileLabel">文件</span>
+                  <select id="platformWorkspaceKey">
+                    <option value="user">USER.md</option>
+                    <option value="memory">MEMORY.md</option>
+                    <option value="soul">SOUL.md</option>
+                    <option value="heartbeat">HEARTBEAT.md</option>
+                  </select>
+                </label>
+                <div class="platform-toolbar-actions">
+                  <button type="button" id="platformWorkspaceLoad" class="btn small">加载</button>
+                  <button type="button" id="platformWorkspaceSave" class="btn small primary">保存</button>
+                </div>
               </div>
-              <textarea id="platformWorkspaceEditor" rows="8" class="platform-editor" placeholder="工作区 Markdown…"></textarea>
+              <label class="field platform-editor-field">
+                <span class="field-label" id="platformWorkspaceEditorLabel">内容</span>
+                <textarea id="platformWorkspaceEditor" rows="8" class="platform-editor" placeholder="工作区 Markdown…"></textarea>
+              </label>
             </div>
           </section>
           <section class="settings-card">
             <header class="settings-card-head"><h3 class="settings-card-title" id="platformMcpTitle">MCP 服务</h3></header>
-            <div class="settings-card-body">
+            <div class="settings-card-body platform-pane-body">
               <div id="platformMcpList" class="platform-list"></div>
-              <div class="field-row" style="margin-top:8px">
-                <input type="text" id="platformMcpId" placeholder="server-id">
-                <input type="text" id="platformMcpCmd" placeholder="command (npx/node)">
-                <button type="button" id="platformMcpAdd" class="btn small primary">添加</button>
+              <div class="platform-mcp-form">
+                <label class="field">
+                  <span class="field-label" id="platformMcpIdLabel">服务 ID</span>
+                  <input type="text" id="platformMcpId" placeholder="server-id" autocomplete="off">
+                </label>
+                <label class="field">
+                  <span class="field-label" id="platformMcpCmdLabel">启动命令</span>
+                  <input type="text" id="platformMcpCmd" placeholder="npx -y @modelcontextprotocol/server-…" autocomplete="off">
+                </label>
+                <button type="button" id="platformMcpAdd" class="btn small primary platform-mcp-add-btn">添加</button>
               </div>
             </div>
           </section>
@@ -512,19 +526,22 @@
           </section>
           <section class="settings-card">
             <header class="settings-card-head"><h3 class="settings-card-title" id="platformSearchTitle">历史会话搜索</h3></header>
-            <div class="settings-card-body">
-              <div class="field-row">
-                <input type="search" id="platformSessionQuery" placeholder="搜索历史对话…">
-                <button type="button" id="platformSessionSearch" class="btn small">搜索</button>
+            <div class="settings-card-body platform-pane-body">
+              <div class="platform-search-row">
+                <label class="field platform-search-field">
+                  <span class="field-label" id="platformSessionQueryLabel">关键词</span>
+                  <input type="search" id="platformSessionQuery" placeholder="搜索历史对话…" autocomplete="off">
+                </label>
+                <button type="button" id="platformSessionSearch" class="btn small platform-search-btn">搜索</button>
               </div>
               <div id="platformSessionHits" class="platform-list"></div>
             </div>
           </section>
           <section class="settings-card">
             <header class="settings-card-head"><h3 class="settings-card-title" id="platformDebugTitle">调试开关</h3></header>
-            <div class="settings-card-body">
-              <label class="field checkbox-field"><input type="checkbox" id="chatVerboseToggle"> <span>Verbose（工具轨迹详情）</span></label>
-              <label class="field checkbox-field"><input type="checkbox" id="chatTraceToggle"> <span>Trace（轮次跟踪事件）</span></label>
+            <div class="settings-card-body platform-debug-body">
+              <label class="platform-check-row"><input type="checkbox" id="chatVerboseToggle"> <span>Verbose（工具轨迹详情）</span></label>
+              <label class="platform-check-row"><input type="checkbox" id="chatTraceToggle"> <span>Trace（轮次跟踪事件）</span></label>
             </div>
           </section>
         </div>

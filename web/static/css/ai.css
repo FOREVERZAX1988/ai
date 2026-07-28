@@ -38,6 +38,10 @@
   --scrollbar-thumb: rgba(255, 255, 255, 0.14);
   --scrollbar-thumb-hover: rgba(78, 205, 196, 0.42);
   --scrollbar-thumb-active: rgba(78, 205, 196, 0.58);
+  --surface-2: rgba(255, 255, 255, 0.04);
+  --border-subtle: rgba(255, 255, 255, 0.06);
+  --input-bg: #0e1018;
+  --input-border: rgba(255, 255, 255, 0.12);
 }
 
 [data-theme="light"] {
@@ -62,6 +66,10 @@
   --scrollbar-thumb: rgba(0, 0, 0, 0.16);
   --scrollbar-thumb-hover: rgba(42, 175, 166, 0.48);
   --scrollbar-thumb-active: rgba(42, 175, 166, 0.62);
+  --surface-2: rgba(0, 0, 0, 0.04);
+  --border-subtle: rgba(0, 0, 0, 0.06);
+  --input-bg: #f8f9fc;
+  --input-border: rgba(0, 0, 0, 0.12);
 }
 
 /* First-load splash */
@@ -1367,27 +1375,46 @@ html, body {
   color: var(--text-muted);
 }
 
-.field input, .field select, .field textarea {
+.field input, .field select, .field textarea,
+.settings-card-body input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+.settings-card-body select,
+.settings-card-body textarea {
   padding: 0.55rem 0.75rem;
   border-radius: var(--radius-sm);
-  border: 1px solid var(--border-strong);
-  background: var(--bg);
+  border: 1px solid var(--input-border, var(--border-strong));
+  background: var(--input-bg, var(--bg));
   color: var(--text);
   font-size: 0.9rem;
   outline: none;
   width: 100%;
+  box-sizing: border-box;
+  transition: border-color var(--transition), box-shadow var(--transition), background var(--transition);
+}
+
+.field input, .field select, .field textarea {
   cursor: pointer;
   -webkit-appearance: menulist;
   appearance: menulist;
 }
 
-.field input, .field textarea {
+.field input, .field textarea,
+.settings-card-body input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+.settings-card-body textarea {
   cursor: text;
   -webkit-appearance: none;
   appearance: none;
 }
 
-.field input:focus, .field select:focus, .field textarea:focus {
+.settings-card-body select {
+  cursor: pointer;
+  -webkit-appearance: menulist;
+  appearance: menulist;
+}
+
+.field input:focus, .field select:focus, .field textarea:focus,
+.settings-card-body input:not([type="checkbox"]):not([type="radio"]):focus,
+.settings-card-body select:focus,
+.settings-card-body textarea:focus {
   border-color: var(--accent);
   box-shadow: 0 0 0 2px var(--accent-glow);
 }
@@ -3956,15 +3983,184 @@ html, body {
 
 .platform-editor {
   width: 100%;
-  margin-top: 0.5rem;
-  min-height: 8rem;
-  font-family: var(--font-mono, monospace);
+  min-height: 9rem;
+  max-height: min(40vh, 320px);
+  resize: vertical;
+  font-family: var(--font-mono);
   font-size: 0.82rem;
+  line-height: 1.45;
 }
+
+.platform-pane-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.platform-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.5rem 0.65rem;
+}
+
+.platform-file-field {
+  flex: 1 1 12rem;
+  min-width: 0;
+  margin: 0;
+}
+
+.platform-toolbar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin-left: auto;
+}
+
+.platform-editor-field {
+  margin: 0;
+}
+
+.platform-mcp-form {
+  display: grid;
+  grid-template-columns: 1fr 1fr auto;
+  gap: 0.55rem 0.65rem;
+  align-items: end;
+  margin-top: 0.35rem;
+  padding-top: 0.65rem;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.platform-mcp-form .field {
+  margin: 0;
+  min-width: 0;
+}
+
+.platform-mcp-add-btn {
+  align-self: end;
+  white-space: nowrap;
+}
+
+.platform-search-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.5rem 0.65rem;
+}
+
+.platform-search-field {
+  flex: 1 1 12rem;
+  min-width: 0;
+  margin: 0;
+}
+
+.platform-search-btn {
+  flex-shrink: 0;
+}
+
+.platform-debug-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.platform-check-row {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.45rem 0.55rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-subtle);
+  background: var(--surface-2);
+  font-size: 0.88rem;
+  color: var(--text-secondary);
+  cursor: pointer;
+  user-select: none;
+  transition: background var(--transition), border-color var(--transition);
+}
+
+.platform-check-row:hover {
+  background: var(--surface-hover);
+  border-color: var(--border-strong);
+}
+
+.platform-check-row input[type="checkbox"] {
+  width: 1rem;
+  height: 1rem;
+  margin: 0;
+  flex-shrink: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
 .platform-list {
   display: flex;
   flex-direction: column;
   gap: 0.35rem;
+}
+
+.platform-list:empty::before {
+  content: "暂无条目";
+  display: block;
+  padding: 0.65rem 0.75rem;
+  border-radius: var(--radius-sm);
+  border: 1px dashed var(--border-subtle);
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  text-align: center;
+}
+
+#platformLearnedList:empty::before {
+  content: "暂无待批准技能";
+}
+
+#platformMcpList:empty::before {
+  content: "尚未配置 MCP 服务";
+}
+
+#platformSessionHits:empty {
+  display: none;
+}
+
+.platform-list-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.5rem 0.65rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-subtle);
+  background: var(--surface-2);
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+  word-break: break-word;
+}
+
+.platform-list-item .btn {
+  flex-shrink: 0;
+}
+
+@media (max-width: 520px) {
+  .platform-mcp-form {
+    grid-template-columns: 1fr;
+  }
+
+  .platform-mcp-add-btn {
+    width: 100%;
+  }
+
+  .platform-toolbar-actions {
+    width: 100%;
+    margin-left: 0;
+  }
+
+  .platform-toolbar-actions .btn {
+    flex: 1 1 auto;
+  }
+
+  .platform-search-btn {
+    width: 100%;
+  }
 }
 .assistant-trace-line {
   font-family: var(--font-mono, monospace);
@@ -3978,15 +4174,4 @@ html, body {
   border-left: 2px solid var(--accent, #6af);
   max-height: 6rem;
   overflow-y: auto;
-}
-.platform-list-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
-  padding: 0.45rem 0.6rem;
-  border-radius: 8px;
-  background: var(--surface-2, rgba(255,255,255,0.04));
-  font-size: 0.82rem;
-  word-break: break-word;
 }

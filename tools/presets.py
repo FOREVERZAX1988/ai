@@ -1,4 +1,4 @@
-"""Dragonpilot tune presets — stationary apply only."""
+"""openpilot tune presets — stationary apply only (dp_* extension keys when present)."""
 
 from __future__ import annotations
 
@@ -81,7 +81,7 @@ def list_presets() -> list[dict[str, Any]]:
   return [
     {
       "id": pid,
-      "fork": "dragonpilot",
+      "stack": "openpilot",
       "name": p.get("name", pid),
       "description": p.get("description", ""),
       "params": list(p["params"].keys()) if not p.get("rollback") else ["_restore_snapshot"],

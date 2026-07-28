@@ -119,7 +119,7 @@ def _dev_tree_data_sample_disabled() -> bool | None:
 def _scenario_hints(mads: dict[str, Any], event_names: set[str]) -> list[str]:
   hints: list[str] = []
   if not mads.get("Mads"):
-    hints.append("MADS 总开关关闭：MAIN alone 不会让 sunnypilot 单独控横向（除非 ACC engage）。")
+    hints.append("MADS 总开关关闭：MAIN alone 不会让 openpilot 单独控横向（除非 ACC engage）。")
   if mads.get("Mads") and not mads.get("MadsMainCruiseAllowed"):
     hints.append("MadsMainCruiseAllowed 关闭：丰田依赖 MAIN 触发 lkasEnable，建议开启。")
   mode = mads.get("MadsSteeringMode")

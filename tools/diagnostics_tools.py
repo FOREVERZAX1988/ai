@@ -350,7 +350,7 @@ def suggest_tune_from_review(
       suggestions.append({
         "reason": "LKAS 故障 + MADS 开启",
         "action": "运行 diagnose_mads_lateral；确认 mads.h MAIN latch 已刷入 Panda",
-        "fork": "sunnypilot",
+        "stack": "openpilot",
       })
     if brand in ("volkswagen", "audi", "skoda", "seat") and str(params.get("dp_vag_avoid_eps_lockout", "0")) != "1":
       suggestions.append({
@@ -369,7 +369,7 @@ def suggest_tune_from_review(
     suggestions.append({
       "reason": "MADS 横向控制不匹配",
       "action": "diagnose_mads_lateral；确认 data_sample 已禁用且 pandad heartbeat 已恢复",
-      "fork": "sunnypilot",
+      "stack": "openpilot",
     })
 
   personality = str(params.get("LongitudinalPersonality", "1"))
@@ -377,13 +377,13 @@ def suggest_tune_from_review(
     suggestions.append({
       "reason": "纵向人格为激进",
       "preset_id": "sp_comfort_lon",
-      "fork": "sunnypilot",
+      "stack": "openpilot",
       "params": {"LongitudinalPersonality": "2", "DynamicExperimentalControl": "0"},
     })
     suggestions.append({
       "reason": "纵向人格为激进 (DP 备选)",
       "preset_id": "comfort_follow",
-      "fork": "dragonpilot",
+      "stack": "openpilot",
       "params": {"dp_lon_acm": "1", "LongitudinalPersonality": "2"},
     })
 
@@ -392,7 +392,7 @@ def suggest_tune_from_review(
       suggestions.append({
         "reason": "限速相关事件",
         "preset_id": "sp_speed_limit_assist",
-        "fork": "sunnypilot",
+        "stack": "openpilot",
       })
 
   if "laneChangeBlocked" in event_names or "autoLaneChange" in event_names:
@@ -400,7 +400,7 @@ def suggest_tune_from_review(
       "reason": "变道相关事件",
       "action": "检查 AutoLaneChangeTimer / BSM 延迟",
       "params": {"AutoLaneChangeBsmDelay": "1"},
-      "fork": "sunnypilot",
+      "stack": "openpilot",
     })
 
   if "madsSteeringPaused" in event_names or "madsSteeringDisengaged" in event_names:
@@ -408,7 +408,7 @@ def suggest_tune_from_review(
       suggestions.append({
         "reason": "MADS 横向暂停/退出事件",
         "preset_id": "sp_mads_full",
-        "fork": "sunnypilot",
+        "stack": "openpilot",
       })
 
   if "lagdLearning" in event_names or "steerSaturated" in event_names:
@@ -416,7 +416,7 @@ def suggest_tune_from_review(
       suggestions.append({
         "reason": "转向饱和/延迟学习",
         "preset_id": "sp_lagd_on",
-        "fork": "sunnypilot",
+        "stack": "openpilot",
       })
 
   if "smartCruiseControl" in event_names:
@@ -424,7 +424,7 @@ def suggest_tune_from_review(
       suggestions.append({
         "reason": "SCC 相关事件",
         "preset_id": "sp_scc_map_vision",
-        "fork": "sunnypilot",
+        "stack": "openpilot",
       })
 
   if not suggestions and not event_names:
@@ -432,13 +432,13 @@ def suggest_tune_from_review(
       suggestions.append({
         "reason": "无异常事件，可尝试舒适跟车 (DP)",
         "preset_id": "comfort_follow",
-        "fork": "dragonpilot",
+        "stack": "openpilot",
       })
     if str(params.get("LongitudinalPersonality", "1")) != "2":
       suggestions.append({
         "reason": "无异常事件，可尝试 SP 舒适纵向",
         "preset_id": "sp_comfort_lon",
-        "fork": "sunnypilot",
+        "stack": "openpilot",
       })
 
   return suggestions[:5]

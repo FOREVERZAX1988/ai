@@ -1,4 +1,4 @@
-"""Merge static params_catalog.json with dragonpilot + sunnypilot UI discovery."""
+"""Merge static params_catalog.json with fork UI discovery (openpilot + optional dp_*)."""
 
 from __future__ import annotations
 
@@ -151,7 +151,7 @@ def _infer_section(key: str) -> str:
       return section
   if key == "CarPlatformBundle":
     return "Vehicle"
-  return "sunnypilot"
+  return "openpilot"
 
 
 def _section_from_path(rel_path: str) -> str:
@@ -159,7 +159,7 @@ def _section_from_path(rel_path: str) -> str:
   for frag, section in _PATH_SECTION_HINTS:
     if frag in pl:
       return section
-  return "sunnypilot"
+  return "openpilot"
 
 
 def _unescape_tr(s: str) -> str:
@@ -244,7 +244,7 @@ def _enrich_entry(entry: dict[str, Any], ui_meta: dict[str, Any] | None) -> dict
       out["title"] = ui_meta["title"]
     if ui_meta.get("summary") and len(str(ui_meta["summary"])) > len(str(out.get("summary", ""))):
       out["summary"] = ui_meta["summary"]
-    if ui_meta.get("section") and out.get("section") in (None, "", "sunnypilot", "General"):
+    if ui_meta.get("section") and out.get("section") in (None, "", "openpilot", "sunnypilot", "General"):
       out["section"] = ui_meta["section"]
     if ui_meta.get("ui_source"):
       out["ui_source"] = ui_meta["ui_source"]

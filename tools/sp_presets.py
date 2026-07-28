@@ -1,4 +1,4 @@
-"""sunnypilot tune presets — stationary apply only (parallel to dp presets.py)."""
+"""openpilot tune presets — stationary apply only."""
 
 from __future__ import annotations
 
@@ -151,7 +151,7 @@ def list_sp_presets(brand: str = "") -> list[dict[str, Any]]:
       continue
     out.append({
       "id": pid,
-      "fork": "sunnypilot",
+      "stack": "openpilot",
       "name": p.get("name", pid),
       "description": p.get("description", ""),
       "params": list(p["params"].keys()) if not p.get("rollback") else ["_restore_snapshot"],

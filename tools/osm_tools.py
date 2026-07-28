@@ -1,4 +1,4 @@
-"""sunnypilot OSM offline maps (Settings → OSM / mapd)."""
+"""OSM offline maps (Settings → OSM / mapd)."""
 
 from __future__ import annotations
 
@@ -82,7 +82,7 @@ def get_osm_status(params: Params | None = None) -> dict[str, Any]:
 
 
 def list_osm_regions(region_type: str = "Country") -> dict[str, Any]:
-  """List selectable OSM countries or US states (same source as sunnypilot UI)."""
+  """List selectable OSM countries or US states (same source as on-device UI)."""
   region_type = region_type.strip().title()
   if region_type not in _REGION_URLS:
     return {"ok": False, "error": "region_type must be Country or State"}

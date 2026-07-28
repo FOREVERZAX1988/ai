@@ -1,4 +1,4 @@
-"""sunnypilot settings catalog + current values (no Dashy required)."""
+"""openpilot settings catalog + current values (merged UI discovery)."""
 
 from __future__ import annotations
 
@@ -46,7 +46,7 @@ def _read_param(params: Params, key: str, entry: dict[str, Any]) -> Any:
 
 
 def list_sp_settings(params: Params | None = None, brand: str = "") -> dict[str, Any]:
-  """Return sunnypilot tunable params grouped by section with current values (merged catalog)."""
+  """Return openpilot tunable params grouped by section with current values (merged catalog)."""
   params = params or Params()
   catalog = build_merged_catalog()
   sections: dict[str, list[dict[str, Any]]] = {}
@@ -78,7 +78,7 @@ def list_sp_settings(params: Params | None = None, brand: str = "") -> dict[str,
   sections_out = [{"title": title, "settings": items} for title, items in sorted(sections.items())]
   out: dict[str, Any] = {
     "ok": True,
-    "fork": "sunnypilot",
+    "stack": "openpilot",
     "brand": brand,
     "catalog_source": "merged",
     "catalog_count": len(catalog),

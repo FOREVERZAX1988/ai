@@ -1,11 +1,11 @@
-# 调优预设与回滚（DP + SP）
+# 调优预设与回滚
 
-本 fork **并行保留**两套预设：
+本机可并行使用两套预设 API（按 Params 中实际存在的键选择）：
 
-| Fork | 列出 | 应用 |
+| 系列 | 列出 | 应用 |
 |------|------|------|
-| sunnypilot | `list_sp_tune_presets` | `apply_sp_tune_preset` |
-| dragonpilot | `list_tune_presets` | `apply_tune_preset` |
+| `sp_*` | `list_sp_tune_presets` | `apply_sp_tune_preset` |
+| `dp_*` 遗留 | `list_tune_presets` | `apply_tune_preset` |
 
 ## 快照
 

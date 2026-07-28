@@ -1,4 +1,4 @@
-# 丰田 sunnypilot 特调
+# 丰田 openpilot 特调
 
 brand=toyota / lexus 时：
 

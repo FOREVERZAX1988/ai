@@ -1,4 +1,4 @@
-"""sunnypilot grouped settings + device/sunnylink tools (merged via extensions.py)."""
+"""openpilot grouped settings + device/sunnylink tools (merged via extensions.py)."""
 
 from __future__ import annotations
 

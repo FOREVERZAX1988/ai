@@ -1,4 +1,4 @@
-"""Display / device sunnypilot settings (brightness, offroad, boot mode)."""
+"""Display / device openpilot settings (brightness, offroad, boot mode)."""
 
 from __future__ import annotations
 

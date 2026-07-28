@@ -1,4 +1,4 @@
-"""sunnypilot MADS (Modular Assistive Driving System) settings."""
+"""openpilot MADS (Modular Assistive Driving System) settings."""
 
 from __future__ import annotations
 

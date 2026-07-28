@@ -1,6 +1,6 @@
 # 新车适配
 
-从零或半支持状态适配 **openpilot / sunnypilot** 新车：指纹、DBC、CarState/CarController 草稿、PC 验证、合入主线。
+从零或半支持状态适配 **openpilot** 新车：指纹、DBC、CarState/CarController 草稿、PC 验证、合入主线。
 
 > **完整方法论**：`ai/docs/VEHICLE_ADAPTATION_GUIDE.md`（必读）。**SecOC 车**先走技能 **`secoc-toyota`**，再谈 DBC。
 

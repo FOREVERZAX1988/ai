@@ -1,8 +1,8 @@
-"""Dragonpilot param names → sunnypilot equivalents (SP does not register dp_* keys)."""
+"""Legacy dp_* param names → openpilot Params equivalents."""
 
 from __future__ import annotations
 
-# DP-only keys that map to an existing openpilot Params key on sunnypilot.
+# DP-only keys that map to an existing openpilot Params key.
 DP_TO_SP_PARAM_ALIASES: dict[str, str] = {
   "dp_dev_go_off_road": "OffroadMode",
 }

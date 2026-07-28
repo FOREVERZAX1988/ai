@@ -1,4 +1,4 @@
-"""Car platform selection via sunnypilot CarPlatformBundle (Settings → Vehicle)."""
+"""Car platform selection via CarPlatformBundle (Settings → Vehicle)."""
 
 from __future__ import annotations
 
@@ -56,7 +56,7 @@ def resolve_car_platform_bundle(model: str) -> dict[str, Any] | None:
 
 
 def list_car_platforms(*, brand: str = "", search: str = "", limit: int = 80) -> dict[str, Any]:
-  """List entries from sunnypilot car_list.json (CarPlatformBundle options)."""
+  """List entries from this install's car_list.json (CarPlatformBundle options)."""
   cars = load_car_list()
   brand_l = brand.strip().lower()
   search_l = search.strip().lower()

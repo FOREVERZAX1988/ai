@@ -46,7 +46,7 @@ def sync_knowledge_from_docs(
         if "skill" in rel.lower():
           tags.append("skill")
         if "dragonpilot" in rel.lower():
-          tags.append("dragonpilot")
+          tags.append("dp_legacy")
         res = upsert_document_sync(params, title=rel, text=text, tags=tags, doc_id=doc_id)
         if res.get("ok"):
           indexed += 1

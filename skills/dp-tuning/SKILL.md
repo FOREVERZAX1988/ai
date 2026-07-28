@@ -1,10 +1,10 @@
-# Dragonpilot 调优技能（dp_*）
+# 遗留 dp_* 调优技能
 
-适用于带 **dragonpilot** 模块的 fork。本仓库 sunnypilot 主路径用 **sp-tuning**；`dp_*` 能力**保留**供对照与迁移。
+适用于 Params 中仍存在 **`dp_*`** 扩展键的安装树。主调优路径见 **sp-tuning**；本节供对照与从旧 fork 迁移。
 
 ## 工具
 
-- `list_tune_presets` / `apply_tune_preset` — DP 预设
+- `list_tune_presets` / `apply_tune_preset` — dp_* 预设
 - `fetch_dashy_settings` — Dashy `:5088`（若启用 `dp_dev_dashy`）
 - `read_manager_log` — 优先 `dp_dev_last_log`，否则 `/data/log/latest.log`
 
@@ -24,12 +24,12 @@
 
 `dp_toyota_*`、`dp_honda_*`、`dp_vag_*` — 仅匹配 brand 时推荐。
 
-## 与 sunnypilot 对照
+## 与主路径对照
 
-| CP/DP 习惯 | sunnypilot 等价 |
-|------------|----------------|
+| 旧习惯 / dp_* | openpilot 等价 |
+|---------------|----------------|
 | `dp_lat_alka` | `Mads` + 转向设置 |
 | `dp_dev_model_selected` | `ModelManager_ActiveBundle` |
-| Dashy 调参 | `list_sp_settings` + sunnypilot UI |
+| Dashy 调参 | `list_sp_settings` + 车机 UI |
 
-用户在本车（SP）上请优先 **sp-tuning** 与 `list_sp_tune_presets`。
+用户在本车上请优先 **sp-tuning** 与 `list_sp_tune_presets`；无 `dp_*` 键时跳过本节。

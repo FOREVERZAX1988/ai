@@ -2,7 +2,7 @@
 
 ## 概览
 
-`ai/` 是 sunnypilot / openpilot 车机上的 LLM 助手子模块，提供 Web UI、工具调用、RAG、会话同步与车辆诊断能力。
+`ai/` 是 comma 设备上 openpilot 树内的 LLM 助手子模块，提供 Web UI、工具调用、RAG、会话同步与车辆诊断能力。兼容各社区 fork，按当前安装树自动发现参数与 UI。
 
 ```
 浏览器 (Vanilla JS)

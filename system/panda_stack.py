@@ -2,8 +2,8 @@
 
 Supports common community layouts, for example:
 
-- **Unified (sunnypilot / master-c3)**: ``panda/`` builds F4+H7; ``selfdrive/pandad``
-- **Split (Dragonpilot / legacy C3)**: ``panda/`` F4 + ``panda_tici/`` H7; may use ``pandad_tici``
+- **Unified**: ``panda/`` builds F4+H7; ``selfdrive/pandad`` loads both
+- **Split (legacy)**: ``panda/`` F4 + ``panda_tici/`` H7; may use ``pandad_tici``
 - **Hybrid**: ``panda_tici`` present but only ``selfdrive/pandad`` (no ``pandad_tici``)
 
 Detection is filesystem-based under ``openpilot_root()`` (``OPENPILOT_ROOT`` / ``OP_ROOT``).

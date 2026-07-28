@@ -9,7 +9,7 @@ TOOL_DESCRIPTIONS: dict[str, str] = {
   "get_vehicle_state": "查看车速、是否已开启辅助驾驶、车型等当前行车状态",
   "get_full_vehicle_state": "导出更完整的车辆状态 JSON（内容较多，默认关闭）",
   "read_params": "读取系统参数当前值",
-  "list_dp_settings": "列出 Dragonpilot 可调项及当前值，方便对照调优",
+  "list_dp_settings": "列出 openpilot 可调项（含 dp_* 扩展参数）及当前值，方便对照调优",
   "get_params_catalog": "查看哪些参数 AI 能读、能写、行驶中是否允许",
   "get_agent_memory": "读取 AI 为你记住的车型、备注等跨会话信息",
   "read_onroad_events": "查看最近行车事件与告警，帮助判断异常原因",
@@ -197,7 +197,7 @@ TOOL_DESCRIPTIONS: dict[str, str] = {
 # 更友好的显示名（覆盖 TOOL_META 里过于技术化的 label）
 TOOL_LABEL_OVERRIDES: dict[str, str] = {
   "get_full_vehicle_state": "完整车辆状态",
-  "list_dp_settings": "Dragonpilot 可调项",
+  "list_dp_settings": "openpilot 可调项",
   "read_onroad_events": "行车事件与告警",
   "grep_log": "日志关键词搜索",
   "car_porting_auto_fingerprint": "自动识别车辆指纹",

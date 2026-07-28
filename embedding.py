@@ -97,7 +97,7 @@ async def embed_texts(config: EmbeddingConfig, texts: list[str]) -> tuple[list[l
     "Content-Type": "application/json",
   }
   if config.provider == "openrouter":
-    headers["HTTP-Referer"] = "https://github.com/dragonpilot/openpilot"
+    headers["HTTP-Referer"] = "https://github.com/commaai/openpilot"
     headers["X-Title"] = "op-assistant-rag"
 
   payload: dict[str, Any] = {"model": config.model, "input": texts}

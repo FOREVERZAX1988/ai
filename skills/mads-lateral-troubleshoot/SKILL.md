@@ -38,10 +38,10 @@ MAIN 上升沿 → Panda 短暂放行 controls_allowed_lateral
 
 固件关键逻辑：`mads_acc_main_lateral_latch()` — 无 MADS 物理键时 MAIN 亮则持续请求横向；heartbeat 短暂不同步不立刻撤权。
 
-## 与 Dragonpilot ALKA 的区别
+## 与旧 fork ALKA 的区别
 
-`E:/openpilot`（dp）用 **`dp_lat_alka`** + `lkas_on = acc_main_on`（电平），**无** `controls_allowed_lateral` / MADS heartbeat。  
-本 fork 用 **sunnypilot MADS**；要在 MADS 下达到「按 MAIN 横控」，靠 `mads.h` 补丁学 ALKA 电平思路，不是直接开 `dp_lat_alka`。
+部分旧 fork 用 **`dp_lat_alka`** + `lkas_on = acc_main_on`（电平），**无** `controls_allowed_lateral` / MADS heartbeat。  
+本安装树用 **MADS**；要在 MADS 下达到「按 MAIN 横控」，靠 `mads.h` 补丁学 ALKA 电平思路，不是直接开 `dp_lat_alka`。
 
 ## 用户操作确认
 

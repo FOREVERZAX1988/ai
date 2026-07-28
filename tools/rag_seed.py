@@ -39,7 +39,7 @@ _BUILTIN_DOCS: list[dict[str, Any]] = [
 权威文档：https://github.com/optskug/docs
 密钥提取原理：https://icanhack.nl/blog/secoc-key-extraction/
 车型分档：🟢 可按 Setup Guide 提取；🟡 实验路径（如部分 2024 美版 Sienna）；🔴 目前无法破解（2022+ 多数新平台、Tundra HSM 等）。
-Dragonpilot：用户在 Dashy Developer → SecOCKey Install 自行填入 32 位 hex；AI 禁止代写 SecOCKey。""",
+部分 fork 在设置/Web UI（如 Dashy）提供 SecOCKey 安装入口，用户自行填入 32 位 hex；AI 禁止代写 SecOCKey。""",
   },
   {
     "id": "builtin_engage_triage",
@@ -70,7 +70,7 @@ Dragonpilot：用户在 Dashy Developer → SecOCKey Install 自行填入 32 位
 
 丰田操作：巡航 MAIN（非 LDA）+ MADS 开 + MadsMainCruiseAllowed 开。默认 MadsSteeringMode=0 Remain Active。
 
-Dragonpilot 用 dp_lat_alka（lkas_on=acc_main_on），无 MADS heartbeat；本 fork 用 sunnypilot MADS，勿混为同一开关。
+部分 fork 用 dp_lat_alka（lkas_on=acc_main_on），无 MADS heartbeat；带 MADS 的安装树用 MADS + mads.h，勿混为同一开关。
 
 技能：mads-lateral-troubleshoot""",
   },
@@ -144,12 +144,12 @@ wiki: https://github.com/commaai/openpilot/wiki/Tuning""",
   },
   {
     "id": "builtin_cp_lat_mapping",
-    "title": "横向调优：Carrot/CP → Dragonpilot",
+    "title": "横向调优：旧 fork (CP) → openpilot",
     "tags": ["carrot", "cp", "lateral", "tuning", "migration", "faq"],
     "refresh": True,
-    "text": """从 CarrotPilot/OpenPilotCP 迁移到 Dragonpilot 时，横向 Param 对照（本 fork 无 CP 专有名）：
+    "text": """从 CarrotPilot/OpenPilotCP 等旧 fork 迁移到 openpilot 时，横向 Param 对照（本机若无 CP 专有名则跳过）：
 
-| CP 参数/说法 | Dragonpilot | 说明 |
+| CP 参数/说法 | openpilot (常见) | 说明 |
 | AdjustLaneOffset / PathOffset | dp_lat_offset_cm | 车道偏移厘米 |
 | LaneChangeDelay / LaneChangeBsd | dp_lat_lca_auto_sec, dp_lat_lca_speed | lca_speed=0 关闭 |
 | MADS / 全速域横向 | dp_lat_alka | 品牌相关 |
@@ -160,12 +160,12 @@ wiki: https://github.com/commaai/openpilot/wiki/Tuning""",
   },
   {
     "id": "builtin_cp_lon_mapping",
-    "title": "纵向调优：Carrot/CP → Dragonpilot",
+    "title": "纵向调优：旧 fork (CP) → openpilot",
     "tags": ["carrot", "cp", "longitudinal", "tuning", "migration", "faq"],
     "refresh": True,
     "text": """CP 纵向迁移对照：
 
-| CP | Dragonpilot |
+| CP | openpilot (常见) |
 | LongitudinalPersonality | 上游 Param，一致 |
 | CruiseEcoControl | dp_lon_acm（需 OP 纵向） |
 | MyDrivingMode | dp_lon_aem + dp_lon_apm |
@@ -179,9 +179,9 @@ wiki: https://github.com/commaai/openpilot/wiki/Tuning""",
     "title": "UI 设置：Carrot 面板 → Dashy",
     "tags": ["carrot", "cp", "ui", "dashy", "migration", "faq"],
     "refresh": True,
-    "text": """CP fork 的 Carrot 面板项在 Dragonpilot 对应 Dashy（:5088）与 dp_ui_*：
+    "text": """旧 fork 的 Carrot 面板项在本机可能对应 Web 设置 UI（如 Dashy :5088）与 dp_ui_*：
 
-| CP UI | Dragonpilot |
+| CP UI | openpilot (常见) |
 | ShowPathColor/Mode、彩虹路径 | dp_ui_rainbow, dp_ui_display_mode |
 | Carrot 面板开关 | fetch_dashy_settings + list_dp_settings |
 | dp_dev_model | dp_dev_model_selected |

@@ -48,13 +48,13 @@ from ai.client import load_config_from_params
 TOOL_META: dict[str, dict[str, Any]] = {
   "get_vehicle_state": {"label": "车辆状态", "group": "read", "default_enabled": True, "driving": True},
   "read_params": {"label": "读取参数", "group": "read", "default_enabled": True, "driving": True},
-  "list_sp_settings": {"label": "sunnypilot 设置", "group": "read", "default_enabled": True, "driving": True},
+  "list_sp_settings": {"label": "系统设置", "group": "read", "default_enabled": True, "driving": True},
   "get_params_catalog": {"label": "参数目录", "group": "read", "default_enabled": True, "driving": True},
   "get_agent_memory": {"label": "读取记忆", "group": "read", "default_enabled": True, "driving": True},
   "read_onroad_events": {"label": "onroad 事件", "group": "read", "default_enabled": True, "driving": True},
   "snapshot_tune_state": {"label": "调优快照", "group": "read", "default_enabled": True, "driving": True},
   "diff_params": {"label": "参数对比", "group": "read", "default_enabled": True, "driving": True},
-  "fetch_dashy_settings": {"label": "sunnypilot 设置", "group": "read", "default_enabled": False, "driving": True},
+  "fetch_dashy_settings": {"label": "Web 设置界面", "group": "read", "default_enabled": False, "driving": True},
   "read_manager_log": {"label": "Manager 日志", "group": "read", "default_enabled": True, "driving": True},
   "grep_log": {"label": "日志搜索", "group": "read", "default_enabled": True, "driving": True},
   "search_knowledge_base": {"label": "知识库检索", "group": "read", "default_enabled": True, "driving": True},
@@ -63,8 +63,8 @@ TOOL_META: dict[str, dict[str, Any]] = {
   "analyze_route_summary": {"label": "路线摘要", "group": "read", "default_enabled": True, "driving": True},
   "read_qlog_segment": {"label": "路线日志片段", "group": "read", "default_enabled": True, "driving": True},
   "trip_review": {"label": "行程复盘", "group": "read", "default_enabled": True, "driving": True},
-  "list_tune_presets": {"label": "DP 调优预设", "group": "read", "default_enabled": True, "driving": True},
-  "list_sp_tune_presets": {"label": "SP 调优预设", "group": "read", "default_enabled": True, "driving": True},
+  "list_tune_presets": {"label": "dp_* 调优预设", "group": "read", "default_enabled": True, "driving": True},
+  "list_sp_tune_presets": {"label": "调优预设", "group": "read", "default_enabled": True, "driving": True},
   "list_car_platforms": {"label": "车型平台列表", "group": "read", "default_enabled": True, "driving": True},
   "get_car_platform_bundle": {"label": "当前车型平台", "group": "read", "default_enabled": True, "driving": True},
   "list_model_bundles": {"label": "NN 模型列表", "group": "read", "default_enabled": True, "driving": True},
@@ -207,14 +207,14 @@ def build_tool_schemas() -> list[dict[str, Any]]:
     {"type": "function", "function": {"name": "get_vehicle_state", "description": "Read current vehicle/openpilot snapshot (speed, engage, alerts, faults, events, device health).", "parameters": {"type": "object", "properties": {}, "required": []}}},
     {"type": "function", "function": {"name": "get_full_vehicle_state", "description": "Read detailed cereal JSON: carState, carParams, selfdriveState, controlsState, deviceState, pandaStates, processes, events.", "parameters": {"type": "object", "properties": {}, "required": []}}},
     {"type": "function", "function": {"name": "read_params", "description": "Read comma-separated Params keys.", "parameters": {"type": "object", "properties": {"keys": {"type": "string"}}, "required": ["keys"]}}},
-    {"type": "function", "function": {"name": "list_sp_settings", "description": "List sunnypilot tunable settings with titles, descriptions, and current values for this vehicle brand.", "parameters": {"type": "object", "properties": {}, "required": []}}},
+    {"type": "function", "function": {"name": "list_sp_settings", "description": "List openpilot tunable settings (UI catalog + Params) with titles, descriptions, and current values for this vehicle brand.", "parameters": {"type": "object", "properties": {}, "required": []}}},
     {"type": "function", "function": {"name": "get_params_catalog", "description": "Get AI param safety catalog (tier, section, summary).", "parameters": {"type": "object", "properties": {}, "required": []}}},
-    {"type": "function", "function": {"name": "list_tune_presets", "description": "List Dragonpilot (dp_*) tune presets. Fork=dragonpilot.", "parameters": {"type": "object", "properties": {}, "required": []}}},
-    {"type": "function", "function": {"name": "list_sp_tune_presets", "description": "List sunnypilot tune presets (Mads, Lagd, SCC, etc.).", "parameters": {"type": "object", "properties": {}, "required": []}}},
-    {"type": "function", "function": {"name": "apply_sp_tune_preset", "description": "Apply a sunnypilot tune preset while stationary.", "parameters": {"type": "object", "properties": {"preset_id": {"type": "string"}, "confirm": {"type": "boolean"}, "route_before": {"type": "string"}, "route_after": {"type": "string"}, "skip_regression_check": {"type": "boolean"}}, "required": ["preset_id", "confirm"]}}},
-    {"type": "function", "function": {"name": "list_car_platforms", "description": "List CarPlatformBundle options from sunnypilot car_list.json.", "parameters": {"type": "object", "properties": {"brand": {"type": "string"}, "search": {"type": "string"}, "limit": {"type": "integer"}}, "required": []}}},
+    {"type": "function", "function": {"name": "list_tune_presets", "description": "List dp_* extension tune presets when present on this install.", "parameters": {"type": "object", "properties": {}, "required": []}}},
+    {"type": "function", "function": {"name": "list_sp_tune_presets", "description": "List built-in openpilot tune presets (MADS, Lagd, SCC, etc.).", "parameters": {"type": "object", "properties": {}, "required": []}}},
+    {"type": "function", "function": {"name": "apply_sp_tune_preset", "description": "Apply an openpilot tune preset while stationary.", "parameters": {"type": "object", "properties": {"preset_id": {"type": "string"}, "confirm": {"type": "boolean"}, "route_before": {"type": "string"}, "route_after": {"type": "string"}, "skip_regression_check": {"type": "boolean"}}, "required": ["preset_id", "confirm"]}}},
+    {"type": "function", "function": {"name": "list_car_platforms", "description": "List CarPlatformBundle options from this install's car_list.json.", "parameters": {"type": "object", "properties": {"brand": {"type": "string"}, "search": {"type": "string"}, "limit": {"type": "integer"}}, "required": []}}},
     {"type": "function", "function": {"name": "get_car_platform_bundle", "description": "Read current CarPlatformBundle (manual platform or auto).", "parameters": {"type": "object", "properties": {}, "required": []}}},
-    {"type": "function", "function": {"name": "list_model_bundles", "description": "List sunnypilot ModelManager NN bundles.", "parameters": {"type": "object", "properties": {"refresh": {"type": "boolean"}}, "required": []}}},
+    {"type": "function", "function": {"name": "list_model_bundles", "description": "List ModelManager NN bundles on this install.", "parameters": {"type": "object", "properties": {"refresh": {"type": "boolean"}}, "required": []}}},
     {"type": "function", "function": {"name": "get_model_manager_status", "description": "ModelManager active bundle, download index, cache sync.", "parameters": {"type": "object", "properties": {}, "required": []}}},
     {"type": "function", "function": {"name": "select_model_bundle", "description": "Select NN model by ref (Default=stock). Stationary only.", "parameters": {"type": "object", "properties": {"ref": {"type": "string"}, "confirm": {"type": "boolean"}}, "required": ["ref", "confirm"]}}},
     {"type": "function", "function": {"name": "refresh_model_list", "description": "Force ModelManager to refresh remote model list.", "parameters": {"type": "object", "properties": {"confirm": {"type": "boolean"}}, "required": []}}},
@@ -243,12 +243,12 @@ def build_tool_schemas() -> list[dict[str, Any]]:
     {"type": "function", "function": {"name": "read_qlog_segment", "description": "Read CAN frames and car/controls state from a route time window (qlog or rlog). Use after Cabana or analyze_route_summary.", "parameters": {"type": "object", "properties": {"route_name": {"type": "string"}, "start_sec": {"type": "number", "description": "Seconds from route start"}, "end_sec": {"type": "number"}, "topics": {"type": "array", "items": {"type": "string"}, "description": "can, carState, controlsState, selfdriveState, onroadEvents"}, "max_messages": {"type": "integer"}}, "required": ["route_name"]}}},
     {"type": "function", "function": {"name": "trip_review", "description": "Structured trip/engage review: events, SecOC hints, tune snapshot, route, log matches, recommendations.", "parameters": {"type": "object", "properties": {"route_name": {"type": "string", "description": "Optional route folder name; latest route if omitted."}}, "required": []}}},
     {"type": "function", "function": {"name": "read_onroad_events", "description": "Read current onroad events with severity flags.", "parameters": {"type": "object", "properties": {}, "required": []}}},
-    {"type": "function", "function": {"name": "snapshot_tune_state", "description": "Export tune-related dp_* and sunnypilot params; save_snapshot=true to persist.", "parameters": {"type": "object", "properties": {"save_snapshot": {"type": "boolean"}, "label": {"type": "string"}}, "required": []}}},
+    {"type": "function", "function": {"name": "snapshot_tune_state", "description": "Export tune-related Params (dp_* and standard openpilot keys); save_snapshot=true to persist.", "parameters": {"type": "object", "properties": {"save_snapshot": {"type": "boolean"}, "label": {"type": "string"}}, "required": []}}},
     {"type": "function", "function": {"name": "diff_params", "description": "Compare proposed param writes vs current values (no write).", "parameters": {"type": "object", "properties": {"params": {"type": "object"}}, "required": ["params"]}}},
     {"type": "function", "function": {"name": "fetch_dashy_settings", "description": "Fetch Dashy Web UI settings from localhost:5088.", "parameters": {"type": "object", "properties": {}, "required": []}}},
     {"type": "function", "function": {"name": "read_manager_log", "description": "Read recent device log (dp_dev_last_log or /data/log/latest.log).", "parameters": {"type": "object", "properties": {"lines": {"type": "integer"}}, "required": []}}},
     {"type": "function", "function": {"name": "grep_log", "description": "Regex search in recent manager log.", "parameters": {"type": "object", "properties": {"pattern": {"type": "string"}, "lines": {"type": "integer"}}, "required": ["pattern"]}}},
-    {"type": "function", "function": {"name": "search_knowledge_base", "description": "Semantic (vector) or keyword search in user knowledge base.", "parameters": {"type": "object", "properties": {"query": {"type": "string"}, "limit": {"type": "integer"}, "tags": {"type": "array", "items": {"type": "string"}, "description": "Filter by doc tags e.g. dragonpilot, toyota"}}, "required": ["query"]}}},
+    {"type": "function", "function": {"name": "search_knowledge_base", "description": "Semantic (vector) or keyword search in user knowledge base.", "parameters": {"type": "object", "properties": {"query": {"type": "string"}, "limit": {"type": "integer"}, "tags": {"type": "array", "items": {"type": "string"}, "description": "Filter by doc tags e.g. openpilot, toyota, dp_legacy"}}, "required": ["query"]}}},
     {"type": "function", "function": {"name": "reindex_knowledge_base", "description": "Rebuild cloud embedding index for all knowledge docs (stationary, needs WiFi).", "parameters": {"type": "object", "properties": {}, "required": []}}},
     {"type": "function", "function": {"name": "list_knowledge_docs", "description": "List knowledge base document titles.", "parameters": {"type": "object", "properties": {}, "required": []}}},
     {"type": "function", "function": {"name": "manage_knowledge_doc", "description": "Add/update/remove a knowledge document.", "parameters": {"type": "object", "properties": {"operation": {"type": "string", "enum": ["upsert", "remove"]}, "doc_id": {"type": "string"}, "title": {"type": "string"}, "text": {"type": "string"}, "tags": {"type": "array", "items": {"type": "string"}}}, "required": ["operation"]}}},
@@ -430,12 +430,12 @@ def make_handlers(
     return {"ok": True, "params": catalog_summary()}
 
   def h_list_tune_presets(_a):
-    return {"ok": True, "fork": "dragonpilot", "presets": list_presets()}
+    return {"ok": True, "preset_family": "dp_legacy", "presets": list_presets()}
 
   def h_list_sp_tune_presets(_a):
     state = get_state_reader().update(timeout=0)
     brand = getattr(state, "brand", "") or ""
-    return {"ok": True, "fork": "sunnypilot", "presets": list_sp_presets(brand=brand)}
+    return {"ok": True, "stack": "openpilot", "presets": list_sp_presets(brand=brand)}
 
   def h_write_params(args):
     err = _stationary_check("write_param")

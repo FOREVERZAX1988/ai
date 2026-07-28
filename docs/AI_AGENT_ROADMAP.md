@@ -86,7 +86,7 @@ OpenPilotCP 在中文社区通常指 **Carrot2 / ajouatom 系 fork** 的调优�
 |------|-------------|--------|------|
 | `get_vehicle_state` | on | ✅ | 车辆 cereal 快照 |
 | `read_params` | on | ✅ | 读 Param；**开放模式完整可读**（默认 `ai_admin_mode=1`） |
-| `list_dp_settings` | on | ✅ | Dragonpilot 可调项 + 当前值 |
+| `list_dp_settings` | on | ✅ | 本机可调项（含 dp_* 等）+ 当前值 |
 | `get_params_catalog` | on | ✅ | Param 安全分级 |
 | `list_tune_presets` / `apply_tune_preset` | 读 on / 写 off | 写仅静止 | 预设调优 |
 | `write_params` | on | ✅ | 开放模式可写（仅禁直接控车 Param）；legacy 需白名单 + 静止 |
@@ -159,7 +159,7 @@ OpenPilotCP 在中文社区通常指 **Carrot2 / ajouatom 系 fork** 的调优�
 - 写操作预览 + `pending_id` + Web 确认弹窗
 - 工具双开关（enabled + 行驶中）
 - 调优快捷卡片（ALKA / 纵向 / events / dp_settings）
-- params_catalog 与 `dragonpilot/settings` 自动合并
+- params_catalog 与遗留 `dp_*` settings 模块（若存在）自动合并
 - 轻量 RAG（`ai_rag_documents` 关键词检索）
 - 定时任务触发器：interval / on_offroad / on_ignition / on_wifi
 - 可选 LAN PIN（`ai_web_pin`）

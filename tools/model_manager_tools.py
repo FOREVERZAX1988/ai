@@ -1,4 +1,4 @@
-"""sunnypilot ModelManager — list/select NN bundles (Settings → Models)."""
+"""ModelManager — list/select NN bundles (Settings → Models)."""
 
 from __future__ import annotations
 

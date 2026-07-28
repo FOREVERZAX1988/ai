@@ -16,7 +16,7 @@ Firmware / process layout is detected at runtime from the connected openpilot tr
 
 (``ai.system.panda_stack``): unified ``panda/`` + ``pandad``, or split ``panda_tici`` /
 
-``pandad_tici`` as on Dragonpilot and some legacy forks.
+``pandad_tici`` on some legacy split-panda layouts.
 
 """
 

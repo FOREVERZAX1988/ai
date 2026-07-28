@@ -13,7 +13,7 @@ from openpilot.common.params import Params
 from ai.tools.rag_store import upsert_document_sync
 from ai.system.paths import rag_seed_version_path
 
-SEED_VERSION = 8
+SEED_VERSION = 9
 
 
 def _version_path() -> Path:
@@ -55,7 +55,7 @@ def _settings_digest() -> str:
     cat = build_merged_catalog()
   except Exception:
     return ""
-  lines = ["# Dragonpilot Params catalog (AI reference)\n"]
+  lines = ["# openpilot Params catalog (AI reference)\n"]
   for key in sorted(cat.keys())[:120]:
     meta = cat[key]
     if meta.get("tier", "").startswith("write_forbidden"):
@@ -67,7 +67,7 @@ def _settings_digest() -> str:
 _EXTRA_DOCS: list[dict[str, Any]] = [
   {
     "id": "builtin_dp_settings_catalog",
-    "title": "Dragonpilot 可调参数目录",
+    "title": "openpilot 可调参数目录",
     "tags": ["dp", "settings", "params", "faq"],
     "refresh": True,
     "text_fn": _settings_digest,

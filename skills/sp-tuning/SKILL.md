@@ -1,8 +1,8 @@
-# sunnypilot 调优技能
+# openpilot 调优技能
 
-本 fork（sunnypilot）的调优项在 **Settings** UI 与 **Params** 中；AI 通过 `list_sp_settings` / `write_params` 操作。
+本机调优项在 **Settings** UI 与 **Params** 中；AI 通过 `list_sp_settings` / `write_params` 操作。
 
-Dragonpilot 专有 `dp_*` 参数见 **dp-tuning** 技能（若安装了 dragonpilot 模块）；**不要混用**。
+遗留 **`dp_*`** 扩展参数见 **dp-tuning** 技能（仅当 Params 中存在对应键）；**不要与主路径混用**。
 
 ## 调优前必做
 
@@ -10,7 +10,7 @@ Dragonpilot 专有 `dp_*` 参数见 **dp-tuning** 技能（若安装了 dragonpi
 2. `list_sp_settings` 或 `read_params` 读当前值
 3. **车辆静止**后再写入
 
-## 横向 Lateral（sunnypilot）
+## 横向 Lateral
 
 | Param | 说明 |
 |-------|------|
@@ -49,14 +49,14 @@ Dragonpilot 专有 `dp_*` 参数见 **dp-tuning** 技能（若安装了 dragonpi
 
 ## 预设
 
-- sunnypilot：`list_sp_tune_presets` + `apply_sp_tune_preset`
-- dragonpilot：`list_tune_presets` + `apply_tune_preset`
+- 主路径：`list_sp_tune_presets` + `apply_sp_tune_preset`
+- 遗留 `dp_*`：`list_tune_presets` + `apply_tune_preset`（键存在时）
 
 ## 推荐流程
 
-1. 用户描述问题 → 映射 1–3 个 SP Param  
+1. 用户描述问题 → 映射 1–3 个 Param  
 2. `diff_params` 预览  
-3. 静止确认 → `write_params` 或 SP 预设  
+3. 静止确认 → `write_params` 或预设  
 4. 路试 → `compare_tune_ab` / `score_tune_session`
 
 完整分级见 `ai/skills/params_catalog.json`；UI 自动发现见 `catalog_builder.py`。

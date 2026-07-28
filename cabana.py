@@ -1991,7 +1991,7 @@ async def cabana_analyze_tool(question: str, frames_text: str = "") -> dict[str,
   if frames_text:
     user += f"\n\nCAN data:\n{frames_text}"
   messages = [
-    {"role": "system", "content": "你是 Dragonpilot CAN 分析助手。指出异常与关键信号。"},
+    {"role": "system", "content": "你是 openpilot CAN 分析助手。指出异常与关键信号，用简洁中文。"},
     {"role": "user", "content": user},
   ]
   return await _cabana_ai_complete(messages, max_tokens=2048)

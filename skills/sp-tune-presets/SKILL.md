@@ -1,4 +1,4 @@
-# sunnypilot 调优预设
+# openpilot 调优预设（sp_*）
 
 静止 + `confirm=true` 应用。
 
@@ -18,4 +18,4 @@
 | `sp_lagd_on` / `sp_lagd_fixed_delay` | Lagd 开关 |
 | `sp_toyota_sng` | 丰田停走（brand 过滤） |
 
-Dragonpilot 预设见 **dp-tune-presets** / `list_tune_presets`。
+遗留 `dp_*` 预设见 **dp-tune-presets** / `list_tune_presets`。

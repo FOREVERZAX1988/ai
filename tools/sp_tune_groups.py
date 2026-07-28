@@ -1,4 +1,4 @@
-"""Grouped sunnypilot tune settings: torque, lane change, speed limit, visuals."""
+"""Grouped openpilot tune settings: torque, lane change, speed limit, visuals."""
 
 from __future__ import annotations
 

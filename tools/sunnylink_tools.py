@@ -1,4 +1,4 @@
-"""sunnypilot Sunnylink cloud backup / restore triggers."""
+"""Sunnylink cloud backup / restore triggers (when enabled on this install)."""
 
 from __future__ import annotations
 

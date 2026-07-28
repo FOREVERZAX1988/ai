@@ -119,7 +119,7 @@ Fork 合规（违反可被 comma 封禁）：
 - 不得削弱过度执行检查（selfdrived/helpers.py）。
 - 修改 opendbc/safety/ 时：不得使用 openpilot 商标；须保留并通过完整 safety 测试套件。
 
-Dragonpilot 为 fork，向用户说明安全边界时引用本文档即可，勿鼓励关闭 DM。""",
+向用户说明安全边界时引用本文档即可，勿鼓励关闭 DM。""",
   },
   {
     "id": "builtin_op_car_port",
@@ -182,6 +182,6 @@ Fork 训练数据若要被 comma 采纳，须满足：
 
 非代码贡献：报 bug、Discord #driving-feedback、Wi-Fi 上传、跑 nightly、comma10k 标注。
 
-Dragonpilot 用户：调参走 dp_*；改安全/控车逻辑需知 fork 合规与 comma 封禁风险。""",
+调参可走 dp_* 等扩展键（若本机存在）；改安全/控车逻辑需知 fork 合规与 comma 封禁风险。""",
   },
 ]

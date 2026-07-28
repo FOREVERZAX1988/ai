@@ -1,4 +1,4 @@
-# 车型适配指南（Dragonpilot + op助手）
+# 车型适配指南（openpilot + op助手）
 
 本文面向**想自己或借助 AI 适配新车**的使用者，说明能力边界、分步流程，以及 **SecOC 加密车**、**EPS/低速锁止** 等常见坑。
 
@@ -34,7 +34,7 @@
 ### 2.1 已在支持列表
 
 - 查 [comma 车型表](https://comma.ai/vehicles) 或本 fork 的 `opendbc_repo/docs/CARS.md`。
-- 若已支持：多数情况是**调 Dragonpilot `dp_*` 参数**，不是从零写 DBC。
+- 若已支持：多数情况是**调本机 `dp_*` 等扩展参数**，不是从零写 DBC。
 
 ### 2.2 无 SecOC，仅缺指纹（最常见「可适配」）
 
@@ -180,9 +180,9 @@
 3. 按 TSK Manager 向导对 **EPS** 执行提取（硬件 exploit，**每台车密钥不同**）。  
 4. 得到 **32 位十六进制 SecOCKey**。
 
-### 5.4 写入 Dragonpilot / 设备
+### 5.4 写入 openpilot / 设备
 
-本 fork 在 **Dashy 开发者** 中提供 SecOCKey 安装项（`SecOCKey` Param），也会同步到设备路径（见 `dragonpilot/dashy/serverd.py`）。
+本机在 **Dashy 开发者** 或 Web 设置中提供 SecOCKey 安装项（`SecOCKey` Param），也会同步到设备路径（见本仓库 Dashy / `serverd` 实现）。
 
 - 在 Dashy 设置 → Developer → **SecOCKey Install** 填入 32 位 hex。  
 - **切勿**把真实密钥发给 AI、贴到公开仓库或 Discord 公开频道。  
@@ -217,11 +217,11 @@
 
 **现象**：低速或停车后 EPS 拒绝助力，openpilot 报转向相关 fault。
 
-**Dragonpilot 调优**：
+**openpilot 调优**：
 
 - 设置项：`dp_vag_avoid_eps_lockout`（**Avoid EPS Lockout**）  
 - 作用：低速时**降低转向扭矩请求**，避免触发 EPS 保护性锁止。  
-- 路径：Dragonpilot 设置 → VAG 分区（仅 VAG 品牌显示）。
+- 路径：车机设置 UI → VAG 分区（仅 VAG 品牌显示）。
 
 **适配建议**：
 
@@ -250,7 +250,7 @@
 1. 先排除 SecOC（第五节）。  
 2. 检查是否 `openpilotLongitudinalControl`、雷达 ACC 车型特殊逻辑（`RADAR_ACC` 等）。  
 3. 对照 `opendbc/car/toyota/carstate.py` 中 lockout 处理注释。  
-4. Dragonpilot 纵向相关 `dp_*` 由 `list_dp_settings` 列出，勿盲目开大跟车激进度。
+4. 纵向相关 `dp_*` 由 `list_dp_settings` 列出，勿盲目开大跟车激进度。
 
 ### 6.4 福特 TRON（另一类 CAN 安全）
 
@@ -278,7 +278,7 @@ SecOC 车：
 ```
 我是 2021 RAV4 Prime，正在按 optskug 文档提取 SecOCKey。
 请根据 read_params 和 cabana 日志，帮我确认是否出现 STEERING_LKA / 0x2E4，
-并说明写入 SecOCKey 后还应检查哪些 Dragonpilot 设置。
+并说明写入 SecOCKey 后还应检查哪些 openpilot 设置。
 不要让我把密钥贴到聊天里。
 ```
 

@@ -73,7 +73,7 @@ def github_request(
   headers = {
     "Accept": API_ACCEPT,
     "X-GitHub-Api-Version": API_VERSION,
-    "User-Agent": "sunnypilot-op-assistant",
+    "User-Agent": "openpilot-op-assistant",
     "Authorization": f"Bearer {token}",
   }
   if body is not None:

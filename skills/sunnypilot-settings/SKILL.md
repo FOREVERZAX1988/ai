@@ -1,11 +1,11 @@
-# sunnypilot 设置与参数
+# 系统设置与参数
 
 ## 真相来源（优先级）
 
 1. **`list_sp_settings`** — 当前品牌可见项 + 当前值（来自 `params_catalog.json` + UI 自动发现）
 2. **`get_params_catalog`** — 写入等级 tier
-3. **sunnypilot Settings UI** — `selfdrive/ui/sunnypilot/layouts/settings/`
-4. **Dragonpilot Dashy** — 仅当安装了 dragonpilot；`fetch_dashy_settings` 作补充
+3. **车机 Settings UI** — 本安装树 `selfdrive/ui` 与扩展设置布局
+4. **Dashy** — 若本机启用；`fetch_dashy_settings` 作补充
 
 ## 专用工具（不必死记 Param）
 
@@ -24,8 +24,8 @@
 
 ## 日志
 
-`read_manager_log`：先 `dp_dev_last_log`（DP 遗留），再 `/data/log/latest.log`（SP 车机默认）。
+`read_manager_log`：先 `dp_dev_last_log`（遗留路径），再 `/data/log/latest.log`（车机默认）。
 
-## 与 Carrot/CP
+## 与 Carrot/CP 迁移
 
-见 **carrot-legacy** 技能；本 fork 写入 **sunnypilot Param**，不要写 CP 专有键。
+见 **carrot-legacy** 技能；写入本机 **openpilot Params**，不要写 CP 专有键。
