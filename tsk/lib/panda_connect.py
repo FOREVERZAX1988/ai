@@ -28,6 +28,8 @@ from __future__ import annotations
 
 import os
 
+import re
+
 import subprocess
 
 import sys
@@ -352,23 +354,43 @@ def import_panda_class():
 
 def is_manager_running() -> bool:
 
+  """True when openpilot manager.py is running (sunnypilot ./manager.py or system/manager)."""
+
   try:
 
-    return subprocess.run(
+    r = subprocess.run(
 
-      ["pgrep", "-f", "system/manager/manager.py"],
+      ["pgrep", "-af", "[m]anager.py"],
 
-      stdout=subprocess.DEVNULL,
+      capture_output=True,
 
-      stderr=subprocess.DEVNULL,
+      text=True,
+
+      timeout=5,
 
       check=False,
 
-    ).returncode == 0
+    )
+
+    if r.returncode != 0:
+
+      return False
+
+    for line in (r.stdout or "").splitlines():
+
+      if re.search(r"(?:^|\s)(?:\./)?(?:openpilot/)?(?:system/)?manager/manager\.py", line):
+
+        return True
+
+      if re.search(r"python\S*\s+\./manager\.py", line):
+
+        return True
 
   except OSError:
 
     return False
+
+  return False
 
 
 
@@ -378,23 +400,31 @@ def is_pandad_running() -> bool:
 
   mod = _pandad_module()
 
+  patterns = (mod, "openpilot.selfdrive.pandad.pandad", "selfdrive/pandad/pandad", "./pandad")
+
   try:
 
-    return subprocess.run(
+    for pat in patterns:
 
-      ["pgrep", "-f", mod],
+      if subprocess.run(
 
-      stdout=subprocess.DEVNULL,
+        ["pgrep", "-f", pat],
 
-      stderr=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
 
-      check=False,
+        stderr=subprocess.DEVNULL,
 
-    ).returncode == 0
+        check=False,
+
+      ).returncode == 0:
+
+        return True
 
   except OSError:
 
     return False
+
+  return False
 
 
 
@@ -404,7 +434,9 @@ def stop_pandad() -> None:
 
   mod = _pandad_module()
 
-  subprocess.run(["pkill", "-9", "-f", mod], check=False)
+  for pat in (mod, "openpilot.selfdrive.pandad.pandad", "selfdrive/pandad/pandad", "./pandad"):
+
+    subprocess.run(["pkill", "-9", "-f", pat], check=False)
 
 
 
@@ -476,23 +508,31 @@ def restart_pandad() -> dict[str, Any]:
 
   time.sleep(1)
 
-  if is_manager_running():
+  manager_running = is_manager_running()
 
-    return {
+  if manager_running:
 
-      "ok": True,
+    for _ in range(4):
 
-      "started": False,
+      if is_pandad_running():
 
-      "pandad_process": proc,
+        return {
 
-      "pandad_module": mod,
+          "ok": True,
 
-      "message": f"已终止 {proc}。manager 正在运行，将自动重新拉起。",
+          "started": False,
 
-    }
+          "pandad_process": proc,
 
-  started = start_pandad()
+          "pandad_module": mod,
+
+          "message": f"{proc} 已恢复（manager 监督进程）。",
+
+        }
+
+      time.sleep(1)
+
+  started = start_pandad(wait_seconds=2.0)
 
   if started:
 
@@ -506,7 +546,15 @@ def restart_pandad() -> dict[str, Any]:
 
       "pandad_module": mod,
 
-      "message": f"已重启 {proc}（manager 未运行，已直接启动 {mod}）。",
+      "message": (
+
+        f"已重启 {proc}（manager 未运行，已直接启动 {mod}）。"
+
+        if not manager_running
+
+        else f"已重启 {proc}（manager 未能自动拉起，已手动启动 {mod}）。"
+
+      ),
 
     }
 
@@ -520,9 +568,29 @@ def restart_pandad() -> dict[str, Any]:
 
     "pandad_module": mod,
 
-    "message": f"已终止 {proc}，但未能重新启动。请尝试「重启 manager」或重启设备。",
+    "manager_running": manager_running,
+
+    "message": (
+
+      f"已终止 {proc}，但未能重新启动。请点 SecOC「重启 manager」或重启设备，否则 GUI 会显示 Panda 否。"
+
+      if manager_running
+
+      else f"已终止 {proc}，但未能重新启动。请尝试「重启 manager」或重启设备。"
+
+    ),
 
   }
+
+
+
+
+
+def recover_pandad_after_flash() -> dict[str, Any]:
+
+  """Restart pandad after F4 flash so openpilot UI regains pandaStates."""
+
+  return restart_pandad()
 
 
 

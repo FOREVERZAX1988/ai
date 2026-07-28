@@ -777,12 +777,21 @@ const TskPanel = (() => {
                 flashOk = true;
               }
               if (flashOk) {
+                const recovery = result.pandad_recovery;
+                let doneBody = resultBody || t('pandaFlashOk', '刷写完成');
+                if (recovery?.message) {
+                  logLine(recovery.message, recovery.ok ? 'ok' : 'warn');
+                  doneBody += `\n\n${recovery.message}`;
+                }
+                if (recovery && recovery.ok === false) {
+                  doneBody += `\n\n${t('pandaFlashPandadHint', '若 openpilot 侧栏仍显示 Panda 否，请点「重启 manager」。')}`;
+                }
                 showModal(
                   t('pandaFlashDoneTitle', '刷写完成'),
-                  resultBody || t('pandaFlashOk', '刷写完成'),
+                  doneBody,
                   [{ label: t('ok', '确定'), kind: 'primary', onClick: hideModal }],
                 );
-                notifyToast(t('pandaFlashOk', '刷写完成'), 'success');
+                notifyToast(t('pandaFlashOk', '刷写完成'), recovery?.ok === false ? 'warning' : 'success');
               } else {
                 const busyHint = /busy|LIBUSB/i.test(resultBody)
                   ? `\n\n${t('pandaFlashBusyHint', 'USB 被占用时可先点「重启 pandad」或「重启 manager」后再刷写。')}`

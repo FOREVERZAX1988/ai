@@ -1176,12 +1176,21 @@ def flash_panda_firmware(
 
   ok = all(r.get("ok") for r in results)
   skipped = all(r.get("skipped") for r in results if r.get("ok"))
+  pandad_recovery: dict[str, Any] | None = None
+  if ok and needs_f4:
+    try:
+      from ai.tsk.lib.panda_connect import recover_pandad_after_flash
+
+      pandad_recovery = recover_pandad_after_flash()
+    except Exception as e:
+      pandad_recovery = {"ok": False, "error": str(e)}
   return {
     "ok": ok,
     "skipped": skipped and ok,
     "results": results,
     "targets": targets,
     "pandad_release": pandad_release,
+    "pandad_recovery": pandad_recovery,
     "next_steps": [
       "panda_firmware_status 验证签名",
       "rebuild_pandad(confirm=true) if dual USB",
