@@ -1,13 +1,12 @@
 name: Sync GitHub Wiki
 
-# 需要仓库 Secret WIKI_SYNC_TOKEN（classic PAT，repo 权限）。
-# 勿在 job if 里引用 secrets（会导致 workflow 秒失败）。
 on:
   push:
     branches: [main]
     paths:
       - 'docs/wiki/**'
       - 'scripts/sync_github_wiki.sh'
+      - 'scripts/wiki_token_check.sh'
       - '.github/workflows/sync-wiki.yml'
   workflow_dispatch:
 
@@ -23,44 +22,62 @@ jobs:
         with:
           path: src
 
-      - name: Push docs/wiki to GitHub Wiki git
+      - name: Validate WIKI_SYNC_TOKEN
+        id: tok
         env:
           WIKI_SYNC_TOKEN: ${{ secrets.WIKI_SYNC_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          if [[ -z "${WIKI_SYNC_TOKEN}" ]]; then
+            echo "::warning::未配置 WIKI_SYNC_TOKEN，跳过 Wiki git 同步。"
+            echo "skip=true" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+          bash src/scripts/wiki_token_check.sh "${WIKI_SYNC_TOKEN}" "${GITHUB_REPOSITORY}"
+          echo "skip=false" >> "${GITHUB_OUTPUT}"
+
+      - name: Push docs/wiki to GitHub Wiki git
+        if: steps.tok.outputs.skip != 'true'
+        env:
+          WIKI_SYNC_TOKEN: ${{ secrets.WIKI_SYNC_TOKEN }}
+          GITHUB_ACTOR: ${{ github.repository_owner }}
           WIKI_SLUG: ${{ github.repository_owner }}/${{ github.event.repository.name }}.wiki
           COMMIT_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
-          if [[ -z "${WIKI_SYNC_TOKEN}" ]]; then
-            echo "::warning::未配置 WIKI_SYNC_TOKEN，跳过 Wiki git 同步。"
-            echo "::notice::文档见 https://github.com/mouxangithub/ai/tree/main/docs/wiki"
-            echo "::notice::或 GitHub Pages workflow「Deploy Wiki Docs」"
-            exit 0
-          fi
-
-          GH_TOKEN="${WIKI_SYNC_TOKEN}"
           COMMIT_MSG="docs: sync wiki from ${COMMIT_SHA}"
-
           SRC="${GITHUB_WORKSPACE}/src/docs/wiki"
-          REMOTE="https://x-access-token:${GH_TOKEN}@github.com/${WIKI_SLUG}.git"
+          REMOTE_X="https://x-access-token:${WIKI_SYNC_TOKEN}@github.com/${WIKI_SLUG}.git"
+          REMOTE_USER="https://${GITHUB_ACTOR}:${WIKI_SYNC_TOKEN}@github.com/${WIKI_SLUG}.git"
           WORK="$(mktemp -d)"
           trap 'rm -rf "$WORK"' EXIT
 
-          echo "Wiki remote: https://github.com/${WIKI_SLUG}.git"
+          cloned=false
+          ACTIVE_REMOTE=""
+          for REMOTE in "$REMOTE_X" "$REMOTE_USER"; do
+            if git clone --depth 1 --branch master "$REMOTE" "$WORK/repo" 2>/dev/null; then
+              cloned=true
+              ACTIVE_REMOTE="$REMOTE"
+              break
+            fi
+            if git clone --depth 1 --branch main "$REMOTE" "$WORK/repo" 2>/dev/null; then
+              cloned=true
+              ACTIVE_REMOTE="$REMOTE"
+              break
+            fi
+          done
 
-          if git clone --depth 1 --branch master "$REMOTE" "$WORK/repo" 2>/dev/null; then
-            echo "Cloned existing wiki (master)"
-          elif git clone --depth 1 --branch main "$REMOTE" "$WORK/repo" 2>/dev/null; then
-            echo "Cloned existing wiki (main)"
-          else
-            echo "Wiki git empty; initializing first push"
+          if [[ "$cloned" != true ]]; then
+            echo "Wiki git clone failed; initializing empty repo"
             mkdir -p "$WORK/repo"
             cd "$WORK/repo"
             git init -b master
-            git remote add origin "$REMOTE"
+            ACTIVE_REMOTE="$REMOTE_X"
+            git remote add origin "$ACTIVE_REMOTE"
           fi
 
           cd "$WORK/repo"
-          git remote set-url origin "$REMOTE"
+          git remote set-url origin "$ACTIVE_REMOTE"
 
           cp "$SRC"/*.md .
           git config user.name "github-actions[bot]"
@@ -74,5 +91,8 @@ jobs:
 
           git commit -m "${COMMIT_MSG}"
           BRANCH="$(git branch --show-current)"
-          git push -u origin "${BRANCH}" || git push -u origin master
+          if ! git push -u origin "${BRANCH}"; then
+            git branch -M master
+            git push -u origin master
+          fi
           echo "Wiki pushed successfully."

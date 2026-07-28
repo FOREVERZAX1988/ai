@@ -17,14 +17,22 @@
 
 ## 一次性配置 WIKI_SYNC_TOKEN（3 分钟）
 
-1. 打开 https://github.com/settings/tokens  
-2. **Generate new token** → 选 **classic**（不要 fine-grained）  
-3. 勾选 **`repo`**（整项）→ Generate → **复制 token**（只显示一次）  
-4. 打开 https://github.com/mouxangithub/ai/settings/secrets/actions  
-5. **New repository secret**  
-   - Name: `WIKI_SYNC_TOKEN`  
-   - Secret: 粘贴 token  
-6. **Actions → Sync GitHub Wiki → Run workflow**
+**必须用 classic PAT**，且能访问隐藏仓库 `ai.wiki`：
+
+| 配置项 | 要求 |
+|--------|------|
+| Token 类型 | **Generate new token (classic)**（`ghp_` 开头） |
+| ❌ 不要用 | Fine-grained（`github_pat_` 开头）— **无法**访问 wiki git |
+| Scope | 勾选 **`repo`** |
+| 仓库范围 | **All repositories**（不要选 Only select repositories 只勾 `ai`） |
+
+步骤：
+
+1. https://github.com/settings/tokens → **Generate new token (classic)** → **`repo`** → **All repositories**
+2. https://github.com/mouxangithub/ai/settings/secrets/actions → `WIKI_SYNC_TOKEN`
+3. **Actions → Sync GitHub Wiki → Run workflow**
+
+Workflow 会先跑 **Validate WIKI_SYNC_TOKEN**；若 Token 类型/权限不对，日志里会写明原因（不必再猜 404）。
 
 成功后 Wiki 会出现 9 页：`Home`、`GEPA-Evolution`、`OP-CLI` 等。
 
