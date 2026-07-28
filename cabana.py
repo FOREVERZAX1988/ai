@@ -11,6 +11,7 @@ import hashlib
 import json
 import os
 import re
+import subprocess
 import time
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -834,6 +835,98 @@ def _media_payload(route_name: str) -> dict[str, Any]:
   return result
 
 
+LOG_SEGMENT_LENGTH_SEC = 60
+_THUMB_CACHE: dict[str, bytes] = {}
+_THUMB_CACHE_ORDER: list[str] = []
+_THUMB_CACHE_MAX = 64
+
+
+def _qcamera_paths_sorted(route_name: str) -> list[tuple[int, Path]]:
+  base = _route_dir(route_name)
+  if base is None:
+    return []
+  segs: list[tuple[int, Path]] = []
+  for path in sorted(base.rglob("qcamera.ts")):
+    if not path.is_file():
+      continue
+    parent = path.parent.name
+    try:
+      num = int(parent) if parent.isdigit() else 0
+    except ValueError:
+      num = 0
+    segs.append((num, path))
+  segs.sort(key=lambda x: x[0])
+  return segs
+
+
+def _thumb_cache_get(key: str) -> bytes | None:
+  return _THUMB_CACHE.get(key)
+
+
+def _thumb_cache_put(key: str, data: bytes) -> None:
+  if key in _THUMB_CACHE:
+    return
+  _THUMB_CACHE[key] = data
+  _THUMB_CACHE_ORDER.append(key)
+  while len(_THUMB_CACHE_ORDER) > _THUMB_CACHE_MAX:
+    old = _THUMB_CACHE_ORDER.pop(0)
+    _THUMB_CACHE.pop(old, None)
+
+
+def _extract_qcamera_jpeg(path: Path, offset_sec: float, *, max_width: int = 480) -> bytes | None:
+  if not path.is_file():
+    return None
+  cmd = [
+    "ffmpeg", "-hide_banner", "-loglevel", "error",
+    "-ss", f"{max(0.0, offset_sec):.3f}",
+    "-i", str(path),
+    "-frames:v", "1",
+    "-f", "image2pipe",
+    "-vcodec", "mjpeg",
+    "-q:v", "4",
+    "pipe:1",
+  ]
+  try:
+    raw = subprocess.check_output(cmd, timeout=10, stderr=subprocess.DEVNULL)
+  except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError, OSError):
+    return None
+  if not raw:
+    return None
+  if max_width <= 0:
+    return raw
+  try:
+    from PIL import Image
+    import io
+    im = Image.open(io.BytesIO(raw))
+    if im.width > max_width:
+      ratio = max_width / im.width
+      im = im.resize((max_width, max(1, int(im.height * ratio))))
+    out = io.BytesIO()
+    im.save(out, format="JPEG", quality=82)
+    return out.getvalue()
+  except Exception:
+    return raw
+
+
+def _qcamera_thumbnail_at_time(route_name: str, rel_sec: float) -> bytes | None:
+  segs = _qcamera_paths_sorted(route_name)
+  if not segs:
+    return None
+  rel_sec = max(0.0, rel_sec)
+  seg_idx = int(rel_sec // LOG_SEGMENT_LENGTH_SEC)
+  if seg_idx >= len(segs):
+    seg_idx = len(segs) - 1
+  offset = rel_sec - seg_idx * LOG_SEGMENT_LENGTH_SEC
+  cache_key = f"{route_name}:{segs[seg_idx][0]}:{offset:.1f}"
+  cached = _thumb_cache_get(cache_key)
+  if cached:
+    return cached
+  jpeg = _extract_qcamera_jpeg(segs[seg_idx][1], offset)
+  if jpeg:
+    _thumb_cache_put(cache_key, jpeg)
+  return jpeg
+
+
 _ROUTE_DATETIME_RE = re.compile(
   r"^(?P<date>\d{4}-\d{2}-\d{2})--(?P<time>\d{2}-\d{2}-\d{2})",
 )
@@ -951,6 +1044,23 @@ async def api_dbc(request: web.Request) -> web.Response:
   return _json_response({"ok": True, "name": name, "signals": signals})
 
 
+async def api_route_thumbnail(request: web.Request) -> web.Response:
+  name = request.match_info["name"]
+  try:
+    rel_sec = max(0.0, float(request.query.get("time", "0")))
+  except (TypeError, ValueError):
+    return _json_response({"ok": False, "error": "Invalid time"}, status=400)
+  loop = asyncio.get_running_loop()
+  jpeg = await loop.run_in_executor(None, lambda: _qcamera_thumbnail_at_time(name, rel_sec))
+  if not jpeg:
+    return _json_response({"ok": False, "error": "No qcamera thumbnail"}, status=404)
+  return web.Response(
+    body=jpeg,
+    content_type="image/jpeg",
+    headers={"Cache-Control": "private, max-age=120"},
+  )
+
+
 async def api_route_media(request: web.Request) -> web.Response:
   name = request.match_info["name"]
   result = _media_payload(name)
@@ -1057,10 +1167,10 @@ async def ws_offline(request: web.Request) -> web.WebSocketResponse:
   autoplay = request.query.get("autoplay", "1").lower() in ("1", "true", "yes")
   full_can = request.query.get("full", "0").lower() in ("1", "true", "yes")
   paused = not autoplay
-  seek_time: float | None = None
+  seek_time_rel: float | None = None
 
   async def control_loop():
-    nonlocal paused, speed, seek_time
+    nonlocal paused, speed, seek_time_rel
     async for msg in ws:
       try:
         data = json.loads(msg.data)
@@ -1072,7 +1182,7 @@ async def ws_offline(request: web.Request) -> web.WebSocketResponse:
         elif cmd == "speed":
           speed = max(0.1, min(10.0, float(data.get("value", 1.0))))
         elif cmd == "seek":
-          seek_time = max(0.0, float(data.get("time", 0.0)))
+          seek_time_rel = max(0.0, float(data.get("time", 0.0)))
       except Exception:
         pass
 
@@ -1238,6 +1348,9 @@ async def ws_offline(request: web.Request) -> web.WebSocketResponse:
     duration = last_time - first_time
     original_count = len(all_frames)
 
+    def rel_progress(abs_t: float) -> float:
+      return max(0.0, float(abs_t) - first_time)
+
     await ws.send_str(json.dumps({
       "type": "loading",
       "phase": "ready",
@@ -1265,7 +1378,7 @@ async def ws_offline(request: web.Request) -> web.WebSocketResponse:
     }))
 
     snap_idx = 0
-    while snap_idx < len(snapshots) and snapshots[snap_idx][0] < start_time:
+    while snap_idx < len(snapshots) and snapshots[snap_idx][0] < first_time + start_time:
       snap_idx += 1
 
     if snap_idx < len(snapshots):
@@ -1274,23 +1387,23 @@ async def ws_offline(request: web.Request) -> web.WebSocketResponse:
         await ws_send({
           "type": "can",
           "frames": init_batch,
-          "progress": init_progress,
+          "progress": rel_progress(init_progress),
           "preview": True,
         })
 
     playback_start = time.monotonic()
-    first_snap_progress = snapshots[snap_idx][0] if snap_idx < len(snapshots) else 0.0
+    first_snap_progress = snapshots[snap_idx][0] if snap_idx < len(snapshots) else first_time
 
     while snap_idx < len(snapshots):
-      if seek_time is not None:
-        st = seek_time
-        seek_time = None
+      if seek_time_rel is not None:
+        st = first_time + seek_time_rel
+        seek_time_rel = None
         snap_idx = 0
         while snap_idx < len(snapshots) and snapshots[snap_idx][0] < st:
           snap_idx += 1
         playback_start = time.monotonic()
         first_snap_progress = snapshots[snap_idx][0] if snap_idx < len(snapshots) else st
-        await ws.send_str(json.dumps({"type": "seeked", "time": st}))
+        await ws.send_str(json.dumps({"type": "seeked", "time": rel_progress(st)}))
         continue
 
       progress, ui_batch = snapshots[snap_idx]
@@ -1309,7 +1422,7 @@ async def ws_offline(request: web.Request) -> web.WebSocketResponse:
         if not await ws_send({
           "type": "can",
           "frames": [],
-          "progress": progress,
+          "progress": rel_progress(progress),
         }):
           break
         snap_idx += 1
@@ -1318,7 +1431,7 @@ async def ws_offline(request: web.Request) -> web.WebSocketResponse:
       if not await ws_send({
         "type": "can",
         "frames": ui_batch,
-        "progress": progress,
+        "progress": rel_progress(progress),
       }):
         break
       snap_idx += 1
@@ -1961,6 +2074,7 @@ def register_routes(app: web.Application, static_root: Path) -> None:
   app.router.add_get("/api/cabana/dbc/{name}", api_dbc)
   app.router.add_get("/api/cabana/routes", api_routes)
   app.router.add_get("/api/cabana/route/{name}/media", api_route_media)
+  app.router.add_get("/api/cabana/route/{name}/thumbnail", api_route_thumbnail)
   app.router.add_get("/api/cabana/route/{name}/summary", api_route_summary)
   app.router.add_get("/api/cabana/route/{name}/file", api_route_file)
   app.router.add_get("/api/cabana/ws", ws_live)

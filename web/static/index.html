@@ -8,7 +8,8 @@
   <link rel="stylesheet" href="/static/css/ai.css?v=20260723n">
   <link rel="stylesheet" href="/static/css/office-panel.css?v=20260723y">
   <link rel="stylesheet" href="/static/css/canvas-panel.css?v=20260723e">
-  <link rel="stylesheet" href="/static/css/cabana-panel.css?v=20260723a">
+  <link rel="stylesheet" href="/static/css/cabana-panel.css?v=20260728a">
+  <link rel="stylesheet" href="/static/vendor/uplot/uPlot.min.css">
   <link rel="stylesheet" href="/static/vendor/xterm/xterm.css?v=20260722i">
 </head>
 <body>
@@ -184,6 +185,10 @@
               <input type="checkbox" id="cabanaReplayFull">
               <span data-i18n="cabanaReplayFull">完整 rlog</span>
             </label>
+            <label class="cabana-replay-video" title="低清 qcamera 缩略图预览（默认关闭）">
+              <input type="checkbox" id="cabanaVideoToggle">
+              <span id="cabanaVideoToggleLabel">路况预览</span>
+            </label>
             <select id="cabanaReplaySpeed" class="toolbar-select cabana-speed-select" title="CAN 数据回放倍速">
               <option value="0.5">0.5x</option>
               <option value="1" selected>1x</option>
@@ -196,6 +201,10 @@
             <span id="cabanaReplayStats" class="cabana-replay-stats"></span>
           </div>
         </div>
+        <div class="cabana-video-preview" id="cabanaVideoPreview" hidden>
+          <img id="cabanaVideoImg" class="cabana-video-img" alt="" hidden>
+          <div id="cabanaVideoPlaceholder" class="cabana-video-placeholder">加载预览…</div>
+        </div>
         <div class="cabana-replay-loading" id="cabanaReplayLoading" hidden>
           <span class="cabana-spinner" aria-hidden="true"></span>
           <span id="cabanaReplayLoadingText">正在索引日志…</span>
@@ -204,21 +213,59 @@
           <input type="text" id="cabanaFilter" class="cabana-filter toolbar-input" placeholder="搜索报文…">
           <div class="cabana-filter-chips" id="cabanaFilterChips"></div>
         </div>
+        <div class="cabana-plot-wrap" id="cabanaPlotWrap" hidden>
+          <div class="cabana-plot-toolbar">
+            <span id="cabanaPlotTitle">信号曲线</span>
+            <div class="cabana-plot-actions">
+              <button type="button" id="cabanaPlotClear" class="btn small ghost">清空曲线</button>
+            </div>
+          </div>
+          <div id="cabanaPlotChart" class="cabana-plot-chart"></div>
+          <div id="cabanaPlotEmpty" class="cabana-plot-empty">点击表格行选择报文，播放或连接后将显示信号曲线</div>
+        </div>
         <div class="cabana-table-wrap" id="cabanaTableWrap">
           <table id="cabanaTable">
             <thead>
               <tr>
                 <th id="cabThTime" data-sort="time">时间</th>
+                <th id="cabThBus" data-sort="bus">总线</th>
                 <th id="cabThName" data-sort="name">报文</th>
                 <th id="cabThValue">当前值</th>
+                <th id="cabThFreq" data-sort="freq">Hz</th>
                 <th id="cabThExplain" data-sort="label">功能</th>
               </tr>
             </thead>
             <tbody id="cabanaTableBody">
-              <tr class="cab-virtual-spacer cab-virtual-spacer-top" aria-hidden="true"><td colspan="4"></td></tr>
-              <tr class="cab-virtual-spacer cab-virtual-spacer-bottom" aria-hidden="true"><td colspan="4"></td></tr>
+              <tr class="cab-virtual-spacer cab-virtual-spacer-top" aria-hidden="true"><td colspan="6"></td></tr>
+              <tr class="cab-virtual-spacer cab-virtual-spacer-bottom" aria-hidden="true"><td colspan="6"></td></tr>
             </tbody>
           </table>
+        </div>
+        <div class="cabana-detail-wrap" id="cabanaDetailWrap" hidden>
+          <div class="cabana-detail-header">
+            <span id="cabanaDetailTitle" class="cabana-detail-title">报文详情</span>
+            <div class="cabana-detail-actions">
+              <span id="cabanaDetailMeta" class="cabana-detail-meta"></span>
+              <button type="button" id="cabanaDetailClose" class="btn small ghost" aria-label="Close">×</button>
+            </div>
+          </div>
+          <div id="cabanaDetailSignals" class="cabana-detail-signals"></div>
+          <div class="cabana-detail-history">
+            <div class="cabana-detail-history-head" id="cabanaDetailHistoryHead">最近帧</div>
+            <div class="cabana-detail-history-scroll">
+              <table class="cabana-history-table">
+                <thead>
+                  <tr>
+                    <th id="cabanaHistThTime">时间</th>
+                    <th id="cabanaHistThHex">HEX</th>
+                    <th id="cabanaHistThDec">DEC</th>
+                    <th id="cabanaHistThDecoded">解码</th>
+                  </tr>
+                </thead>
+                <tbody id="cabanaDetailHistoryBody"></tbody>
+              </table>
+            </div>
+          </div>
         </div>
         <div class="cabana-ai-result" id="cabanaAiResult" hidden>
           <div class="cabana-ai-result-header">
@@ -930,6 +977,7 @@
   <script src="/static/js/canvas-panel.js?v=20260723a"></script>
   <script src="/static/js/terminal-panel.js?v=20260723e"></script>
   <script src="/static/js/ai.js?v=20260723k"></script>
-  <script src="/static/js/cabana-panel.js?v=20260727a"></script>
+  <script src="/static/vendor/uplot/uPlot.iife.min.js"></script>
+  <script src="/static/js/cabana-panel.js?v=20260728a"></script>
 </body>
 </html>

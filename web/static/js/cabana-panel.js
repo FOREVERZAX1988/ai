@@ -45,6 +45,18 @@ const CabanaPanel = (() => {
   let aiAnalyzeRunning = false;
   let virtualRenderScheduled = false;
   let bulkExplainRunning = false;
+  let els = {};
+  let labeledCount = 0;
+
+  const frameHistory = new Map();
+  const msgStats = new Map();
+  const HISTORY_MAX = 32;
+  const PLOT_MAX_POINTS = 1200;
+  let selectedKey = null;
+  let plotSignalName = null;
+  let plotSeries = null;
+  let plotInstance = null;
+  let plotResizeObserver = null;
 
   const SIGNAL_LABEL_RULES = [
     [/brake|brk|brakepressed|brakelight/i, '刹车'],
@@ -84,6 +96,12 @@ const CabanaPanel = (() => {
   let replayDuration = 0;
   let replayProgress = 0;
   let replayStartMono = 0;
+  let hasQcamera = false;
+  let videoPreviewEnabled = false;
+  let thumbDebounceTimer = null;
+  let thumbAbort = null;
+  let lastThumbKey = '';
+  let thumbObjectUrl = null;
   let panelMode = 'live';
 
   function $(sel) {
@@ -178,8 +196,11 @@ const CabanaPanel = (() => {
     const sigs = signalsByAddress.get(Number(frame.address));
     const msgName = sigs?.[0]?.message;
     const hex = addrHex(frame.address);
+    const bus = Number(frame.bus) || 0;
     const nameCol = msgName ? `${msgName} · ${hex}` : hex;
     const { display: valueText, title: valueTitle } = frameValuePresentation(frame);
+    const stats = msgStats.get(key);
+    const freqText = stats?.hz > 0 ? stats.hz.toFixed(1) : '—';
     const relTime = opts.replay ? formatReplayRowTime(frame) : frame.time.toFixed(2);
     const item = { id: key, message: msgName || hex, signal: sigs?.[0]?.signal || '' };
     const cached = explainCache.get(key);
@@ -190,9 +211,11 @@ const CabanaPanel = (() => {
     return {
       key,
       frame,
+      bus,
+      freqText,
       relTime,
       nameCol,
-      searchHay: `${nameCol} ${valueText} ${hex}`.toLowerCase(),
+      searchHay: `${nameCol} ${valueText} ${hex} bus${bus}`.toLowerCase(),
       valueText,
       valueTitle,
       label: label || prev?.label || '',
@@ -203,9 +226,294 @@ const CabanaPanel = (() => {
     };
   }
 
+  function pushFrameHistory(frame) {
+    const key = frameKey(frame);
+    let hist = frameHistory.get(key);
+    if (!hist) {
+      hist = [];
+      frameHistory.set(key, hist);
+    }
+    const last = hist[hist.length - 1];
+    if (last && last.time === frame.time && last.data === frame.data) return;
+    hist.push({
+      bus: frame.bus,
+      address: frame.address,
+      data: frame.data,
+      time: frame.time,
+    });
+    if (hist.length > HISTORY_MAX) hist.shift();
+  }
+
+  function updateMsgStats(frame) {
+    const key = frameKey(frame);
+    const now = Number(frame.time) || 0;
+    let stats = msgStats.get(key);
+    if (!stats) {
+      stats = { count: 0, hz: 0, windowStart: now, windowCount: 0 };
+      msgStats.set(key, stats);
+    }
+    stats.count += 1;
+    if (now - stats.windowStart > 2) {
+      stats.windowStart = now;
+      stats.windowCount = 0;
+    }
+    stats.windowCount += 1;
+    const span = Math.max(0.05, now - stats.windowStart);
+    stats.hz = stats.windowCount / span;
+  }
+
+  function findSignalForKey(key, signalName) {
+    const frame = latestFrames.get(key);
+    if (!frame) return null;
+    const sigs = signalsByAddress.get(Number(frame.address)) || [];
+    if (signalName) return sigs.find((s) => s.signal === signalName) || null;
+    return sigs[0] || null;
+  }
+
+  function decodeSignalValue(frame, sig) {
+    if (!sig || !frame?.data) return null;
+    const data = hexToBytes(frame.data);
+    if (!data) return null;
+    return decodeSignal(data, sig);
+  }
+
+  function destroyPlot() {
+    if (plotResizeObserver) {
+      plotResizeObserver.disconnect();
+      plotResizeObserver = null;
+    }
+    if (plotInstance) {
+      plotInstance.destroy();
+      plotInstance = null;
+    }
+    if (els.plotChart) els.plotChart.innerHTML = '';
+  }
+
+  function plotAccentStroke() {
+    const accent = getComputedStyle(root || document.documentElement).getPropertyValue('--accent').trim();
+    return accent || '#4ecdc4';
+  }
+
+  function renderPlotChart() {
+    if (!els.plotChart || !plotSeries) return;
+    const hasData = plotSeries.times.length > 0;
+    if (els.plotEmpty) els.plotEmpty.hidden = hasData;
+    if (!hasData) {
+      destroyPlot();
+      return;
+    }
+    const width = Math.max(240, els.plotChart.clientWidth || els.plotWrap?.clientWidth || 600);
+    const data = [plotSeries.times, plotSeries.values];
+    const label = plotSeries.signalName || 'value';
+    const muted = getComputedStyle(root || document.documentElement).getPropertyValue('--text-muted').trim() || '#8a9aaa';
+    const opts = {
+      width,
+      height: 180,
+      fmt: (u, v) => (v == null ? '-' : Number(v).toFixed(2)),
+      axes: [
+        { stroke: muted, grid: { stroke: 'rgba(128,128,128,0.15)' } },
+        { stroke: muted, grid: { stroke: 'rgba(128,128,128,0.15)' }, size: 52 },
+      ],
+      series: [
+        {},
+        { label, stroke: plotAccentStroke(), width: 2 },
+      ],
+    };
+    if (plotInstance) {
+      plotInstance.setData(data);
+      return;
+    }
+    if (typeof uPlot === 'undefined') return;
+    destroyPlot();
+    plotInstance = new uPlot(opts, data, els.plotChart);
+    if (!plotResizeObserver && typeof ResizeObserver !== 'undefined') {
+      plotResizeObserver = new ResizeObserver(() => {
+        if (!plotInstance || !els.plotChart) return;
+        const w = Math.max(240, els.plotChart.clientWidth || 600);
+        plotInstance.setSize({ width: w, height: 180 });
+      });
+      plotResizeObserver.observe(els.plotChart);
+    }
+  }
+
+  function seedPlotFromHistory(key, signalName) {
+    const sig = findSignalForKey(key, signalName);
+    if (!sig) {
+      plotSeries = null;
+      destroyPlot();
+      if (els.plotEmpty) els.plotEmpty.hidden = false;
+      return;
+    }
+    plotSignalName = sig.signal;
+    plotSeries = {
+      id: `${key}::${sig.signal}`,
+      key,
+      signalName: sig.signal,
+      times: [],
+      values: [],
+    };
+    const hist = frameHistory.get(key) || [];
+    for (const frame of hist) {
+      const val = decodeSignalValue(frame, sig);
+      if (val === null) continue;
+      plotSeries.times.push(frame.time);
+      plotSeries.values.push(val);
+    }
+    if (els.plotTitle) {
+      els.plotTitle.textContent = `${sig.message || key} · ${sig.signal}`;
+    }
+    if (els.plotWrap) els.plotWrap.hidden = false;
+    renderPlotChart();
+  }
+
+  function appendPlotPoint(frame) {
+    if (!plotSeries || frameKey(frame) !== plotSeries.key || !plotSignalName) return;
+    const sig = findSignalForKey(plotSeries.key, plotSignalName);
+    if (!sig) return;
+    const val = decodeSignalValue(frame, sig);
+    if (val === null) return;
+    const lastT = plotSeries.times[plotSeries.times.length - 1];
+    if (lastT === frame.time) {
+      plotSeries.values[plotSeries.values.length - 1] = val;
+    } else {
+      plotSeries.times.push(frame.time);
+      plotSeries.values.push(val);
+    }
+    if (plotSeries.times.length > PLOT_MAX_POINTS) {
+      plotSeries.times.shift();
+      plotSeries.values.shift();
+    }
+    renderPlotChart();
+  }
+
+  function clearSelection() {
+    selectedKey = null;
+    plotSignalName = null;
+    plotSeries = null;
+    destroyPlot();
+    if (els.detailWrap) els.detailWrap.hidden = true;
+    if (els.plotWrap) els.plotWrap.hidden = true;
+  }
+
+  function clearAuxState() {
+    frameHistory.clear();
+    msgStats.clear();
+    clearSelection();
+  }
+
+  function formatDetailTime(frame) {
+    if (panelMode === 'replay') return `+${formatReplayRowTime(frame)}s`;
+    return Number(frame.time).toFixed(2);
+  }
+
+  function renderDetailPanel() {
+    if (!els.detailWrap) return;
+    if (!selectedKey) {
+      els.detailWrap.hidden = true;
+      return;
+    }
+    const frame = latestFrames.get(selectedKey);
+    const row = tableRows.get(selectedKey);
+    if (!frame) {
+      els.detailWrap.hidden = true;
+      return;
+    }
+    els.detailWrap.hidden = false;
+    const sigs = signalsByAddress.get(Number(frame.address)) || [];
+    const msgName = sigs[0]?.message || addrHex(frame.address);
+    const stats = msgStats.get(selectedKey);
+    if (els.detailTitle) {
+      els.detailTitle.textContent = `${msgName} · ${addrHex(frame.address)}`;
+    }
+    if (els.detailMeta) {
+      const parts = [
+        `bus ${frame.bus ?? 0}`,
+        stats?.hz > 0 ? `${stats.hz.toFixed(1)} Hz` : null,
+        stats?.count ? `${stats.count} cnt` : null,
+      ].filter(Boolean);
+      els.detailMeta.textContent = parts.join(' · ');
+    }
+    if (els.detailSignals) {
+      els.detailSignals.innerHTML = '';
+      if (sigs.length) {
+        for (const sig of sigs) {
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = `cab-signal-pick${plotSignalName === sig.signal ? ' active' : ''}`;
+          const val = decodeSignalValue(frame, sig);
+          const valText = val == null ? '—' : `${val.toFixed(2)}${sig.unit || ''}`;
+          btn.textContent = `${sig.signal}=${valText}`;
+          btn.title = t('cabanaPlotOn', '绘图');
+          btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            plotSignalName = sig.signal;
+            seedPlotFromHistory(selectedKey, sig.signal);
+            renderDetailPanel();
+          });
+          els.detailSignals.appendChild(btn);
+        }
+      }
+    }
+    if (els.detailHistoryBody) {
+      els.detailHistoryBody.innerHTML = '';
+      const hist = (frameHistory.get(selectedKey) || []).slice().reverse();
+      if (!hist.length) {
+        const tr = document.createElement('tr');
+        const td = document.createElement('td');
+        td.colSpan = 4;
+        td.textContent = t('cabanaDetailNoHistory', '暂无历史帧');
+        td.style.color = 'var(--text-muted)';
+        tr.appendChild(td);
+        els.detailHistoryBody.appendChild(tr);
+      } else {
+        for (const h of hist) {
+          const tr = document.createElement('tr');
+          const decoded = decodeFrame(h);
+          const cells = [
+            formatDetailTime(h),
+            formatHexBytes(h.data),
+            formatDecBytes(h.data),
+            decoded.text || '—',
+          ];
+          cells.forEach((text, idx) => {
+            const td = document.createElement('td');
+            td.textContent = text;
+            if (idx > 0 && idx < 3) td.className = 'mono';
+            tr.appendChild(td);
+          });
+          els.detailHistoryBody.appendChild(tr);
+        }
+      }
+    }
+    if (row?.label && els.detailTitle) {
+      els.detailTitle.textContent += ` · ${row.label}`;
+    }
+  }
+
+  function selectRow(key) {
+    if (!key || !latestFrames.has(key)) return;
+    selectedKey = key;
+    const sigs = signalsByAddress.get(Number(latestFrames.get(key).address)) || [];
+    if (sigs.length) {
+      if (!plotSignalName || !sigs.some((s) => s.signal === plotSignalName)) {
+        plotSignalName = sigs[0].signal;
+      }
+      seedPlotFromHistory(key, plotSignalName);
+    } else {
+      plotSignalName = null;
+      plotSeries = null;
+      destroyPlot();
+      if (els.plotWrap) els.plotWrap.hidden = true;
+    }
+    renderDetailPanel();
+    scheduleVirtualRender();
+  }
+
   function upsertTableRow(frame, opts = {}) {
     const key = frameKey(frame);
     latestFrames.set(key, frame);
+    pushFrameHistory(frame);
+    updateMsgStats(frame);
     const prev = tableRows.get(key);
     const rec = buildRowRecord(frame, opts);
     if (prev?.label && !rec.label) {
@@ -214,6 +522,10 @@ const CabanaPanel = (() => {
     }
     tableRows.set(key, rec);
     if (rec.label) explainCache.set(key, rec.label);
+    if (selectedKey === key) {
+      appendPlotPoint(frame);
+      renderDetailPanel();
+    }
     scheduleVirtualRender();
     updateLabelProgress();
     if (rec.pending && autoLabelEnabled) scheduleBulkExplainAll();
@@ -240,6 +552,16 @@ const CabanaPanel = (() => {
       if (col === 'time') {
         va = Number(ra?.frame?.time) || 0;
         vb = Number(rb?.frame?.time) || 0;
+      } else if (col === 'bus') {
+        va = Number(ra?.bus) || 0;
+        vb = Number(rb?.bus) || 0;
+        if (va === vb) {
+          va = Number(ra?.frame?.address) || 0;
+          vb = Number(rb?.frame?.address) || 0;
+        }
+      } else if (col === 'freq') {
+        va = msgStats.get(a)?.hz || 0;
+        vb = msgStats.get(b)?.hz || 0;
       } else if (col === 'label') {
         va = ra?.label || '～';
         vb = rb?.label || '～';
@@ -301,14 +623,17 @@ const CabanaPanel = (() => {
         tr.className = 'cab-data-row';
         tr.dataset.key = key;
         tr.id = rowDomId(key);
-        tr.innerHTML = '<td class="cab-col-time"></td><td class="cab-col-name"></td><td class="cab-col-value"></td><td class="cab-col-label"></td>';
+        tr.innerHTML = '<td class="cab-col-time"></td><td class="cab-col-bus"></td><td class="cab-col-name"></td><td class="cab-col-value"></td><td class="cab-col-freq"></td><td class="cab-col-label"></td>';
       }
+      tr.classList.toggle('selected', key === selectedKey);
       tr.children[0].textContent = row.replay ? `+${row.relTime}s` : row.relTime;
-      tr.children[1].textContent = row.nameCol;
-      tr.children[1].title = row.nameCol;
-      tr.children[2].textContent = truncateHex(row.valueText);
-      tr.children[2].title = row.valueTitle || row.valueText || '';
-      tr.children[3].innerHTML = labelCellHtml(row.label, { pending: row.pending, hexHint: row.hexHint });
+      tr.children[1].textContent = String(row.bus ?? 0);
+      tr.children[2].textContent = row.nameCol;
+      tr.children[2].title = row.nameCol;
+      tr.children[3].textContent = truncateHex(row.valueText);
+      tr.children[3].title = row.valueTitle || row.valueText || '';
+      tr.children[4].textContent = row.freqText || '—';
+      tr.children[5].innerHTML = labelCellHtml(row.label, { pending: row.pending, hexHint: row.hexHint });
       frag.appendChild(tr);
     }
     for (const [, tr] of existing) tr.remove();
@@ -347,6 +672,8 @@ const CabanaPanel = (() => {
 
   function clearTableRows() {
     tableRows.clear();
+    latestFrames.clear();
+    clearAuxState();
     if (els.tbody) {
       for (const tr of els.tbody.querySelectorAll('tr.cab-data-row')) tr.remove();
     }
@@ -729,11 +1056,110 @@ const CabanaPanel = (() => {
   function updateReplayProgress(progress) {
     if (typeof progress !== 'number' || Number.isNaN(progress)) return;
     replayProgress = Math.max(0, progress);
-    if (progress > replayDuration) replayDuration = progress;
+    if (replayDuration > 0) replayProgress = Math.min(replayProgress, replayDuration);
     const now = performance.now();
-    if (now - lastProgressPaintAt < 80) return;
+    if (now - lastProgressPaintAt < 80) {
+      scheduleVideoThumbnail();
+      return;
+    }
     lastProgressPaintAt = now;
     updateProgressUI();
+    scheduleVideoThumbnail();
+  }
+
+  function revokeThumbObjectUrl() {
+    if (thumbObjectUrl) {
+      URL.revokeObjectURL(thumbObjectUrl);
+      thumbObjectUrl = null;
+    }
+  }
+
+  function setVideoPlaceholder(text) {
+    if (!els.videoPlaceholder) return;
+    els.videoPlaceholder.textContent = text || '';
+    els.videoPlaceholder.hidden = false;
+    if (els.videoImg) els.videoImg.hidden = true;
+  }
+
+  function showVideoPreviewImage(blob) {
+    if (!els.videoImg) return;
+    revokeThumbObjectUrl();
+    thumbObjectUrl = URL.createObjectURL(blob);
+    els.videoImg.src = thumbObjectUrl;
+    els.videoImg.hidden = false;
+    if (els.videoPlaceholder) els.videoPlaceholder.hidden = true;
+  }
+
+  function scheduleVideoThumbnail({ immediate = false } = {}) {
+    if (!videoPreviewEnabled || !hasQcamera || !replayRoute || panelMode !== 'replay') return;
+    if (thumbDebounceTimer) clearTimeout(thumbDebounceTimer);
+    const delay = immediate ? 0 : (replayPaused ? 120 : 350);
+    thumbDebounceTimer = window.setTimeout(() => {
+      thumbDebounceTimer = null;
+      fetchVideoThumbnail(replayProgress).catch(console.error);
+    }, delay);
+  }
+
+  async function fetchVideoThumbnail(relSec) {
+    if (!videoPreviewEnabled || !hasQcamera || !replayRoute) return;
+    const key = `${replayRoute}:${relSec.toFixed(1)}`;
+    if (key === lastThumbKey) return;
+    if (thumbAbort) thumbAbort.abort();
+    thumbAbort = new AbortController();
+    setVideoPlaceholder(t('cabanaVideoLoading', '加载预览…'));
+    try {
+      const url = `/api/cabana/route/${encodeURIComponent(replayRoute)}/thumbnail?time=${encodeURIComponent(relSec.toFixed(2))}`;
+      const res = await fetch(url, { signal: thumbAbort.signal });
+      if (!res.ok) {
+        setVideoPlaceholder(t('cabanaVideoNoFrame', '该时刻无预览帧'));
+        return;
+      }
+      const blob = await res.blob();
+      showVideoPreviewImage(blob);
+      lastThumbKey = key;
+    } catch (e) {
+      if (e?.name === 'AbortError') return;
+      setVideoPlaceholder(t('cabanaVideoError', '预览加载失败'));
+    } finally {
+      thumbAbort = null;
+    }
+  }
+
+  async function refreshRouteMedia(route) {
+    hasQcamera = false;
+    if (els.videoToggle) {
+      els.videoToggle.disabled = true;
+      els.videoToggle.checked = false;
+    }
+    videoPreviewEnabled = false;
+    if (els.videoPreview) els.videoPreview.hidden = true;
+    if (!route) return;
+    try {
+      const data = await api('GET', `/api/cabana/route/${encodeURIComponent(route)}/media`, null, { timeoutMs: 8000 });
+      hasQcamera = !!(data.ok && data.segments?.some((s) => s.type === 'qcamera'));
+    } catch {
+      hasQcamera = false;
+    }
+    if (els.videoToggle) {
+      els.videoToggle.disabled = !hasQcamera;
+      els.videoToggle.title = hasQcamera
+        ? t('cabanaVideoPreviewHint', '低清 qcamera 缩略图，与 CAN 日志时间对齐')
+        : t('cabanaNoVideo', '此路线无 qcamera.ts，仅 CAN 回放');
+    }
+  }
+
+  function setVideoPreviewEnabled(on) {
+    videoPreviewEnabled = !!on && hasQcamera;
+    if (els.videoToggle) els.videoToggle.checked = videoPreviewEnabled;
+    if (els.videoPreview) els.videoPreview.hidden = !videoPreviewEnabled;
+    if (!videoPreviewEnabled) {
+      revokeThumbObjectUrl();
+      lastThumbKey = '';
+      if (thumbAbort) thumbAbort.abort();
+      return;
+    }
+    lastThumbKey = '';
+    scheduleVideoThumbnail({ immediate: true });
   }
 
   function formatReplayTime(sec) {
@@ -1083,8 +1509,18 @@ const CabanaPanel = (() => {
       els.metaBar.textContent = `${t('cabanaDbcLoaded', '已加载')} ${name} · ${signals.length} ${t('cabanaSignals', '个信号')}`;
     }
     renderDbcList(filterDbcNames(els.dbcSearch?.value || ''));
+    for (const [key, row] of tableRows) {
+      const frame = latestFrames.get(key);
+      if (!frame) continue;
+      const rec = buildRowRecord(frame, { live: row.live, replay: row.replay });
+      rec.label = row.label;
+      rec.pending = row.pending;
+      tableRows.set(key, rec);
+    }
+    if (selectedKey) selectRow(selectedKey);
     updateAiButtons();
     scheduleBulkExplainAll();
+    scheduleVirtualRender();
   }
 
   const QUERY_ALIASES = {
@@ -1446,6 +1882,11 @@ const CabanaPanel = (() => {
       replayWsFlushTimer = null;
     }
     replayWsBuffer = [];
+    revokeThumbObjectUrl();
+    lastThumbKey = '';
+    videoPreviewEnabled = false;
+    if (els.videoToggle) els.videoToggle.checked = false;
+    if (els.videoPreview) els.videoPreview.hidden = true;
     clearTableRows();
     clearReplayLoading();
   }
@@ -1514,6 +1955,7 @@ const CabanaPanel = (() => {
       els.routeSelect.appendChild(opt);
     }
     replayRoute = els.routeSelect.value;
+    if (replayRoute) await refreshRouteMedia(replayRoute);
   }
 
   function connectReplay() {
@@ -1537,6 +1979,7 @@ const CabanaPanel = (() => {
     }
 
     replayRoute = route;
+    refreshRouteMedia(route).catch(console.error);
     replayPaused = false;
     replayPlayPending = true;
     if (offlineWs) {
@@ -1663,6 +2106,7 @@ const CabanaPanel = (() => {
         replayProgress = msg.time;
         lastProgressPaintAt = 0;
         updateProgressUI();
+        scheduleVideoThumbnail({ immediate: true });
         return;
       }
       if (msg.type === 'done') {
@@ -2001,9 +2445,23 @@ const CabanaPanel = (() => {
       els.dbcSearch.placeholder = `${t('cabanaDbcSearch', '模糊搜索 DBC 或车型…')}${hint}`;
     }
     if (els.thTime) els.thTime.textContent = t('cabanaThTime', '时间');
+    if (els.thBus) els.thBus.textContent = t('cabanaThBus', '总线');
     if (els.thName) els.thName.textContent = t('cabanaThNamePlain', '报文');
     if (els.thValue) els.thValue.textContent = t('cabanaThValue', '当前值');
+    if (els.thFreq) els.thFreq.textContent = t('cabanaThFreq', 'Hz');
     if (els.thExplain) els.thExplain.textContent = t('cabanaThFunction', '功能');
+    if (els.plotTitle) els.plotTitle.textContent = t('cabanaPlotTitle', '信号曲线');
+    if (els.plotClear) els.plotClear.textContent = t('cabanaPlotClear', '清空曲线');
+    if (els.plotEmpty) {
+      els.plotEmpty.textContent = t('cabanaPlotEmpty', '点击表格行选择报文，播放或连接后将显示信号曲线');
+    }
+    if (els.detailTitle) els.detailTitle.textContent = t('cabanaDetailTitle', '报文详情');
+    if (els.detailHistoryHead) els.detailHistoryHead.textContent = t('cabanaDetailHistory', '最近帧');
+    if (els.histThTime) els.histThTime.textContent = t('cabanaThTime', '时间');
+    if (els.histThHex) els.histThHex.textContent = t('cabanaThHex', 'HEX');
+    if (els.histThDec) els.histThDec.textContent = 'DEC';
+    if (els.histThDecoded) els.histThDecoded.textContent = t('cabanaThSignals', '解码');
+    if (els.videoToggleLabel) els.videoToggleLabel.textContent = t('cabanaVideoPreview', '路况预览');
     if (els.progress) {
       els.progress.title = t('cabanaReplayProgressHint', '拖动定位 CAN 日志时间（非视频）');
     }
@@ -2011,8 +2469,8 @@ const CabanaPanel = (() => {
       els.replaySpeed.title = t('cabanaReplaySpeedHint', 'CAN 数据回放倍速');
     }
     if (els.hint) els.hint.textContent = panelMode === 'replay'
-      ? t('cabanaReplayPanelHint2', '回放自动标注功能标签；深度分析用于异常检测。空格播放/暂停，←→ 快进')
-      : t('cabanaLivePanelHint2', '实时模式显示 CAN 报文；连接后自动标注功能');
+      ? t('cabanaReplayPanelHint3', '点击报文查看历史与曲线；空格播放/暂停，←→ 快进')
+      : t('cabanaLivePanelHint3', '点击报文查看历史与曲线；连接后自动标注功能');
     renderFilterChips();
     updateLabelProgress();
   }
@@ -2037,9 +2495,27 @@ const CabanaPanel = (() => {
     els.title = $('#cabanaPanelTitle');
     els.hint = $('#cabanaPanelHint');
     els.thTime = $('#cabThTime');
+    els.thBus = $('#cabThBus');
     els.thName = $('#cabThName');
     els.thValue = $('#cabThValue');
+    els.thFreq = $('#cabThFreq');
     els.thExplain = $('#cabThExplain');
+    els.plotWrap = $('#cabanaPlotWrap');
+    els.plotTitle = $('#cabanaPlotTitle');
+    els.plotChart = $('#cabanaPlotChart');
+    els.plotEmpty = $('#cabanaPlotEmpty');
+    els.plotClear = $('#cabanaPlotClear');
+    els.detailWrap = $('#cabanaDetailWrap');
+    els.detailTitle = $('#cabanaDetailTitle');
+    els.detailMeta = $('#cabanaDetailMeta');
+    els.detailSignals = $('#cabanaDetailSignals');
+    els.detailHistoryHead = $('#cabanaDetailHistoryHead');
+    els.detailHistoryBody = $('#cabanaDetailHistoryBody');
+    els.detailClose = $('#cabanaDetailClose');
+    els.histThTime = $('#cabanaHistThTime');
+    els.histThHex = $('#cabanaHistThHex');
+    els.histThDec = $('#cabanaHistThDec');
+    els.histThDecoded = $('#cabanaHistThDecoded');
     els.modeTabs = root?.querySelectorAll('.cabana-mode-tab');
     els.tabLive = $('#cabanaTabLive');
     els.tabReplay = $('#cabanaTabReplay');
@@ -2058,12 +2534,22 @@ const CabanaPanel = (() => {
     els.aiResultClose = $('#cabanaAiResultClose');
     els.replayLoading = $('#cabanaReplayLoading');
     els.replayLoadingText = $('#cabanaReplayLoadingText');
+    els.videoToggle = $('#cabanaVideoToggle');
+    els.videoToggleLabel = $('#cabanaVideoToggleLabel');
+    els.videoPreview = $('#cabanaVideoPreview');
+    els.videoImg = $('#cabanaVideoImg');
+    els.videoPlaceholder = $('#cabanaVideoPlaceholder');
 
     renderFilterChips();
     root?.querySelectorAll('#cabanaTable th[data-sort]').forEach((th) => {
       th.addEventListener('click', () => onSortHeaderClick(th.dataset.sort));
     });
     els.tableWrap?.addEventListener('scroll', () => scheduleVirtualRender(), { passive: true });
+    els.tbody?.addEventListener('click', (e) => {
+      const tr = e.target.closest('tr.cab-data-row');
+      if (!tr?.dataset.key) return;
+      selectRow(tr.dataset.key);
+    });
     els.filter?.addEventListener('input', () => scheduleVirtualRender());
     document.addEventListener('keydown', onCabanaKeydown);
 
@@ -2099,6 +2585,7 @@ const CabanaPanel = (() => {
       replayRoute = els.routeSelect.value;
       disconnectReplay();
       replayProgress = 0;
+      refreshRouteMedia(replayRoute).catch(console.error);
       clearTableRows();
       updateProgressUI();
     });
@@ -2107,6 +2594,7 @@ const CabanaPanel = (() => {
       const ratio = parseInt(els.progress.value, 10) / 1000;
       replayProgress = replayDuration * ratio;
       els.progressLabel.textContent = `${t('cabanaLogTime', '日志')} ${formatReplayTime(replayProgress)} / ${formatReplayTime(replayDuration)}`;
+      scheduleVideoThumbnail({ immediate: true });
     });
     els.progress?.addEventListener('change', () => {
       if (!replayDuration) return;
@@ -2121,6 +2609,18 @@ const CabanaPanel = (() => {
     });
     els.aiResultToChat?.addEventListener('click', sendAiResultToChat);
     els.aiResultClose?.addEventListener('click', () => showAiResult(''));
+    els.plotClear?.addEventListener('click', () => {
+      plotSeries = null;
+      destroyPlot();
+      if (els.plotEmpty) els.plotEmpty.hidden = false;
+    });
+    els.detailClose?.addEventListener('click', () => {
+      clearSelection();
+      scheduleVirtualRender();
+    });
+    els.videoToggle?.addEventListener('change', () => {
+      setVideoPreviewEnabled(els.videoToggle.checked);
+    });
   }
 
   async function refresh() {
