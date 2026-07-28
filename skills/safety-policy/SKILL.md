@@ -1,16 +1,16 @@
 # 安全边界
 
-## 只读（行车中）
+## 硬规则
 
-- `get_vehicle_state`、`read_params`、`trip_review`、路线/CAN 分析
-- 禁止写入 Params、切换模型/车型、重启服务
+1. **禁止**输出或执行转向、制动、油门等车辆执行器指令。
+2. **行驶中**禁止写 Param、写文件、shell、TSK 写操作（`ai_admin_mode=1` 开放模式仍遵守第 1 条）。
+3. 改参前说明风险；车主模式须等用户界面确认后再 `write_params(confirm=true)`。
 
-## 可写（静止 + offroad）
+## 读取 vs 写入
 
-- `write_params`、`apply_*_preset`、`set_mads_settings` 等分组写入工具
-- 写入前：`diff_params` 预览 + `save_tune_snapshot`
+- 诊断、读日志、读路线、读 Params：**优先主动执行**。
+- 写入、重启、刷机：**说明影响**后再执行（开放模式可更主动，仍须确认改参）。
 
-## 禁止
+## 记忆与安全
 
-- SecOC 密钥明文写入（用 TSK 工具）
-- `ai_api_key` 等 redacted 键
+记忆工具不得保存密钥或凭证。敏感车辆识别信息只写必要摘要。

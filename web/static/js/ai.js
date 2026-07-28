@@ -9,6 +9,7 @@ document.body.classList.add('app-booting');
 
 const els = {
   messages: $('#messages'),
+  opQuickActions: $('#opQuickActions'),
   composer: $('#composer'),
   chatInput: $('#chatInput'),
   imageBtn: $('#imageBtn'),
@@ -63,6 +64,22 @@ const els = {
   temperatureInput: $('#temperatureInput'),
   topPInput: $('#topPInput'),
   maxTokensInput: $('#maxTokensInput'),
+  contextWindowInput: $('#contextWindowInput'),
+  compactionEnabledToggle: $('#compactionEnabledToggle'),
+  compactAfterTurnsInput: $('#compactAfterTurnsInput'),
+  keepRecentTurnsInput: $('#keepRecentTurnsInput'),
+  reserveTokensInput: $('#reserveTokensInput'),
+  compactionTokenTriggerToggle: $('#compactionTokenTriggerToggle'),
+  evolutionEnabledToggle: $('#evolutionEnabledToggle'),
+  evolutionAutoWorkspaceToggle: $('#evolutionAutoWorkspaceToggle'),
+  evolutionAutoMemoryToggle: $('#evolutionAutoMemoryToggle'),
+  evolutionLlmReflectToggle: $('#evolutionLlmReflectToggle'),
+  evolutionAutoProposeToggle: $('#evolutionAutoProposeToggle'),
+  evolutionToolDescToggle: $('#evolutionToolDescToggle'),
+  evolutionGepaEnabledToggle: $('#evolutionGepaEnabledToggle'),
+  evolutionUseDspyToggle: $('#evolutionUseDspyToggle'),
+  skillsDisclosureMaxInput: $('#skillsDisclosureMaxInput'),
+  evolutionCandidatesInput: $('#evolutionCandidatesInput'),
   thinkingToggle: $('#thinkingToggle'),
   langSelect: $('#langSelect'),
   timezoneSelect: $('#timezoneSelect'),
@@ -117,6 +134,23 @@ const els = {
   devForkSyncBtn: $('#devForkSyncBtn'),
   ragStatusBox: $('#ragStatusBox'),
   devRagBadge: $('#devRagBadge'),
+  publishSettingsBox: $('#publishSettingsBox'),
+  publishUnitsBox: $('#publishUnitsBox'),
+  devPublishBadge: $('#devPublishBadge'),
+  devPublishRefreshBtn: $('#devPublishRefreshBtn'),
+  devPublishSaveBtn: $('#devPublishSaveBtn'),
+  publishPromptModal: $('#publishPromptModal'),
+  publishPromptBackdrop: $('#publishPromptBackdrop'),
+  publishPromptClose: $('#publishPromptClose'),
+  publishPromptCancel: $('#publishPromptCancel'),
+  publishPromptOk: $('#publishPromptOk'),
+  publishPromptUnits: $('#publishPromptUnits'),
+  publishPromptTitleInput: $('#publishPromptTitleInput'),
+  publishPromptHint: $('#publishPromptHint'),
+  issueSettingsBox: $('#issueSettingsBox'),
+  issueFormBox: $('#issueFormBox'),
+  devIssueRefreshBtn: $('#devIssueRefreshBtn'),
+  devIssueSubmitBtn: $('#devIssueSubmitBtn'),
   onboardingModal: $('#onboardingModal'),
   onboardingBackdrop: $('#onboardingBackdrop'),
   onboardingProvider: $('#onboardingProvider'),
@@ -156,6 +190,8 @@ const els = {
   webPinInput: $('#webPinInput'),
   writeConfirmModal: $('#writeConfirmModal'),
   writeConfirmPreview: $('#writeConfirmPreview'),
+  writeConfirmConsumer: $('#writeConfirmConsumer'),
+  writeConfirmRollback: $('#writeConfirmRollback'),
   writeConfirmOk: $('#writeConfirmOk'),
   writeConfirmCancel: $('#writeConfirmCancel'),
   writeConfirmClose: $('#writeConfirmClose'),
@@ -233,6 +269,7 @@ const CHAT_MODE = 'unlimited';
 let pendingWorkflow = '';
 let pendingAgentId = '';
 let pendingCompact = false;
+let pendingConsumerMode = false;
 let _lastStateVersion = 0;
 
 function getAbortController() { return abortController; }
@@ -257,6 +294,22 @@ function consumePendingCompact() {
   return c;
 }
 
+function consumePendingConsumerMode() {
+  const c = pendingConsumerMode;
+  pendingConsumerMode = false;
+  return c;
+}
+
+async function sendUserMessage(text, opts = {}) {
+  if (!text?.trim()) return;
+  if (opts.workflow) pendingWorkflow = opts.workflow;
+  if (opts.consumerMode) pendingConsumerMode = true;
+  if (els.chatInput) els.chatInput.value = text;
+  if (els.composer) {
+    await sendChat({ preventDefault() {} });
+  }
+}
+
 function initChatJobs() {
   if (typeof ChatJobs === 'undefined') return;
   ChatJobs.init({
@@ -273,6 +326,8 @@ function initChatJobs() {
     consumePendingWorkflow,
     consumePendingAgentId,
     consumePendingCompact,
+    consumePendingConsumerMode,
+    showWriteConfirmModal,
     getChatDebugPrefs: () => (
       (typeof LocalPrefs !== 'undefined' && LocalPrefs.getChatDebugPrefs)
         ? LocalPrefs.getChatDebugPrefs()
@@ -531,6 +586,22 @@ function applyTranslations() {
   if (devForkTitle) devForkTitle.textContent = t('devForkTitle', 'Fork 分析');
   const devRagTitle = $('#devRagTitle');
   if (devRagTitle) devRagTitle.textContent = t('devRagTitle', '知识库');
+  const devPublishTitle = $('#devPublishTitle');
+  if (devPublishTitle) devPublishTitle.textContent = t('devPublishTitle', '代码发布');
+  if (els.devPublishRefreshBtn) els.devPublishRefreshBtn.textContent = t('devPublishRefresh', '刷新');
+  if (els.devPublishSaveBtn) els.devPublishSaveBtn.textContent = t('devPublishSave', '保存配置');
+  const devIssueTitle = $('#devIssueTitle');
+  if (devIssueTitle) devIssueTitle.textContent = t('devIssueTitle', '反馈提交');
+  if (els.devIssueRefreshBtn) els.devIssueRefreshBtn.textContent = t('devPublishRefresh', '刷新');
+  if (els.devIssueSubmitBtn) els.devIssueSubmitBtn.textContent = t('devIssueSubmit', '提交 Issue');
+  setI18nText('#contextSettingsTitle', 'contextSettingsTitle', '上下文与压缩');
+  setI18nText('#contextSettingsHint', 'contextSettingsHint', '长对话自动摘要写入记忆；手动压缩请用 /compact');
+  setI18nText('#compactionEnabledLabel', 'compactionEnabledLabel', '自动压缩会话');
+  setI18nText('#compactionTokenTriggerLabel', 'compactionTokenTriggerLabel', '按 token 数触发压缩');
+  const publishPromptTitle = $('#publishPromptTitle');
+  if (publishPromptTitle) publishPromptTitle.textContent = t('publishPromptTitle', '发布改动');
+  if (els.publishPromptCancel) els.publishPromptCancel.textContent = t('publishPromptLater', '稍后');
+  if (els.publishPromptOk) els.publishPromptOk.textContent = t('publishPromptGo', '发布');
   if (els.devForkRefreshBtn) els.devForkRefreshBtn.textContent = t('devForkRefresh', '扫描仓库');
   if (els.devForkSyncBtn) els.devForkSyncBtn.textContent = t('devForkAnalyze', 'AI 分析并生成草稿');
   const forkThinkingSummary = $('#forkProgressThinkingSummary');
@@ -1086,6 +1157,7 @@ function syncBodyScrollLock() {
     els.sessionsPanel?.classList.contains('open') ||
     els.settingsSidebar?.classList.contains('open') ||
     (els.writeConfirmModal && !els.writeConfirmModal.hidden) ||
+    (els.publishPromptModal && !els.publishPromptModal.hidden) ||
     (els.pinModal && !els.pinModal.hidden) ||
     usageDetailOpen,
   );
@@ -2023,10 +2095,73 @@ async function saveRagDoc() {
   }
 }
 
-function showWriteConfirmModal(preview, pendingId) {
+function renderConsumerQuickActions(wizards) {
+  const host = els.opQuickActions;
+  if (!host) return;
+  const list = wizards || window.__consumerWizards || [];
+  if (!list.length) {
+    host.hidden = true;
+    return;
+  }
+  host.hidden = false;
+  host.innerHTML = list.map((w) => `
+    <button type="button" class="op-quick-btn" data-wizard="${escapeHtml(w.id)}" data-workflow="${escapeHtml(w.workflow_id || '')}" title="${escapeHtml(w.description || '')}">
+      <span>${w.icon || '•'}</span><span>${escapeHtml(w.name || w.id)}</span>
+    </button>`).join('');
+  host.querySelectorAll('.op-quick-btn').forEach((btn) => {
+    btn.addEventListener('click', () => startConsumerWizard(btn.dataset.wizard, btn.dataset.workflow));
+  });
+}
+
+async function startConsumerWizard(wizardId, workflowId) {
+  const { data } = await api('GET', `/api/ai/consumer/wizards/${encodeURIComponent(wizardId)}/start`).catch(() => ({ data: {} }));
+  const prompt = data?.message || data?.wizard?.starter_prompt || '';
+  if (els.chatInput) {
+    els.chatInput.value = prompt;
+    els.chatInput.focus();
+  }
+  await sendUserMessage(prompt, { workflow: workflowId || data?.workflow, consumerMode: true });
+}
+
+function renderConsumerWritePreview(consumerPreview, rawPreview) {
+  const box = els.writeConfirmConsumer;
+  const rawEl = els.writeConfirmPreview;
+  if (!box) return;
+  const cp = consumerPreview || {};
+  const rows = cp.rows || [];
+  if (rows.length) {
+    box.classList.remove('hidden');
+    box.innerHTML = `
+      <p class="write-confirm-summary">${escapeHtml(cp.summary || t('writeConfirmConsumerSummary', '将调整以下驾驶设置：'))}</p>
+      ${rows.map((r) => `
+        <div class="write-confirm-row">
+          <span class="label">${escapeHtml(r.label || r.key)}</span>
+          <span class="before">${escapeHtml(r.before)}</span>
+          <span class="after">→ ${escapeHtml(r.after)}</span>
+          ${r.hint ? `<span class="hint">${escapeHtml(r.hint)}</span>` : ''}
+        </div>`).join('')}`;
+    if (rawEl) {
+      rawEl.classList.add('hidden');
+      rawEl.textContent = '';
+    }
+  } else {
+    box.classList.add('hidden');
+    box.innerHTML = '';
+    if (rawEl) {
+      rawEl.classList.remove('hidden');
+      rawEl.textContent = typeof rawPreview === 'string' ? rawPreview : JSON.stringify(rawPreview, null, 2);
+    }
+  }
+}
+
+function showWriteConfirmModal(preview, pendingId, toolResult) {
   return new Promise((resolve) => {
     if (!els.writeConfirmModal) return resolve({ ok: false, error: 'no modal' });
-    els.writeConfirmPreview.textContent = JSON.stringify(preview, null, 2);
+    const consumerPreview = toolResult?.consumer_preview || toolResult?.consumerPreview;
+    renderConsumerWritePreview(consumerPreview, preview);
+    if (els.writeConfirmRollback) {
+      els.writeConfirmRollback.classList.toggle('hidden', !toolResult?.action?.includes?.('tune') && toolResult?.action !== 'write_params');
+    }
     els.writeConfirmModal.hidden = false;
     syncBodyScrollLock();
     const cleanup = () => {
@@ -2036,17 +2171,25 @@ function showWriteConfirmModal(preview, pendingId) {
       els.writeConfirmCancel.removeEventListener('click', onCancel);
       els.writeConfirmClose?.removeEventListener('click', onCancel);
       els.writeConfirmBackdrop?.removeEventListener('click', onCancel);
+      els.writeConfirmRollback?.removeEventListener('click', onRollback);
     };
     const onCancel = () => { cleanup(); resolve({ ok: false, cancelled: true }); };
+    const onRollback = async () => {
+      cleanup();
+      await sendUserMessage(t('rollbackTunePrompt', '请帮我撤销上一次调参，恢复之前的快照。'), { consumerMode: true });
+      resolve({ ok: false, cancelled: true, rollback: true });
+    };
     const onOk = async () => {
       cleanup();
       const { data } = await api('POST', '/api/ai/write/confirm', { pending_id: pendingId });
       resolve(data);
+      if (data?.ok) setTimeout(() => maybeShowPublishPrompt(), 400);
     };
     els.writeConfirmOk.addEventListener('click', onOk);
     els.writeConfirmCancel.addEventListener('click', onCancel);
     els.writeConfirmClose?.addEventListener('click', onCancel);
     els.writeConfirmBackdrop?.addEventListener('click', onCancel);
+    els.writeConfirmRollback?.addEventListener('click', onRollback);
   });
 }
 
@@ -2585,8 +2728,13 @@ function scrollToBottom() {
 // ---------------------------------------------------------------------------
 
 const SLASH_COMMAND_DEFS = [
+  { id: 'tune_feel', icon: '🎛️', labelKey: 'slashCmdTuneFeel', descKey: 'slashCmdTuneFeelDesc', promptKey: 'slashCmdTuneFeelPrompt', workflow: 'tune_session', consumer: true, aliases: ['调手感', '手感'] },
+  { id: 'adapt_new', icon: '🚗', labelKey: 'slashCmdAdaptNew', descKey: 'slashCmdAdaptNewDesc', promptKey: 'slashCmdAdaptNewPrompt', workflow: 'vehicle_adaptation', consumer: true, aliases: ['适配新车', '新车'] },
+  { id: 'cant_engage', icon: '🚦', labelKey: 'slashCmdCantEngage', descKey: 'slashCmdCantEngageDesc', promptKey: 'slashCmdCantEngagePrompt', workflow: 'engage_triage', consumer: true, aliases: ['开不起来', '排查'] },
+  { id: 'review_trip', icon: '📝', labelKey: 'slashCmdReviewTrip', descKey: 'slashCmdReviewTripDesc', promptKey: 'slashCmdReviewTripPrompt', workflow: 'post_drive_review', consumer: true, aliases: ['复盘', '上一趟'] },
   { id: 'status', icon: '🚗', labelKey: 'slashCmdStatus', descKey: 'slashCmdStatusDesc', promptKey: 'qaVehiclePrompt', enrich: 'status' },
   { id: 'compact', icon: '🗜️', labelKey: 'slashCmdCompact', descKey: 'slashCmdCompactDesc', action: 'compact' },
+  { id: 'issue', icon: '📝', labelKey: 'slashCmdIssue', descKey: 'slashCmdIssueDesc', action: 'issue' },
   { id: 'new', icon: '✨', labelKey: 'slashCmdNew', descKey: 'slashCmdNewDesc', action: 'new_session' },
   { id: 'agent', icon: '🤖', labelKey: 'slashCmdAgent', descKey: 'slashCmdAgentDesc', action: 'agent' },
   { id: 'think', icon: '💭', labelKey: 'slashCmdThink', descKey: 'slashCmdThinkDesc', action: 'think' },
@@ -2876,6 +3024,12 @@ function selectSlashCommand(def) {
     return;
   } else if (def.action === 'compact') {
     els.chatInput.value = '/compact ';
+  } else if (def.action === 'issue') {
+    openSettingsTab('dev');
+    loadIssuePane().catch(() => {});
+    hideComposerSlashMenu();
+    els.chatInput.value = '';
+    return;
   } else if (def.action === 'new_session') {
     SessionStore.createSession();
     renderSessionList();
@@ -3092,6 +3246,22 @@ async function resolveSlashSend(text) {
   const trimmed = (text || '').trim();
   if (!trimmed.startsWith('/')) return null;
 
+  for (const w of (window.__consumerWizards || [])) {
+    for (const alias of (w.slash || [])) {
+      const a = String(alias).toLowerCase();
+      const tl = trimmed.toLowerCase();
+      if (tl === a || tl.startsWith(`${a} `)) {
+        return {
+          displayText: trimmed,
+          preview: w.name || alias,
+          historyContent: buildUserContent(w.starter_prompt || trimmed, []),
+          workflow: w.workflow_id || '',
+          consumer: true,
+        };
+      }
+    }
+  }
+
   if (/^\/can\s*$/i.test(trimmed)) return { blockSend: true };
   if (/^\/tsk\s*$/i.test(trimmed)) return { blockSend: true };
 
@@ -3149,6 +3319,16 @@ async function resolveSlashSend(text) {
     };
   }
 
+  if (cmd === 'issue') {
+    const rest = arg || t('slashIssueDefaultText', '请根据上文帮我整理并提交 GitHub Issue 草稿');
+    return {
+      displayText: trimmed,
+      preview: t('slashCmdIssue', '/issue'),
+      historyContent: buildUserContent(rest, []),
+      issueDraft: true,
+    };
+  }
+
   if (!arg && trimmed.match(/^\/[a-z]+\s*$/i)) {
     const def = findSlashDef(cmd);
     if (!def) return null;
@@ -3174,6 +3354,7 @@ async function resolveSlashSend(text) {
       preview: t(def.labelKey, `/${def.id}`),
       historyContent: buildUserContent(msg, []),
       workflow: def.workflow || '',
+      consumer: !!def.consumer,
     };
   }
 
@@ -3292,10 +3473,12 @@ async function sendChat(e) {
   pendingWorkflow = workflowForSend;
   pendingAgentId = slashAgentId || pendingAgentId;
   pendingCompact = slashCompact;
+  if (slashResolved?.consumer) pendingConsumerMode = true;
   await streamAssistantResponse(history);
   pendingWorkflow = '';
   pendingAgentId = '';
   pendingCompact = false;
+  pendingConsumerMode = false;
 }
 
 function savePartialAssistant(sessionId, assistantMessage) {
@@ -3603,6 +3786,22 @@ function getConfigPayload() {
     temperature: parseFloat(els.temperatureInput.value),
     topP: parseFloat(els.topPInput.value),
     maxTokens: parseInt(els.maxTokensInput.value, 10),
+    contextWindow: parseInt(els.contextWindowInput?.value, 10) || 0,
+    compactionEnabled: !!els.compactionEnabledToggle?.checked,
+    compactAfterTurns: parseInt(els.compactAfterTurnsInput?.value, 10) || 24,
+    keepRecentTurns: parseInt(els.keepRecentTurnsInput?.value, 10) || 8,
+    reserveTokens: parseInt(els.reserveTokensInput?.value, 10) || 8000,
+    compactionTokenTrigger: !!els.compactionTokenTriggerToggle?.checked,
+    evolutionEnabled: els.evolutionEnabledToggle?.checked !== false,
+    evolutionAutoWorkspace: els.evolutionAutoWorkspaceToggle?.checked !== false,
+    evolutionAutoMemory: els.evolutionAutoMemoryToggle?.checked !== false,
+    evolutionLlmReflect: els.evolutionLlmReflectToggle?.checked !== false,
+    evolutionAutoPropose: !!els.evolutionAutoProposeToggle?.checked,
+    evolutionToolDesc: els.evolutionToolDescToggle?.checked !== false,
+    evolutionGepaEnabled: els.evolutionGepaEnabledToggle?.checked !== false,
+    evolutionUseDspy: !!els.evolutionUseDspyToggle?.checked,
+    skillsDisclosureMax: parseInt(els.skillsDisclosureMaxInput?.value, 10) || 10,
+    evolutionCandidates: parseInt(els.evolutionCandidatesInput?.value, 10) || 3,
     thinkingEnabled: els.thinkingToggle.checked,
     thinkingKeep: '',
     webPin: els.webPinInput?.value?.trim() || '',
@@ -3698,6 +3897,12 @@ function bindConfigPersistence() {
     els.temperatureInput,
     els.topPInput,
     els.maxTokensInput,
+    els.contextWindowInput,
+    els.compactionEnabledToggle,
+    els.compactAfterTurnsInput,
+    els.keepRecentTurnsInput,
+    els.reserveTokensInput,
+    els.compactionTokenTriggerToggle,
     els.thinkingToggle,
     els.webPinInput,
     els.timezoneSelect,
@@ -3933,6 +4138,22 @@ function applyConfigToForm(c) {
   els.temperatureInput.value = c.temperature ?? 0.7;
   els.topPInput.value = c.topP ?? 1.0;
   els.maxTokensInput.value = c.maxTokens ?? 4096;
+  if (els.contextWindowInput) els.contextWindowInput.value = c.contextWindow ?? 0;
+  if (els.compactionEnabledToggle) els.compactionEnabledToggle.checked = c.compactionEnabled !== false;
+  if (els.compactAfterTurnsInput) els.compactAfterTurnsInput.value = c.compactAfterTurns ?? 24;
+  if (els.keepRecentTurnsInput) els.keepRecentTurnsInput.value = c.keepRecentTurns ?? 8;
+  if (els.reserveTokensInput) els.reserveTokensInput.value = c.reserveTokens ?? 8000;
+  if (els.compactionTokenTriggerToggle) els.compactionTokenTriggerToggle.checked = c.compactionTokenTrigger !== false;
+  if (els.evolutionEnabledToggle) els.evolutionEnabledToggle.checked = c.evolutionEnabled !== false;
+  if (els.evolutionAutoWorkspaceToggle) els.evolutionAutoWorkspaceToggle.checked = c.evolutionAutoWorkspace !== false;
+  if (els.evolutionAutoMemoryToggle) els.evolutionAutoMemoryToggle.checked = c.evolutionAutoMemory !== false;
+  if (els.evolutionLlmReflectToggle) els.evolutionLlmReflectToggle.checked = c.evolutionLlmReflect !== false;
+  if (els.evolutionAutoProposeToggle) els.evolutionAutoProposeToggle.checked = !!c.evolutionAutoPropose;
+  if (els.evolutionToolDescToggle) els.evolutionToolDescToggle.checked = c.evolutionToolDesc !== false;
+  if (els.evolutionGepaEnabledToggle) els.evolutionGepaEnabledToggle.checked = c.evolutionGepaEnabled !== false;
+  if (els.evolutionUseDspyToggle) els.evolutionUseDspyToggle.checked = !!c.evolutionUseDspy;
+  if (els.skillsDisclosureMaxInput) els.skillsDisclosureMaxInput.value = c.skillsDisclosureMax ?? 10;
+  if (els.evolutionCandidatesInput) els.evolutionCandidatesInput.value = c.evolutionCandidates ?? 3;
   els.thinkingToggle.checked = !!c.thinkingEnabled;
   if (els.webPinInput) els.webPinInput.value = c.webPin || '';
   if (els.timezoneSelect) {
@@ -4052,6 +4273,10 @@ async function loadBootstrap() {
   showConfigureHint();
   if (data.onboarding?.showWizard) {
     openOnboardingWizard();
+  }
+  if (data.consumer?.wizards) {
+    window.__consumerWizards = data.consumer.wizards;
+    renderConsumerQuickActions(data.consumer.wizards);
   }
   await loadUsage();
 }
@@ -4491,6 +4716,447 @@ function renderPackageVersionCard(pkg) {
     ? `<p class="dev-env-hint muted">${t('devPackageNonGitUpdateHint', '非 git 安装：点「立即更新」将备份当前 ai/ 并重新克隆最新版')}</p>`
     : '';
   return rows + hint + installHint;
+}
+
+function renderForgeTokenRow(forge, auth, inputId, placeholderKey, placeholderDefault) {
+  const statusClass = auth.valid ? 'on' : (auth.configured ? 'off' : '');
+  const statusText = auth.valid
+    ? t('devPublishTokenOk', '已验证')
+    : (auth.configured ? t('devPublishTokenBad', '无效') : t('devPublishTokenMissing', '未配置'));
+  const userLine = auth.valid && auth.user
+    ? `<span class="publish-token-user">${t('devPublishTokenBound', '已绑定')} @${escapeHtml(auth.user)}</span>`
+    : '';
+  const eyeSvg = `<svg class="icon-svg eye-open" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+    <svg class="icon-svg eye-closed hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true"><path d="M3 3l18 18"/><path d="M10.6 10.6a2 2 0 0 0 2.8 2.8"/><path d="M6.7 6.7C4.1 8.5 2.5 12 2.5 12s3.5 7 9.5 7c1.8 0 3.4-.5 4.8-1.3"/><path d="M9.9 5.1A10.8 10.8 0 0 1 12 5c6 0 9.5 7 9.5 7a16.2 16.2 0 0 1-3.6 4.5"/><path d="M14.1 14.1a2 2 0 0 1-2.8-2.8"/></svg>`;
+  return `
+    <div class="publish-token-row" data-forge="${forge}">
+      <div class="password-field">
+        <input type="password" id="${inputId}" class="field-input publish-token-input" placeholder="${t(placeholderKey, placeholderDefault)}" autocomplete="off">
+        <button type="button" class="password-reveal" data-password-for="${inputId}" aria-pressed="false" tabindex="-1">${eyeSvg}</button>
+      </div>
+      <div class="publish-token-actions">
+        <span class="dev-status ${statusClass}">${statusText}</span>
+        ${userLine}
+        <button type="button" class="btn small ghost publish-token-verify" data-forge="${forge}" data-input="${inputId}">${t('devPublishVerify', '验证')}</button>
+        <button type="button" class="btn small ghost publish-token-clear" data-forge="${forge}" data-input="${inputId}">${t('devPublishClear', '清除')}</button>
+      </div>
+    </div>`;
+}
+
+function renderPublishSettingsCard(status) {
+  const auth = status?.forge_auth || {};
+  const settings = status?.settings || {};
+  const proj = settings.project_publish || {};
+  const gh = auth.github || {};
+  const gitee = auth.gitee || {};
+  const mode = proj.default_mode || 'current_remote';
+  const forks = proj.forks || {};
+  const opFork = forks.openpilot || {};
+  return `
+    <div class="dev-kv">
+      <span class="dev-kv-label">GitHub</span>
+      <span class="dev-kv-value">
+        ${renderForgeTokenRow('github', gh, 'publishGithubToken', 'devPublishTokenPh', 'PAT (repo)')}
+        <p class="dev-env-hint muted">${t('devPublishTokenHintGithub', '需 classic/细粒度 PAT，含 repo 权限（存为 ai_github_actions_pat）。')} <a href="https://github.com/settings/tokens" target="_blank" rel="noopener noreferrer">github.com/settings/tokens</a></p>
+      </span>
+    </div>
+    <div class="dev-kv">
+      <span class="dev-kv-label">Gitee</span>
+      <span class="dev-kv-value">
+        ${renderForgeTokenRow('gitee', gitee, 'publishGiteeToken', 'devPublishGiteeTokenPh', '私人令牌')}
+        <p class="dev-env-hint muted">${t('devPublishTokenHintGitee', 'Gitee 私人令牌，需具备 Pull Request 权限。')} <a href="https://gitee.com/profile/personal_access_tokens" target="_blank" rel="noopener noreferrer">gitee.com/profile/personal_access_tokens</a></p>
+      </span>
+    </div>
+    <div class="dev-kv">
+      <span class="dev-kv-label">${t('devPublishDefaultMode', '项目仓默认')}</span>
+      <span class="dev-kv-value">
+        <select id="publishDefaultMode" class="field-input">
+          <option value="current_remote" ${mode === 'current_remote' ? 'selected' : ''}>${t('devPublishModeCurrent', '当前 remote')}</option>
+          <option value="user_fork" ${mode === 'user_fork' ? 'selected' : ''}>${t('devPublishModeFork', '我的 fork')}</option>
+        </select>
+      </span>
+    </div>
+    <div class="dev-kv">
+      <span class="dev-kv-label">openpilot fork</span>
+      <span class="dev-kv-value">
+        <input type="url" id="publishOpenpilotForkUrl" class="field-input" placeholder="https://gitee.com/user/openpilot" value="${escapeHtml(opFork.fork_url || '')}">
+      </span>
+    </div>
+    <p class="dev-env-hint muted">${t('devPublishAssistantHint', 'op助手 (ai) 默认 PR 到 mouxangithub/ai；项目仓 PR 目标由 remote 或 fork 决定。')}</p>`;
+}
+
+function renderPublishUnits(units) {
+  const list = units || [];
+  if (!list.length) {
+    return `<p class="dev-empty">${t('devPublishNoUnits', '未检测到 git 仓库')}</p>`;
+  }
+  return list.map((u) => {
+    const dirty = Number(u.dirty_count) || 0;
+    const targetHint = u.kind === 'assistant'
+      ? 'mouxangithub/ai'
+      : (u.repo_slug || u.origin_url || '—');
+    const modeOpts = u.kind === 'assistant'
+      ? `<option value="assistant_upstream" selected>${t('devPublishModeUpstream', '上游 ai 仓')}</option>
+         <option value="user_fork">${t('devPublishModeFork', '我的 fork')}</option>`
+      : `<option value="current_remote">${t('devPublishModeCurrent', '当前 remote')}</option>
+         <option value="user_fork">${t('devPublishModeFork', '我的 fork')}</option>`;
+    return `
+    <div class="publish-unit-card" data-unit-id="${escapeHtml(u.id)}">
+      <div class="publish-unit-head">
+        <strong>${escapeHtml(u.id)}</strong>
+        <span class="dev-status ${dirty ? 'on' : ''}">${dirty ? `${dirty} ${t('devPublishDirty', '处改动')}` : t('devPublishClean', '无改动')}</span>
+      </div>
+      <div class="dev-kv">
+        <span class="dev-kv-label">${t('devPublishBranch', '分支')}</span>
+        <span class="dev-kv-value">${escapeHtml(u.branch || '—')} · ${escapeHtml(targetHint)}</span>
+      </div>
+      <div class="publish-unit-actions">
+        <select class="field-input publish-unit-mode">${modeOpts}</select>
+        <button type="button" class="btn small primary publish-unit-btn" data-unit="${escapeHtml(u.id)}" ${dirty ? '' : 'disabled'}>${t('devPublishBtn', '发布 PR')}</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function loadPublishPane() {
+  if (!els.publishSettingsBox) return;
+  try {
+    const { data } = await api('GET', '/api/ai/publish');
+    if (!data.ok) throw new Error(data.error || 'load failed');
+    els.publishSettingsBox.innerHTML = renderPublishSettingsCard(data);
+    bindPublishForgeTokenControls();
+    bindPasswordReveals();
+    const units = data.units || [];
+    if (els.publishUnitsBox) {
+      els.publishUnitsBox.innerHTML = renderPublishUnits(units);
+      bindPublishUnitButtons();
+    }
+    if (els.devPublishBadge) {
+      const dirty = units.filter((u) => u.has_changes).length;
+      els.devPublishBadge.textContent = dirty > 0 ? String(dirty) : '—';
+    }
+  } catch (e) {
+    if (els.publishSettingsBox) {
+      els.publishSettingsBox.innerHTML = `<p class="dev-empty">${escapeHtml(e.message || t('devPublishLoadFail', '无法加载发布配置'))}</p>`;
+    }
+  }
+}
+
+function collectPublishSettingsPatch() {
+  const mode = document.getElementById('publishDefaultMode')?.value || 'current_remote';
+  const forkUrl = document.getElementById('publishOpenpilotForkUrl')?.value?.trim() || '';
+  const patch = {
+    project_publish: {
+      default_mode: mode,
+      forks: {},
+    },
+  };
+  if (forkUrl) {
+    const forge = forkUrl.includes('gitee.com') ? 'gitee' : 'github';
+    patch.project_publish.forks.openpilot = {
+      fork_url: forkUrl,
+      forge,
+      git_remote: 'fork',
+    };
+  }
+  return patch;
+}
+
+function bindPublishForgeTokenControls() {
+  els.publishSettingsBox?.querySelectorAll('.publish-token-verify').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const forge = btn.dataset.forge || 'github';
+      const input = document.getElementById(btn.dataset.input || '');
+      const token = input?.value?.trim() || '';
+      const run = async () => {
+        const { data } = await api('POST', '/api/ai/publish', {
+          operation: 'verify_forge',
+          forge,
+          token,
+        });
+        if (!data.valid) throw new Error(data.error_detail || data.hint || t('devPublishTokenBad', '无效'));
+        if (token) {
+          await api('POST', '/api/ai/publish', { operation: 'set_forge_token', forge, token });
+        }
+        showToast(data.user ? `${t('devPublishTokenBound', '已绑定')} @${data.user}` : t('devPublishTokenOk', '已验证'));
+        await loadPublishPane();
+      };
+      if (typeof UiBusy !== 'undefined') {
+        await UiBusy.withButtonBusy(btn, run, { busyLabel: t('uiWorking', '处理中…') });
+      } else {
+        btn.disabled = true;
+        try { await run(); } catch (e) { showToast(e.message); } finally { btn.disabled = false; }
+      }
+    });
+  });
+  els.publishSettingsBox?.querySelectorAll('.publish-token-clear').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const forge = btn.dataset.forge || 'github';
+      const input = document.getElementById(btn.dataset.input || '');
+      if (!window.confirm(t('devPublishClearConfirm', '清除已保存的 Token？'))) return;
+      const run = async () => {
+        await api('POST', '/api/ai/publish', { operation: 'set_forge_token', forge, token: '' });
+        if (input) input.value = '';
+        showToast(t('devPublishTokenCleared', 'Token 已清除'));
+        await loadPublishPane();
+      };
+      if (typeof UiBusy !== 'undefined') {
+        await UiBusy.withButtonBusy(btn, run, { busyLabel: t('uiWorking', '处理中…') });
+      } else {
+        btn.disabled = true;
+        try { await run(); } catch (e) { showToast(e.message); } finally { btn.disabled = false; }
+      }
+    });
+  });
+}
+
+async function savePublishSettings() {
+  const gh = document.getElementById('publishGithubToken')?.value?.trim();
+  const gitee = document.getElementById('publishGiteeToken')?.value?.trim();
+  if (gh) {
+    await api('POST', '/api/ai/publish', { operation: 'set_forge_token', forge: 'github', token: gh });
+  }
+  if (gitee) {
+    await api('POST', '/api/ai/publish', { operation: 'set_forge_token', forge: 'gitee', token: gitee });
+  }
+  const { data } = await api('POST', '/api/ai/publish', {
+    operation: 'save_settings',
+    settings: collectPublishSettingsPatch(),
+  });
+  if (!data.ok) throw new Error(data.error || 'save failed');
+  showToast(t('devPublishSaved', '发布配置已保存'));
+  await loadPublishPane();
+}
+
+function bindPublishUnitButtons() {
+  els.publishUnitsBox?.querySelectorAll('.publish-unit-btn').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const unitId = btn.dataset.unit;
+      const card = btn.closest('.publish-unit-card');
+      const mode = card?.querySelector('.publish-unit-mode')?.value || '';
+      const title = `chore(ai): update ${unitId}`;
+      const run = async () => {
+        const preview = await api('POST', '/api/ai/publish', {
+          operation: 'publish',
+          unit_id: unitId,
+          target_mode: mode,
+          title,
+          confirm: false,
+        });
+        if (!preview.data?.ok && !preview.data?.needs_confirmation) {
+          throw new Error(preview.data?.error || 'preview failed');
+        }
+        if (!window.confirm(t('publishConfirmBody', '确认发布 PR/MR？'))) return;
+        const { data } = await api('POST', '/api/ai/publish', {
+          operation: 'publish',
+          unit_id: unitId,
+          target_mode: mode,
+          title,
+          confirm: true,
+        });
+        if (data.ok && data.pull_request_url) {
+          showToast(t('devPublishOk', '已创建 PR'));
+          window.open(data.pull_request_url, '_blank', 'noopener');
+        } else if (data.ok) {
+          showToast(t('devPublishPushed', '已推送分支'));
+        } else {
+          throw new Error(data.error || t('devPublishFail', '发布失败'));
+        }
+        await loadPublishPane();
+      };
+      if (typeof UiBusy !== 'undefined') {
+        await UiBusy.withButtonBusy(btn, run, { busyLabel: t('uiWorking', '处理中…') });
+      } else {
+        btn.disabled = true;
+        try { await run(); } catch (e) { showToast(e.message); } finally { btn.disabled = false; }
+      }
+    });
+  });
+}
+
+async function maybeShowPublishPrompt() {
+  try {
+    const { data } = await api('GET', '/api/ai/publish?view=units&dirty=1');
+    const units = (data.units || []).filter((u) => u.has_changes);
+    if (!units.length || !els.publishPromptModal) return;
+    if (els.publishPromptUnits) {
+      els.publishPromptUnits.innerHTML = renderPublishUnits(units);
+      bindPublishPromptUnits(units);
+    }
+    els.publishPromptModal.hidden = false;
+    syncBodyScrollLock();
+  } catch {
+    /* ignore */
+  }
+}
+
+function bindPublishPromptUnits(units) {
+  els.publishPromptUnits?.querySelectorAll('.publish-unit-mode').forEach((sel, i) => {
+    sel.dataset.unit = units[i]?.id || '';
+  });
+  els.publishPromptUnits?.querySelectorAll('.publish-unit-btn').forEach((btn) => {
+    btn.addEventListener('click', () => publishFromPrompt(btn.dataset.unit));
+  });
+}
+
+function closePublishPrompt() {
+  if (els.publishPromptModal) els.publishPromptModal.hidden = true;
+  syncBodyScrollLock();
+}
+
+async function publishFromPrompt(unitId) {
+  const card = els.publishPromptUnits?.querySelector(`[data-unit-id="${unitId}"]`);
+  const mode = card?.querySelector('.publish-unit-mode')?.value || '';
+  const title = (els.publishPromptTitleInput?.value || '').trim() || `chore(ai): update ${unitId}`;
+  try {
+    const { data } = await api('POST', '/api/ai/publish', {
+      operation: 'publish',
+      unit_id: unitId,
+      target_mode: mode,
+      title,
+      confirm: true,
+    });
+    if (data.ok && data.pull_request_url) {
+      showToast(t('devPublishOk', '已创建 PR'));
+      window.open(data.pull_request_url, '_blank', 'noopener');
+    } else if (!data.ok) {
+      showToast(data.error || t('devPublishFail', '发布失败'));
+      return;
+    }
+    closePublishPrompt();
+    await loadPublishPane();
+  } catch (e) {
+    showToast(e.message || t('devPublishFail', '发布失败'));
+  }
+}
+
+let issueTemplatesCache = [];
+
+function renderIssueSettingsCard(status) {
+  const settings = status?.settings || {};
+  const gh = status?.forge_auth?.github || {};
+  const unit = settings.default_unit || 'assistant';
+  const tpl = settings.default_template || 'bug';
+  return `
+    <div class="dev-kv">
+      <span class="dev-kv-label">${t('devIssueDefaultUnit', '默认单元')}</span>
+      <span class="dev-kv-value">
+        <select id="issueDefaultUnit" class="field-input">
+          <option value="assistant" ${unit === 'assistant' ? 'selected' : ''}>assistant</option>
+          <option value="openpilot" ${unit === 'openpilot' ? 'selected' : ''}>openpilot</option>
+        </select>
+      </span>
+    </div>
+    <div class="dev-kv">
+      <span class="dev-kv-label">${t('devIssueDefaultTemplate', '默认模板')}</span>
+      <span class="dev-kv-value">
+        <select id="issueDefaultTemplate" class="field-input">
+          ${(status?.templates || []).map((x) => `<option value="${escapeHtml(x.id)}" ${x.id === tpl ? 'selected' : ''}>${escapeHtml(x.name || x.id)}</option>`).join('')}
+        </select>
+      </span>
+    </div>
+    <p class="dev-env-hint muted">${t('devIssueHint', 'Bug/建议先开 Issue；已改代码请用「代码发布」开 PR。Token 与发布共用。')}</p>
+    <p class="dev-env-hint">${t('devIssueGithub', 'GitHub')}: <span class="dev-status ${gh.valid ? 'on' : 'off'}">${gh.valid ? t('devPublishTokenOk', '已验证') : t('devPublishTokenMissing', '未配置')}</span></p>`;
+}
+
+function renderIssueForm(templates) {
+  issueTemplatesCache = templates || [];
+  const tplOpts = issueTemplatesCache.map((x) =>
+    `<option value="${escapeHtml(x.id)}">${escapeHtml(x.name || x.id)}</option>`).join('');
+  return `
+    <label class="field-label" for="issueKindSelect">${t('devIssueKind', '类型')}</label>
+    <select id="issueKindSelect" class="field-input">
+      <option value="bug">${t('devIssueKindBug', 'Bug')}</option>
+      <option value="feature">${t('devIssueKindFeature', '功能建议')}</option>
+      <option value="suggestion">${t('devIssueKindSuggestion', '体验反馈')}</option>
+    </select>
+    <label class="field-label" for="issueTemplateSelect">${t('devIssueTemplate', '模板')}</label>
+    <select id="issueTemplateSelect" class="field-input">${tplOpts}</select>
+    <label class="field-label" for="issueTitleInput">${t('devIssueTitleLabel', '标题')}</label>
+    <input type="text" id="issueTitleInput" class="field-input" placeholder="${t('devIssueTitlePh', '简要描述问题')}">
+    <label class="field-label" for="issueSummaryInput">${t('devIssueSummary', '描述')}</label>
+    <textarea id="issueSummaryInput" class="field-input issue-summary-input" rows="4" placeholder="${t('devIssueSummaryPh', '复现步骤、期望与实际行为…')}"></textarea>`;
+}
+
+async function loadIssuePane() {
+  if (!els.issueSettingsBox) return;
+  try {
+    const { data } = await api('GET', '/api/ai/issues');
+    if (!data.ok) throw new Error(data.error || 'load failed');
+    els.issueSettingsBox.innerHTML = renderIssueSettingsCard(data);
+    const tplRes = await api('GET', '/api/ai/issues?view=templates&unit_id=assistant');
+    const templates = tplRes.data?.templates || data.templates || [];
+    if (els.issueFormBox) {
+      els.issueFormBox.innerHTML = renderIssueForm(templates);
+    }
+  } catch (e) {
+    if (els.issueSettingsBox) {
+      els.issueSettingsBox.innerHTML = `<p class="dev-empty">${escapeHtml(e.message || t('devIssueLoadFail', '无法加载 Issue 配置'))}</p>`;
+    }
+  }
+}
+
+async function saveIssueSettings() {
+  const unit = document.getElementById('issueDefaultUnit')?.value || 'assistant';
+  const template = document.getElementById('issueDefaultTemplate')?.value || 'bug';
+  const { data } = await api('POST', '/api/ai/issues', {
+    operation: 'save_settings',
+    settings: {
+      issue_publish: {
+        default_unit: unit,
+        default_template: template,
+        dedupe_search: true,
+      },
+    },
+  });
+  if (!data.ok) throw new Error(data.error || 'save failed');
+  showToast(t('devIssueSaved', 'Issue 配置已保存'));
+}
+
+async function submitIssue() {
+  const kind = document.getElementById('issueKindSelect')?.value || 'bug';
+  const templateId = document.getElementById('issueTemplateSelect')?.value || 'bug';
+  const title = document.getElementById('issueTitleInput')?.value?.trim() || '';
+  const summary = document.getElementById('issueSummaryInput')?.value?.trim() || '';
+  const unit = document.getElementById('issueDefaultUnit')?.value || 'assistant';
+  if (!title && !summary) {
+    showToast(t('devIssueNeedContent', '请填写标题或描述'));
+    return;
+  }
+  const preview = await api('POST', '/api/ai/issues', {
+    operation: 'report',
+    kind,
+    unit_id: unit,
+    template_id: templateId,
+    title,
+    summary,
+    repro_steps: summary,
+    confirm: false,
+  });
+  if (!preview.data?.ok && !preview.data?.needs_confirmation) {
+    throw new Error(preview.data?.error || 'preview failed');
+  }
+  const similar = preview.data?.preview?.similar_issues || [];
+  let msg = t('issueConfirmBody', '确认创建 Issue？');
+  if (similar.length) {
+    msg += `\n\n${t('devIssueSimilar', '相似 Issue')}:\n` + similar.map((i) => `#${i.number} ${i.title}`).join('\n');
+  }
+  if (!window.confirm(msg)) return;
+  const { data } = await api('POST', '/api/ai/issues', {
+    operation: 'report',
+    kind,
+    unit_id: unit,
+    title,
+    summary,
+    repro_steps: summary,
+    confirm: true,
+  });
+  if (data.ok && data.issue_url) {
+    showToast(t('devIssueOk', 'Issue 已创建'));
+    window.open(data.issue_url, '_blank', 'noopener');
+  } else if (!data.ok) {
+    throw new Error(data.error || t('devIssueFail', '创建失败'));
+  }
 }
 
 function renderRagStatusCard(rag, cfg) {
@@ -5007,6 +5673,9 @@ async function loadDevPane() {
       els.devRagBadge.textContent = chunks > 0 ? String(chunks) : '—';
     }
 
+    await loadPublishPane();
+    await loadIssuePane();
+
     const sessions = pcs?.sessions || [];
     const rows = [...(assets?.reports || []), ...(assets?.exports || [])];
 
@@ -5473,6 +6142,37 @@ function bindUiEvents() {
   });
   els.themeBtn?.addEventListener('click', onThemeToggle);
   els.devRefreshBtn?.addEventListener('click', () => renderDevPane());
+  els.devPublishRefreshBtn?.addEventListener('click', () => loadPublishPane());
+  els.devPublishSaveBtn?.addEventListener('click', async () => {
+    const run = async () => { await savePublishSettings(); };
+    if (typeof UiBusy !== 'undefined') {
+      await UiBusy.withButtonBusy(els.devPublishSaveBtn, run, { busyLabel: t('uiSaving', '保存中…') });
+    } else {
+      els.devPublishSaveBtn.disabled = true;
+      try { await run(); } catch (e) { showToast(e.message); } finally { els.devPublishSaveBtn.disabled = false; }
+    }
+  });
+  els.devIssueRefreshBtn?.addEventListener('click', () => loadIssuePane());
+  els.devIssueSubmitBtn?.addEventListener('click', async () => {
+    const run = async () => {
+      await saveIssueSettings().catch(() => {});
+      await submitIssue();
+    };
+    if (typeof UiBusy !== 'undefined') {
+      await UiBusy.withButtonBusy(els.devIssueSubmitBtn, run, { busyLabel: t('uiWorking', '处理中…') });
+    } else {
+      els.devIssueSubmitBtn.disabled = true;
+      try { await run(); } catch (e) { showToast(e.message); } finally { els.devIssueSubmitBtn.disabled = false; }
+    }
+  });
+  els.publishPromptClose?.addEventListener('click', closePublishPrompt);
+  els.publishPromptCancel?.addEventListener('click', closePublishPrompt);
+  els.publishPromptBackdrop?.addEventListener('click', closePublishPrompt);
+  els.publishPromptOk?.addEventListener('click', async () => {
+    const first = els.publishPromptUnits?.querySelector('.publish-unit-card');
+    const unitId = first?.dataset?.unitId;
+    if (unitId) await publishFromPrompt(unitId);
+  });
   els.devPackageCheckBtn?.addEventListener('click', () => renderDevPane());
   els.devPackageUpdateBtn?.addEventListener('click', async () => {
     const run = async () => {

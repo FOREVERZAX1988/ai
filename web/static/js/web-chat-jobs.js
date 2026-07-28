@@ -163,7 +163,13 @@ const ChatJobs = (() => {
       deps.hideAssistantLoading(ui);
       let result = data.result;
       if (result?.needs_confirmation && result.pending_id) {
-        const { data: confirmed } = await deps.api('POST', '/api/ai/write/confirm', { pending_id: result.pending_id });
+        let confirmed = { ok: false, cancelled: true };
+        if (typeof deps.showWriteConfirmModal === 'function') {
+          confirmed = await deps.showWriteConfirmModal(result.preview, result.pending_id, result);
+        } else {
+          const res = await deps.api('POST', '/api/ai/write/confirm', { pending_id: result.pending_id });
+          confirmed = res.data;
+        }
         result = confirmed;
       }
       assistantMessage.tool_results[data.id] = result;
@@ -378,6 +384,7 @@ const ChatJobs = (() => {
       const workflowId = deps.consumePendingWorkflow?.() || '';
       const agentId = deps.consumePendingAgentId?.() || '';
       const compact = deps.consumePendingCompact?.() || false;
+      const consumerMode = deps.consumePendingConsumerMode?.() || false;
       const debug = deps.getChatDebugPrefs?.() || {};
 
     const ui = deps.appendAssistantMessage();
@@ -418,6 +425,7 @@ const ChatJobs = (() => {
         mode: deps.chatMode || 'unlimited',
         workflow: workflowId || undefined,
         agentId: agentId || undefined,
+        consumerMode: consumerMode || undefined,
         compact: compact || undefined,
         verbose: !!debug.verbose,
         trace: !!debug.trace,

@@ -13,6 +13,13 @@ TOOL_META: dict[str, dict[str, Any]] = {
   "merge_github_pull_request": {"label": "合并 PR", "group": "write", "default_enabled": True, "driving": False},
   "auto_review_pull_request": {"label": "PR 自动审阅", "group": "write", "default_enabled": True, "driving": False},
   "report_bug_and_publish_pr": {"label": "Bug 报告 PR", "group": "write", "default_enabled": True, "driving": False},
+  "publish_changes": {"label": "发布改动", "group": "write", "default_enabled": True, "driving": False},
+  "discover_publish_units": {"label": "扫描发布单元", "group": "read", "default_enabled": True, "driving": True},
+  "set_forge_token": {"label": "配置 Forge Token", "group": "write", "default_enabled": True, "driving": False},
+  "forge_auth_status": {"label": "Forge 凭据状态", "group": "read", "default_enabled": True, "driving": True},
+  "discover_issue_templates": {"label": "Issue 模板", "group": "read", "default_enabled": True, "driving": True},
+  "create_issue": {"label": "创建 Issue", "group": "write", "default_enabled": True, "driving": False},
+  "report_issue": {"label": "报告 Issue", "group": "write", "default_enabled": True, "driving": False},
 }
 
 TOOL_SCHEMAS: list[dict[str, Any]] = [
@@ -164,6 +171,149 @@ TOOL_SCHEMAS: list[dict[str, Any]] = [
       },
     },
   },
+  {
+    "type": "function",
+    "function": {
+      "name": "publish_changes",
+      "description": (
+        "Offroad: commit, push, and open PR/MR for a publish unit (openpilot, opendbc, assistant, …). "
+        "Assistant defaults to mouxangithub/ai upstream; project repos use current_remote or user_fork. "
+        "confirm=false previews; confirm=true executes. See ai/docs/PUBLISH.md."
+      ),
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "unit_id": {"type": "string", "description": "openpilot, assistant, opendbc, panda, …"},
+          "target_mode": {
+            "type": "string",
+            "enum": ["", "assistant_upstream", "current_remote", "user_fork"],
+          },
+          "title": {"type": "string"},
+          "body": {"type": "string"},
+          "base_branch": {"type": "string"},
+          "branch": {"type": "string"},
+          "commit_message": {"type": "string"},
+          "paths": {"type": "array", "items": {"type": "string"}},
+          "draft": {"type": "boolean"},
+          "remote": {"type": "string"},
+          "repo_url": {"type": "string"},
+          "confirm": {"type": "boolean"},
+        },
+        "required": [],
+      },
+    },
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "discover_publish_units",
+      "description": "List git publish units with dirty file counts (openpilot, submodules, assistant).",
+      "parameters": {
+        "type": "object",
+        "properties": {"dirty_only": {"type": "boolean"}},
+        "required": [],
+      },
+    },
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "set_forge_token",
+      "description": "Store or clear forge API token (github/gitee/gitlab) in config.json. confirm=true required.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "forge": {"type": "string", "enum": ["github", "gitee", "gitlab"]},
+          "token": {"type": "string"},
+          "confirm": {"type": "boolean"},
+        },
+        "required": [],
+      },
+    },
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "forge_auth_status",
+      "description": "Check whether forge token is configured and valid (never returns token).",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "forge": {"type": "string", "enum": ["github", "gitee", "gitlab"]},
+          "repo_url": {"type": "string"},
+        },
+        "required": [],
+      },
+    },
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "discover_issue_templates",
+      "description": "List issue templates (builtin + repo .github/ISSUE_TEMPLATE). See ai/docs/ISSUES.md.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "unit_id": {"type": "string"},
+          "repo_url": {"type": "string"},
+        },
+        "required": [],
+      },
+    },
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "create_issue",
+      "description": (
+        "Create GitHub/Gitee issue from template. Uses forge token. "
+        "confirm=false previews; confirm=true creates. See ai/docs/ISSUES.md."
+      ),
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "unit_id": {"type": "string"},
+          "target_mode": {"type": "string"},
+          "repo_url": {"type": "string"},
+          "template_id": {"type": "string"},
+          "title": {"type": "string"},
+          "body": {"type": "string"},
+          "fields": {"type": "object"},
+          "labels": {"type": "array", "items": {"type": "string"}},
+          "attach_audit": {"type": "boolean"},
+          "confirm": {"type": "boolean"},
+        },
+        "required": [],
+      },
+    },
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "report_issue",
+      "description": (
+        "Structured bug/feature/suggestion → GitHub/Gitee issue (not PR). "
+        "confirm=true to create."
+      ),
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "kind": {"type": "string", "enum": ["bug", "feature", "suggestion", "assistant", "pc"]},
+          "unit_id": {"type": "string"},
+          "title": {"type": "string"},
+          "repro_steps": {"type": "string"},
+          "expected": {"type": "string"},
+          "actual": {"type": "string"},
+          "summary": {"type": "string"},
+          "proposal": {"type": "string"},
+          "severity": {"type": "string"},
+          "attach_audit": {"type": "boolean"},
+          "confirm": {"type": "boolean"},
+        },
+        "required": [],
+      },
+    },
+  },
 ]
 
 
@@ -274,6 +424,53 @@ def make_handlers(ctx: dict) -> dict[str, Callable[..., Any]]:
       return err
     return report_bug_and_publish_pr(**common, confirm=True)
 
+  def h_publish_changes(args):
+    from ai.tools.publish_tools import publish_changes
+    paths = args.get("paths")
+    path_list = [str(x) for x in paths] if isinstance(paths, list) else None
+    common = dict(
+      unit_id=str(args.get("unit_id", "") or "openpilot"),
+      target_mode=str(args.get("target_mode", "") or ""),
+      title=str(args.get("title", "") or ""),
+      body=str(args.get("body", "") or ""),
+      base_branch=str(args.get("base_branch", "") or ""),
+      branch=str(args.get("branch", "") or ""),
+      commit_message=str(args.get("commit_message", "") or ""),
+      paths=path_list,
+      draft=bool(args.get("draft")),
+      remote=str(args.get("remote", "") or ""),
+      repo_url=str(args.get("repo_url", "") or ""),
+      params=p,
+    )
+    if not args.get("confirm") and needs_confirm():
+      return publish_changes(**common, confirm=False)
+    err = stationary_check("write_param")
+    if err:
+      return err
+    return publish_changes(**common, confirm=True)
+
+  def h_discover_units(args):
+    from ai.tools.publish_units import discover_publish_units
+    return discover_publish_units(include_clean=not bool(args.get("dirty_only")))
+
+  def h_set_forge_token(args):
+    gate = _git_write_gate(args, "Set confirm=true to store forge token.")
+    if gate:
+      return gate
+    from ai.tools.publish_tools import set_forge_token_tool
+    return set_forge_token_tool(
+      forge=str(args.get("forge", "") or "github"),
+      token=str(args.get("token", "") or ""),
+      confirm=True,
+    )
+
+  def h_forge_auth(args):
+    from ai.tools.forge import forge_auth_status
+    return forge_auth_status(
+      str(args.get("forge", "") or "github"),
+      repo_url=str(args.get("repo_url", "") or ""),
+    )
+
   def h_auto_review(args):
     gate = _git_write_gate(args, "Set confirm=true to auto-review PR.")
     if gate:
@@ -288,6 +485,60 @@ def make_handlers(ctx: dict) -> dict[str, Callable[..., Any]]:
       params=p,
     )
 
+  def h_discover_issue_templates(args):
+    from ai.tools.issue_tools import discover_issue_templates
+    return discover_issue_templates(
+      unit_id=str(args.get("unit_id", "") or "assistant"),
+      repo_url=str(args.get("repo_url", "") or ""),
+    )
+
+  def h_create_issue(args):
+    from ai.tools.issue_tools import create_issue
+    fields = args.get("fields")
+    field_map = {str(k): str(v) for k, v in fields.items()} if isinstance(fields, dict) else None
+    labels = args.get("labels")
+    label_list = [str(x) for x in labels] if isinstance(labels, list) else None
+    common = dict(
+      unit_id=str(args.get("unit_id", "") or "assistant"),
+      target_mode=str(args.get("target_mode", "") or ""),
+      repo_url=str(args.get("repo_url", "") or ""),
+      template_id=str(args.get("template_id", "") or "bug"),
+      title=str(args.get("title", "") or ""),
+      body=str(args.get("body", "") or ""),
+      fields=field_map,
+      labels=label_list,
+      attach_audit=bool(args.get("attach_audit", True)),
+      params=p,
+    )
+    if not args.get("confirm") and needs_confirm():
+      return create_issue(**common, confirm=False)
+    err = stationary_check("write_param")
+    if err:
+      return err
+    return create_issue(**common, confirm=True)
+
+  def h_report_issue(args):
+    from ai.tools.issue_tools import report_issue
+    common = dict(
+      kind=str(args.get("kind", "") or "bug"),
+      unit_id=str(args.get("unit_id", "") or ""),
+      title=str(args.get("title", "") or ""),
+      repro_steps=str(args.get("repro_steps", "") or ""),
+      expected=str(args.get("expected", "") or ""),
+      actual=str(args.get("actual", "") or ""),
+      summary=str(args.get("summary", "") or ""),
+      proposal=str(args.get("proposal", "") or ""),
+      severity=str(args.get("severity", "") or "ui"),
+      attach_audit=bool(args.get("attach_audit", True)),
+      params=p,
+    )
+    if not args.get("confirm") and needs_confirm():
+      return report_issue(**common, confirm=False)
+    err = stationary_check("write_param")
+    if err:
+      return err
+    return report_issue(**common, confirm=True)
+
   return {
     "git_publish_pull_request": h_publish,
     "list_github_pull_requests": h_list_prs,
@@ -296,4 +547,11 @@ def make_handlers(ctx: dict) -> dict[str, Callable[..., Any]]:
     "merge_github_pull_request": h_merge,
     "auto_review_pull_request": h_auto_review,
     "report_bug_and_publish_pr": h_report_bug,
+    "publish_changes": h_publish_changes,
+    "discover_publish_units": h_discover_units,
+    "set_forge_token": h_set_forge_token,
+    "forge_auth_status": h_forge_auth,
+    "discover_issue_templates": h_discover_issue_templates,
+    "create_issue": h_create_issue,
+    "report_issue": h_report_issue,
   }

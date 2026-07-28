@@ -6,10 +6,13 @@ import subprocess
 from typing import Any
 
 from ai.system.paths import openpilot_root
-from ai.tools.git_repo_context import current_git_repo_target
+from ai.tools.git_repo_context import current_git_repo_target, current_git_repo_root_override
 
 
 def _git_root():
+  override = current_git_repo_root_override()
+  if override is not None:
+    return override
   from ai.common.repo_targets import resolve_repo_root
   return resolve_repo_root(current_git_repo_target())
 

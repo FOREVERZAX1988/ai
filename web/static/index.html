@@ -3,9 +3,9 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <title>op助手</title>
+  <title>OP 助手</title>
   <link rel="icon" type="image/svg+xml" href="/static/img/favicon.svg">
-  <link rel="stylesheet" href="/static/css/ai.css?v=20260728l">
+  <link rel="stylesheet" href="/static/css/ai.css?v=20260728r">
   <link rel="stylesheet" href="/static/css/office-panel.css?v=20260728f">
   <link rel="stylesheet" href="/static/css/canvas-panel.css?v=20260723e">
   <link rel="stylesheet" href="/static/css/cabana-panel.css?v=20260728f">
@@ -92,6 +92,7 @@
       <main class="workspace" id="workspace">
         <section class="chat-layout" id="chatLayout">
           <div class="chat-thread">
+          <div class="op-quick-actions" id="opQuickActions" hidden aria-label="快捷向导"></div>
           <div class="messages" id="messages"></div>
           <div class="composer-wrap">
             <div class="composer-attachments hidden" id="composerAttachments"></div>
@@ -379,6 +380,37 @@
                 <label class="field"><span class="field-label" id="topPLabel">Top P</span><input type="number" id="topPInput" min="0" max="1" step="0.05" value="1"></label>
               </div>
               <label class="field"><span class="field-label" id="maxTokensLabel">Max Tokens</span><input type="number" id="maxTokensInput" min="256" max="128000" step="256" value="4096"></label>
+              <details class="settings-sub-accordion" id="contextSettingsBlock">
+                <summary class="settings-sub-summary" id="contextSettingsTitle">上下文与压缩</summary>
+                <div class="settings-sub-body">
+                  <label class="field"><span class="field-label" id="contextWindowLabel">上下文窗口 (tokens)</span><input type="number" id="contextWindowInput" min="0" max="2000000" step="1024" value="0" placeholder="0=按模型自动"></label>
+                  <label class="field switch-row"><span id="compactionEnabledLabel">自动压缩会话</span><label class="switch"><input type="checkbox" id="compactionEnabledToggle" checked><span class="slider"></span></label></label>
+                  <div class="field-row">
+                    <label class="field"><span class="field-label" id="compactAfterTurnsLabel">压缩阈值 (轮)</span><input type="number" id="compactAfterTurnsInput" min="4" max="200" step="1" value="24"></label>
+                    <label class="field"><span class="field-label" id="keepRecentTurnsLabel">保留最近 (轮)</span><input type="number" id="keepRecentTurnsInput" min="2" max="100" step="1" value="8"></label>
+                  </div>
+                  <label class="field"><span class="field-label" id="reserveTokensLabel">预留 tokens</span><input type="number" id="reserveTokensInput" min="0" max="500000" step="512" value="8000"></label>
+                  <label class="field switch-row"><span id="compactionTokenTriggerLabel">按 token 数触发压缩</span><label class="switch"><input type="checkbox" id="compactionTokenTriggerToggle" checked><span class="slider"></span></label></label>
+                  <p class="field-hint" id="contextSettingsHint">长对话自动摘要写入记忆；手动压缩请用聊天命令 /compact</p>
+                </div>
+              </details>
+              <details class="settings-sub-accordion" id="evolutionSettingsBlock">
+                <summary class="settings-sub-summary" id="evolutionSettingsTitle">Hermes 进化闭环</summary>
+                <div class="settings-sub-body">
+                  <label class="field switch-row"><span id="evolutionEnabledLabel">启用进化管线</span><label class="switch"><input type="checkbox" id="evolutionEnabledToggle" checked><span class="slider"></span></label></label>
+                  <label class="field switch-row"><span id="evolutionAutoWorkspaceLabel">对话后自动补工作区模板</span><label class="switch"><input type="checkbox" id="evolutionAutoWorkspaceToggle" checked><span class="slider"></span></label></label>
+                  <label class="field switch-row"><span id="evolutionAutoMemoryLabel">对话后自动提炼记忆（每日日志 + MEMORY）</span><label class="switch"><input type="checkbox" id="evolutionAutoMemoryToggle" checked><span class="slider"></span></label></label>
+                  <label class="field switch-row"><span id="evolutionLlmReflectLabel">LLM 反思诊断 (GEPA)</span><label class="switch"><input type="checkbox" id="evolutionLlmReflectToggle" checked><span class="slider"></span></label></label>
+                  <label class="field switch-row"><span id="evolutionAutoProposeLabel">自动提案技能（需批准）</span><label class="switch"><input type="checkbox" id="evolutionAutoProposeToggle"><span class="slider"></span></label></label>
+                  <label class="field switch-row"><span id="evolutionGepaEnabledLabel">内置 GEPA 技能进化（Hermes）</span><label class="switch"><input type="checkbox" id="evolutionGepaEnabledToggle" checked><span class="slider"></span></label></label>
+                  <label class="field switch-row"><span id="evolutionUseDspyLabel">使用 DSPy 后端（需 pip install dspy，PC）</span><label class="switch"><input type="checkbox" id="evolutionUseDspyToggle"><span class="slider"></span></label></label>
+                  <div class="field-row">
+                    <label class="field"><span class="field-label" id="skillsDisclosureMaxLabel">按需加载技能数</span><input type="number" id="skillsDisclosureMaxInput" min="3" max="30" step="1" value="10"></label>
+                    <label class="field"><span class="field-label" id="evolutionCandidatesLabel">Pareto 候选数</span><input type="number" id="evolutionCandidatesInput" min="1" max="5" step="1" value="3"></label>
+                  </div>
+                  <p class="field-hint" id="evolutionSettingsHint">三层记忆 + 轨迹反思 + 技能/工具描述进化；详见 设置→平台→技能进化</p>
+                </div>
+              </details>
               <label class="field switch-row"><span id="thinkingLabel">思考模式</span><label class="switch"><input type="checkbox" id="thinkingToggle" checked><span class="slider"></span></label></label>
             </div>
           </details>
@@ -521,6 +553,48 @@
                 <span class="field-label" id="platformWorkspaceEditorLabel">内容</span>
                 <textarea id="platformWorkspaceEditor" rows="8" class="platform-editor" placeholder="工作区 Markdown…"></textarea>
               </label>
+              <div class="platform-toolbar platform-toolbar-secondary">
+                <button type="button" id="platformWorkspaceBootstrap" class="btn small">初始化模板</button>
+                <button type="button" id="platformWorkspaceHealth" class="btn small">健康检查</button>
+                <span id="platformWorkspaceHealthStatus" class="field-hint"></span>
+              </div>
+            </div>
+          </section>
+          <section class="settings-card">
+            <header class="settings-card-head"><h3 class="settings-card-title" id="platformBackupTitle">平台备份</h3></header>
+            <div class="settings-card-body platform-pane-body">
+              <p class="field-hint" id="platformBackupDesc">导出/恢复：记忆、会话、技能、MCP、工作区与上下文设置（Token 默认脱敏）。</p>
+              <div id="platformBackupManifest" class="platform-list"></div>
+              <div class="platform-toolbar platform-backup-actions">
+                <label class="platform-check-row"><input type="checkbox" id="platformBackupIncludeSecrets"> <span id="platformBackupSecretsLabel">包含 Token（慎用）</span></label>
+                <button type="button" id="platformBackupExport" class="btn small primary">导出备份</button>
+                <a id="platformBackupDownload" class="btn small" href="#" hidden download>下载</a>
+              </div>
+              <label class="field platform-restore-field">
+                <span class="field-label" id="platformBackupRestoreLabel">恢复备份（粘贴 JSON）</span>
+                <textarea id="platformBackupRestoreJson" rows="5" class="platform-editor" placeholder='{"version":1,...}'></textarea>
+              </label>
+              <div class="platform-toolbar platform-toolbar-secondary">
+                <select id="platformBackupRestoreMode" class="toolbar-select">
+                  <option value="merge">合并</option>
+                  <option value="replace">覆盖</option>
+                </select>
+                <button type="button" id="platformBackupRestorePreview" class="btn small">预览</button>
+                <button type="button" id="platformBackupRestoreApply" class="btn small primary">确认恢复</button>
+              </div>
+              <div id="platformBackupRestoreStatus" class="field-hint"></div>
+            </div>
+          </section>
+          <section class="settings-card">
+            <header class="settings-card-head"><h3 class="settings-card-title" id="platformEvolutionTitle">技能进化</h3></header>
+            <div class="settings-card-body platform-pane-body">
+              <p class="field-hint" id="platformEvolutionDesc">借鉴 Hermes 闭环：分析会话轨迹 → 生成技能改进草案（需人工批准）。</p>
+              <div id="platformEvolutionStatus" class="platform-list"></div>
+              <div class="platform-toolbar platform-toolbar-secondary">
+                <button type="button" id="platformEvolutionScan" class="btn small">扫描轨迹</button>
+                <button type="button" id="platformEvolutionPropose" class="btn small primary">生成进化提案</button>
+              </div>
+              <div id="platformEvolutionTraces" class="platform-list"></div>
             </div>
           </section>
           <section class="settings-card">
@@ -655,6 +729,39 @@
             <div class="dev-package-actions">
               <button type="button" id="devForkRefreshBtn" class="btn small ghost">扫描仓库</button>
               <button type="button" id="devForkSyncBtn" class="btn small primary">AI 分析并生成草稿</button>
+            </div>
+          </section>
+
+          <section class="dev-card" aria-labelledby="devPublishTitle">
+            <div class="dev-card-head">
+              <h3 class="dev-card-title" id="devPublishTitle">代码发布</h3>
+              <span class="dev-count-badge" id="devPublishBadge">—</span>
+            </div>
+            <div class="dev-env-body" id="publishSettingsBox">
+              <div class="dev-skeleton dev-skeleton-line"></div>
+            </div>
+            <div class="dev-env-body publish-units-wrap" id="publishUnitsBox">
+              <div class="dev-skeleton dev-skeleton-line short"></div>
+            </div>
+            <div class="dev-package-actions">
+              <button type="button" id="devPublishRefreshBtn" class="btn small ghost">刷新</button>
+              <button type="button" id="devPublishSaveBtn" class="btn small primary">保存配置</button>
+            </div>
+          </section>
+
+          <section class="dev-card" aria-labelledby="devIssueTitle">
+            <div class="dev-card-head">
+              <h3 class="dev-card-title" id="devIssueTitle">反馈提交</h3>
+            </div>
+            <div class="dev-env-body" id="issueSettingsBox">
+              <div class="dev-skeleton dev-skeleton-line"></div>
+            </div>
+            <div class="dev-env-body issue-form-wrap" id="issueFormBox">
+              <div class="dev-skeleton dev-skeleton-line short"></div>
+            </div>
+            <div class="dev-package-actions">
+              <button type="button" id="devIssueRefreshBtn" class="btn small ghost">刷新</button>
+              <button type="button" id="devIssueSubmitBtn" class="btn small primary">提交 Issue</button>
             </div>
           </section>
 
@@ -991,17 +1098,40 @@
 
   <div class="toast" id="toast" aria-hidden="true" role="status"></div>
 
+  <div id="publishPromptModal" class="modal" hidden>
+    <div class="modal-backdrop" id="publishPromptBackdrop"></div>
+    <div class="modal-panel publish-prompt-panel" role="dialog" aria-labelledby="publishPromptTitle">
+      <header class="modal-head">
+        <h2 id="publishPromptTitle">发布改动</h2>
+        <button type="button" id="publishPromptClose" class="btn icon ghost" aria-label="关闭">×</button>
+      </header>
+      <div class="modal-body">
+        <p class="field-hint" id="publishPromptHint">检测到未提交的代码改动，是否发布 PR/MR？</p>
+        <div id="publishPromptUnits"></div>
+        <label class="field-label" for="publishPromptTitleInput">标题</label>
+        <input type="text" id="publishPromptTitleInput" class="field-input" placeholder="chore(ai): update">
+      </div>
+      <footer class="modal-foot">
+        <button type="button" id="publishPromptCancel" class="btn ghost">稍后</button>
+        <button type="button" id="publishPromptOk" class="btn primary">发布</button>
+      </footer>
+    </div>
+  </div>
+
   <div id="writeConfirmModal" class="modal" hidden>
     <div class="modal-backdrop" id="writeConfirmBackdrop"></div>
     <div class="modal-content write-confirm-content">
       <div class="modal-header"><h2 id="writeConfirmTitle" data-i18n="writeConfirmTitle">确认写入</h2><button type="button" class="modal-close" id="writeConfirmClose">&times;</button></div>
       <div class="modal-body">
-        <p class="field-hint" id="writeConfirmHint" data-i18n="writeConfirmHint">AI 请求修改以下参数（车辆需静止）：</p>
-        <pre id="writeConfirmPreview" class="memory-pre"></pre>
+        <p class="field-hint" id="writeConfirmHint" data-i18n="writeConfirmHint">AI 请求修改以下设置（车辆需静止）：</p>
+        <div id="writeConfirmConsumer" class="write-confirm-consumer hidden"></div>
+        <pre id="writeConfirmPreview" class="memory-pre write-confirm-raw hidden"></pre>
       </div>
       <div class="modal-footer actions">
+        <button type="button" id="writeConfirmRollback" class="btn link hidden" data-i18n="writeConfirmRollback">撤销上次调参</button>
+        <span class="composer-spacer"></span>
         <button type="button" id="writeConfirmCancel" class="btn">取消</button>
-        <button type="button" id="writeConfirmOk" class="btn primary">确认写入</button>
+        <button type="button" id="writeConfirmOk" class="btn primary">确认应用</button>
       </div>
     </div>
   </div>
@@ -1106,7 +1236,7 @@
     </div>
   </div>
 
-  <script src="/static/js/i18n.js?v=20260728c"></script>
+  <script src="/static/js/i18n.js?v=20260728n"></script>
   <script src="/static/js/theme.js?v=20260715h"></script>
   <script src="/static/js/markdown.js"></script>
   <script src="/static/js/sessions.js?v=20260722k"></script>
@@ -1117,14 +1247,14 @@
   <script src="/static/js/local-prefs.js?v=20260722k"></script>
   <script src="/static/js/quick-actions.js?v=20260715h"></script>
   <script src="/static/js/tsk-panel.js?v=20260728j"></script>
-  <script src="/static/js/web-chat-jobs.js?v=20260728f"></script>
+  <script src="/static/js/web-chat-jobs.js?v=20260728r"></script>
   <script src="/static/js/web-api.js?v=20260722h"></script>
   <script src="/static/js/ui-busy.js?v=20260728a"></script>
   <script src="/static/js/web-config.js?v=20260722h"></script>
   <script src="/static/js/fallback-models.js?v=20260722h"></script>
   <script src="/static/js/web-sync-ws.js?v=20260722h"></script>
   <script src="/static/js/terminal-sidecar.js?v=20260723b"></script>
-  <script src="/static/js/terminal-ai.js?v=20260723e"></script>
+  <script src="/static/js/terminal-ai.js?v=20260728s"></script>
   <script src="/static/js/agents-panel.js?v=20260723f"></script>
   <script type="importmap">
   {
@@ -1135,12 +1265,12 @@
   }
   </script>
   <script type="module" src="/static/js/office-scene-3d.mjs?v=20260724c"></script>
-  <script src="/static/js/platform-panel.js?v=20260728f"></script>
+  <script src="/static/js/platform-panel.js?v=20260728p"></script>
   <script src="/static/js/office-panel.js?v=20260724c"></script>
   <script src="/static/js/command-queue.js?v=20260723k"></script>
   <script src="/static/js/canvas-panel.js?v=20260723a"></script>
   <script src="/static/js/terminal-panel.js?v=20260723e"></script>
-  <script src="/static/js/ai.js?v=20260728j"></script>
+  <script src="/static/js/ai.js?v=20260728r"></script>
   <script src="/static/vendor/uplot/uPlot.iife.min.js"></script>
   <script src="/static/js/cabana-panel.js?v=20260728i"></script>
 </body>

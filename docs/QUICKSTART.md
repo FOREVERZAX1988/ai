@@ -1,18 +1,39 @@
-# 快速开始
+# 快速上手（Quick Start）
 
-1. 在 openpilot 设备或 PC 开发环境中安装 op助手（见 [INSTALL.md](INSTALL.md)）。
-2. 打开 Web UI（默认 `http://<设备IP>:5090`），完成首次向导：配置模型 API Key 与模型名。
-3. 可选：填写车型/品牌与主要诉求，助手会写入设备记忆并启用相关技能。
-4. 在聊天框使用快捷卡片，例如 **一键健康检查**、**无法接合分诊**、**路线复盘**。
-5. 侧栏 **Cabana** 可实时或回放查看 CAN；点击报文可看历史、二进制位图与多信号曲线（Shift+点击叠加）。
+与 Wiki [Quick-Start](wiki/Quick-Start.md) 同步。5 分钟完成首次配置并开始使用 OP Agent。
 
-## 常用入口
+## 安装
 
-| 需求 | 建议 |
-|------|------|
-| 不能 engage | 快捷卡片「一键健康检查」或「开不了辅助驾驶」 |
-| 调参 | 技能 `sp-tuning` + **设置 → 平台 → 调参护照 / A/B 对比** |
-| 看路线 | Cabana 回放 + 聊天「分析 route」 |
-| 新车 | 技能 `vehicle-adaptation` |
+见 [INSTALL.md](INSTALL.md)。
 
-更多能力见 [CAPABILITIES.md](CAPABILITIES.md)。
+## 配置 API
+
+1. 浏览器打开 `http://<设备IP>:5090`
+2. 首次向导：选择服务商、填写 API Key、选模型
+3. 可选：车型、主要诉求（调优 / Engage / 适配 / 复盘）
+
+## 车主四大入口
+
+| 场景 | Web | CLI |
+|------|-----|-----|
+| 调手感 | 首屏「调驾驶手感」/ `/调手感` | `op tune` |
+| 适配新车 | 「适配新车」/ `/适配新车` | `op adapt` |
+| 开不起来 | 「开不起来排查」/ `/开不起来` | `op doctor` |
+| 复盘 | 「复盘上一趟」/ `/复盘` | `op review` |
+
+## 改参确认
+
+AI 修改驾驶设置前会显示**通俗中文对比**，静止状态下确认后才会写入。终端里输入 `y`/`n`。
+
+## CLI
+
+```bash
+op status
+op chat "跟车太近"
+```
+
+详见 [CLI.md](CLI.md)、[TERMINAL.md](TERMINAL.md)。
+
+## 产品定位
+
+[PRODUCT.md](PRODUCT.md)

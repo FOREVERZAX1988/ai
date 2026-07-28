@@ -137,6 +137,16 @@ run_integrate() {
 }
 run_integrate
 
+OP_BIN="$TARGET/scripts/op"
+if [[ -x "$OP_BIN" ]] || [[ -f "$OP_BIN" ]]; then
+  chmod +x "$OP_BIN" 2>/dev/null || true
+  if [[ -d "$ROOT/.git" ]] && [[ -w "$ROOT" ]]; then
+    ln -sf "$OP_BIN" "$ROOT/op" 2>/dev/null || cp "$OP_BIN" "$ROOT/op" 2>/dev/null || true
+    chmod +x "$ROOT/op" 2>/dev/null || true
+    echo "已安装 CLI: $ROOT/op"
+  fi
+fi
+
 VER="$(cat "$TARGET/VERSION" 2>/dev/null || echo unknown)"
 echo ""
 echo "=========================================="
@@ -144,6 +154,7 @@ echo " op助手 安装完成"
 echo "  路径:    $TARGET"
 echo "  版本:    $VER"
 echo "  启动:    cd $ROOT && python3 -m ai.aid"
+echo "  CLI:     $TARGET/scripts/op  (或: python3 -m ai.cli)"
 echo "  Web UI:  http://<设备IP>:5090"
 echo "=========================================="
 echo ""

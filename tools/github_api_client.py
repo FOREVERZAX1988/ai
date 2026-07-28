@@ -487,3 +487,92 @@ def get_pull_request_labels(
   if not isinstance(data, list):
     return {"ok": False, "error": "unexpected_response"}
   return {"ok": True, "labels": [x.get("name") for x in data]}
+
+
+def summarize_issue(issue: dict[str, Any]) -> dict[str, Any]:
+  return {
+    "number": issue.get("number"),
+    "title": issue.get("title"),
+    "state": issue.get("state"),
+    "html_url": issue.get("html_url"),
+    "labels": [l.get("name") for l in (issue.get("labels") or []) if isinstance(l, dict)],
+  }
+
+
+def create_issue(
+  token: str,
+  owner: str,
+  repo: str,
+  *,
+  title: str,
+  body: str = "",
+  labels: list[str] | None = None,
+) -> dict[str, Any]:
+  payload: dict[str, Any] = {"title": title[:250], "body": body[:65000]}
+  if labels:
+    payload["labels"] = [str(l).strip() for l in labels if str(l).strip()][:10]
+  data = github_request("POST", f"/repos/{owner}/{repo}/issues", token, body=payload)
+  if not _api_ok(data):
+    return data
+  return {
+    "ok": True,
+    "issue": summarize_issue(data),
+    "html_url": data.get("html_url"),
+    "number": data.get("number"),
+  }
+
+
+def search_issues(
+  token: str,
+  owner: str,
+  repo: str,
+  *,
+  query: str,
+  state: str = "open",
+  per_page: int = 10,
+) -> dict[str, Any]:
+  q = f"repo:{owner}/{repo} is:issue is:{state} {query}".strip()
+  data = github_request(
+    "GET",
+    "/search/issues",
+    token,
+    query={"q": q, "per_page": max(1, min(per_page, 30))},
+  )
+  if not _api_ok(data):
+    return data
+  items = data.get("items") or []
+  issues = [summarize_issue(x) for x in items if isinstance(x, dict)]
+  return {"ok": True, "issues": issues, "count": data.get("total_count", len(issues))}
+
+
+def list_directory(
+  token: str,
+  owner: str,
+  repo: str,
+  path: str,
+  *,
+  ref: str = "",
+) -> dict[str, Any]:
+  query = {"ref": ref} if ref else None
+  data = github_request("GET", f"/repos/{owner}/{repo}/contents/{path.strip('/')}", token, query=query)
+  if not _api_ok(data):
+    return data
+  if isinstance(data, list):
+    return {"ok": True, "entries": data}
+  return {"ok": True, "entries": [data]}
+
+
+def get_file_content(
+  token: str,
+  owner: str,
+  repo: str,
+  path: str,
+  *,
+  ref: str = "",
+) -> dict[str, Any]:
+  query = {"ref": ref} if ref else None
+  data = github_request("GET", f"/repos/{owner}/{repo}/contents/{path.strip('/')}", token, query=query)
+  if not _api_ok(data):
+    return data
+  from ai.tools.issue_template_lib import decode_github_content
+  return {"ok": True, "path": path, "text": decode_github_content(data)}

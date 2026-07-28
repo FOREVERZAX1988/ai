@@ -353,7 +353,22 @@ def filter_tools(
     pc_dev = os.name == "nt" or not os.path.isfile("/TICI")
 
   out: list[dict[str, Any]] = []
-  for tool in AVAILABLE_TOOLS:
+  params_obj = None
+  try:
+    from openpilot.common.params import Params
+    params_obj = Params()
+  except Exception:
+    pass
+
+  schemas = AVAILABLE_TOOLS
+  if params_obj is not None:
+    try:
+      from ai.tools.tool_desc_store import apply_tool_schema_overrides
+      schemas = apply_tool_schema_overrides(schemas, params_obj)
+    except Exception:
+      pass
+
+  for tool in schemas:
     name = tool.get("function", {}).get("name", "")
     meta = TOOL_META.get(name, {})
     if tool_prefs and name in tool_prefs:

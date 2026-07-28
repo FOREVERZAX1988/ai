@@ -18,6 +18,10 @@
 | GET | `/api/ai/bootstrap` | 首屏聚合数据 |
 | GET/POST | `/api/ai/config` | 读写模型配置 |
 | POST | `/api/ai/chat` | SSE 流式聊天 |
+| POST | `/api/ai/terminal/op` | Web 终端自然语言（与 `op chat` 同引擎，SSE） |
+| POST | `/api/ai/terminal/op/confirm` | 终端改参确认（pending write） |
+| GET | `/api/ai/consumer/wizards` | 车主向导列表 |
+| POST | `/api/ai/consumer/preview-params` | 改参预览（通俗文案） |
 | GET | `/api/ai/package/version` | op助手 包版本 |
 | POST | `/api/ai/package/update` | git 更新 + integrate |
 | GET | `/api/ai/fork/detect` | 扫描 openpilot 树 |

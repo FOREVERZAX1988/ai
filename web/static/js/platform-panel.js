@@ -384,7 +384,183 @@ const PlatformPanel = (() => {
     if (btn) btn.textContent = tr('platformTuneCompareBtn', '开始对比');
   }
 
+  async function bootstrapWorkspace() {
+    const btn = document.getElementById('platformWorkspaceBootstrap');
+    await withBusy(btn, async () => {
+      const { data } = await api('POST', '/api/ai/platform/workspace-health', { operation: 'bootstrap' });
+      if (data?.ok) {
+        toast(tr('platformWorkspaceBootstrapped', '模板已写入'), 'success');
+        await loadWorkspace();
+        await refreshWorkspaceHealth();
+      } else {
+        toast(data?.error || tr('saveFailed', '保存失败'), 'error');
+      }
+    }, tr('uiWorking', '处理中…'));
+  }
+
+  async function refreshWorkspaceHealth() {
+    const status = document.getElementById('platformWorkspaceHealthStatus');
+    const { data } = await api('GET', '/api/ai/platform/workspace-health');
+    if (!status) return;
+    const sparse = data?.sparse || [];
+    if (!sparse.length) {
+      status.textContent = tr('platformWorkspaceHealthy', '工作区内容充足');
+      return;
+    }
+    status.textContent = tr('platformWorkspaceSparse', '待补充') + ': ' + sparse.map((s) => s.filename).join(', ');
+  }
+
+  async function refreshBackupManifest() {
+    const box = document.getElementById('platformBackupManifest');
+    if (!box) return;
+    const { data } = await api('GET', '/api/ai/platform/backup');
+    const m = data?.manifest || {};
+    box.innerHTML = [
+      `<div class="platform-list-item">${tr('platformBackupMemory', '记忆')}: ${m.memoryNotes ?? 0}</div>`,
+      `<div class="platform-list-item">${tr('platformBackupSessions', '会话')}: ${m.sessions ?? 0}</div>`,
+      `<div class="platform-list-item">${tr('platformBackupSkills', '技能')}: ${m.learnedSkills ?? 0}</div>`,
+      `<div class="platform-list-item">MCP: ${m.mcpServers ?? 0}</div>`,
+      `<div class="platform-list-item">${tr('platformBackupWorkspace', '工作区')}: ${m.workspaceFiles ?? 0}</div>`,
+    ].join('');
+  }
+
+  async function exportBackup() {
+    const btn = document.getElementById('platformBackupExport');
+    const includeSecrets = !!document.getElementById('platformBackupIncludeSecrets')?.checked;
+    const link = document.getElementById('platformBackupDownload');
+    await withBusy(btn, async () => {
+      const { data } = await api('POST', '/api/ai/platform/backup', {
+        operation: 'export',
+        include_secrets: includeSecrets,
+      });
+      if (!data?.ok) {
+        toast(data?.error || tr('saveFailed', '保存失败'), 'error');
+        return;
+      }
+      const dl = data?.download;
+      if (link && dl?.url) {
+        link.href = dl.url;
+        link.textContent = tr('platformBackupDownload', '下载') + ` (${dl.filename})`;
+        link.hidden = false;
+      }
+      toast(tr('platformBackupExported', '备份已导出'), 'success');
+      refreshBackupManifest().catch(() => {});
+    }, tr('uiWorking', '处理中…'));
+  }
+
+  async function restoreBackupPreview() {
+    const raw = document.getElementById('platformBackupRestoreJson')?.value?.trim();
+    const status = document.getElementById('platformBackupRestoreStatus');
+    if (!raw) {
+      toast(tr('platformBackupPasteJson', '请粘贴备份 JSON'), 'warning');
+      return;
+    }
+    let bundle;
+    try {
+      bundle = JSON.parse(raw);
+    } catch (e) {
+      toast(tr('platformBackupInvalidJson', 'JSON 无效'), 'error');
+      return;
+    }
+    const mode = document.getElementById('platformBackupRestoreMode')?.value || 'merge';
+    const { data } = await api('POST', '/api/ai/platform/backup', {
+      operation: 'restore',
+      bundle: bundle.bundle ? bundle : { bundle },
+      mode,
+      confirm: false,
+    });
+    if (status) {
+      status.textContent = data?.preview
+        ? JSON.stringify(data.preview, null, 2)
+        : (data?.error || '');
+    }
+  }
+
+  async function restoreBackupApply() {
+    const btn = document.getElementById('platformBackupRestoreApply');
+    const raw = document.getElementById('platformBackupRestoreJson')?.value?.trim();
+    if (!raw) {
+      toast(tr('platformBackupPasteJson', '请粘贴备份 JSON'), 'warning');
+      return;
+    }
+    let bundle;
+    try {
+      bundle = JSON.parse(raw);
+    } catch (e) {
+      toast(tr('platformBackupInvalidJson', 'JSON 无效'), 'error');
+      return;
+    }
+    const mode = document.getElementById('platformBackupRestoreMode')?.value || 'merge';
+    await withBusy(btn, async () => {
+      const { data } = await api('POST', '/api/ai/platform/backup', {
+        operation: 'restore',
+        bundle: bundle.bundle ? bundle : { bundle },
+        mode,
+        confirm: true,
+      });
+      if (data?.ok) {
+        toast(tr('platformBackupRestored', '恢复完成') + `: ${(data.applied || []).join(', ')}`, 'success');
+        refreshBackupManifest().catch(() => {});
+        refreshLearned().catch(() => {});
+        loadWorkspace().catch(() => {});
+        refreshMcp().catch(() => {});
+      } else {
+        toast(data?.error || tr('saveFailed', '保存失败'), 'error');
+      }
+    }, tr('uiWorking', '处理中…'));
+  }
+
+  async function refreshEvolutionStatus() {
+    const box = document.getElementById('platformEvolutionStatus');
+    if (!box) return;
+    const { data } = await api('GET', '/api/ai/platform/evolution');
+    box.innerHTML = [
+      `<div class="platform-list-item">${tr('platformEvolutionPending', '待批准')}: ${data?.pendingSkills ?? 0}</div>`,
+      `<div class="platform-list-item">${tr('platformEvolutionHotspots', '热点轨迹')}: ${data?.hotspots ?? 0}</div>`,
+    ].join('');
+  }
+
+  async function scanEvolutionTraces() {
+    const btn = document.getElementById('platformEvolutionScan');
+    const box = document.getElementById('platformEvolutionTraces');
+    await withBusy(btn, async () => {
+      const { data } = await api('GET', '/api/ai/platform/evolution?view=traces');
+      if (!box) return;
+      box.innerHTML = '';
+      for (const t of (data?.hotspots || [])) {
+        const row = document.createElement('div');
+        row.className = 'platform-list-item';
+        row.textContent = `${t.title} (score=${t.score}) — ${(t.signals || []).slice(0, 4).join(', ')}`;
+        box.appendChild(row);
+      }
+      if (!data?.hotspots?.length) {
+        box.innerHTML = `<p class="field-hint">${tr('platformEvolutionNoHotspots', '暂无显著失败信号')}</p>`;
+      }
+    }, tr('uiSearching', '搜索中…'));
+  }
+
+  async function proposeEvolution() {
+    const btn = document.getElementById('platformEvolutionPropose');
+    await withBusy(btn, async () => {
+      const { data } = await api('POST', '/api/ai/platform/evolution', {});
+      if (data?.ok) {
+        toast(tr('platformEvolutionProposed', '进化提案已创建，请在「已学技能」批准'), 'success');
+        refreshLearned().catch(() => {});
+        refreshEvolutionStatus().catch(() => {});
+      } else {
+        toast(data?.error || tr('saveFailed', '保存失败'), 'error');
+      }
+    }, tr('uiWorking', '处理中…'));
+  }
+
   function bind() {
+    document.getElementById('platformWorkspaceBootstrap')?.addEventListener('click', () => bootstrapWorkspace().catch(console.error));
+    document.getElementById('platformWorkspaceHealth')?.addEventListener('click', () => refreshWorkspaceHealth().catch(console.error));
+    document.getElementById('platformBackupExport')?.addEventListener('click', () => exportBackup().catch(console.error));
+    document.getElementById('platformBackupRestorePreview')?.addEventListener('click', () => restoreBackupPreview().catch(console.error));
+    document.getElementById('platformBackupRestoreApply')?.addEventListener('click', () => restoreBackupApply().catch(console.error));
+    document.getElementById('platformEvolutionScan')?.addEventListener('click', () => scanEvolutionTraces().catch(console.error));
+    document.getElementById('platformEvolutionPropose')?.addEventListener('click', () => proposeEvolution().catch(console.error));
     document.getElementById('platformWorkspaceLoad')?.addEventListener('click', () => loadWorkspace().catch(console.error));
     document.getElementById('platformWorkspaceSave')?.addEventListener('click', () => saveWorkspace().catch(console.error));
     document.getElementById('platformWorkspaceKey')?.addEventListener('change', () => loadWorkspace().catch(console.error));
@@ -399,6 +575,9 @@ const PlatformPanel = (() => {
   function onSettingsOpen(tab) {
     if (tab !== 'platform') return;
     loadWorkspace().catch(() => {});
+    refreshWorkspaceHealth().catch(() => {});
+    refreshBackupManifest().catch(() => {});
+    refreshEvolutionStatus().catch(() => {});
     refreshMcp().catch(() => {});
     refreshLearned().catch(() => {});
     loadMemoryAndPassport().catch(() => {});

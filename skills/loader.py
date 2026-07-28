@@ -10,6 +10,8 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
+from ai.skills.disclosure import rank_skills, skill_manifest_lines
+
 log = logging.getLogger("aid.skills")
 
 _SKILLS_ROOT = Path(__file__).resolve().parent
@@ -99,6 +101,8 @@ def build_skills_prompt(
   *,
   brand: str = "",
   available_tools: set[str] | None = None,
+  query: str = "",
+  max_skills: int = 10,
 ) -> str:
   entries = list_skills()
   if available_tools is not None:
@@ -109,28 +113,49 @@ def build_skills_prompt(
   if enabled_ids is None:
     enabled_ids = {e["id"] for e in entries if e.get("id")}
 
-  parts: list[str] = ["# Loaded Agent Skills\n"]
+  entries = [e for e in entries if e.get("id") in enabled_ids and _brand_matches(e, brand)]
+  selected, deferred = rank_skills(entries, query=query, brand=brand, max_skills=max_skills)
+
+  parts: list[str] = ["# Loaded Agent Skills (progressive disclosure)\n"]
   total = 0
-  for entry in entries:
+  for entry in selected:
     sid = entry.get("id")
-    if not sid or sid not in enabled_ids:
-      continue
-    if not _brand_matches(entry, brand):
-      continue
     body = _read_skill_body(entry.get("path", ""))
     if not body:
       continue
     header = f"## Skill: {entry.get('name', sid)}\n"
     chunk = header + body
     if total + len(chunk) > _MAX_TOTAL_CHARS:
-      parts.append(f"\n[... remaining skills omitted ({total} chars loaded) ...]")
+      parts.append("\n[... remaining loaded skills truncated ...]")
       break
     parts.append(chunk)
     total += len(chunk)
 
+  if deferred:
+    parts.append("## Available skills (not loaded — call `load_skill` to fetch)\n")
+    parts.extend(skill_manifest_lines(deferred))
+
   if len(parts) <= 1:
     return ""
   return "\n\n---\n\n".join(parts)
+
+
+def load_skill_body_by_id(skill_id: str) -> dict[str, Any]:
+  """On-demand skill load for progressive disclosure."""
+  sid = (skill_id or "").strip()
+  for entry in list_skills():
+    if entry.get("id") == sid:
+      body = _read_skill_body(entry.get("path", ""))
+      if not body:
+        return {"ok": False, "error": "skill file empty or missing"}
+      return {
+        "ok": True,
+        "id": sid,
+        "name": entry.get("name", sid),
+        "body": body,
+        "path": entry.get("path"),
+      }
+  return {"ok": False, "error": f"skill not found: {sid}"}
 
 
 def clear_cache() -> None:

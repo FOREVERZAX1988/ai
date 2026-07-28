@@ -2,6 +2,8 @@
 
 让 op助手在**离路**时把本地改动变成 GitHub Pull Request，你在 PC 上拉取、审阅、合并即可。
 
+> **多仓 / Gitee / Fork 发布**：见 [PUBLISH.md](./PUBLISH.md)。**Issue 反馈**：见 [ISSUES.md](./ISSUES.md)。
+
 ## 前置条件
 
 1. **Git 凭据**：设备或 PC 上 `git push` 能成功（SSH key 或 credential helper）。

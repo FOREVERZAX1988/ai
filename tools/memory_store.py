@@ -130,6 +130,8 @@ def format_memory_prompt(params: Params, *, max_notes: int = 5) -> str:
   if memory_md and memory_md.strip() != "# MEMORY — 工作区记忆":
     parts.append("## Workspace memory (MEMORY.md)\n" + memory_md[:1500])
 
+  # Daily pages injected in chat_runner.build_daily_memory_prompt_block — avoid duplicate tokens here.
+
   prof_lines = [f"- {k}: {v}" for k, v in profile.items() if k != "updated_at" and v]
   if prof_lines:
     parts.append("## Vehicle profile\n" + "\n".join(prof_lines))

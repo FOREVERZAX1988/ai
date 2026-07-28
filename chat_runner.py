@@ -109,6 +109,7 @@ async def build_chat_messages(
     params,
     brand=drive_state.brand or "",
     available_tools=available_tool_names,
+    query=last_user_text,
   )
   if skills_block:
     system_parts.append(skills_block)
@@ -122,9 +123,25 @@ async def build_chat_messages(
     pass
 
   try:
+    from ai.tools.memory_protocol import memory_protocol_prompt_block
+    proto = memory_protocol_prompt_block()
+    if proto:
+      system_parts.append(proto)
+  except Exception:
+    pass
+
+  try:
     from ai.workspace import workspace_prompt_blocks
     for block in workspace_prompt_blocks():
       system_parts.append(block)
+  except Exception:
+    pass
+
+  try:
+    from ai.tools.daily_memory import build_daily_memory_prompt_block
+    daily_block = build_daily_memory_prompt_block()
+    if daily_block:
+      system_parts.append(daily_block)
   except Exception:
     pass
 
@@ -141,9 +158,27 @@ async def build_chat_messages(
   if wf_prompt:
     system_parts.append(wf_prompt)
 
+  consumer_mode = bool(body.get("consumerMode") or body.get("consumer_mode"))
+  if consumer_mode:
+    system_parts.append(
+      "# OP 车主模式\n"
+      "用户是不懂编程、不懂汽修的普通车主。请全程使用通俗中文，避免参数代号堆砌；"
+      "每次改设置前先用大白话解释「改什么、为什么、有什么感觉变化」，并等待用户在界面确认。"
+      "禁止未经确认直接 write_params(confirm=true)。"
+      "可用 consumer_lexicon 含义：跟车距离、变道风格、加减速舒适度等。"
+    )
+
   memory_block = format_memory_prompt(params)
   if memory_block:
     system_parts.append(memory_block)
+
+  try:
+    from ai.tools.workspace_enrich import enrichment_prompt_block
+    enrich = enrichment_prompt_block(params)
+    if enrich:
+      system_parts.append(enrich)
+  except Exception:
+    pass
 
   embed_cfg = load_embedding_config(params, config)
   rag_res = await search_documents(params, last_user_text, limit=3, embed_config=embed_cfg)
@@ -156,8 +191,10 @@ async def build_chat_messages(
     "Proceed with writes and diagnostics as needed."
   )
   system_parts.append(
-    "Memory nudge: if the user shared durable preferences, vehicle facts, or workflow steps worth reusing, "
-    "call update_user_profile and/or update_agent_memory before finishing."
+    "Memory protocol (mandatory): if the user shared durable preferences, vehicle facts, tuning outcomes, "
+    "or workflow steps worth reusing, you MUST call append_daily_memory, update_workspace_file (memory/user), "
+    "and/or update_agent_memory before finishing — do not only promise to remember. "
+    "When workspace_health reports sparse files, enrich USER.md / MEMORY.md from the conversation."
   )
   if is_admin_mode(params):
     system_parts.append(
@@ -376,6 +413,26 @@ async def run_chat_loop(
           )
           if msg.get("role") == "user":
             break
+    except Exception:
+      pass
+
+  if not body.get("_orchestration_phase") == "specialist":
+    last_user_text = ""
+    for msg in reversed(chat_messages):
+      if msg.get("role") == "user":
+        c = msg.get("content", "")
+        last_user_text = c if isinstance(c, str) else str(c)
+        break
+    try:
+      from ai.evolution_pipeline import run_post_chat_pipeline
+      from ai.tools.memory_protocol import conversation_tail
+      await run_post_chat_pipeline(
+        params,
+        session_id=str(session_id or ""),
+        last_user_text=last_user_text,
+        recent_messages=conversation_tail(chat_messages),
+        config=config,
+      )
     except Exception:
       pass
 

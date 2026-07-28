@@ -116,6 +116,7 @@ sudo reboot
 | GUI 开关无效 | 对比 `cat /data/github/runner/.service` 与 `github_runner.sh` 使用的服务名 |
 | 桌面供电 Runner 不启 | 电压 < 9V → `GithubRunnerSufficientVoltage=false` |
 | checkout /tmp 满 | 安装脚本设置 `TMPDIR=/data/tmp` |
+| clone GitHub 失败（`RPC failed` / `early EOF`） | 默认已走镜像；可覆盖 Variable `GITHUB_MIRROR_PREFIXES` |
 | 车机 `/data/openpilot` 被清空 | workflow BUILD_DIR 必须是 `/data/github/...`，非 live 目录 |
 | 编译失败 | `/data/github/logs`、Actions 日志、`grep_log actions.runner` |
 
@@ -161,6 +162,29 @@ Token 存入 **`/data/ai/config.json`** 的 **`ai_github_actions_pat`**（与 `a
 若设备上曾配置过旧版 `GithubActionsPat` Param，首次读取时会自动迁移到 `config.json` 并删除旧 Param。
 
 **注意**：registration token（安装 Runner 用）与 PAT **不是同一种** token。
+
+## 国内网络加速（clone GitHub）
+
+C3 在国内拉 GitHub 常出现 `RPC failed; curl 92 HTTP/2 stream ...` 或 `fatal: early EOF`。`build.yaml` 已默认启用 **GitHub 镜像加速**（方式 B），**无需在 C3 上配代理**。
+
+默认镜像（按顺序尝试，失败后回退直连 GitHub）：
+
+1. `https://ghfast.top/` + 原 URL
+2. `https://ghp.ci/` + 原 URL
+3. 直连 `https://github.com/...`
+
+### 自定义镜像（可选）
+
+仅在默认镜像不好用时，到 **Settings → Variables → Actions** 覆盖：
+
+| 变量 | 示例值 | 说明 |
+|------|--------|------|
+| `GITHUB_MIRROR_PREFIXES` | `https://ghfast.top/,https://ghp.ci/` | 逗号分隔前缀 |
+| `GITHUB_CLONE_FALLBACK_URLS` | `https://gitee.com/mouxangithub/openpilot.git` | 完整备用仓库 URL |
+
+设为空字符串 `GITHUB_MIRROR_PREFIXES` 可禁用镜像、仅直连（不推荐国内环境）。
+
+辅助脚本：`/data/github/ci/git_resilient_clone.sh`（安装 Runner 时自动部署）。
 
 ## 相关技能
 

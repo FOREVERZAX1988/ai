@@ -76,6 +76,7 @@ from ai.tools.rag_store import (
 from ai.tools.scheduler import list_tasks, remove_task, upsert_task
 from ai.tools.session_store import get_sessions, save_sessions
 from ai.tools.workflows import list_workflows
+from ai.tools.consumer_tools import consumer_bootstrap_payload
 from ai.tools.write_pending import confirm_pending, list_pending
 from ai.usage_log import load_embedding_usage, load_usage
 
@@ -108,6 +109,23 @@ async def _parse_chat_body(request: web.Request) -> tuple[dict[str, Any] | None,
   raw_messages = body.get("messages", [])
   if not isinstance(raw_messages, list) or not raw_messages:
     return None, None, _json_response({"ok": False, "error": "messages must be a non-empty list."}, status=400)
+
+  # Owner slash commands: /调手感 → workflow + consumer mode
+  try:
+    from ai.tools.consumer_wizards import resolve_wizard_by_slash
+    last = raw_messages[-1] if raw_messages else {}
+    if last.get("role") == "user":
+      content = last.get("content", "")
+      text = content if isinstance(content, str) else str(content)
+      wiz = resolve_wizard_by_slash(text)
+      if wiz:
+        body.setdefault("consumerMode", True)
+        body.setdefault("workflow", wiz.get("workflow_id"))
+        if text.strip() in (wiz.get("slash") or []) or len(text.strip().split()) <= 1:
+          last["content"] = wiz.get("starter_prompt") or text
+  except Exception:
+    pass
+
   return body, config, None
 
 
@@ -445,6 +463,7 @@ async def api_bootstrap(request: web.Request) -> web.Response:
     },
     "fork": fork_detected if fork_detected.get("ok") else None,
     "workflows": list_workflows(),
+    "consumer": consumer_bootstrap_payload(),
     "agents": list_agents(include_orchestrator=True),
     "agentsConfig": agents_enabled_payload(_PARAMS),
     "office": get_office_snapshot(),
@@ -491,10 +510,14 @@ async def api_providers(request: web.Request) -> web.Response:
 
 
 async def api_get_config(request: web.Request) -> web.Response:
+  from ai.common.context_config import compaction_settings
+  from ai.common.evolution_config import evolution_settings
   from ai.timezone_util import read_ai_timezone_name
 
   config = _read_ai_config()
   embed_cfg = load_embedding_config(_PARAMS, config)
+  ctx = compaction_settings(model=config.model)
+  evo = evolution_settings()
   return _json_response({
     "ok": True,
     "config": {
@@ -519,6 +542,25 @@ async def api_get_config(request: web.Request) -> web.Response:
       "embeddingApiKey": _mask_key(_read_param_str("ai_embedding_api_key")) if embed_cfg.mode == "separate" else "",
       "embeddingBaseUrl": embed_cfg.base_url,
       "embeddingConfigured": embed_cfg.is_configured,
+      "contextWindow": ctx.get("contextWindow"),
+      "compactionEnabled": ctx.get("enabled"),
+      "compactAfterTurns": ctx.get("compactAfterTurns"),
+      "keepRecentTurns": ctx.get("keepRecentTurns"),
+      "reserveTokens": ctx.get("reserveTokens"),
+      "compactionTokenTrigger": ctx.get("tokenTrigger"),
+      "compactThresholdTokens": ctx.get("compactThresholdTokens"),
+      "evolutionEnabled": evo.get("enabled"),
+      "evolutionAutoPropose": evo.get("autoPropose"),
+      "evolutionAutoWorkspace": evo.get("autoWorkspace"),
+      "evolutionAutoMemory": evo.get("autoMemory"),
+      "evolutionLlmReflect": evo.get("llmReflect"),
+      "evolutionToolDesc": evo.get("toolDescEvolution"),
+      "skillsDisclosureMax": evo.get("skillsDisclosureMax"),
+      "evolutionCandidates": evo.get("evolutionCandidates"),
+      "evolutionGepaEnabled": evo.get("gepaEnabled"),
+      "evolutionGepaIterations": evo.get("gepaIterations"),
+      "evolutionEvalCases": evo.get("evalCases"),
+      "evolutionUseDspy": evo.get("useDspy"),
     },
   })
 
@@ -553,6 +595,24 @@ async def api_post_config(request: web.Request) -> web.Response:
     _put("ai_temperature", body.get("temperature"))
     _put("ai_top_p", body.get("topP"))
     _put("ai_max_tokens", body.get("maxTokens"))
+    _put("ai_context_window", body.get("contextWindow"))
+    _put("ai_compaction_enabled", body.get("compactionEnabled"))
+    _put("ai_compact_after_turns", body.get("compactAfterTurns"))
+    _put("ai_keep_recent_turns", body.get("keepRecentTurns"))
+    _put("ai_reserve_tokens", body.get("reserveTokens"))
+    _put("ai_compaction_token_trigger", body.get("compactionTokenTrigger"))
+    _put("ai_evolution_enabled", body.get("evolutionEnabled"))
+    _put("ai_evolution_auto_propose", body.get("evolutionAutoPropose"))
+    _put("ai_evolution_auto_workspace", body.get("evolutionAutoWorkspace"))
+    _put("ai_evolution_auto_memory", body.get("evolutionAutoMemory"))
+    _put("ai_evolution_llm_reflect", body.get("evolutionLlmReflect"))
+    _put("ai_evolution_tool_desc", body.get("evolutionToolDesc"))
+    _put("ai_skills_disclosure_max", body.get("skillsDisclosureMax"))
+    _put("ai_evolution_candidates", body.get("evolutionCandidates"))
+    _put("ai_evolution_gepa_enabled", body.get("evolutionGepaEnabled"))
+    _put("ai_evolution_gepa_iterations", body.get("evolutionGepaIterations"))
+    _put("ai_evolution_eval_cases", body.get("evolutionEvalCases"))
+    _put("ai_evolution_use_dspy", body.get("evolutionUseDspy"))
     _put("ai_thinking_enabled", body.get("thinkingEnabled"))
     _put("ai_thinking_keep", body.get("thinkingKeep"))
     web_pin = body.get("webPin", "")
@@ -1115,6 +1175,189 @@ async def api_integrate_openpilot(request: web.Request) -> web.Response:
     return _json_response(result, status=200 if result.get("ok") else 500)
   except Exception as e:
     cloudlog.error(f"aid: api_integrate_openpilot error: {e}")
+    return _json_response({"ok": False, "error": str(e)}, status=500)
+
+
+async def api_publish(request: web.Request) -> web.Response:
+  """Publish units, settings, forge tokens, and execute publish."""
+  try:
+    from ai.common.publish_config import save_publish_settings
+    from ai.tools.forge import forge_auth_status, set_forge_token
+    from ai.tools.publish_tools import publish_changes, publish_status, set_forge_token_tool
+    from ai.tools.publish_units import discover_publish_units
+
+    if request.method == "GET":
+      view = request.query.get("view", "status")
+      if view == "units":
+        dirty_only = request.query.get("dirty", "0") in ("1", "true")
+        return _json_response(discover_publish_units(include_clean=not dirty_only))
+      return _json_response(publish_status())
+
+    try:
+      body = await request.json()
+    except json.JSONDecodeError:
+      return _json_response({"ok": False, "error": "Invalid JSON"}, status=400)
+
+    op = str(body.get("operation") or body.get("op") or "publish").strip().lower()
+
+    if op in ("save_settings", "settings"):
+      patch = body.get("settings") or body
+      return _json_response(save_publish_settings(patch if isinstance(patch, dict) else {}))
+
+    if op in ("set_forge_token", "forge_token"):
+      return _json_response(set_forge_token_tool(
+        forge=str(body.get("forge") or "github"),
+        token=str(body.get("token") or ""),
+        confirm=True,
+      ))
+
+    if op in ("verify_forge", "forge_verify"):
+      forge = str(body.get("forge") or "github")
+      token = str(body.get("token") or "").strip()
+      if token:
+        set_forge_token(forge, token)
+      return _json_response(forge_auth_status(forge, repo_url=str(body.get("repo_url") or "")))
+
+    if op == "publish":
+      state = _get_state_reader().update(timeout=0)
+      from ai.system.host_env import is_pc_dev
+
+      def _run(*, confirm: bool) -> dict:
+        if confirm:
+          allowed, reason = is_action_allowed("write_param", state, admin=is_admin_mode(_PARAMS))
+          if not allowed:
+            return {"ok": False, "error": reason}
+        return publish_changes(
+          unit_id=str(body.get("unit_id") or "openpilot"),
+          target_mode=str(body.get("target_mode") or ""),
+          title=str(body.get("title") or ""),
+          body=str(body.get("body") or ""),
+          base_branch=str(body.get("base_branch") or ""),
+          branch=str(body.get("branch") or ""),
+          commit_message=str(body.get("commit_message") or ""),
+          paths=body.get("paths"),
+          draft=bool(body.get("draft")),
+          remote=str(body.get("remote") or ""),
+          repo_url=str(body.get("repo_url") or ""),
+          severity=str(body.get("severity") or ""),
+          confirm=confirm,
+          params=_PARAMS,
+        )
+
+      if not body.get("confirm"):
+        allowed, reason = is_action_allowed("write_param", state, admin=is_admin_mode(_PARAMS))
+        if not allowed and not is_pc_dev():
+          return _json_response({"ok": False, "error": reason}, status=403)
+        return _json_response(_run(confirm=False))
+      return _json_response(_run(confirm=True))
+
+    return _json_response({"ok": False, "error": f"unknown operation: {op}"}, status=400)
+  except Exception as e:
+    cloudlog.error(f"aid: api_publish error: {e}")
+    return _json_response({"ok": False, "error": str(e)}, status=500)
+
+
+async def api_issues(request: web.Request) -> web.Response:
+  """Issue templates, settings, and create issue."""
+  try:
+    from ai.common.publish_config import save_publish_settings
+    from ai.tools.issue_tools import (
+      create_issue,
+      discover_issue_templates,
+      issue_status,
+      report_issue,
+    )
+
+    if request.method == "GET":
+      view = request.query.get("view", "status")
+      unit_id = str(request.query.get("unit_id") or "assistant")
+      if view == "templates":
+        return _json_response(discover_issue_templates(unit_id=unit_id))
+      return _json_response(issue_status())
+
+    try:
+      body = await request.json()
+    except json.JSONDecodeError:
+      return _json_response({"ok": False, "error": "Invalid JSON"}, status=400)
+
+    op = str(body.get("operation") or body.get("op") or "create").strip().lower()
+
+    if op in ("save_settings", "settings"):
+      patch = body.get("settings") or {}
+      if isinstance(patch, dict) and patch.get("issue_publish"):
+        return _json_response(save_publish_settings({"issue_publish": patch["issue_publish"]}))
+      if isinstance(patch, dict):
+        return _json_response(save_publish_settings(patch))
+      return _json_response({"ok": False, "error": "invalid settings"}, status=400)
+
+    if op == "create":
+      state = _get_state_reader().update(timeout=0)
+      from ai.system.host_env import is_pc_dev
+
+      def _run(*, confirm: bool) -> dict:
+        if confirm:
+          allowed, reason = is_action_allowed("write_param", state, admin=is_admin_mode(_PARAMS))
+          if not allowed:
+            return {"ok": False, "error": reason}
+        fields = body.get("fields")
+        field_map = {str(k): str(v) for k, v in fields.items()} if isinstance(fields, dict) else None
+        labels = body.get("labels")
+        label_list = [str(x) for x in labels] if isinstance(labels, list) else None
+        return create_issue(
+          unit_id=str(body.get("unit_id") or "assistant"),
+          target_mode=str(body.get("target_mode") or ""),
+          repo_url=str(body.get("repo_url") or ""),
+          template_id=str(body.get("template_id") or body.get("template") or "bug"),
+          title=str(body.get("title") or ""),
+          body=str(body.get("body") or ""),
+          fields=field_map,
+          labels=label_list,
+          attach_audit=bool(body.get("attach_audit", True)),
+          confirm=confirm,
+          params=_PARAMS,
+        )
+
+      if not body.get("confirm"):
+        allowed, reason = is_action_allowed("write_param", state, admin=is_admin_mode(_PARAMS))
+        if not allowed and not is_pc_dev():
+          return _json_response({"ok": False, "error": reason}, status=403)
+        return _json_response(_run(confirm=False))
+      return _json_response(_run(confirm=True))
+
+    if op == "report":
+      state = _get_state_reader().update(timeout=0)
+      from ai.system.host_env import is_pc_dev
+
+      def _report(*, confirm: bool) -> dict:
+        if confirm:
+          allowed, reason = is_action_allowed("write_param", state, admin=is_admin_mode(_PARAMS))
+          if not allowed:
+            return {"ok": False, "error": reason}
+        return report_issue(
+          kind=str(body.get("kind") or "bug"),
+          unit_id=str(body.get("unit_id") or ""),
+          title=str(body.get("title") or ""),
+          repro_steps=str(body.get("repro_steps") or body.get("repro") or ""),
+          expected=str(body.get("expected") or ""),
+          actual=str(body.get("actual") or ""),
+          summary=str(body.get("summary") or ""),
+          proposal=str(body.get("proposal") or ""),
+          severity=str(body.get("severity") or "ui"),
+          attach_audit=bool(body.get("attach_audit", True)),
+          confirm=confirm,
+          params=_PARAMS,
+        )
+
+      if not body.get("confirm"):
+        allowed, reason = is_action_allowed("write_param", state, admin=is_admin_mode(_PARAMS))
+        if not allowed and not is_pc_dev():
+          return _json_response({"ok": False, "error": reason}, status=403)
+        return _json_response(_report(confirm=False))
+      return _json_response(_report(confirm=True))
+
+    return _json_response({"ok": False, "error": f"unknown operation: {op}"}, status=400)
+  except Exception as e:
+    cloudlog.error(f"aid: api_issues error: {e}")
     return _json_response({"ok": False, "error": str(e)}, status=500)
 
 

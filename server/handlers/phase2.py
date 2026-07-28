@@ -178,6 +178,135 @@ async def api_platform_toolsets(request: web.Request) -> web.Response:
   return json_response({"ok": True, "toolsets": list_toolsets()})
 
 
+async def api_platform_backup(request: web.Request) -> web.Response:
+  from ai.server.deps import json_response, params
+  from ai.tools.platform_backup import (
+    backup_manifest,
+    build_platform_bundle,
+    export_platform_bundle,
+    parse_uploaded_bundle,
+    restore_platform_bundle,
+  )
+
+  p = request.app.get("params") or params()
+  if request.method == "GET":
+    view = str(request.query.get("view") or "manifest").strip()
+    if view == "bundle":
+      include_secrets = str(request.query.get("include_secrets") or "").lower() in ("1", "true", "yes")
+      return json_response(build_platform_bundle(p, include_secrets=include_secrets))
+    return json_response({"ok": True, "manifest": backup_manifest(p)})
+
+  try:
+    body = await request.json()
+  except Exception:
+    body = {}
+  if not isinstance(body, dict):
+    body = {}
+  op = str(body.get("operation") or "export").strip()
+
+  if op == "export":
+    include_secrets = bool(body.get("include_secrets"))
+    return json_response(export_platform_bundle(p, include_secrets=include_secrets))
+
+  if op == "restore":
+    bundle = body.get("bundle")
+    if isinstance(bundle, str):
+      parsed = parse_uploaded_bundle(bundle)
+      if not parsed.get("ok"):
+        return json_response(parsed, status=400)
+      bundle = parsed
+    return json_response(restore_platform_bundle(
+      p,
+      bundle if isinstance(bundle, dict) else {},
+      mode=str(body.get("mode") or "merge"),
+      sections=body.get("sections") if isinstance(body.get("sections"), list) else None,
+      confirm=bool(body.get("confirm")),
+    ))
+
+  return json_response({"ok": False, "error": f"unknown operation: {op}"}, status=400)
+
+
+async def api_platform_workspace_health(request: web.Request) -> web.Response:
+  from ai.server.deps import json_response, params
+  from ai.tools.workspace_enrich import bootstrap_workspace_templates, workspace_health
+
+  p = request.app.get("params") or params()
+  if request.method == "GET":
+    return json_response(workspace_health())
+
+  try:
+    body = await request.json()
+  except Exception:
+    body = {}
+  op = str((body or {}).get("operation") or "bootstrap")
+  if op == "bootstrap":
+    return json_response(bootstrap_workspace_templates(force=bool((body or {}).get("force"))))
+  return json_response({"ok": False, "error": "unknown operation"}, status=400)
+
+
+async def api_platform_evolution(request: web.Request) -> web.Response:
+  from ai.server.deps import json_response, params
+  from ai.evolution_pipeline import pipeline_log, run_evolution_pipeline_manual
+  from ai.tools.skill_evolution import analyze_execution_traces, evolution_status, evolve_skill_proposal
+
+  p = request.app.get("params") or params()
+  if request.method == "GET":
+    view = str(request.query.get("view") or "status").strip()
+    if view == "traces":
+      limit = int(request.query.get("limit", "8") or "8")
+      return json_response(analyze_execution_traces(p, limit=limit))
+    if view == "pipeline":
+      return json_response(pipeline_log(p))
+    return json_response(evolution_status(p))
+
+  try:
+    body = await request.json()
+  except Exception:
+    body = {}
+  op = str((body or {}).get("operation") or "propose").strip()
+  if op == "gepa":
+    from ai.evolution.gepa_engine import evolve_skill_gepa, gepa_status
+    if str((body or {}).get("dry_run") or "").lower() in ("1", "true", "yes"):
+      from ai.evolution.config import EvolutionRunConfig
+      run = EvolutionRunConfig.from_params(
+        skill_id=str((body or {}).get("skill_id") or (body or {}).get("skillId") or "memory-protocol"),
+        dry_run=True,
+      )
+      return json_response(await evolve_skill_gepa(p, skill_id=run.skill_id, run=run))
+    if str((body or {}).get("status") or "").lower() in ("1", "true"):
+      return json_response(gepa_status())
+    from ai.evolution.config import EvolutionRunConfig
+    from ai.tools.skill_evolution import analyze_execution_traces
+    skill_id = str((body or {}).get("skill_id") or (body or {}).get("skillId") or (body or {}).get("focus") or "memory-protocol")
+    run = EvolutionRunConfig.from_params(
+      skill_id=skill_id,
+      focus=str((body or {}).get("focus") or ""),
+      eval_source=str((body or {}).get("eval_source") or (body or {}).get("evalSource") or "sessiondb"),
+      iterations=int((body or {}).get("iterations") or 0) or None,
+    )
+    traces = analyze_execution_traces(p, limit=12)
+    return json_response(await evolve_skill_gepa(
+      p,
+      skill_id=skill_id,
+      run=run,
+      traces=traces.get("traces") or [],
+    ))
+  if op == "pipeline":
+    return json_response(await run_evolution_pipeline_manual(
+      p,
+      session_id=str((body or {}).get("session_id") or (body or {}).get("sessionId") or ""),
+      focus=str((body or {}).get("focus") or ""),
+    ))
+  return json_response(await evolve_skill_proposal(
+    p,
+    title=str((body or {}).get("title") or ""),
+    trace_session_id=str((body or {}).get("trace_session_id") or (body or {}).get("sessionId") or ""),
+    focus=str((body or {}).get("focus") or ""),
+    body=str((body or {}).get("body") or ""),
+    use_llm=bool((body or {}).get("use_llm", True)),
+  ))
+
+
 async def api_scheduler_nl(request: web.Request) -> web.Response:
   from ai.server.deps import json_response, params
   from ai.tools.scheduler import upsert_task_from_nl

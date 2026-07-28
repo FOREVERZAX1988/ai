@@ -6,7 +6,7 @@ import re
 import time
 from typing import Any, TYPE_CHECKING
 
-from ai.tools.adaptation_pr_tools import generate_adaptation_pr_draft
+from ai.tools.publish_tools import publish_changes
 from ai.common.repo_targets import (
   LABEL_AUTO_REVIEW,
   LABEL_SAFE_MERGE,
@@ -140,114 +140,27 @@ def git_publish_pull_request(
   confirm: bool = False,
   params: "Params | None" = None,
 ) -> dict[str, Any]:
-  """Commit local changes, push branch, open GitHub PR (one-shot)."""
-  meta = repo_target_meta(repo_target)
-  target = meta["repo_target"]
-  url = (repo_url or meta["repo_url"] or DEFAULT_REPO).strip()
-  base = (base_branch or meta["default_base"]).strip()
-  owner, repo = parse_repo_url(url)
-
-  with git_repo_context(target):
-    status = git_status()
-    diff_stat = git_diff(stat=True)
-
-    if not title:
-      title = f"chore(ai): update from {status.get('branch') or target}"
-
-    head_branch, branch_err = _ensure_branch(base_branch=base, branch=branch, title=title)
-    if branch_err and not head_branch:
-      return branch_err if branch_err.get("ok") is False else {"ok": False, "error": "branch_setup_failed", **branch_err}
-    if not head_branch:
-      return {"ok": False, "error": "could not determine head branch"}
-
-    labels = suggest_pr_labels(
-      repo_target=target,
-      severity=severity,
-      request_auto_fix=request_auto_fix,
-    ) if auto_label else []
-
-    preview = {
-      "action": "git_publish_pull_request",
-      "repo_target": target,
-      "title": title,
-      "head": head_branch,
-      "base": base,
-      "remote": remote,
-      "repo": f"{owner}/{repo}",
-      "repo_root": meta.get("repo_root"),
-      "draft": draft,
-      "labels": labels,
-      "dirty_count": status.get("dirty_count"),
-      "diff_stat": (diff_stat.get("stdout") or "")[:2000],
-      "steps": ["commit", "push -u", "create PR", "add labels"],
-      "doc": "ai/docs/PR_AUTOMATION.md",
-    }
-    if branch_err:
-      preview["branch_setup"] = branch_err
-
-    if not confirm:
-      return {"ok": True, "needs_confirmation": True, "preview": preview}
-
-    if status.get("dirty_count", 0) == 0 and not branch_err:
-      return {"ok": False, "error": "nothing to commit", "preview": preview}
-
-    msg = (commit_message or title).strip()[:500]
-    path_list = [str(x) for x in paths] if isinstance(paths, list) else None
-    committed = git_commit(message=msg, add_all=not path_list, paths=path_list)
-    if not committed.get("ok"):
-      return {**committed, "preview": preview}
-
-    pushed = git_push(remote=remote, branch=head_branch, set_upstream=True)
-    if not pushed.get("ok"):
-      return {**pushed, "preview": preview, "hint": "commit succeeded; fix git credentials and retry git_push"}
-
-  token, err = _require_pat(params)
-  if err:
-    return {
-      **err,
-      "partial": True,
-      "committed": True,
-      "pushed": True,
-      "branch": head_branch,
-      "hint": "Code pushed; configure PAT then create PR manually",
-    }
-
-  pr_body = body.strip()
-  if not pr_body:
-    draft_md = generate_adaptation_pr_draft(project_name=title, summary=msg)
-    pr_body = draft_md.get("markdown", "")
-
-  pr = create_pull_request(
-    token,
-    owner,
-    repo,
-    title=title[:250],
-    head=head_branch,
-    base=base,
-    body=pr_body[:65000],
+  """Commit local changes, push branch, open PR/MR (delegates to publish_changes)."""
+  del params
+  unit_id = "assistant" if (repo_target or "").strip().lower() in ("ai", "assistant", "op-assistant", "op助手") else "openpilot"
+  target_mode = "assistant_upstream" if unit_id == "assistant" and not repo_url else ""
+  return publish_changes(
+    unit_id=unit_id,
+    target_mode=target_mode,
+    title=title,
+    body=body,
+    base_branch=base_branch,
+    branch=branch,
+    commit_message=commit_message,
+    paths=paths,
     draft=draft,
+    remote=remote,
+    repo_url=repo_url,
+    severity=severity,
+    request_auto_fix=request_auto_fix,
+    auto_label=auto_label,
+    confirm=confirm,
   )
-  if not pr.get("ok"):
-    return {**pr, "partial": True, "branch": head_branch, "pushed": True}
-
-  pull_number = (pr.get("pull") or {}).get("number")
-  label_res = None
-  if pull_number and labels:
-    label_res = add_pull_request_labels(token, owner, repo, int(pull_number), labels)
-
-  return {
-    "ok": True,
-    "pull_request_url": pr.get("html_url"),
-    "pull": pr.get("pull"),
-    "pull_number": pull_number,
-    "labels": labels,
-    "labels_applied": label_res,
-    "branch": head_branch,
-    "base": base,
-    "repo_target": target,
-    "commit": committed.get("staged_stat"),
-    "next": "OpenCode reviews PR (opencode-pr.yml); safe-merge if ai-safe-merge label",
-  }
 
 
 def list_github_pull_requests(

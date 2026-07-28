@@ -103,12 +103,20 @@ def create_pending(
     "created_at": int(time.time()),
   }
   _save_all(params, store)
+  consumer_preview = None
+  try:
+    from ai.tools.consumer_tools import enrich_write_preview
+    enriched = enrich_write_preview(preview)
+    consumer_preview = enriched.get("consumer")
+  except Exception:
+    pass
   return {
     "ok": True,
     "needs_confirmation": True,
     "pending_id": pid,
     "action": action,
     "preview": preview,
+    "consumer_preview": consumer_preview,
     "message": "User must confirm in Web UI or set confirm=true after explicit approval.",
   }
 

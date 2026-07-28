@@ -1,31 +1,35 @@
-# 调参指南
+# 调参指南（维护者与车主）
 
-op助手面向**通用 openpilot**（非单一 fork）。调参前请 offroad，改参后封闭场地验证。
+车主向简明版见 Wiki [Tuning-for-Owners](wiki/Tuning-for-Owners.md)。
 
-## 流程建议
+## 原则
 
-1. **快照**：`save_tune_snapshot` 或 Web 调参护照记录。
-2. **小步修改**：优先 `list_sp_settings` / `read_params`，一次只改少量相关 Param。
-3. **验证**：`compare_tune_ab`、`score_tune_session`、`route_event_timeline`。
-4. **回滚**：`restore_tune_snapshot` 或调参护照中的历史记录。
+1. **先感受后参数** — 用自然语言描述问题  
+2. **最小改动** — 每次 1–3 项，试开再迭代  
+3. **先快照** — `snapshot_tune_state` / 调参护照自动记录  
+4. **须确认** — Web 确认卡或终端 `y`；禁止行驶中写入  
 
-## 横向（ALKA / 车道保持）
+## 工作流
 
-- 技能：`alka-troubleshooting`、`sp-tuning`。
-- 关注：MADS、`LiveTorque`、转向延迟、路线 `car_porting_steering_accuracy`。
+| 工作流 ID | 用途 |
+|-----------|------|
+| `tune_session` | 标准调优会话 |
+| `post_tune_validation` | 改参后量化验证 |
+| `compare_routes_tune` | 改前改后路线对比 |
 
-## 纵向（跟车）
+Web：`/调手感` 或首屏向导。CLI：`op tune`。
 
-- 技能：`longitudinal-tuning`。
-- 关注：跟车距离、加减速曲线、限速辅助（`sp-speed-limit`）。
+## 工具（AI 内部）
 
-## 品牌差异
+- `snapshot_tune_state` / `restore_tune_snapshot`  
+- `diff_params` + consumer_lexicon 通俗展示  
+- `list_tune_passport` — 历史记录  
 
-按 CarParams 品牌启用对应 `sp-brand-*` 技能；丰田 SecOC 单独走 `secoc-toyota`。
+## 技能
 
-## 工具
+启用 `sp-tuning` 等相关技能（Onboarding 可选「调优」）。
 
-- `snapshot_tune_state`、`diff_params`、`apply_sp_tune_preset`
-- 路线：`suggest_tune_from_route`、`apply_tune_from_route`（预览后确认）
+## 相关文档
 
-调参记录可在 **设置 → 平台 → 调参护照** 查看时间线。
+- [CAPABILITIES.md](CAPABILITIES.md)  
+- [VEHICLE_ADAPTATION_GUIDE.md](VEHICLE_ADAPTATION_GUIDE.md)（适配与调参边界）

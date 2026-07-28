@@ -7,6 +7,7 @@ const TerminalAi = (() => {
   let running = false;
   let activeJobId = null;
   let lineBuffer = '';
+  let pendingConfirm = null;
 
   const ANSI = {
     reset: '\x1b[0m',
@@ -282,6 +283,7 @@ const TerminalAi = (() => {
     const t = (line || '').trim();
     if (!t) return false;
     if (t.startsWith('!')) return false;
+    if (/^op(\s|$)/i.test(t)) return false;
     if (t === '/help' || t === 'help' || t === '?') return true;
     if (t.startsWith('?') || t.startsWith('/ai ') || t.startsWith('ai:')) return true;
     if (/[\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af]/.test(t)) return true;
@@ -335,46 +337,104 @@ const TerminalAi = (() => {
     } catch {}
   }
 
-  async function pollJob(jobId, writer) {
-    let since = 0;
-    while (running && activeJobId === jobId) {
-      const { data } = await deps.api('GET', `/api/ai/chat/jobs/${encodeURIComponent(jobId)}?since=${since}`);
-      if (!data?.ok) {
-        writer?.error(data?.error || '请求失败');
-        break;
-      }
-
-      for (const ev of data.events || []) {
-        const seq = Number(ev._seq || 0);
-        if (seq > since) since = seq;
-
-        if (ev.type === 'reasoning') {
-          writer?.append(ev.delta || '', 'reasoning');
-        } else if (ev.type === 'content') {
-          writer?.append(ev.delta || '', 'content');
-        } else if (ev.type === 'tool_call') {
-          writer?.flushAll();
-          writer?.toolCall(ev.name || 'tool');
-        } else if (ev.type === 'tool_result') {
-          const ok = ev.result?.ok !== false && !ev.result?.error;
-          writer?.toolResult(ok);
-        } else if (ev.type === 'error') {
-          writer?.flushAll();
-          writer?.error(ev.error || 'error');
-        }
-      }
-
-      if (['done', 'error', 'cancelled'].includes(data.status)) {
-        writer?.flushAll();
-        if (data.status === 'error') {
-          writer?.error(data.error || '任务失败');
-        } else if (data.status === 'cancelled') {
-          writer?.done('已取消');
-        }
-        break;
-      }
-      await sleep(350);
+  async function streamOpEvents(body, writer, term) {
+    const res = await fetch('/api/ai/terminal/op', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'text/event-stream' },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      let err = `HTTP ${res.status}`;
+      try {
+        const j = await res.json();
+        err = j.error || err;
+      } catch {}
+      writer.error(err);
+      return;
     }
+    const reader = res.body?.getReader();
+    if (!reader) {
+      writer.error('无流式响应');
+      return;
+    }
+    const decoder = new TextDecoder();
+    let buf = '';
+    while (running) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      const lines = buf.split('\n');
+      buf = lines.pop() || '';
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed.startsWith('data:')) continue;
+        let ev;
+        try {
+          ev = JSON.parse(trimmed.slice(5).trim());
+        } catch {
+          continue;
+        }
+        if (ev.type === 'reasoning') {
+          writer.append(ev.delta || ev.content || '', 'reasoning');
+        } else if (ev.type === 'content') {
+          writer.append(ev.delta || ev.content || '', 'content');
+        } else if (ev.type === 'tool_call') {
+          writer.flushAll();
+          writer.toolCall(ev.name || 'tool');
+        } else if (ev.type === 'tool_result') {
+          const result = ev.result || {};
+          if (result.needs_confirmation && result.pending_id) {
+            writer.flushAll();
+            printConsumerConfirm(term, result);
+            pendingConfirm = { pendingId: result.pending_id, writer };
+            running = false;
+            return;
+          }
+          const ok = result.ok !== false && !result.error;
+          writer.toolResult(ok);
+        } else if (ev.type === 'error') {
+          writer.flushAll();
+          writer.error(ev.error || 'error');
+        } else if (ev.type === 'done') {
+          writer.flushAll();
+          if (ev.ok === false) writer.error(ev.error || 'failed');
+        }
+      }
+    }
+    writer.flushAll();
+  }
+
+  function printConsumerConfirm(term, result) {
+    const cp = result.consumer_preview || {};
+    const rows = cp.rows || [];
+    writeln(term, `\x1b[33m[op] 需要您确认以下设置变更（车辆需静止）\x1b[0m`);
+    if (cp.summary) writeln(term, `\x1b[90m${cp.summary}\x1b[0m`);
+    for (const r of rows) {
+      writeln(term, `  \x1b[1m${r.label || r.key}\x1b[0m: ${r.before} → \x1b[32m${r.after}\x1b[0m`);
+    }
+    writeln(term, '\x1b[90m输入 y 确认应用，n 取消\x1b[0m');
+  }
+
+  async function handlePendingConfirm(line, term, { aiOnly = false } = {}) {
+    if (!pendingConfirm) return false;
+    const ans = (line || '').trim().toLowerCase();
+    const { pendingId, writer } = pendingConfirm;
+    pendingConfirm = null;
+    if (ans === 'y' || ans === 'yes' || ans === '是') {
+      try {
+        const { data } = await deps.api('POST', '/api/ai/terminal/op/confirm', { pending_id: pendingId });
+        writer.toolResult(!!data?.ok);
+        if (!data?.ok) writer.error(data?.error || '确认失败');
+      } catch (e) {
+        writer.error(e?.message || String(e));
+      }
+    } else {
+      shellHint(term, '[op] 已取消');
+    }
+    running = false;
+    deps.onAiActivity?.(false);
+    if (aiOnly) writePrompt(term);
+    return true;
   }
 
   async function runQuery(rawLine, term, { aiOnly = false } = {}) {
@@ -385,7 +445,7 @@ const TerminalAi = (() => {
     }
     if (!query || running) return;
     if (!deps.api || !deps.SessionStore) {
-      shellHint(term, '[op助手] AI 未初始化');
+      shellHint(term, '[op] AI 未初始化');
       return;
     }
 
@@ -405,53 +465,28 @@ const TerminalAi = (() => {
     }
 
     writeln(term, `\x1b[36m[你]\x1b[0m ${query}`);
-    shellHint(term, '[op助手] 处理中…');
+    shellHint(term, '[op] 处理中…');
     writer.markProcessing();
 
     try {
       const messages = prepareMessages(session, query);
-      const idempotencyKey = `terminal-${sessionId}-${Date.now()}`;
-      const queueExtras = (typeof CommandQueue !== 'undefined' && deps.getState?.()?.driving)
-        ? CommandQueue.payloadExtras(true)
-        : {};
-
-      const { data: startData } = await deps.api('POST', '/api/ai/chat/jobs', {
+      await streamOpEvents({
         sessionId,
-        idempotencyKey,
         messages,
         tools: true,
-        mode: deps.chatMode || 'unlimited',
-        maxToolRounds: 'infinite',
-        source: 'terminal',
-        ...queueExtras,
-      });
-
-      if (!startData?.ok) {
-        writer.error(startData?.error || '无法启动 AI 任务');
-        return;
-      }
-      if (startData.queued || startData.action === 'collected') {
-        const pos = startData.queuePosition || startData.collectBatch || '?';
-        writer.done(`已加入行驶队列（${pos}）`);
-        return;
-      }
-      if (!startData.jobId) {
-        writer.error('无法启动 AI 任务');
-        return;
-      }
-
-      activeJobId = startData.jobId;
-      deps.SessionStore.setActiveJobId?.(sessionId, startData.jobId);
-      await pollJob(startData.jobId, writer);
+        consumerMode: true,
+        source: 'terminal-op',
+      }, writer, term);
       deps.syncSessionsToDevice?.().catch(() => {});
       if (writer.replyStarted) writeln(term, '');
     } catch (e) {
       writer.error(e?.message || String(e));
     } finally {
-      running = false;
-      activeJobId = null;
-      deps.onAiActivity?.(false);
-      if (aiOnly) writePrompt(term);
+      if (!pendingConfirm) {
+        running = false;
+        deps.onAiActivity?.(false);
+        if (aiOnly) writePrompt(term);
+      }
     }
   }
 
@@ -466,7 +501,7 @@ const TerminalAi = (() => {
 
       if (ch === '\x1b') {
         const chunk = data.slice(i);
-        if (!aiOnly && ws?.readyState === WebSocket.OPEN && !deps.ptyMuted?.()) {
+        if (!aiOnly && ws?.readyState === WebSocket.OPEN && !deps.ptyMuted?.() && !pendingConfirm) {
           ws.send(chunk);
         }
         return;
@@ -476,6 +511,11 @@ const TerminalAi = (() => {
         const line = lineBuffer;
         lineBuffer = '';
         if (aiOnly) term.write('\r\n');
+        if (pendingConfirm) {
+          handlePendingConfirm(line, term, { aiOnly });
+          i += 1;
+          continue;
+        }
         if (shouldRouteToAi(line)) {
           if (!aiOnly && ws?.readyState === WebSocket.OPEN) {
             ws.send('\x15');
@@ -511,7 +551,7 @@ const TerminalAi = (() => {
         if (aiOnly) term.write(ch);
       }
 
-      if (!aiOnly && ws?.readyState === WebSocket.OPEN && !deps.ptyMuted?.()) {
+      if (!aiOnly && ws?.readyState === WebSocket.OPEN && !deps.ptyMuted?.() && !pendingConfirm) {
         ws.send(ch);
       }
       i += 1;
@@ -519,7 +559,7 @@ const TerminalAi = (() => {
   }
 
   function writePrompt(term) {
-    write(term, '\x1b[32mop助手>\x1b[0m ');
+    write(term, '\x1b[32mop>\x1b[0m ');
   }
 
   function attach(term, ws, opts = {}) {
@@ -531,7 +571,10 @@ const TerminalAi = (() => {
   }
 
   function printHelp(term, { aiOnly = false } = {}) {
-    writeln(term, '\x1b[33m终端 AI\x1b[0m：自然语言 / \x1b[36m?\x1b[0m / \x1b[36m/ai\x1b[0m 直接在此对话；\x1b[36m!\x1b[0m 强制 Shell；\x1b[36m/help\x1b[0m 显示本帮助。');
+    writeln(term, '\x1b[33mOP 终端\x1b[0m（Hermes 风格）：');
+    writeln(term, '  \x1b[36mop status|tune|doctor|adapt|chat "…"\x1b[0m — Shell 中直接敲');
+    writeln(term, '  自然语言 / \x1b[36m?\x1b[0m / \x1b[36m/ai\x1b[0m — 等价 \x1b[36mop chat\x1b[0m');
+    writeln(term, '  \x1b[36m!\x1b[0m 前缀 — 强制 Shell；改参时会提示 y/n 确认');
     if (aiOnly) writePrompt(term);
   }
 

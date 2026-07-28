@@ -3541,6 +3541,73 @@ html, body {
     var(--bg);
 }
 
+.op-quick-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding: 0.75rem 1.5rem 0;
+  flex: 0 0 auto;
+}
+
+.op-quick-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.45rem 0.85rem;
+  border-radius: 999px;
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.12));
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text, #e8e8e8);
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.op-quick-btn:hover {
+  background: rgba(78, 205, 196, 0.12);
+  border-color: rgba(78, 205, 196, 0.35);
+}
+
+.write-confirm-consumer {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin: 0.5rem 0 0.75rem;
+}
+
+.write-confirm-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 0.5rem 0.75rem;
+  align-items: baseline;
+  padding: 0.5rem 0.65rem;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.2);
+  font-size: 0.9rem;
+}
+
+.write-confirm-row .label {
+  font-weight: 600;
+}
+
+.write-confirm-row .hint {
+  grid-column: 1 / -1;
+  font-size: 0.75rem;
+  opacity: 0.7;
+}
+
+.write-confirm-summary {
+  font-size: 0.9rem;
+  line-height: 1.45;
+  margin-bottom: 0.35rem;
+}
+
+.write-confirm-raw {
+  max-height: 8rem;
+  font-size: 0.75rem;
+  opacity: 0.75;
+}
+
 .messages {
   padding: 1.25rem 1.5rem;
   scroll-behavior: smooth;
@@ -4379,4 +4446,84 @@ html, body {
   border-left: 2px solid var(--accent, #6af);
   max-height: 6rem;
   overflow-y: auto;
+}
+
+.publish-token-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.publish-token-row .password-field {
+  flex: 1 1 12rem;
+  min-width: 10rem;
+}
+
+.publish-token-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  align-items: center;
+}
+
+.publish-token-user {
+  font-size: 0.8rem;
+  color: var(--text-secondary, #9aa);
+}
+
+.publish-units-wrap {
+  margin-top: 0.75rem;
+}
+
+.publish-unit-card {
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+  border-radius: 8px;
+  padding: 0.65rem 0.75rem;
+  margin-bottom: 0.5rem;
+}
+
+.publish-unit-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.35rem;
+}
+
+.publish-unit-actions {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  margin-top: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.publish-unit-actions .field-input {
+  flex: 1;
+  min-width: 8rem;
+}
+
+.publish-prompt-panel {
+  max-width: 28rem;
+}
+
+.issue-form-wrap .issue-summary-input {
+  width: 100%;
+  min-height: 5rem;
+  resize: vertical;
+}
+
+.settings-sub-accordion {
+  margin: 0.5rem 0;
+}
+
+.settings-sub-summary {
+  cursor: pointer;
+  font-weight: 500;
+  padding: 0.35rem 0;
+}
+
+.settings-sub-body {
+  padding: 0.35rem 0 0.5rem;
 }
