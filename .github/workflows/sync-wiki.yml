@@ -23,15 +23,18 @@ jobs:
 
       - name: Push docs/wiki to GitHub Wiki git
         env:
-          GH_TOKEN: ${{ secrets.WIKI_SYNC_TOKEN || secrets.GITHUB_TOKEN }}
+          WIKI_SYNC_TOKEN: ${{ secrets.WIKI_SYNC_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           WIKI_SLUG: ${{ github.repository_owner }}/${{ github.event.repository.name }}.wiki
-          COMMIT_MSG: docs: sync wiki from ${{ github.sha }}
+          COMMIT_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
+          GH_TOKEN="${WIKI_SYNC_TOKEN:-${GITHUB_TOKEN}}"
           if [[ -z "${GH_TOKEN}" ]]; then
-            echo "::error::Missing GH_TOKEN; add repository secret WIKI_SYNC_TOKEN (classic PAT with repo scope)"
+            echo "::error::Missing token; add repository secret WIKI_SYNC_TOKEN (classic PAT with repo scope)"
             exit 1
           fi
+          COMMIT_MSG="docs: sync wiki from ${COMMIT_SHA}"
 
           SRC="${GITHUB_WORKSPACE}/src/docs/wiki"
           REMOTE="https://x-access-token:${GH_TOKEN}@github.com/${WIKI_SLUG}.git"
@@ -83,6 +86,6 @@ jobs:
             exit 0
           fi
 
-          echo "::error::Wiki push failed. Create secret WIKI_SYNC_TOKEN (classic PAT, repo scope) at"
+          echo "::error::Wiki push failed. Add secret WIKI_SYNC_TOKEN (classic PAT, repo scope):"
           echo "::error::https://github.com/${{ github.repository }}/settings/secrets/actions"
           exit 1
