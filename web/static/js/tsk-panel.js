@@ -284,21 +284,30 @@ const TskPanel = (() => {
     return new Promise((r) => setTimeout(r, ms));
   }
 
-  function showModal(title, body, buttons) {
+  function showModal(title, body, buttons, { busy = false } = {}) {
     const e = els();
     if (!e.modal) return;
     if (e.modalTitle) e.modalTitle.textContent = title;
     if (e.modalBody) e.modalBody.textContent = body;
+    e.modal.classList.toggle('is-busy', !!busy);
     if (e.modalActions) {
       e.modalActions.innerHTML = '';
-      buttons.forEach((b) => {
-        const btn = document.createElement('button');
-        btn.type = 'button';
-        btn.className = `btn small ${b.kind || 'ghost'}`;
-        btn.textContent = b.label;
-        btn.addEventListener('click', b.onClick);
-        e.modalActions.appendChild(btn);
-      });
+      if (busy) {
+        const busyEl = document.createElement('div');
+        busyEl.className = 'tsk-modal-busy';
+        busyEl.textContent = t('pandaFlashRunning', '正在刷写…');
+        e.modalActions.appendChild(busyEl);
+      } else {
+        buttons.forEach((b) => {
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = `btn small ${b.kind || 'ghost'}`;
+          btn.textContent = b.label;
+          if (b.disabled) btn.disabled = true;
+          btn.addEventListener('click', b.onClick);
+          e.modalActions.appendChild(btn);
+        });
+      }
     }
     e.modal.hidden = false;
     e.modal.classList.remove('hidden');
@@ -309,7 +318,46 @@ const TskPanel = (() => {
     if (e.modal) {
       e.modal.hidden = true;
       e.modal.classList.add('hidden');
+      e.modal.classList.remove('is-busy');
     }
+  }
+
+  function notifyToast(msg, type = 'info') {
+    const toast = document.getElementById('toast');
+    if (!toast) return;
+    toast.textContent = msg;
+    toast.className = `toast show ${type}`;
+    toast.removeAttribute('aria-hidden');
+    window.clearTimeout(notifyToast._timer);
+    notifyToast._timer = window.setTimeout(() => {
+      toast.classList.remove('show');
+      toast.textContent = '';
+      toast.setAttribute('aria-hidden', 'true');
+    }, 3200);
+  }
+
+  function formatFlashResults(results) {
+    if (!results?.length) return '';
+    return results.map((r) => {
+      if (r.ok && r.skipped) {
+        return `${r.serial}: ${t('pandaFlashSkipped', '固件已是最新')}`;
+      }
+      if (r.ok) {
+        return `${r.serial}: ${t('pandaFlashOk', '刷写完成')}`;
+      }
+      const err = r.error || t('pandaFlashFailed', '失败');
+      const hint = /busy|LIBUSB/i.test(err)
+        ? ` (${t('pandaFlashBusyHint', '可先重启 pandad 或 manager 后再试')})`
+        : '';
+      return `${r.serial}: ${err}${hint}`;
+    }).join('\n');
+  }
+
+  function setPandaFlashProgress(active, text) {
+    const e = els();
+    if (!e.pandaStatusDetail) return;
+    e.pandaStatusDetail.classList.toggle('is-flashing', !!active);
+    if (text) e.pandaStatusDetail.textContent = text;
   }
 
   async function runCanCollect() {
@@ -665,23 +713,35 @@ const TskPanel = (() => {
           label: t('pandaFlashBtn', '刷写 Panda 固件'),
           kind: 'danger',
           onClick: async () => {
-            hideModal();
             const e = els();
+            showModal(
+              t('pandaFlashRunning', '正在刷写 Panda 固件'),
+              t('pandaFlashRunningBody', '请稍候，刷机期间 USB 可能被占用。请勿关闭 SecOC 面板。'),
+              [],
+              { busy: true },
+            );
             if (e.jobTitle) e.jobTitle.textContent = t('pandaFlashRunning', '刷写 Panda');
             clearLog();
-            $('tskJobPanel')?.classList.remove('hidden');
+            const jobPanel = $('tskJobPanel');
+            jobPanel?.classList.remove('hidden');
+            jobPanel?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
             state.job = 'panda-flash';
             setRunning(true);
+            setPandaFlashProgress(true, t('pandaFlashStarting', '正在刷写 Panda 固件…'));
             logLine(t('pandaFlashStarting', '正在刷写…'), 'dim');
+            let flashOk = false;
+            let resultBody = '';
             try {
               const { response, result } = await postJson('/api/panda/flash', { confirm: true, all: true });
               if (response.status === 403 || result.onroad) {
-                logLine(result.error || t('pandaFlashOffroadBody', '当前 onroad'), 'err');
+                resultBody = result.error || t('pandaFlashOffroadBody', '当前 onroad，请在 offroad 下刷写。');
+                logLine(resultBody, 'err');
                 showModal(
                   t('pandaFlashOffroadTitle', '无法刷写'),
-                  result.error || t('pandaFlashOffroadBody', '当前 onroad，请在 offroad 下刷写。'),
-                  [{ label: t('ok', '确定'), onClick: hideModal }],
+                  resultBody,
+                  [{ label: t('ok', '确定'), kind: 'primary', onClick: hideModal }],
                 );
+                notifyToast(resultBody, 'error');
                 return;
               }
               const results = result.results || [];
@@ -691,35 +751,60 @@ const TskPanel = (() => {
                     ? `${r.serial}: ${r.skipped ? t('pandaFlashSkipped', '已是最新') : t('pandaFlashOk', '完成')}`
                     : `${r.serial}: ${r.error || t('pandaFlashFailed', '失败')}`;
                   logLine(line, r.ok ? 'ok' : 'err');
+                  if (!r.ok && r.log) {
+                    r.log.split('\n').slice(-4).forEach((ln) => {
+                      if (ln.trim()) logLine(ln.trim(), 'dim');
+                    });
+                  }
                 });
+                resultBody = formatFlashResults(results);
+                flashOk = result.ok && results.every((r) => r.ok);
               } else if (result.needs_confirmation) {
-                logLine(result.hint || 'needs confirmation', 'warn');
+                resultBody = result.hint || 'needs confirmation';
+                logLine(resultBody, 'warn');
+                flashOk = false;
               } else if (!response.ok || !result.ok) {
-                logLine(result.error || result.message || t('pandaFlashFailed', '失败'), 'err');
+                resultBody = result.error || result.message || t('pandaFlashFailed', '失败');
+                logLine(resultBody, 'err');
+                flashOk = false;
+              } else if (result.skipped) {
+                resultBody = t('pandaFlashSkipped', '固件已是最新，无需刷写');
+                logLine(resultBody, 'ok');
+                flashOk = true;
+              } else {
+                resultBody = t('pandaFlashOk', '刷写完成');
+                logLine(resultBody, 'ok');
+                flashOk = true;
+              }
+              if (flashOk) {
+                showModal(
+                  t('pandaFlashDoneTitle', '刷写完成'),
+                  resultBody || t('pandaFlashOk', '刷写完成'),
+                  [{ label: t('ok', '确定'), kind: 'primary', onClick: hideModal }],
+                );
+                notifyToast(t('pandaFlashOk', '刷写完成'), 'success');
+              } else {
+                const busyHint = /busy|LIBUSB/i.test(resultBody)
+                  ? `\n\n${t('pandaFlashBusyHint', 'USB 被占用时可先点「重启 pandad」或「重启 manager」后再刷写。')}`
+                  : '';
                 showModal(
                   t('pandaFlashFailedTitle', '刷写失败'),
-                  result.error || t('pandaFlashFailed', '失败'),
-                  [{ label: t('ok', '确定'), onClick: hideModal }],
+                  `${resultBody || t('pandaFlashFailed', '失败')}${busyHint}`,
+                  [{ label: t('ok', '确定'), kind: 'primary', onClick: hideModal }],
                 );
-                return;
-              } else if (result.skipped) {
-                logLine(t('pandaFlashSkipped', '固件已是最新，无需刷写'), 'ok');
-              } else {
-                logLine(t('pandaFlashOk', '刷写完成'), 'ok');
+                notifyToast(t('pandaFlashFailed', '刷写失败'), 'error');
               }
-              showModal(
-                t('pandaFlashDoneTitle', '刷写完成'),
-                result.skipped ? t('pandaFlashSkipped', '固件已是最新') : t('pandaFlashOk', '刷写完成'),
-                [{ label: t('ok', '确定'), kind: 'primary', onClick: hideModal }],
-              );
             } catch (err) {
-              logLine(String(err), 'err');
-              showModal(t('pandaFlashFailedTitle', '刷写失败'), String(err), [
+              resultBody = String(err);
+              logLine(resultBody, 'err');
+              showModal(t('pandaFlashFailedTitle', '刷写失败'), resultBody, [
                 { label: t('ok', '确定'), onClick: hideModal },
               ]);
+              notifyToast(t('pandaFlashFailed', '刷写失败'), 'error');
             } finally {
               state.job = null;
               setRunning(false);
+              setPandaFlashProgress(false);
               await refresh();
             }
           },

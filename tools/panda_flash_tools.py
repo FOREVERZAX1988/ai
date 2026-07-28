@@ -1132,6 +1132,28 @@ def flash_panda_firmware(
   if not targets:
     return {"ok": False, "error": "no flash target", "serials": serials}
 
+  needs_f4 = False
+  for target in targets:
+    entry = next((e for e in status.get("pandas", []) if e.get("serial") == target), {})
+    desc = entry if entry else _describe_panda(target)
+    if entry.get("is_f4") or desc.get("is_f4"):
+      needs_f4 = True
+      break
+
+  pandad_release: dict[str, Any] = {}
+  if needs_f4:
+    try:
+      from ai.tsk.lib.panda_connect import is_manager_running, stop_pandad
+
+      stop_pandad()
+      time.sleep(1.5)
+      pandad_release = {
+        "pandad_stopped": True,
+        "manager_running": is_manager_running(),
+      }
+    except Exception as e:
+      pandad_release = {"pandad_stopped": False, "error": str(e)}
+
   results: list[dict[str, Any]] = []
   for target in targets:
     entry = next((e for e in status.get("pandas", []) if e.get("serial") == target), {})
@@ -1159,6 +1181,7 @@ def flash_panda_firmware(
     "skipped": skipped and ok,
     "results": results,
     "targets": targets,
+    "pandad_release": pandad_release,
     "next_steps": [
       "panda_firmware_status 验证签名",
       "rebuild_pandad(confirm=true) if dual USB",

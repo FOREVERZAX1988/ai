@@ -4036,7 +4036,7 @@ html, body {
 .tsk-modal {
   position: fixed;
   inset: 0;
-  z-index: 100;
+  z-index: 250;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -4068,6 +4068,36 @@ html, body {
   gap: 0.5rem;
   justify-content: flex-end;
   margin-bottom: 0.5rem;
+}
+
+.tsk-modal.is-busy .tsk-modal-card {
+  pointer-events: none;
+}
+
+.tsk-modal-busy {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.tsk-modal-busy::before {
+  content: '';
+  width: 0.85rem;
+  height: 0.85rem;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: tsk-spin 0.75s linear infinite;
+}
+
+@keyframes tsk-spin {
+  to { transform: rotate(360deg); }
+}
+
+.tsk-panda-status-detail.is-flashing {
+  color: var(--accent);
 }
 
 .platform-editor {
