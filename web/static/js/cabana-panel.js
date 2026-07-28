@@ -356,7 +356,7 @@ const CabanaPanel = (() => {
     for (const frame of hist) {
       const val = decodeSignalValue(frame, sig);
       if (val === null) continue;
-      plotSeries.times.push(frame.time);
+      plotSeries.times.push(replayPlotTime(frame));
       plotSeries.values.push(val);
     }
     if (els.plotTitle) {
@@ -372,11 +372,12 @@ const CabanaPanel = (() => {
     if (!sig) return;
     const val = decodeSignalValue(frame, sig);
     if (val === null) return;
+    const plotT = replayPlotTime(frame);
     const lastT = plotSeries.times[plotSeries.times.length - 1];
-    if (lastT === frame.time) {
+    if (lastT === plotT) {
       plotSeries.values[plotSeries.values.length - 1] = val;
     } else {
-      plotSeries.times.push(frame.time);
+      plotSeries.times.push(plotT);
       plotSeries.values.push(val);
     }
     if (plotSeries.times.length > PLOT_MAX_POINTS) {
@@ -1459,6 +1460,14 @@ const CabanaPanel = (() => {
     return frame.time.toFixed(2);
   }
 
+  function replayPlotTime(frame) {
+    const t = Number(frame?.time) || 0;
+    if (panelMode === 'replay' && replayStartMono > 0) {
+      return Math.max(0, t - replayStartMono);
+    }
+    return t;
+  }
+
   async function explainRow(key, primary, btn) {
     if (explainCache.has(key)) {
       applyExplainLabel(key, explainCache.get(key), { persist: false });
@@ -1997,7 +2006,12 @@ const CabanaPanel = (() => {
 
     const speed = parseFloat(els.replaySpeed?.value || '1') || 1;
     replaySpeed = speed;
-    const qs = new URLSearchParams({ route, speed: String(speed), start_time: '0', autoplay: '0' });
+    const qs = new URLSearchParams({
+      route,
+      speed: String(speed),
+      start_time: String(Math.max(0, replayProgress || 0)),
+      autoplay: '0',
+    });
     if (els.replayFull?.checked) qs.set('full', '1');
     offlineWs = new WebSocket(wsUrl(`/api/cabana/offline/ws?${qs}`));
 
@@ -2111,10 +2125,12 @@ const CabanaPanel = (() => {
       }
       if (msg.type === 'done') {
         replayPaused = true;
+        replayIndexReady = false;
         if (els.replayPlayBtn) els.replayPlayBtn.disabled = false;
         if (els.replayPauseBtn) els.replayPauseBtn.disabled = true;
         els.hint.textContent = t('cabanaReplayDone', '回放结束');
         scheduleBulkExplainAll();
+        return;
       }
       if (msg.type === 'error') {
         clearReplayLoading();

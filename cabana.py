@@ -22,6 +22,11 @@ from urllib.parse import quote
 
 from aiohttp import web
 
+from ai.cabana_replay_util import (
+  build_replay_snapshots as _build_replay_snapshots,
+  latest_frames_at_rel as _latest_frames_at_rel,
+)
+
 from openpilot.common.params import Params
 from openpilot.common.swaglog import cloudlog
 
@@ -511,9 +516,6 @@ def _is_can_log_file(path: Path, prefix: str) -> bool:
 
 
 MAX_REPLAY_FRAMES = 25_000
-REPLAY_SNAPSHOT_INTERVAL = 0.25  # ~4 Hz UI updates (delta per address)
-REPLAY_MAX_SNAPSHOT_FRAMES = 96
-REPLAY_BURST_BATCHES = 2
 REPLAY_START_BUFFER = 32
 REPLAY_STREAM_BATCH = 32
 REPLAY_FRAME_QUEUE_SIZE = 64
@@ -556,68 +558,6 @@ def _threadsafe_queue_put(queue: asyncio.Queue[Any], item: Any, loop: asyncio.Ab
   """Block the worker thread until the batch is queued (never drop frames)."""
   fut = asyncio.run_coroutine_threadsafe(queue.put(item), loop)
   fut.result(timeout=900)
-
-
-def _compact_can_batch(frames: list[dict[str, Any]]) -> list[dict[str, Any]]:
-  """Keep latest frame per bus+address — enough for the replay table, fewer WS payloads."""
-  latest: dict[tuple[int, int], dict[str, Any]] = {}
-  for frame in frames:
-    latest[(int(frame["bus"]), int(frame["address"]))] = frame
-  return list(latest.values())
-
-
-def _build_replay_snapshots(
-  frames: list[dict[str, Any]],
-  *,
-  interval: float = REPLAY_SNAPSHOT_INTERVAL,
-) -> list[tuple[float, list[dict[str, Any]]]]:
-  """Timeline of CAN deltas: only addresses that changed since last snapshot."""
-  if not frames:
-    return []
-  latest: dict[tuple[int, int], dict[str, Any]] = {}
-  prev_sig: dict[tuple[int, int], tuple[float, str]] = {}
-  first_t = float(frames[0]["time"])
-  last_t = float(frames[-1]["time"])
-  snapshots: list[tuple[float, list[dict[str, Any]]]] = []
-  next_emit = first_t
-  i = 0
-  n = len(frames)
-
-  def emit_delta(progress: float) -> None:
-    delta: list[dict[str, Any]] = []
-    for key, frame in latest.items():
-      sig = (float(frame["time"]), str(frame.get("data", "")))
-      if prev_sig.get(key) != sig:
-        prev_sig[key] = sig
-        delta.append(frame)
-    if not delta and not snapshots:
-      delta = list(latest.values())[:REPLAY_MAX_SNAPSHOT_FRAMES]
-      for key, frame in latest.items():
-        prev_sig[key] = (float(frame["time"]), str(frame.get("data", "")))
-    if delta:
-      if len(delta) > REPLAY_MAX_SNAPSHOT_FRAMES:
-        delta = delta[:REPLAY_MAX_SNAPSHOT_FRAMES]
-      snapshots.append((progress, delta))
-    elif snapshots:
-      # Keep timeline ticks so the scrubber advances even when CAN is sparse.
-      snapshots.append((progress, []))
-
-  while i < n or next_emit <= last_t + 1e-6:
-    while i < n and float(frames[i]["time"]) <= next_emit + 1e-6:
-      f = frames[i]
-      latest[(int(f["bus"]), int(f["address"]))] = f
-      i += 1
-    if latest:
-      emit_delta(next_emit - first_t)
-    next_emit += interval
-    if i >= n and next_emit > last_t + interval:
-      break
-
-  if frames and snapshots:
-    final_p = last_t - first_t
-    if snapshots[-1][0] < final_p - interval * 0.25:
-      emit_delta(final_p)
-  return snapshots
 
 
 def _replay_log_paths(qlogs: list[Path], rlogs: list[Path], *, full: bool) -> tuple[list[Path], str]:
@@ -1012,8 +952,8 @@ async def api_car(request: web.Request) -> web.Response:
     return _json_response({
       "ok": False,
       "error": "CarParams not available",
-      "hint": "Drive once or set CarParams on device, then refresh.",
-    }, status=404)
+      "hint": "Drive once or set CarParams on device, then refresh. You can pick a DBC manually.",
+    })
 
   dbc_dict = _get_dbc_dict(cp.get("carFingerprint", ""))
   suggested_dbc = _pick_preferred_dbc(list(dbc_dict.values())) if dbc_dict else _suggest_dbc_for_car(cp)
@@ -1348,9 +1288,6 @@ async def ws_offline(request: web.Request) -> web.WebSocketResponse:
     duration = last_time - first_time
     original_count = len(all_frames)
 
-    def rel_progress(abs_t: float) -> float:
-      return max(0.0, float(abs_t) - first_time)
-
     await ws.send_str(json.dumps({
       "type": "loading",
       "phase": "ready",
@@ -1378,32 +1315,40 @@ async def ws_offline(request: web.Request) -> web.WebSocketResponse:
     }))
 
     snap_idx = 0
-    while snap_idx < len(snapshots) and snapshots[snap_idx][0] < first_time + start_time:
+    while snap_idx < len(snapshots) and snapshots[snap_idx][0] < start_time:
       snap_idx += 1
 
-    if snap_idx < len(snapshots):
-      init_progress, init_batch = snapshots[snap_idx]
-      if init_batch:
-        await ws_send({
-          "type": "can",
-          "frames": init_batch,
-          "progress": rel_progress(init_progress),
-          "preview": True,
-        })
+    init_state = _latest_frames_at_rel(all_frames, start_time, first_time)
+    if init_state:
+      init_progress = snapshots[snap_idx][0] if snap_idx < len(snapshots) else start_time
+      await ws_send({
+        "type": "can",
+        "frames": init_state,
+        "progress": init_progress,
+        "preview": True,
+      })
 
     playback_start = time.monotonic()
-    first_snap_progress = snapshots[snap_idx][0] if snap_idx < len(snapshots) else first_time
+    first_snap_progress = snapshots[snap_idx][0] if snap_idx < len(snapshots) else 0.0
 
     while snap_idx < len(snapshots):
       if seek_time_rel is not None:
-        st = first_time + seek_time_rel
+        st_rel = seek_time_rel
         seek_time_rel = None
         snap_idx = 0
-        while snap_idx < len(snapshots) and snapshots[snap_idx][0] < st:
+        while snap_idx < len(snapshots) and snapshots[snap_idx][0] < st_rel:
           snap_idx += 1
         playback_start = time.monotonic()
-        first_snap_progress = snapshots[snap_idx][0] if snap_idx < len(snapshots) else st
-        await ws.send_str(json.dumps({"type": "seeked", "time": rel_progress(st)}))
+        first_snap_progress = snapshots[snap_idx][0] if snap_idx < len(snapshots) else st_rel
+        await ws.send_str(json.dumps({"type": "seeked", "time": st_rel}))
+        seek_state = _latest_frames_at_rel(all_frames, st_rel, first_time)
+        if seek_state:
+          await ws_send({
+            "type": "can",
+            "frames": seek_state,
+            "progress": st_rel,
+            "preview": True,
+          })
         continue
 
       progress, ui_batch = snapshots[snap_idx]
@@ -1422,7 +1367,7 @@ async def ws_offline(request: web.Request) -> web.WebSocketResponse:
         if not await ws_send({
           "type": "can",
           "frames": [],
-          "progress": rel_progress(progress),
+          "progress": progress,
         }):
           break
         snap_idx += 1
@@ -1431,7 +1376,7 @@ async def ws_offline(request: web.Request) -> web.WebSocketResponse:
       if not await ws_send({
         "type": "can",
         "frames": ui_batch,
-        "progress": rel_progress(progress),
+        "progress": progress,
       }):
         break
       snap_idx += 1
