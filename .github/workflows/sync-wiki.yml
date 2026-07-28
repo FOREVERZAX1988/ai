@@ -1,7 +1,7 @@
 name: Sync GitHub Wiki
 
 # 需要仓库 Secret WIKI_SYNC_TOKEN（classic PAT，repo 权限）。
-# GITHUB_TOKEN 无法 push 到隐藏的 ai.wiki 仓库（会 404）。
+# 勿在 job if 里引用 secrets（会导致 workflow 秒失败）。
 on:
   push:
     branches: [main]
@@ -16,7 +16,6 @@ permissions:
 
 jobs:
   sync-wiki:
-    if: ${{ secrets.WIKI_SYNC_TOKEN != '' }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout main repo (wiki source)
@@ -31,6 +30,13 @@ jobs:
           COMMIT_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
+          if [[ -z "${WIKI_SYNC_TOKEN}" ]]; then
+            echo "::warning::未配置 WIKI_SYNC_TOKEN，跳过 Wiki git 同步。"
+            echo "::notice::文档见 https://github.com/mouxangithub/ai/tree/main/docs/wiki"
+            echo "::notice::或 GitHub Pages workflow「Deploy Wiki Docs」"
+            exit 0
+          fi
+
           GH_TOKEN="${WIKI_SYNC_TOKEN}"
           COMMIT_MSG="docs: sync wiki from ${COMMIT_SHA}"
 
