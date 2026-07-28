@@ -115,7 +115,7 @@ sudo reboot
 | Actions `build` 一直 Pending | Runner 未注册/离线；`github_runner_status` |
 | GUI 开关无效 | 对比 `cat /data/github/runner/.service` 与 `github_runner.sh` 使用的服务名 |
 | 桌面供电 Runner 不启 | 电压 < 9V → `GithubRunnerSufficientVoltage=false` |
-| checkout /tmp 满 | 安装脚本设置 `TMPDIR=/data/tmp` |
+| checkout /tmp 满 | 临时目录使用 `/data/github/tmp`（runner 可写） |
 | clone GitHub 失败（`RPC failed` / `early EOF`） | 默认已走镜像；可覆盖 Variable `GITHUB_MIRROR_PREFIXES` |
 | 车机 `/data/openpilot` 被清空 | workflow BUILD_DIR 必须是 `/data/github/...`，非 live 目录 |
 | 编译失败 | `/data/github/logs`、Actions 日志、`grep_log actions.runner` |
