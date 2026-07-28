@@ -695,6 +695,11 @@ const CabanaPanel = (() => {
 
   function selectRow(key) {
     if (!key || !latestFrames.has(key)) return;
+    if (selectedKey === key) {
+      clearSelection();
+      scheduleVirtualRender();
+      return;
+    }
     selectedKey = key;
     const sigs = signalsByAddress.get(Number(latestFrames.get(key).address)) || [];
     if (sigs.length) {
@@ -879,13 +884,37 @@ const CabanaPanel = (() => {
     });
   }
 
+  function ensureVirtualSpacers() {
+    if (!els.tbody) return;
+    let top = els.tbody.querySelector('.cab-virtual-spacer-top');
+    let bottom = els.tbody.querySelector('.cab-virtual-spacer-bottom');
+    if (!top) {
+      top = document.createElement('tr');
+      top.className = 'cab-virtual-spacer cab-virtual-spacer-top';
+      top.setAttribute('aria-hidden', 'true');
+      top.innerHTML = '<td colspan="7"></td>';
+      els.tbody.prepend(top);
+    }
+    if (!bottom) {
+      bottom = document.createElement('tr');
+      bottom.className = 'cab-virtual-spacer cab-virtual-spacer-bottom';
+      bottom.setAttribute('aria-hidden', 'true');
+      bottom.innerHTML = '<td colspan="7"></td>';
+      els.tbody.append(bottom);
+    }
+  }
+
+  function clearReplayDataRows() {
+    if (!els.tbody) return;
+    for (const tr of els.tbody.querySelectorAll('tr.cab-data-row')) tr.remove();
+    ensureVirtualSpacers();
+  }
+
   function clearTableRows() {
     tableRows.clear();
     latestFrames.clear();
     clearAuxState();
-    if (els.tbody) {
-      for (const tr of els.tbody.querySelectorAll('tr.cab-data-row')) tr.remove();
-    }
+    clearReplayDataRows();
     scheduleVirtualRender();
     updateLabelProgress();
   }
@@ -1051,6 +1080,8 @@ const CabanaPanel = (() => {
   const REPLAY_MAX_KEYS_PER_FLUSH = 24;
   let replayWsBuffer = [];
   let replayWsFlushTimer = null;
+  let replayIndexWatchdog = null;
+  const REPLAY_INDEX_TIMEOUT_MS = 90000;
   let livePendingFrames = [];
   let liveFlushScheduled = false;
   let lastProgressPaintAt = 0;
@@ -1112,7 +1143,43 @@ const CabanaPanel = (() => {
   }
 
   function clearReplayLoading() {
+    if (replayIndexWatchdog != null) {
+      clearTimeout(replayIndexWatchdog);
+      replayIndexWatchdog = null;
+    }
     setReplayLoading(false);
+  }
+
+  function armReplayIndexWatchdog() {
+    if (replayIndexWatchdog != null) clearTimeout(replayIndexWatchdog);
+    replayIndexWatchdog = window.setTimeout(() => {
+      replayIndexWatchdog = null;
+      if (!replayIndexReady && replayLoading) {
+        replayIndexReady = true;
+        clearReplayLoading();
+        els.status.textContent = t('cabanaReplay', '回放');
+        ensureVirtualSpacers();
+        scheduleVirtualRender();
+        if (els.hint) {
+          els.hint.textContent = t('cabanaReplayIndexTimeout', '索引耗时较长，已显示已加载的数据');
+        }
+        if (els.replayPlayBtn) els.replayPlayBtn.disabled = false;
+        if (els.replayPauseBtn) els.replayPauseBtn.disabled = false;
+      }
+    }, REPLAY_INDEX_TIMEOUT_MS);
+  }
+
+  function unlockReplayIndexUi(hint) {
+    if (!replayIndexReady) {
+      replayIndexReady = true;
+      clearReplayLoading();
+      els.status.textContent = t('cabanaReplay', '回放');
+      if (hint && els.hint) els.hint.textContent = hint;
+      if (els.replayPlayBtn) els.replayPlayBtn.disabled = false;
+      if (els.replayPauseBtn) els.replayPauseBtn.disabled = false;
+    }
+    ensureVirtualSpacers();
+    scheduleVirtualRender();
   }
 
   function resetReplayQueue() {
@@ -1143,7 +1210,7 @@ const CabanaPanel = (() => {
 
   function flushReplayUi() {
     replayUiFlushScheduled = false;
-    if (!els.tbody || !replayPendingByKey.size) return;
+    if (!els.tbody || (!replayDirtyKeys.size && !replayPendingByKey.size)) return;
     const now = performance.now();
     if (now - lastReplayUiPaintAt < REPLAY_UI_MIN_INTERVAL_MS) {
       scheduleReplayUiFlush();
@@ -2208,9 +2275,12 @@ const CabanaPanel = (() => {
     replayIndexReady = false;
     resetBulkExplain();
     resetReplayQueue();
+    tableRows.clear();
+    clearAuxState();
     latestFrames.clear();
-    if (els.tbody) els.tbody.innerHTML = '';
+    clearReplayDataRows();
     setReplayLoading(true, t('cabanaReplayLoadingStart', '正在打开日志…'));
+    armReplayIndexWatchdog();
 
     const speed = parseFloat(els.replaySpeed?.value || '1') || 1;
     replaySpeed = speed;
@@ -2263,6 +2333,12 @@ const CabanaPanel = (() => {
       if (msg.type === 'loading') {
         if (!replayIndexReady) {
           setReplayLoading(true, formatLoadingText(msg));
+          if (msg.phase === 'ready') {
+            const n = msg.can_frames != null ? Number(msg.can_frames) : 0;
+            if (n > 0 && (tableRows.size || latestFrames.size)) {
+              unlockReplayIndexUi();
+            }
+          }
         }
         return;
       }
@@ -2272,8 +2348,7 @@ const CabanaPanel = (() => {
         return;
       }
       if (msg.type === 'metadata') {
-        clearReplayLoading();
-        replayIndexReady = true;
+        unlockReplayIndexUi();
         replayMeta = msg;
         replayDuration = msg.duration || 0;
         replayStartMono = msg.start_time || 0;
@@ -2312,10 +2387,16 @@ const CabanaPanel = (() => {
         return;
       }
       if (msg.type === 'can') {
-        if (replayLoading) clearReplayLoading();
         if (Array.isArray(msg.frames) && msg.frames.length) {
           applyReplayCanBatch(msg.frames);
-          if (msg.preview) scheduleBulkExplainAll();
+          if (msg.preview) {
+            if (!replayIndexReady) {
+              unlockReplayIndexUi(t('cabanaReplayFromCache', '已从缓存加载 CAN，可直接播放'));
+            }
+            scheduleBulkExplainAll();
+          }
+        } else if (replayLoading) {
+          clearReplayLoading();
         }
         if (typeof msg.progress === 'number') {
           updateReplayProgress(msg.progress);
@@ -2625,8 +2706,15 @@ const CabanaPanel = (() => {
   function onCabanaKeydown(e) {
     const modal = document.getElementById('cabanaModal');
     if (!modal || modal.hidden) return;
-    if (panelMode !== 'replay') return;
+    if (e.key === 'Escape' && selectedKey) {
+      e.preventDefault();
+      clearSelection();
+      renderDetailPanel();
+      scheduleVirtualRender();
+      return;
+    }
     if (e.target?.matches('input, textarea, select')) return;
+    if (panelMode !== 'replay') return;
     if (e.code === 'Space') {
       e.preventDefault();
       if (replayPaused) connectReplay();
@@ -2870,8 +2958,11 @@ const CabanaPanel = (() => {
       destroyPlot();
       if (els.plotEmpty) els.plotEmpty.hidden = false;
     });
-    els.detailClose?.addEventListener('click', () => {
+    els.detailClose?.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
       clearSelection();
+      renderDetailPanel();
       scheduleVirtualRender();
     });
     els.videoToggle?.addEventListener('change', () => {

@@ -643,6 +643,13 @@ class TestExtensionTools(unittest.TestCase):
     self.assertTrue(hetero.get("build_h7"))
     self.assertIn("panda_h7", hetero.get("summary_zh", "") + hetero.get("mads_zh", ""))
 
+    from ai.tools.panda_flash_tools import _coerce_hw_type, _hw_type_label
+    from panda import Panda
+
+    self.assertEqual(_coerce_hw_type(bytearray(b"\x06")), b"\x06")
+    self.assertEqual(_hw_type_label(bytearray(b"\x06")), "DOS")
+    self.assertEqual(_hw_type_label(Panda.HW_TYPE_DOS), "DOS")
+
   def test_sp_extension_panda_tools_registered(self):
     from ai.tools.sp_tool_extensions import SP_EXTENSION_TOOL_META, SP_EXTENSION_SCHEMAS
     for name in (

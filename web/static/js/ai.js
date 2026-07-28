@@ -2657,7 +2657,10 @@ function selectSlashCommand(def) {
       if (def.action === 'verbose') prefs.verbose = !prefs.verbose;
       else prefs.trace = !prefs.trace;
       LocalPrefs.setChatDebugPrefs(prefs);
-      showToast(`${def.id}: ${prefs[def.action] ? 'on' : 'off'}`);
+      const on = prefs[def.action];
+      showToast(def.action === 'trace'
+        ? (on ? t('slashTraceOn', 'Trace 已开启（仅控制台，不在聊天区显示）') : t('slashTraceOff', 'Trace 已关闭'))
+        : (on ? t('slashVerboseOn', 'Verbose 已开启') : t('slashVerboseOff', 'Verbose 已关闭')));
     }
     hideComposerSlashMenu();
     els.chatInput.value = '';
@@ -3134,6 +3137,7 @@ function finishAssistant(ui, assistantMessage, sessionId) {
   } else {
     ui.content.textContent = '';
   }
+  ui.wrapper?.querySelector('.assistant-trace')?.remove();
   if (ui?.wrapper) delete ui.wrapper.dataset.liveStream;
   commitAssistantMessage(sessionId, assistantMessage);
   syncSessionsToDevice().catch(() => {});

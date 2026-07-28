@@ -36,6 +36,40 @@ const ChatJobs = (() => {
     contexts.set(jobId, ctx);
   }
 
+  function scheduleMarkdownRender(ui, text, ctx) {
+    if (!ui?.content || !text) return;
+    if (ctx.mdRenderTimer) clearTimeout(ctx.mdRenderTimer);
+    ctx.mdRenderTimer = setTimeout(() => {
+      ctx.mdRenderTimer = null;
+      if (typeof deps.renderMarkdownContent === 'function') {
+        deps.renderMarkdownContent(ui.content, text);
+      } else {
+        ui.content.textContent = text;
+      }
+      deps.scrollToBottom?.();
+    }, 100);
+  }
+
+  function flushMarkdownRender(ui, text, ctx) {
+    if (ctx?.mdRenderTimer) {
+      clearTimeout(ctx.mdRenderTimer);
+      ctx.mdRenderTimer = null;
+    }
+    if (!ui?.content) return;
+    const clean = typeof deps.stripLeakedToolCalls === 'function'
+      ? deps.stripLeakedToolCalls(text || '')
+      : (text || '');
+    if (!clean) {
+      ui.content.textContent = '';
+      return;
+    }
+    if (typeof deps.renderMarkdownContent === 'function') {
+      deps.renderMarkdownContent(ui.content, clean);
+    } else {
+      ui.content.textContent = clean;
+    }
+  }
+
   function abortActive() {
     const jobId = activeJobId || deps.SessionStore?.getActiveJobId(deps.SessionStore.activeId);
     if (jobId) {
@@ -95,17 +129,11 @@ const ChatJobs = (() => {
       const clean = typeof deps.stripLeakedToolCalls === 'function'
         ? deps.stripLeakedToolCalls(ctx.rawContent)
         : ctx.rawContent;
-      const prevLen = ctx.displayedContentLen || 0;
-      const newPart = clean.slice(prevLen);
       ctx.displayedContentLen = clean.length;
       assistantMessage.content = clean;
-      if (newPart) {
-        if (typeof Markdown !== 'undefined' && ui.content.classList.contains('md-content')) {
-          ui.content.textContent = clean;
-        } else {
-          ui.content.textContent = clean;
-        }
-      } else if (!clean && ui.content.textContent) {
+      if (clean) {
+        scheduleMarkdownRender(ui, clean, ctx);
+      } else if (ui.content) {
         ui.content.textContent = '';
       }
       deps.scrollToBottom();
@@ -155,22 +183,13 @@ const ChatJobs = (() => {
     }
 
     if (data.type === 'trace' && data.message) {
-      if (!ui.traceBlock) {
-        ui.traceBlock = document.createElement('div');
-        ui.traceBlock.className = 'assistant-trace hidden';
-        ui.wrapper?.appendChild(ui.traceBlock);
-      }
-      ui.traceBlock.classList.remove('hidden');
-      const line = document.createElement('div');
-      line.className = 'assistant-trace-line';
-      line.textContent = `[${data.round ?? '?'}] ${data.message}`;
-      ui.traceBlock.appendChild(line);
-      deps.scrollToBottom?.();
+      console.debug(`[chat trace ${data.round ?? '?'}]`, data.message);
     }
 
     if (data.type === 'done') {
       deps.hideAssistantLoading(ui);
       deps.syncThinkingBlock(ui, assistantMessage);
+      flushMarkdownRender(ui, assistantMessage.content, ctx);
       if (data.resolvedModel) deps.updateModelBadge?.(data.resolvedModel);
     }
 
@@ -180,6 +199,7 @@ const ChatJobs = (() => {
   async function finalizeCtx(jobId, sessionId, ctx, status, payload = {}) {
     contexts.delete(jobId);
     const streamActive = ctx.streamActive;
+    flushMarkdownRender(ctx.ui, ctx.assistantMessage?.content, ctx);
     deps.clearLiveStreamChrome?.(ctx.ui);
     if (status === 'done' && streamActive()) {
       deps.finishAssistant(ctx.ui, ctx.assistantMessage, sessionId);

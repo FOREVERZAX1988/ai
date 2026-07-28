@@ -1266,12 +1266,14 @@ async def ws_offline(request: web.Request) -> web.WebSocketResponse:
       def read_qlog_only() -> tuple[list[dict[str, Any]], bool]:
         progress_cb({"phase": "fast_qlog", "files": len(stream_paths), "parallel": len(stream_paths) > 1})
         frames, dec = _collect_can_frames(stream_paths, progress_cb)
-        progress_cb({"phase": "ready", "can_frames": len(frames)})
-        if route_path.is_dir() and frames:
-          _save_route_cache(route_path, frames, decimated=dec, full=False)
         return frames, dec
 
       frames, dec = await loop.run_in_executor(None, read_qlog_only)
+      if route_path.is_dir() and frames:
+        asyncio.create_task(loop.run_in_executor(
+          None,
+          lambda: _save_route_cache(route_path, frames, decimated=dec, full=False),
+        ))
       return frames, dec, source, False
 
     frame_queue = asyncio.Queue(maxsize=REPLAY_FRAME_QUEUE_SIZE)
@@ -1332,12 +1334,15 @@ async def ws_offline(request: web.Request) -> web.WebSocketResponse:
   drain_task: asyncio.Task[None] | None = None
   if streaming_load:
     drain_task = asyncio.create_task(drain_stream_queue())
-  else:
-    load_complete.set()
 
   try:
-    if drain_task is not None:
-      await load_complete.wait()
+    if not all_frames and streaming_load:
+      await asyncio.wait_for(load_complete.wait(), timeout=120.0)
+    elif streaming_load:
+      # Do not block UI on full background drain — metadata uses partial buffer first.
+      pass
+    else:
+      load_complete.set()
 
     if not all_frames:
       tried = []
@@ -1358,16 +1363,7 @@ async def ws_offline(request: web.Request) -> web.WebSocketResponse:
     duration = last_time - first_time
     original_count = len(all_frames)
 
-    await ws.send_str(json.dumps({
-      "type": "loading",
-      "phase": "ready",
-      "can_frames": len(all_frames),
-      "original_frame_count": original_count,
-    }))
-
-    snapshots = await loop.run_in_executor(
-      None, lambda: _build_replay_snapshots(all_frames),
-    )
+    init_state = _latest_frames_at_rel(all_frames, start_time, first_time)
 
     await ws.send_str(json.dumps({
       "type": "metadata",
@@ -1380,23 +1376,39 @@ async def ws_offline(request: web.Request) -> web.WebSocketResponse:
       "cached": from_cache,
       "full_can": full_can,
       "has_rlog": bool(rlogs),
-      "streaming": False,
-      "snapshots": len(snapshots),
+      "streaming": streaming_load,
+      "snapshots": 0,
     }))
 
-    snap_idx = 0
-    while snap_idx < len(snapshots) and snapshots[snap_idx][0] < start_time:
-      snap_idx += 1
-
-    init_state = _latest_frames_at_rel(all_frames, start_time, first_time)
     if init_state:
-      init_progress = snapshots[snap_idx][0] if snap_idx < len(snapshots) else start_time
+      init_progress = max(0.0, start_time)
       await ws_send({
         "type": "can",
         "frames": init_state,
         "progress": init_progress,
         "preview": True,
       })
+
+    await ws.send_str(json.dumps({
+      "type": "loading",
+      "phase": "ready",
+      "can_frames": len(all_frames),
+      "original_frame_count": original_count,
+    }))
+
+    if streaming_load and drain_task is not None and not load_complete.is_set():
+      try:
+        await asyncio.wait_for(load_complete.wait(), timeout=90.0)
+      except asyncio.TimeoutError:
+        pass
+
+    snapshots = await loop.run_in_executor(
+      None, lambda: _build_replay_snapshots(all_frames),
+    )
+
+    snap_idx = 0
+    while snap_idx < len(snapshots) and snapshots[snap_idx][0] < start_time:
+      snap_idx += 1
 
     playback_start = time.monotonic()
     first_snap_progress = snapshots[snap_idx][0] if snap_idx < len(snapshots) else 0.0

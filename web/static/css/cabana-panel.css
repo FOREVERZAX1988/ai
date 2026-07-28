@@ -395,6 +395,15 @@
   display: none !important;
 }
 
+.cab-detail-close {
+  min-width: 2.25rem;
+  min-height: 2.25rem;
+  font-size: 1.1rem;
+  line-height: 1;
+  flex-shrink: 0;
+  touch-action: manipulation;
+}
+
 .cabana-detail-header {
   display: flex;
   align-items: center;
@@ -1024,9 +1033,39 @@
   }
 
   .cabana-table-wrap {
-    flex: 1;
-    min-height: 140px;
+    flex: 1 1 auto;
+    min-height: 120px;
     max-height: none;
+    overflow: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .cabana-detail-wrap {
+    position: relative;
+    z-index: 4;
+    max-height: min(42vh, 320px);
+    box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.35);
+  }
+
+  .cabana-detail-header {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    background: var(--surface);
+  }
+
+  .cabana-detail-actions {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+
+  .cabana-detail-actions .btn.small {
+    min-height: 36px;
+    touch-action: manipulation;
+  }
+
+  .cabana-plot-wrap {
+    max-height: min(28vh, 200px);
   }
 
   .cabana-table-wrap th:nth-child(1),

@@ -232,12 +232,25 @@ def shutil_which(cmd: str) -> str | None:
   return which(cmd)
 
 
-def _hw_type_label(hw: bytes) -> str:
+def _coerce_hw_type(hw: Any) -> bytes:
+  """Normalize USB controlRead hw type (bytes or bytearray) for dict lookups."""
+  if isinstance(hw, bytearray):
+    return bytes(hw)
+  if isinstance(hw, bytes):
+    return hw
+  if isinstance(hw, int):
+    return bytes([hw & 0xFF])
+  return bytes(hw) if hw is not None else b"\x00"
+
+
+def _hw_type_label(hw: bytes | bytearray) -> str:
   try:
     from panda import Panda
   except ImportError:
-    return hw.hex() if isinstance(hw, bytes) else str(hw)
+    hw = _coerce_hw_type(hw)
+    return hw.hex()
 
+  hw = _coerce_hw_type(hw)
   labels = {
     Panda.HW_TYPE_WHITE_PANDA: "WHITE_PANDA",
     Panda.HW_TYPE_GREY_PANDA: "GREY_PANDA",
@@ -251,7 +264,7 @@ def _hw_type_label(hw: bytes) -> str:
     Panda.HW_TYPE_CUATRO: "CUATRO",
     Panda.HW_TYPE_BODY: "BODY",
   }
-  return labels.get(hw, hw.hex() if isinstance(hw, bytes) else str(hw))
+  return labels.get(hw, hw.hex())
 
 
 def _describe_panda(serial: str) -> dict[str, Any]:
@@ -259,7 +272,7 @@ def _describe_panda(serial: str) -> dict[str, Any]:
     from panda import Panda
 
     p = Panda(serial)
-    hw = p.get_type()
+    hw = _coerce_hw_type(p.get_type())
     internal = p.is_internal()
     mcu = p.get_mcu_type().config.app_fn
     bootstub = p.bootstub

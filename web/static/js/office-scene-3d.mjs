@@ -331,30 +331,48 @@ class AssetKit {
     this.templates = new Map();
     this.characterTemplates = new Map();
     this.colormapTextures = new Map();
-    this.loader = null;
+    this.colormapUrls = new Map();
+    this.gltfLoaderClass = null;
   }
 
   colormapKeyForModel(key, spec) {
     if (spec.character) return 'characters';
     if (/^(road|barrier|cone|streetLight|trafficLight)/.test(key)) return 'roads';
+    if (/^(track|vehicle|race|flag)/.test(key)) return 'racing';
+    return 'furniture';
+  }
+
+  async loadColormapFile(texLoader, base, candidates) {
+    for (const rel of candidates) {
+      const url = `${base}${rel}`;
+      try {
+        const res = await fetch(url, { method: 'HEAD' });
+        if (!res.ok) continue;
+        const tex = await texLoader.loadAsync(url);
+        tex.colorSpace = THREE.SRGBColorSpace;
+        tex.flipY = false;
+        return { key: url, tex };
+      } catch { /* try next */ }
+    }
     return null;
   }
 
   async loadColormaps(base) {
     const texLoader = new THREE.TextureLoader();
     const files = {
-      characters: `${base}textures/characters-colormap.png`,
-      roads: `${base}textures/roads-colormap.png`,
+      characters: ['textures/characters-colormap.png'],
+      roads: ['textures/roads-colormap.png'],
+      furniture: ['textures/furniture-colormap.png', 'textures/GLB format-colormap.png'],
+      racing: ['textures/racing-colormap.png', 'textures/furniture-colormap.png', 'textures/GLB format-colormap.png'],
     };
-    await Promise.all(Object.entries(files).map(async ([key, url]) => {
-      try {
-        const tex = await texLoader.loadAsync(url);
-        tex.colorSpace = THREE.SRGBColorSpace;
-        tex.flipY = false;
-        this.colormapTextures.set(key, tex);
-      } catch (e) {
-        console.warn(`OfficeScene: colormap ${key} 加载失败`, e);
+    await Promise.all(Object.entries(files).map(async ([key, candidates]) => {
+      const loaded = await this.loadColormapFile(texLoader, base, candidates);
+      if (!loaded) {
+        console.warn(`OfficeScene: colormap ${key} 加载失败`);
+        return;
       }
+      this.colormapTextures.set(key, loaded.tex);
+      this.colormapUrls.set(key, loaded.key);
     }));
   }
 
@@ -406,16 +424,28 @@ class AssetKit {
     return { footprint: footprint || Math.max(size.x, size.z), height: box.max.y - box.min.y };
   }
 
-  async ensureLoader() {
-    if (this.loader) return this.loader;
+  async ensureLoaderClass() {
+    if (this.gltfLoaderClass) return this.gltfLoaderClass;
     try {
       const mod = await import('/static/vendor/three/examples/jsm/loaders/GLTFLoader.js');
-      this.loader = new mod.GLTFLoader();
+      this.gltfLoaderClass = mod.GLTFLoader;
     } catch (e) {
       console.warn('OfficeScene: GLTFLoader unavailable, using procedural props only', e);
-      this.loader = null;
+      this.gltfLoaderClass = null;
     }
-    return this.loader;
+    return this.gltfLoaderClass;
+  }
+
+  createModelLoader(cmapKey) {
+    const LoaderClass = this.gltfLoaderClass;
+    if (!LoaderClass) return null;
+    const colormapUrl = this.colormapUrls.get(cmapKey);
+    if (!colormapUrl) return new LoaderClass();
+    const manager = new THREE.LoadingManager();
+    manager.setURLModifier((url) => (
+      /colormap\.png$/i.test(url) ? colormapUrl : url
+    ));
+    return new LoaderClass(manager);
   }
 
   async load() {
@@ -425,19 +455,21 @@ class AssetKit {
       if (res.ok) manifest = await res.json();
     } catch { /* procedural only */ }
 
-    const loader = await this.ensureLoader();
-    if (!loader) return;
+    const LoaderClass = await this.ensureLoaderClass();
+    if (!LoaderClass) return;
 
     const base = manifest.base || '/static/vendor/office/';
     await this.loadColormaps(base);
     const entries = Object.entries(manifest.models || {});
     await Promise.all(entries.map(async ([key, spec]) => {
       const url = `${base}${spec.file}`;
+      const cmap = this.colormapKeyForModel(key, spec);
+      const loader = this.createModelLoader(cmap);
+      if (!loader) return;
       try {
-        const gltf = await this.loader.loadAsync(url);
+        const gltf = await loader.loadAsync(url);
         const root = gltf.scene;
-        const cmap = this.colormapKeyForModel(key, spec);
-        if (cmap) this.applyColormap(root, cmap);
+        this.applyColormap(root, cmap);
         root.traverse((o) => {
           if (o.isMesh) {
             o.castShadow = true;
