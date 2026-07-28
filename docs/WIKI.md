@@ -4,17 +4,23 @@ Wiki 在线地址：https://github.com/mouxangithub/ai/wiki
 
 源稿目录：**`docs/wiki/`**（与仓库同步维护，便于 PR 审阅）。
 
+## 为什么 Wiki 网页能开，但 CI / git clone 仍失败？
+
+| 现象 | 原因 |
+|------|------|
+| https://github.com/mouxangithub/ai/wiki 能打开 | Wiki **功能已开**，且可能已有**旧版**手写 Home 页 |
+| `git clone .../ai.wiki.git` 报 Repository not found | **未登录**或 **Token 无权限** 时 GitHub 会返回 404（不是「没开 Wiki」） |
+| 看不到 `docs/wiki` 里的新页面 | 同步脚本从未成功 push；线上仍是旧内容 |
+
+**HTTPS 匿名 clone 经常失败**，需本机已 `gh auth login` / Git 凭据，或 CI 使用 `GITHUB_TOKEN` / Secret `WIKI_SYNC_TOKEN`（classic PAT，`repo`）。
+
 ## 前置条件
 
-GitHub Wiki 使用独立 git 仓库 `https://github.com/<owner>/<repo>.wiki.git`。若 clone 报 **Repository not found**，说明 **尚未启用 Wiki**：
+1. **Settings → Features → Wikis** 已勾选（你已完成）。
+2. **Actions → Sync GitHub Wiki → Run workflow** 手动跑一次（推荐在启用 Wiki 之后）。
+3. 若仍失败：添加 Secret **`WIKI_SYNC_TOKEN`**（PAT，`repo` 权限），再重跑 workflow。
 
-1. 打开 https://github.com/mouxangithub/ai/settings  
-2. **Features** → 勾选 **Wikis** → **Save**  
-3. 再运行同步（见下）
-
-> `GITHUB_TOKEN` 往往**无权**修改仓库 Features；CI 会 **跳过失败**（不标红 main）。若需全自动，在仓库 **Settings → Secrets** 添加 `WIKI_SYNC_TOKEN`（classic PAT，`repo` 权限）。
-
-启用前，用户文档已在主仓可见：  
+启用前/同步失败时，文档已在主仓可见：  
 https://github.com/mouxangithub/ai/tree/main/docs/wiki
 
 ## 自动同步
@@ -42,11 +48,17 @@ https://github.com/mouxangithub/ai/tree/main/docs/wiki
 ```
 
 ```bash
-# Linux / macOS / 车机
+# 需已登录 GitHub（gh auth login 或 Git 凭据管理器）
 bash ai/scripts/sync_github_wiki.sh
 ```
 
-环境变量：`WIKI_REPO`（默认 `https://github.com/mouxangithub/ai.wiki.git`）。
+若仍报 `Repository not found`，请用 SSH 试一次：
+
+```bash
+git clone git@github.com:mouxangithub/ai.wiki.git
+```
+
+环境变量：`WIKI_REPO`、`WIKI_SYNC_TOKEN`（或 `GITHUB_TOKEN`）。
 
 ## 发布到 GitHub Wiki（手动）
 

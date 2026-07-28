@@ -16,24 +16,50 @@ jobs:
   sync-wiki:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout main repo (wiki source)
+        uses: actions/checkout@v4
+        with:
+          path: src
 
-      - name: Enable Wikis feature (best effort)
+      - name: Checkout GitHub Wiki git repo
+        id: wiki_checkout
         continue-on-error: true
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/${{ github.event.repository.name }}.wiki
+          token: ${{ secrets.WIKI_SYNC_TOKEN || secrets.GITHUB_TOKEN }}
+          path: wiki-repo
+
+      - name: Init wiki git repo (first-time)
+        if: steps.wiki_checkout.outcome != 'success'
         env:
           GH_TOKEN: ${{ secrets.WIKI_SYNC_TOKEN || secrets.GITHUB_TOKEN }}
         run: |
-          curl -sS -X PATCH \
-            -H "Authorization: Bearer ${GH_TOKEN}" \
-            -H "Accept: application/vnd.github+json" \
-            -H "X-GitHub-Api-Version: 2022-11-28" \
-            "https://api.github.com/repos/${{ github.repository }}" \
-            -d '{"has_wiki":true}' || true
+          set -euo pipefail
+          mkdir -p wiki-repo
+          cd wiki-repo
+          git init
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          cp ../src/docs/wiki/*.md .
+          git add -A
+          git commit -m "docs: initial wiki from docs/wiki"
+          git branch -M master
+          git remote add origin "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository_owner }}/${{ github.event.repository.name }}.wiki.git"
+          git push -u origin master
 
-      - name: Sync docs/wiki to GitHub Wiki
-        env:
-          GITHUB_REPOSITORY: ${{ github.repository }}
-          GITHUB_TOKEN: ${{ secrets.WIKI_SYNC_TOKEN || secrets.GITHUB_TOKEN }}
-          WIKI_SYNC_SKIP_ON_MISSING: "1"
-          COMMIT_MSG: "docs: sync wiki from ${{ github.sha }}"
-        run: bash scripts/sync_github_wiki.sh
+      - name: Sync docs/wiki into wiki repo
+        if: steps.wiki_checkout.outcome == 'success'
+        run: |
+          set -euo pipefail
+          cp src/docs/wiki/*.md wiki-repo/
+          cd wiki-repo
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --staged --quiet; then
+            echo "Wiki already up to date."
+            exit 0
+          fi
+          git commit -m "docs: sync wiki from ${{ github.sha }}"
+          git push
