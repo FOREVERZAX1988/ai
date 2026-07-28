@@ -28,8 +28,9 @@ op助手 安装脚本
   AI_REPO            SSH 克隆地址
   AI_REPO_HTTPS      HTTPS 克隆地址（SSH 不可用时）
 
-示例（车机 C3/C4）:
+示例（车机 C2/C3/C4）:
   curl -fsSL https://raw.githubusercontent.com/mouxangithub/ai/main/install/install.sh | bash
+  # C2（comma two / dragonpilot d2 等 Android 宿主）同样使用 /data/openpilot
 
 示例（PC）:
   export OPENPILOT_ROOT=~/openpilot
@@ -128,7 +129,7 @@ run_integrate() {
   local integrate="$TARGET/install/integrate_openpilot.py"
   if [[ -f "$integrate" ]]; then
     echo ""
-    echo ">>> 集成 openpilot（launch_chffrplus.sh + 可选 SpDevBeep；ai 配置 → /data/ai/config.json）"
+    echo ">>> 集成 openpilot（launch + 可选 SpDevBeep；扫描 fork/设备并写入 workspace 快照）"
     OPENPILOT_ROOT="$ROOT" PYTHONPATH="$ROOT" "$py" "$integrate" --root "$ROOT" --skip-compile || {
       echo "警告: openpilot 集成未完全成功，见上方日志。" >&2
     }

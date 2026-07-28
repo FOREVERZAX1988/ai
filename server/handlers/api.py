@@ -745,6 +745,30 @@ async def api_tune_passport(request: web.Request) -> web.Response:
   return _json_response(list_tune_passport(limit=limit))
 
 
+async def api_tune_compare(request: web.Request) -> web.Response:
+  try:
+    body = await request.json()
+  except json.JSONDecodeError:
+    return _json_response({"ok": False, "error": "Invalid JSON"}, status=400)
+  route_a = str(body.get("route_a") or "").strip()
+  route_b = str(body.get("route_b") or "").strip()
+  if not route_a or not route_b:
+    return _json_response({"ok": False, "error": "route_a and route_b required"}, status=400)
+  label_a = str(body.get("label_a") or "before")
+  label_b = str(body.get("label_b") or "after")
+  with_scores = bool(body.get("with_scores", True))
+  from ai.tools.route_analysis_tools import compare_tune_ab
+  compare = compare_tune_ab(route_a, route_b, label_a=label_a, label_b=label_b)
+  if not compare.get("ok"):
+    return _json_response(compare, status=400)
+  out: dict[str, Any] = {"ok": True, "compare": compare}
+  if with_scores:
+    from ai.tools.route_scoring_tools import score_tune_session
+    session = score_tune_session(route_a, route_b)
+    out["session"] = session
+  return _json_response(out)
+
+
 async def api_rag(request: web.Request) -> web.Response:
   config = _read_ai_config()
   embed_cfg = load_embedding_config(_PARAMS, config)
@@ -762,6 +786,20 @@ async def api_rag(request: web.Request) -> web.Response:
     return _json_response(remove_document(_PARAMS, str(body.get("doc_id", ""))))
   if op == "reindex":
     return _json_response(await reindex_all(_PARAMS, embed_cfg))
+  if op == "wiki_ingest":
+    from ai.fork.wiki_ingest import ingest_wikis_for_current_fork
+
+    force = bool(body.get("force"))
+    include_all = bool(body.get("all_registered"))
+    max_files = int(body.get("max_files_per_repo", 45) or 45)
+    return _json_response(
+      ingest_wikis_for_current_fork(
+        _PARAMS,
+        max_files_per_repo=max_files,
+        force=force,
+        include_all_registered=include_all,
+      )
+    )
   return _json_response(await upsert_document(
     _PARAMS,
     title=str(body.get("title", "")),
@@ -1010,6 +1048,34 @@ async def api_fork_run_stream(request: web.Request) -> web.Response:
   except Exception as e:
     cloudlog.error(f"aid: api_fork_run_stream error: {e}")
     return _json_response({"ok": False, "error": str(e)}, status=500)
+
+
+async def api_onboarding_profile(request: web.Request) -> web.Response:
+  try:
+    body = await request.json()
+  except json.JSONDecodeError:
+    return _json_response({"ok": False, "error": "Invalid JSON"}, status=400)
+  profile = body.get("vehicle_profile")
+  if not isinstance(profile, dict):
+    return _json_response({"ok": False, "error": "vehicle_profile must be an object"}, status=400)
+  result = update_vehicle_profile(_PARAMS, profile)
+  goals = body.get("goals")
+  if isinstance(goals, list) and goals:
+    skill_map = {
+      "tuning": "sp-tuning",
+      "engage": "engage-troubleshooting",
+      "adaptation": "vehicle-adaptation",
+      "secoc": "secoc-toyota",
+      "routes": "route-diagnostics",
+    }
+    enabled = set(load_enabled_skill_ids(_PARAMS))
+    for g in goals:
+      sid = skill_map.get(str(g).strip().lower())
+      if sid:
+        enabled.add(sid)
+    save_enabled_skill_ids(_PARAMS, sorted(enabled))
+    result["enabled_skills"] = sorted(enabled)
+  return _json_response(result)
 
 
 async def api_onboarding_complete(request: web.Request) -> web.Response:

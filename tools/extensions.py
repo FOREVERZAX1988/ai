@@ -35,6 +35,8 @@ EXTENSION_TOOL_META: dict[str, dict[str, Any]] = {
   "score_tune_session": {"label": "调参前后评分", "group": "read", "default_enabled": True, "driving": True},
   "route_event_timeline": {"label": "路线事件时间线", "group": "read", "default_enabled": True, "driving": True},
   "device_health": {"label": "设备健康", "group": "read", "default_enabled": True, "driving": True},
+  "run_health_check": {"label": "一键健康检查", "group": "read", "default_enabled": True, "driving": True},
+  "guide_ota_update": {"label": "OTA 更新指引", "group": "read", "default_enabled": True, "driving": True},
   "panda_status": {"label": "Panda 状态", "group": "read", "default_enabled": True, "driving": True},
   "list_tune_passport": {"label": "调参护照", "group": "read", "default_enabled": True, "driving": True},
   "manage_param_watchlist": {"label": "参数监视列表", "group": "config", "default_enabled": True, "driving": True},
@@ -42,6 +44,7 @@ EXTENSION_TOOL_META: dict[str, dict[str, Any]] = {
   "generate_adaptation_pr_draft": {"label": "适配 PR 草稿", "group": "read", "default_enabled": True, "driving": True},
   "post_drive_voice_summary": {"label": "下车语音简报", "group": "read", "default_enabled": True, "driving": True},
   "sync_knowledge_from_docs": {"label": "同步文档到知识库", "group": "config", "default_enabled": True, "driving": True},
+  "sync_community_wiki": {"label": "同步社区 Wiki 到知识库", "group": "config", "default_enabled": True, "driving": True},
   "pc_devsync_run": {"label": "Devsync 同步执行", "group": "write", "default_enabled": True, "driving": False, "pc_only": True},
   "live_can_capture": {"label": "实时 CAN 采样", "group": "read", "default_enabled": True, "driving": True},
   "network_diagnostics": {"label": "网络诊断", "group": "read", "default_enabled": True, "driving": True},
@@ -101,6 +104,8 @@ EXTENSION_SCHEMAS: list[dict[str, Any]] = [
   {"type": "function", "function": {"name": "score_tune_session", "description": "Compare before/after route scores for tune validation.", "parameters": {"type": "object", "properties": {"route_before": {"type": "string"}, "route_after": {"type": "string"}, "min_score_delta": {"type": "number"}}, "required": ["route_before", "route_after"]}}},
   {"type": "function", "function": {"name": "route_event_timeline", "description": "Chronological engage/disengage and onroad events from route.", "parameters": {"type": "object", "properties": {"route": {"type": "string"}, "max_events": {"type": "integer"}}, "required": ["route"]}}},
   {"type": "function", "function": {"name": "device_health", "description": "Disk, thermal, AGNOS version, build info.", "parameters": {"type": "object", "properties": {}, "required": []}}},
+  {"type": "function", "function": {"name": "run_health_check", "description": "Composite read-only health check for engage readiness or system health (vehicle, events, panda, network, key params).", "parameters": {"type": "object", "properties": {"scope": {"type": "string", "enum": ["engage", "system", "full"], "description": "engage=why OP won't engage; system=disk/panda/network; full=both"}}, "required": []}}},
+  {"type": "function", "function": {"name": "guide_ota_update", "description": "OTA / prebuilt update checklist and recommended steps (read-only guide).", "parameters": {"type": "object", "properties": {"confirm": {"type": "boolean"}}, "required": []}}},
   {"type": "function", "function": {"name": "panda_status", "description": "Panda USB and live pandaStates.", "parameters": {"type": "object", "properties": {}, "required": []}}},
   {"type": "function", "function": {"name": "list_tune_passport", "description": "List tune change journal entries.", "parameters": {"type": "object", "properties": {"limit": {"type": "integer"}}, "required": []}}},
   {"type": "function", "function": {"name": "manage_param_watchlist", "description": "Add/remove/replace watched Param keys.", "parameters": {"type": "object", "properties": {"add": {"type": "array", "items": {"type": "string"}}, "remove": {"type": "array", "items": {"type": "string"}}, "replace": {"type": "array", "items": {"type": "string"}}}, "required": []}}},
@@ -108,6 +113,7 @@ EXTENSION_SCHEMAS: list[dict[str, Any]] = [
   {"type": "function", "function": {"name": "generate_adaptation_pr_draft", "description": "Markdown PR draft from adaptation + git diff.", "parameters": {"type": "object", "properties": {"project_name": {"type": "string"}, "draft_id": {"type": "string"}, "summary": {"type": "string"}}, "required": []}}},
   {"type": "function", "function": {"name": "post_drive_voice_summary", "description": "Post-drive text summary; optional TTS via espeak/say.", "parameters": {"type": "object", "properties": {"route_name": {"type": "string"}, "speak": {"type": "boolean"}}, "required": []}}},
   {"type": "function", "function": {"name": "sync_knowledge_from_docs", "description": "Import repo markdown into RAG knowledge base.", "parameters": {"type": "object", "properties": {"max_files": {"type": "integer"}, "confirm": {"type": "boolean"}}, "required": []}}},
+  {"type": "function", "function": {"name": "sync_community_wiki", "description": "Fetch matched community wiki (e.g. dragonpilot_wiki) from GitHub into RAG.", "parameters": {"type": "object", "properties": {"max_files_per_repo": {"type": "integer"}, "force": {"type": "boolean"}, "all_registered": {"type": "boolean"}, "confirm": {"type": "boolean"}}, "required": []}}},
   {"type": "function", "function": {"name": "pc_devsync_run", "description": "PC only: run one-shot devsync to comma device (requires preflight ready).", "parameters": {"type": "object", "properties": {"device_ip": {"type": "string"}, "remote_path": {"type": "string"}, "identity": {"type": "string"}, "dry_run": {"type": "boolean"}, "confirm": {"type": "boolean"}}, "required": ["device_ip", "confirm"]}}},
   {"type": "function", "function": {"name": "live_can_capture", "description": "Capture live CAN frames from cereal for analysis.", "parameters": {"type": "object", "properties": {"duration_sec": {"type": "number"}, "max_frames": {"type": "integer"}}, "required": []}}},
   {"type": "function", "function": {"name": "network_diagnostics", "description": "WiFi, ping, SSH, comma auth connectivity check.", "parameters": {"type": "object", "properties": {"device_ip": {"type": "string"}, "ping_count": {"type": "integer"}}, "required": []}}},
@@ -364,6 +370,14 @@ def make_extension_handlers(
     from ai.tools.device_health_tools import device_health
     return device_health()
 
+  def h_run_health_check(args):
+    from ai.tools.health_check_tools import run_health_check
+    return run_health_check(scope=str(args.get("scope") or "engage"), get_state_reader=get_state_reader)
+
+  def h_guide_ota_update(args):
+    from ai.tools.health_check_tools import guide_ota_update
+    return guide_ota_update(confirm=bool(args.get("confirm")))
+
   def h_panda_status(_a):
     from ai.tools.device_health_tools import panda_status
     return panda_status(get_state_reader=get_state_reader)
@@ -425,6 +439,17 @@ def make_extension_handlers(
       return {"ok": True, "needs_confirmation": True, "hint": "Set confirm=true to sync docs into RAG."}
     from ai.tools.rag_sync_tools import sync_knowledge_from_docs
     return sync_knowledge_from_docs(params, max_files=int(args.get("max_files", 40) or 40))
+
+  def h_sync_community_wiki(args):
+    if args.get("confirm") is False and needs_confirm():
+      return {"ok": True, "needs_confirmation": True, "hint": "Set confirm=true to fetch community wiki into RAG."}
+    from ai.fork.wiki_ingest import ingest_wikis_for_current_fork
+    return ingest_wikis_for_current_fork(
+      params,
+      max_files_per_repo=int(args.get("max_files_per_repo", 45) or 45),
+      force=bool(args.get("force")),
+      include_all_registered=bool(args.get("all_registered")),
+    )
 
   def h_pc_devsync_run(args):
     if not args.get("confirm"):
@@ -689,6 +714,8 @@ def make_extension_handlers(
     "score_tune_session": h_score_tune_session,
     "route_event_timeline": h_route_event_timeline,
     "device_health": h_device_health,
+    "run_health_check": h_run_health_check,
+    "guide_ota_update": h_guide_ota_update,
     "panda_status": h_panda_status,
     "list_tune_passport": h_list_tune_passport,
     "manage_param_watchlist": h_manage_param_watchlist,
@@ -696,6 +723,7 @@ def make_extension_handlers(
     "generate_adaptation_pr_draft": h_generate_adaptation_pr_draft,
     "post_drive_voice_summary": h_post_drive_voice_summary,
     "sync_knowledge_from_docs": h_sync_knowledge_from_docs,
+    "sync_community_wiki": h_sync_community_wiki,
     "pc_devsync_run": h_pc_devsync_run,
     "live_can_capture": h_live_can_capture,
     "network_diagnostics": h_network_diagnostics,

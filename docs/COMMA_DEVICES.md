@@ -1,8 +1,19 @@
 # Comma 设备与 Panda / Pandad 对照
 
-> **单一事实来源**：`ai/tsk/lib/panda_connect.py` 与本文档。技能、工具描述、Web UI 均以此为准。
+> **单一事实来源**：`ai/tsk/lib/panda_connect.py`、`ai/system/comma_host.py` 与本文档。技能、工具描述、Web UI 均以此为准。
 
 ## 产品映射
+
+| 产品 | `device_class` | `device_type` | 平台 | 说明 |
+|------|----------------|---------------|------|------|
+| comma two（**C2**）/ EON-class | `c2` | `commatwo` | Android | 无 AGNOS；dragonpilot **d2** 等；官方 openpilot 止于 0.8.13.1 |
+| comma three（**C3**） | `c3` | `tici` | AGNOS | 内部 panda F4 (DOS) |
+| comma threeX（**C3X**） | `c3x` | `tizi` | AGNOS | 内部 panda H7 |
+| comma four（**C4**） | `c4` | `mici` | AGNOS | 内部 panda H7 |
+
+C2 检测：`ai/system/comma_host.py`（Android `getprop`、根目录 `d2` 标记文件等）。C3+ 检测：devicetree `comma tici|tizi|mici`。
+
+## Panda / Pandad（C3+）
 
 | 产品 | `device_type` | 内部 panda MCU | `panda_backend` | `pandad_process` | `pandad_module` |
 |------|---------------|----------------|-----------------|------------------|-----------------|

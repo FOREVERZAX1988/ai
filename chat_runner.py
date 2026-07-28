@@ -128,6 +128,15 @@ async def build_chat_messages(
   except Exception:
     pass
 
+  try:
+    from ai.fork.fork_prompt import fork_context_prompt_block
+
+    fork_block = fork_context_prompt_block()
+    if fork_block:
+      system_parts.append(fork_block)
+  except Exception:
+    pass
+
   wf_prompt = workflow_system_prompt(workflow_id) if workflow_id else ""
   if wf_prompt:
     system_parts.append(wf_prompt)

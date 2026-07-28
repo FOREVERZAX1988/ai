@@ -39,7 +39,7 @@ def detect_fork(root: Path | None = None, *, use_cached_analysis: bool = True) -
           "confidence": analysis.get("confidence", identity["confidence"]),
         }
 
-  return {
+  result = {
     "ok": True,
     "mode": mode,
     "openpilot_root": str(root),
@@ -59,3 +59,6 @@ def detect_fork(root: Path | None = None, *, use_cached_analysis: bool = True) -
       else "分析结果已缓存，git commit 变化后需重新分析"
     ),
   }
+  from ai.fork.community_profiles import enrich_fork_detection
+
+  return enrich_fork_detection(result, scan)

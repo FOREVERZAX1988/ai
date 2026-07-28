@@ -1676,6 +1676,95 @@ html, body {
   justify-content: flex-end;
 }
 
+.onboarding-goals {
+  border: none;
+  margin: 0.5rem 0;
+  padding: 0;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.onboarding-goals legend {
+  margin-bottom: 0.35rem;
+}
+
+.platform-memory-profile {
+  padding: 0.65rem 0.85rem;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.platform-memory-notes {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tune-ab-pane .tune-ab-form {
+  display: grid;
+  gap: 0.65rem;
+}
+
+@media (min-width: 640px) {
+  .tune-ab-pane .tune-ab-form {
+    grid-template-columns: 1fr 1fr auto;
+    align-items: end;
+  }
+}
+
+.tune-ab-run-btn {
+  align-self: end;
+  white-space: nowrap;
+}
+
+.tune-ab-result {
+  margin-top: 0.75rem;
+}
+
+.tune-ab-scores {
+  display: grid;
+  gap: 0.35rem;
+  padding: 0.65rem 0.75rem;
+  border-radius: 8px;
+  margin-bottom: 0.65rem;
+  font-size: 0.85rem;
+}
+
+.tune-ab-scores.tune-ab-pass {
+  background: rgba(78, 205, 196, 0.12);
+  border: 1px solid rgba(78, 205, 196, 0.35);
+}
+
+.tune-ab-scores.tune-ab-fail {
+  background: rgba(255, 107, 107, 0.1);
+  border: 1px solid rgba(255, 107, 107, 0.35);
+}
+
+.tune-ab-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+}
+
+.tune-ab-table th,
+.tune-ab-table td {
+  padding: 0.35rem 0.45rem;
+  border-bottom: 1px solid var(--border, rgba(128, 128, 128, 0.2));
+  text-align: left;
+}
+
+.tune-ab-recs {
+  margin: 0.65rem 0 0;
+  padding-left: 1.1rem;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+}
+
+.cab-hist-copy {
+  font-size: 0.68rem;
+  padding: 0.15rem 0.4rem;
+}
+
 .dev-card-title {
   margin: 0;
   font-size: 0.82rem;

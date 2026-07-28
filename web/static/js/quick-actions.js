@@ -52,6 +52,13 @@ const OP_QUICK_ACTIONS = [
     promptKey: 'qaSystemLoadPrompt',
   },
   {
+    icon: '🩺',
+    titleKey: 'qaHealthCheck',
+    descKey: 'qaHealthCheckDesc',
+    workflow: 'health_check',
+    promptKey: 'qaHealthCheckPrompt',
+  },
+  {
     icon: '🔐',
     titleKey: 'qaEngage',
     descKey: 'qaEngageDesc',
@@ -127,6 +134,7 @@ const OP_COMPOSER_QUICK_KEYS = [
   'qaKonik',
   'qaVehicle',
   'qaEngage',
+  'qaHealthCheck',
   'qaSystem',
   'qaLogs',
   'qaTripReview',

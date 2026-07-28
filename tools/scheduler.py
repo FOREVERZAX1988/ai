@@ -23,7 +23,7 @@ MAX_TASKS = 20
 
 VALID_ACTIONS = frozenset({
   "read_last_log", "read_usage", "read_tune_snapshot", "memory_ping", "snapshot_tune",
-  "trip_review_offroad", "reindex_rag_wifi", "check_critical_events",
+  "trip_review_offroad", "reindex_rag_wifi", "ingest_community_wiki_wifi", "check_critical_events",
   "post_drive_review_offroad", "check_param_watchlist_offroad", "git_fetch_wifi",
   "check_runner_health_offroad", "check_device_health_offroad", "check_github_ci_failed",
   "ota_preflight_offroad", "chat_notify",
@@ -204,6 +204,7 @@ def ensure_default_scheduler_tasks(params: Params) -> dict[str, Any]:
     {"name": "每日用量", "action": "read_usage", "trigger": "daily_at", "interval_minutes": 1440, "payload": {"hour": 9, "minute": 0}},
     {"name": "停车复盘", "action": "post_drive_review_offroad", "trigger": "on_offroad", "interval_minutes": 60, "payload": {}},
     {"name": "WiFi 拉取 Git", "action": "git_fetch_wifi", "trigger": "on_wifi", "interval_minutes": 60, "payload": {}},
+    {"name": "WiFi 同步社区 Wiki", "action": "ingest_community_wiki_wifi", "trigger": "on_wifi", "interval_minutes": 360, "payload": {}},
     {"name": "参数漂移检查", "action": "check_param_watchlist_offroad", "trigger": "on_offroad", "interval_minutes": 60, "payload": {}},
     {"name": "Runner/CI 健康", "action": "check_runner_health_offroad", "trigger": "on_offroad", "interval_minutes": 120, "payload": {"notify": True}},
     {"name": "设备健康巡检", "action": "check_device_health_offroad", "trigger": "interval", "interval_minutes": 360, "payload": {}},

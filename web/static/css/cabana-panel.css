@@ -1100,3 +1100,69 @@
     width: 4.2rem;
   }
 }
+
+.cabana-filter-row {
+  flex-wrap: wrap;
+  gap: 0.35rem 0.5rem;
+  align-items: center;
+}
+
+.cabana-filter-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.cab-byte-changed {
+  color: var(--accent, #4ecdc4);
+  font-weight: 600;
+}
+
+.cabana-detail-binary {
+  margin: 0.5rem 0;
+  padding: 0.5rem;
+  border: 1px solid var(--border, rgba(128, 128, 128, 0.25));
+  border-radius: 6px;
+  background: var(--surface-2, rgba(0, 0, 0, 0.15));
+  font-family: ui-monospace, monospace;
+  font-size: 0.72rem;
+  overflow-x: auto;
+}
+
+.cab-bin-head {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-bottom: 0.35rem;
+}
+
+.cab-bin-row {
+  display: flex;
+  gap: 0.5rem;
+  line-height: 1.5;
+}
+
+.cab-bin-idx {
+  width: 1.8rem;
+  color: var(--text-muted);
+}
+
+.cab-bin-bits span {
+  display: inline-block;
+  width: 0.65rem;
+  text-align: center;
+}
+
+.cab-bit-on { color: var(--text, #e8eef2); }
+.cab-bit-off { color: var(--text-muted, #6a7a88); opacity: 0.55; }
+.cab-bit-signal {
+  color: #ffd93d;
+  background: rgba(255, 217, 61, 0.12);
+  border-radius: 2px;
+}
+
+.platform-memory-notes .dev-item-list {
+  margin: 0;
+}

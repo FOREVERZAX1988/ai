@@ -75,6 +75,11 @@ async def scheduler_execute_action(action: str, _payload: dict[str, Any]) -> str
       return "embedding not configured"
     res = await reindex_all(_PARAMS, embed_cfg)
     return f"indexed={res.get('indexed')}/{res.get('total')}"
+  if action == "ingest_community_wiki_wifi":
+    from ai.fork.wiki_ingest import ingest_wikis_for_current_fork
+
+    res = ingest_wikis_for_current_fork(_PARAMS, max_files_per_repo=40, force=False)
+    return f"wiki indexed={res.get('indexed')} mode={res.get('mode', '?')}"
   if action == "check_critical_events":
     from ai.tools.diagnostics_tools import read_onroad_events
     ev = read_onroad_events(get_state_reader)

@@ -1,5 +1,15 @@
 # 系统健康
 
+## 一键体检
+
+用户要「体检」「健康检查」「为什么不能 engage」时，优先：
+
+1. `run_health_check(scope=engage)` — 接合阻塞项
+2. `run_health_check(scope=system)` — 磁盘 / Panda / 网络
+3. `guide_ota_update` + `ota_preflight_checklist` — OTA 前
+
+技能 **`health-check`**；工作流 **`health_check`**。
+
 ## 基础
 
 `device_health`、`list_managed_processes`、`read_manager_log`、`grep_log`、`ota_status`

@@ -129,6 +129,8 @@ TOOL_DESCRIPTIONS: dict[str, str] = {
   "score_tune_session": "调参前后路线评分对比",
   "route_event_timeline": "路线 engage/告警事件时间线",
   "device_health": "磁盘、温度、设备型号（tici/tizi/mici）与 AGNOS 版本",
+  "run_health_check": "接合/系统只读体检：车辆状态、事件、Panda、网络、关键 Param",
+  "guide_ota_update": "OTA 或 prebuilt 更新前的预检步骤与建议（只读）",
   "panda_status": "Panda 连接、pandaStates、多 Panda 场景与 pandad 进程",
   "list_all_pandas": "列出全部 Panda（hw_type/MCU/内置外接）及 pandad 快照",
   "list_f4_pandas": "列出 F4（DOS/黑熊）Panda 及内置/外接",

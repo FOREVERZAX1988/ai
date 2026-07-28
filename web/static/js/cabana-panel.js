@@ -54,9 +54,13 @@ const CabanaPanel = (() => {
   const PLOT_MAX_POINTS = 1200;
   let selectedKey = null;
   let plotSignalName = null;
-  let plotSeries = null;
+  let plotSeriesList = [];
+  const PLOT_COLORS = ['#4ecdc4', '#ff6b6b', '#ffd93d', '#6bcbff', '#c77dff', '#95e06c'];
   let plotInstance = null;
   let plotResizeObserver = null;
+  let hideUnchanged = false;
+  let signalFilterQuery = '';
+  const prevPayloadByKey = new Map();
 
   const SIGNAL_LABEL_RULES = [
     [/brake|brk|brakepressed|brakelight/i, '刹车'],
@@ -201,6 +205,10 @@ const CabanaPanel = (() => {
     const { display: valueText, title: valueTitle } = frameValuePresentation(frame);
     const stats = msgStats.get(key);
     const freqText = stats?.hz > 0 ? stats.hz.toFixed(1) : '—';
+    const countText = stats?.count ? String(stats.count) : '0';
+    const prevData = prevPayloadByKey.get(key);
+    const valueHtml = valueHtmlForFrame(frame, prevData);
+    if (frame.data != null) prevPayloadByKey.set(key, String(frame.data));
     const relTime = opts.replay ? formatReplayRowTime(frame) : frame.time.toFixed(2);
     const item = { id: key, message: msgName || hex, signal: sigs?.[0]?.signal || '' };
     const cached = explainCache.get(key);
@@ -218,6 +226,8 @@ const CabanaPanel = (() => {
       searchHay: `${nameCol} ${valueText} ${hex} bus${bus}`.toLowerCase(),
       valueText,
       valueTitle,
+      valueHtml,
+      countText,
       label: label || prev?.label || '',
       pending: !(label || prev?.label),
       hexHint: !msgName ? hexBucketHint(frame.address) : '',
@@ -294,17 +304,56 @@ const CabanaPanel = (() => {
     return accent || '#4ecdc4';
   }
 
+  function valueHtmlForFrame(frame, prevHex) {
+    const rawHex = frame.data ? String(frame.data).replace(/\s/g, '') : '';
+    const bytes = hexToBytes(rawHex);
+    if (!bytes) {
+      return truncateHex(formatHexBytes(rawHex));
+    }
+    const prevBytes = prevHex ? hexToBytes(String(prevHex).replace(/\s/g, '')) : null;
+    const parts = [];
+    for (let i = 0; i < bytes.length; i++) {
+      const b = bytes[i].toString(16).toUpperCase().padStart(2, '0');
+      const changed = !prevBytes || i >= prevBytes.length || prevBytes[i] !== bytes[i];
+      parts.push(changed ? `<span class="cab-byte-changed">${b}</span>` : b);
+    }
+    return parts.join(' ');
+  }
+
+  function plotSeriesId(key, signalName) {
+    return `${key}::${signalName}`;
+  }
+
+  function findPlotSeries(key, signalName) {
+    const id = plotSeriesId(key, signalName);
+    return plotSeriesList.find((s) => s.id === id) || null;
+  }
+
   function renderPlotChart() {
-    if (!els.plotChart || !plotSeries) return;
-    const hasData = plotSeries.times.length > 0;
+    if (!els.plotChart) return;
+    const active = plotSeriesList.filter((s) => s.times.length > 0);
+    const hasData = active.length > 0;
     if (els.plotEmpty) els.plotEmpty.hidden = hasData;
     if (!hasData) {
       destroyPlot();
       return;
     }
     const width = Math.max(240, els.plotChart.clientWidth || els.plotWrap?.clientWidth || 600);
-    const data = [plotSeries.times, plotSeries.values];
-    const label = plotSeries.signalName || 'value';
+    const times = active[0].times;
+    const data = [times];
+    const series = [{}];
+    const labels = [];
+    active.forEach((s, idx) => {
+      data.push(s.values);
+      const color = PLOT_COLORS[idx % PLOT_COLORS.length];
+      series.push({ label: s.label, stroke: color, width: 2 });
+      labels.push(s.label);
+    });
+    if (els.plotTitle) {
+      els.plotTitle.textContent = labels.length > 1
+        ? `${t('cabanaPlotMulti', '多信号曲线')} (${labels.length})`
+        : labels[0];
+    }
     const muted = getComputedStyle(root || document.documentElement).getPropertyValue('--text-muted').trim() || '#8a9aaa';
     const opts = {
       width,
@@ -314,10 +363,7 @@ const CabanaPanel = (() => {
         { stroke: muted, grid: { stroke: 'rgba(128,128,128,0.15)' } },
         { stroke: muted, grid: { stroke: 'rgba(128,128,128,0.15)' }, size: 52 },
       ],
-      series: [
-        {},
-        { label, stroke: plotAccentStroke(), width: 2 },
-      ],
+      series,
     };
     if (plotInstance) {
       plotInstance.setData(data);
@@ -336,53 +382,65 @@ const CabanaPanel = (() => {
     }
   }
 
-  function seedPlotFromHistory(key, signalName) {
+  function seedPlotFromHistory(key, signalName, { add = false } = {}) {
     const sig = findSignalForKey(key, signalName);
     if (!sig) {
-      plotSeries = null;
+      if (!add) plotSeriesList = [];
       destroyPlot();
       if (els.plotEmpty) els.plotEmpty.hidden = false;
       return;
     }
     plotSignalName = sig.signal;
-    plotSeries = {
-      id: `${key}::${sig.signal}`,
-      key,
-      signalName: sig.signal,
-      times: [],
-      values: [],
-    };
+    let series = findPlotSeries(key, sig.signal);
+    if (!series) {
+      if (!add) plotSeriesList = [];
+      if (add && plotSeriesList.length >= 6) return;
+      series = {
+        id: plotSeriesId(key, sig.signal),
+        key,
+        signalName: sig.signal,
+        label: `${sig.message || key} · ${sig.signal}`,
+        times: [],
+        values: [],
+      };
+      plotSeriesList.push(series);
+    } else if (!add) {
+      plotSeriesList = [series];
+    }
+    series.times = [];
+    series.values = [];
     const hist = frameHistory.get(key) || [];
     for (const frame of hist) {
       const val = decodeSignalValue(frame, sig);
       if (val === null) continue;
-      plotSeries.times.push(replayPlotTime(frame));
-      plotSeries.values.push(val);
-    }
-    if (els.plotTitle) {
-      els.plotTitle.textContent = `${sig.message || key} · ${sig.signal}`;
+      series.times.push(replayPlotTime(frame));
+      series.values.push(val);
     }
     if (els.plotWrap) els.plotWrap.hidden = false;
     renderPlotChart();
   }
 
   function appendPlotPoint(frame) {
-    if (!plotSeries || frameKey(frame) !== plotSeries.key || !plotSignalName) return;
-    const sig = findSignalForKey(plotSeries.key, plotSignalName);
-    if (!sig) return;
-    const val = decodeSignalValue(frame, sig);
-    if (val === null) return;
-    const plotT = replayPlotTime(frame);
-    const lastT = plotSeries.times[plotSeries.times.length - 1];
-    if (lastT === plotT) {
-      plotSeries.values[plotSeries.values.length - 1] = val;
-    } else {
-      plotSeries.times.push(plotT);
-      plotSeries.values.push(val);
-    }
-    if (plotSeries.times.length > PLOT_MAX_POINTS) {
-      plotSeries.times.shift();
-      plotSeries.values.shift();
+    if (!plotSeriesList.length) return;
+    const key = frameKey(frame);
+    for (const series of plotSeriesList) {
+      if (series.key !== key) continue;
+      const sig = findSignalForKey(series.key, series.signalName);
+      if (!sig) continue;
+      const val = decodeSignalValue(frame, sig);
+      if (val === null) continue;
+      const plotT = replayPlotTime(frame);
+      const lastT = series.times[series.times.length - 1];
+      if (lastT === plotT) {
+        series.values[series.values.length - 1] = val;
+      } else {
+        series.times.push(plotT);
+        series.values.push(val);
+      }
+      if (series.times.length > PLOT_MAX_POINTS) {
+        series.times.shift();
+        series.values.shift();
+      }
     }
     renderPlotChart();
   }
@@ -390,16 +448,144 @@ const CabanaPanel = (() => {
   function clearSelection() {
     selectedKey = null;
     plotSignalName = null;
-    plotSeries = null;
+    plotSeriesList = [];
     destroyPlot();
     if (els.detailWrap) els.detailWrap.hidden = true;
     if (els.plotWrap) els.plotWrap.hidden = true;
+    if (els.detailBinary) els.detailBinary.hidden = true;
   }
 
   function clearAuxState() {
     frameHistory.clear();
     msgStats.clear();
+    prevPayloadByKey.clear();
     clearSelection();
+  }
+
+  function renderBinaryView(frame, highlightSig) {
+    if (!els.detailBinary) return;
+    const bytes = hexToBytes(frame?.data);
+    if (!bytes || !bytes.length) {
+      els.detailBinary.hidden = true;
+      return;
+    }
+    const bitSet = new Set();
+    if (highlightSig) {
+      const start = Number(highlightSig.start) || 0;
+      const len = Number(highlightSig.length || highlightSig.size) || 0;
+      for (let b = start; b < start + len && b < 64; b++) bitSet.add(b);
+    }
+    const rows = [];
+    for (let byteIdx = 0; byteIdx < bytes.length; byteIdx++) {
+      const b = bytes[byteIdx];
+      let bits = '';
+      for (let bit = 7; bit >= 0; bit--) {
+        const globalBit = byteIdx * 8 + bit;
+        const on = (b >> bit) & 1;
+        const cls = bitSet.has(globalBit) ? 'cab-bit-signal' : (on ? 'cab-bit-on' : 'cab-bit-off');
+        bits += `<span class="${cls}">${on}</span>`;
+      }
+      rows.push(`<div class="cab-bin-row"><span class="cab-bin-idx">B${byteIdx}</span><span class="cab-bin-bits">${bits}</span></div>`);
+    }
+    els.detailBinary.innerHTML = `<div class="cab-bin-head">${t('cabanaBinaryView', '二进制视图')}</div>${rows.join('')}`;
+    els.detailBinary.hidden = false;
+  }
+
+  function matchesSignalFilter(key, row) {
+    const q = signalFilterQuery.trim();
+    if (!q) return true;
+    const frame = latestFrames.get(key);
+    if (!frame) return false;
+    const low = q.toLowerCase();
+    const decoded = decodeFrame(frame);
+    if (decoded.text && decoded.text.toLowerCase().includes(low)) return true;
+    const cmp = q.match(/^([<>=!]+)\s*(-?\d+(?:\.\d+)?)$/);
+    if (cmp && decoded.values) {
+      const op = cmp[1];
+      const target = Number(cmp[2]);
+      return Object.values(decoded.values).some((v) => {
+        const n = Number(v);
+        if (!Number.isFinite(n)) return false;
+        if (op === '>') return n > target;
+        if (op === '>=') return n >= target;
+        if (op === '<') return n < target;
+        if (op === '<=') return n <= target;
+        if (op === '!=') return n !== target;
+        return n === target;
+      });
+    }
+    const sigs = signalsByAddress.get(Number(frame.address)) || [];
+    return sigs.some((s) => s.signal.toLowerCase().includes(low));
+  }
+
+  function isUnchangedMessage(key) {
+    const hist = frameHistory.get(key);
+    if (!hist || hist.length < 2) return false;
+    const last = hist[hist.length - 1];
+    const prev = hist[hist.length - 2];
+    return last.data === prev.data;
+  }
+
+  function downloadTextFile(filename, text) {
+    const blob = new Blob([text], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function exportTableCsv() {
+    const keys = getFilteredSortedKeys();
+    const lines = ['time,bus,address,name,hex,count,hz,label'];
+    for (const key of keys) {
+      const row = tableRows.get(key);
+      if (!row) continue;
+      const frame = row.frame;
+      const stats = msgStats.get(key);
+      const esc = (s) => `"${String(s ?? '').replace(/"/g, '""')}"`;
+      lines.push([
+        esc(row.replay ? `+${row.relTime}s` : row.relTime),
+        esc(row.bus ?? 0),
+        esc(addrHex(frame.address)),
+        esc(row.nameCol),
+        esc(formatHexBytes(frame.data)),
+        esc(stats?.count ?? 0),
+        esc(stats?.hz ? stats.hz.toFixed(2) : ''),
+        esc(row.label || ''),
+      ].join(','));
+    }
+    downloadTextFile(`cabana-${panelMode}-${Date.now()}.csv`, lines.join('\n'));
+  }
+
+  function exportHistoryCsv() {
+    if (!selectedKey) return;
+    const hist = frameHistory.get(selectedKey) || [];
+    const lines = ['time,hex,dec,decoded'];
+    const esc = (s) => `"${String(s ?? '').replace(/"/g, '""')}"`;
+    for (const h of hist) {
+      lines.push([
+        esc(formatDetailTime(h)),
+        esc(formatHexBytes(h.data)),
+        esc(formatDecBytes(h.data)),
+        esc(decodeFrame(h).text || ''),
+      ].join(','));
+    }
+    downloadTextFile(`cabana-history-${selectedKey.replace(':', '-')}-${Date.now()}.csv`, lines.join('\n'));
+  }
+
+  function copyFrameHex(hex, hint) {
+    const text = formatHexBytes(hex);
+    if (!text) return;
+    navigator.clipboard?.writeText(text).catch(() => {});
+    if (els.hint) els.hint.textContent = hint || t('cabanaCopiedHex', '已复制 HEX');
+  }
+
+  function copySelectedHex() {
+    const frame = selectedKey ? latestFrames.get(selectedKey) : null;
+    if (!frame?.data) return;
+    copyFrameHex(frame.data);
   }
 
   function formatDetailTime(frame) {
@@ -440,15 +626,17 @@ const CabanaPanel = (() => {
         for (const sig of sigs) {
           const btn = document.createElement('button');
           btn.type = 'button';
-          btn.className = `cab-signal-pick${plotSignalName === sig.signal ? ' active' : ''}`;
+          const active = findPlotSeries(selectedKey, sig.signal);
+          btn.className = `cab-signal-pick${active ? ' active' : ''}`;
           const val = decodeSignalValue(frame, sig);
           const valText = val == null ? '—' : `${val.toFixed(2)}${sig.unit || ''}`;
           btn.textContent = `${sig.signal}=${valText}`;
-          btn.title = t('cabanaPlotOn', '绘图');
+          btn.title = t('cabanaPlotHint', '点击绘图，Shift+点击叠加');
           btn.addEventListener('click', (e) => {
             e.stopPropagation();
             plotSignalName = sig.signal;
-            seedPlotFromHistory(selectedKey, sig.signal);
+            seedPlotFromHistory(selectedKey, sig.signal, { add: e.shiftKey });
+            renderBinaryView(frame, sig);
             renderDetailPanel();
           });
           els.detailSignals.appendChild(btn);
@@ -461,7 +649,7 @@ const CabanaPanel = (() => {
       if (!hist.length) {
         const tr = document.createElement('tr');
         const td = document.createElement('td');
-        td.colSpan = 4;
+        td.colSpan = 5;
         td.textContent = t('cabanaDetailNoHistory', '暂无历史帧');
         td.style.color = 'var(--text-muted)';
         tr.appendChild(td);
@@ -482,10 +670,24 @@ const CabanaPanel = (() => {
             if (idx > 0 && idx < 3) td.className = 'mono';
             tr.appendChild(td);
           });
+          const tdCopy = document.createElement('td');
+          const copyBtn = document.createElement('button');
+          copyBtn.type = 'button';
+          copyBtn.className = 'btn small ghost cab-hist-copy';
+          copyBtn.textContent = t('cabanaCopyFrame', '复制');
+          copyBtn.title = t('cabanaCopyFrameHint', '复制该帧 HEX');
+          copyBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            copyFrameHex(h.data, t('cabanaCopiedFrame', '已复制该帧 HEX'));
+          });
+          tdCopy.appendChild(copyBtn);
+          tr.appendChild(tdCopy);
           els.detailHistoryBody.appendChild(tr);
         }
       }
     }
+    const highlightSig = plotSignalName ? findSignalForKey(selectedKey, plotSignalName) : (sigs[0] || null);
+    renderBinaryView(frame, highlightSig);
     if (row?.label && els.detailTitle) {
       els.detailTitle.textContent += ` · ${row.label}`;
     }
@@ -502,7 +704,7 @@ const CabanaPanel = (() => {
       seedPlotFromHistory(key, plotSignalName);
     } else {
       plotSignalName = null;
-      plotSeries = null;
+      plotSeriesList = [];
       destroyPlot();
       if (els.plotWrap) els.plotWrap.hidden = true;
     }
@@ -542,6 +744,8 @@ const CabanaPanel = (() => {
       if (filterChip === 'labeled') return !!row.label;
       if (filterChip === 'unlabeled') return !row.label;
       if (filterChip !== 'all' && row.label !== filterChip) return false;
+      if (hideUnchanged && isUnchangedMessage(k)) return false;
+      if (!matchesSignalFilter(k, row)) return false;
       return true;
     });
     const col = sortCol;
@@ -563,6 +767,9 @@ const CabanaPanel = (() => {
       } else if (col === 'freq') {
         va = msgStats.get(a)?.hz || 0;
         vb = msgStats.get(b)?.hz || 0;
+      } else if (col === 'count') {
+        va = msgStats.get(a)?.count || 0;
+        vb = msgStats.get(b)?.count || 0;
       } else if (col === 'label') {
         va = ra?.label || '～';
         vb = rb?.label || '～';
@@ -624,17 +831,18 @@ const CabanaPanel = (() => {
         tr.className = 'cab-data-row';
         tr.dataset.key = key;
         tr.id = rowDomId(key);
-        tr.innerHTML = '<td class="cab-col-time"></td><td class="cab-col-bus"></td><td class="cab-col-name"></td><td class="cab-col-value"></td><td class="cab-col-freq"></td><td class="cab-col-label"></td>';
+        tr.innerHTML = '<td class="cab-col-time"></td><td class="cab-col-bus"></td><td class="cab-col-name"></td><td class="cab-col-value"></td><td class="cab-col-count"></td><td class="cab-col-freq"></td><td class="cab-col-label"></td>';
       }
       tr.classList.toggle('selected', key === selectedKey);
       tr.children[0].textContent = row.replay ? `+${row.relTime}s` : row.relTime;
       tr.children[1].textContent = String(row.bus ?? 0);
       tr.children[2].textContent = row.nameCol;
       tr.children[2].title = row.nameCol;
-      tr.children[3].textContent = truncateHex(row.valueText);
+      tr.children[3].innerHTML = row.valueHtml || truncateHex(row.valueText);
       tr.children[3].title = row.valueTitle || row.valueText || '';
-      tr.children[4].textContent = row.freqText || '—';
-      tr.children[5].innerHTML = labelCellHtml(row.label, { pending: row.pending, hexHint: row.hexHint });
+      tr.children[4].textContent = row.countText || '0';
+      tr.children[5].textContent = row.freqText || '—';
+      tr.children[6].innerHTML = labelCellHtml(row.label, { pending: row.pending, hexHint: row.hexHint });
       frag.appendChild(tr);
     }
     for (const [, tr] of existing) tr.remove();
@@ -2464,8 +2672,20 @@ const CabanaPanel = (() => {
     if (els.thBus) els.thBus.textContent = t('cabanaThBus', '总线');
     if (els.thName) els.thName.textContent = t('cabanaThNamePlain', '报文');
     if (els.thValue) els.thValue.textContent = t('cabanaThValue', '当前值');
+    if (els.thCount) els.thCount.textContent = t('cabanaThCount', 'Count');
     if (els.thFreq) els.thFreq.textContent = t('cabanaThFreq', 'Hz');
     if (els.thExplain) els.thExplain.textContent = t('cabanaThFunction', '功能');
+    if (els.signalFilter) {
+      els.signalFilter.placeholder = t('cabanaSignalFilterPlaceholder', '信号/物理值过滤…');
+      els.signalFilter.title = t('cabanaSignalFilterTitle', '例如 BRK 或 > 0');
+    }
+    if (els.hideUnchangedLabel) {
+      els.hideUnchangedLabel.textContent = t('cabanaHideUnchanged', '隐藏不变');
+    }
+    if (els.exportCsvBtn) els.exportCsvBtn.textContent = t('cabanaExportCsv', '导出表格 CSV');
+    if (els.copyHexBtn) els.copyHexBtn.textContent = t('cabanaCopyHex', '复制 HEX');
+    if (els.exportHistCsvBtn) els.exportHistCsvBtn.textContent = t('cabanaExportHistCsv', '导出历史 CSV');
+    if (els.histThCopy) els.histThCopy.textContent = t('cabanaHistThCopy', '操作');
     if (els.plotTitle) els.plotTitle.textContent = t('cabanaPlotTitle', '信号曲线');
     if (els.plotClear) els.plotClear.textContent = t('cabanaPlotClear', '清空曲线');
     if (els.plotEmpty) {
@@ -2506,6 +2726,10 @@ const CabanaPanel = (() => {
     els.dbcPicker = $('#cabanaDbcPicker');
     els.connectBtn = $('#cabanaConnectBtn');
     els.filter = $('#cabanaFilter');
+    els.signalFilter = $('#cabanaSignalFilter');
+    els.hideUnchanged = $('#cabanaHideUnchanged');
+    els.hideUnchangedLabel = $('#cabanaHideUnchangedLabel');
+    els.exportCsvBtn = $('#cabanaExportCsvBtn');
     els.tbody = $('#cabanaTableBody') || $('#cabanaTable tbody');
     els.status = $('#cabanaStatus');
     els.title = $('#cabanaPanelTitle');
@@ -2514,6 +2738,7 @@ const CabanaPanel = (() => {
     els.thBus = $('#cabThBus');
     els.thName = $('#cabThName');
     els.thValue = $('#cabThValue');
+    els.thCount = $('#cabThCount');
     els.thFreq = $('#cabThFreq');
     els.thExplain = $('#cabThExplain');
     els.plotWrap = $('#cabanaPlotWrap');
@@ -2527,11 +2752,15 @@ const CabanaPanel = (() => {
     els.detailSignals = $('#cabanaDetailSignals');
     els.detailHistoryHead = $('#cabanaDetailHistoryHead');
     els.detailHistoryBody = $('#cabanaDetailHistoryBody');
+    els.detailBinary = $('#cabanaDetailBinary');
+    els.copyHexBtn = $('#cabanaCopyHexBtn');
+    els.exportHistCsvBtn = $('#cabanaExportHistCsvBtn');
     els.detailClose = $('#cabanaDetailClose');
     els.histThTime = $('#cabanaHistThTime');
     els.histThHex = $('#cabanaHistThHex');
     els.histThDec = $('#cabanaHistThDec');
     els.histThDecoded = $('#cabanaHistThDecoded');
+    els.histThCopy = $('#cabanaHistThCopy');
     els.modeTabs = root?.querySelectorAll('.cabana-mode-tab');
     els.tabLive = $('#cabanaTabLive');
     els.tabReplay = $('#cabanaTabReplay');
@@ -2567,6 +2796,17 @@ const CabanaPanel = (() => {
       selectRow(tr.dataset.key);
     });
     els.filter?.addEventListener('input', () => scheduleVirtualRender());
+    els.signalFilter?.addEventListener('input', () => {
+      signalFilterQuery = els.signalFilter?.value || '';
+      scheduleVirtualRender();
+    });
+    els.hideUnchanged?.addEventListener('change', () => {
+      hideUnchanged = !!els.hideUnchanged?.checked;
+      scheduleVirtualRender();
+    });
+    els.exportCsvBtn?.addEventListener('click', exportTableCsv);
+    els.copyHexBtn?.addEventListener('click', copySelectedHex);
+    els.exportHistCsvBtn?.addEventListener('click', exportHistoryCsv);
     document.addEventListener('keydown', onCabanaKeydown);
 
     els.modeTabs?.forEach((tab) => {
@@ -2626,7 +2866,7 @@ const CabanaPanel = (() => {
     els.aiResultToChat?.addEventListener('click', sendAiResultToChat);
     els.aiResultClose?.addEventListener('click', () => showAiResult(''));
     els.plotClear?.addEventListener('click', () => {
-      plotSeries = null;
+      plotSeriesList = [];
       destroyPlot();
       if (els.plotEmpty) els.plotEmpty.hidden = false;
     });

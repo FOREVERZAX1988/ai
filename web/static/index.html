@@ -5,10 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>op助手</title>
   <link rel="icon" type="image/svg+xml" href="/static/img/favicon.svg">
-  <link rel="stylesheet" href="/static/css/ai.css?v=20260728c">
+  <link rel="stylesheet" href="/static/css/ai.css?v=20260728e">
   <link rel="stylesheet" href="/static/css/office-panel.css?v=20260723y">
   <link rel="stylesheet" href="/static/css/canvas-panel.css?v=20260723e">
-  <link rel="stylesheet" href="/static/css/cabana-panel.css?v=20260728a">
+  <link rel="stylesheet" href="/static/css/cabana-panel.css?v=20260728d">
   <link rel="stylesheet" href="/static/vendor/uplot/uPlot.min.css">
   <link rel="stylesheet" href="/static/vendor/xterm/xterm.css?v=20260722i">
 </head>
@@ -211,6 +211,12 @@
         </div>
         <div class="cabana-filter-row">
           <input type="text" id="cabanaFilter" class="cabana-filter toolbar-input" placeholder="搜索报文…">
+          <input type="text" id="cabanaSignalFilter" class="cabana-filter toolbar-input" placeholder="信号/物理值过滤…" title="例如 BRK 或 > 0">
+          <label class="cabana-filter-check" title="隐藏 payload 连续不变的报文">
+            <input type="checkbox" id="cabanaHideUnchanged">
+            <span id="cabanaHideUnchangedLabel">隐藏不变</span>
+          </label>
+          <button type="button" id="cabanaExportCsvBtn" class="btn small ghost">导出表格 CSV</button>
           <div class="cabana-filter-chips" id="cabanaFilterChips"></div>
         </div>
         <div class="cabana-plot-wrap" id="cabanaPlotWrap" hidden>
@@ -231,13 +237,14 @@
                 <th id="cabThBus" data-sort="bus">总线</th>
                 <th id="cabThName" data-sort="name">报文</th>
                 <th id="cabThValue">当前值</th>
+                <th id="cabThCount" data-sort="count">Count</th>
                 <th id="cabThFreq" data-sort="freq">Hz</th>
                 <th id="cabThExplain" data-sort="label">功能</th>
               </tr>
             </thead>
             <tbody id="cabanaTableBody">
-              <tr class="cab-virtual-spacer cab-virtual-spacer-top" aria-hidden="true"><td colspan="6"></td></tr>
-              <tr class="cab-virtual-spacer cab-virtual-spacer-bottom" aria-hidden="true"><td colspan="6"></td></tr>
+              <tr class="cab-virtual-spacer cab-virtual-spacer-top" aria-hidden="true"><td colspan="7"></td></tr>
+              <tr class="cab-virtual-spacer cab-virtual-spacer-bottom" aria-hidden="true"><td colspan="7"></td></tr>
             </tbody>
           </table>
         </div>
@@ -246,9 +253,12 @@
             <span id="cabanaDetailTitle" class="cabana-detail-title">报文详情</span>
             <div class="cabana-detail-actions">
               <span id="cabanaDetailMeta" class="cabana-detail-meta"></span>
+              <button type="button" id="cabanaCopyHexBtn" class="btn small ghost">复制 HEX</button>
+              <button type="button" id="cabanaExportHistCsvBtn" class="btn small ghost">导出历史 CSV</button>
               <button type="button" id="cabanaDetailClose" class="btn small ghost" aria-label="Close">×</button>
             </div>
           </div>
+          <div id="cabanaDetailBinary" class="cabana-detail-binary" hidden></div>
           <div id="cabanaDetailSignals" class="cabana-detail-signals"></div>
           <div class="cabana-detail-history">
             <div class="cabana-detail-history-head" id="cabanaDetailHistoryHead">最近帧</div>
@@ -260,6 +270,7 @@
                     <th id="cabanaHistThHex">HEX</th>
                     <th id="cabanaHistThDec">DEC</th>
                     <th id="cabanaHistThDecoded">解码</th>
+                    <th id="cabanaHistThCopy">操作</th>
                   </tr>
                 </thead>
                 <tbody id="cabanaDetailHistoryBody"></tbody>
@@ -535,6 +546,42 @@
                 <button type="button" id="platformSessionSearch" class="btn small platform-search-btn">搜索</button>
               </div>
               <div id="platformSessionHits" class="platform-list"></div>
+            </div>
+          </section>
+          <section class="settings-card">
+            <header class="settings-card-head"><h3 class="settings-card-title" id="platformMemoryTitle">设备记忆</h3></header>
+            <div class="settings-card-body settings-card-body-flush">
+              <div id="platformMemoryProfile" class="platform-memory-profile"></div>
+              <ul id="platformMemoryNotes" class="dev-item-list platform-memory-notes"></ul>
+            </div>
+          </section>
+          <section class="settings-card">
+            <header class="settings-card-head">
+              <h3 class="settings-card-title" id="platformPassportTitle">调参护照</h3>
+              <span class="dev-count-badge" id="platformPassportCount">0</span>
+            </header>
+            <div class="settings-card-body settings-card-body-flush">
+              <ul class="dev-item-list" id="platformPassportList"></ul>
+            </div>
+          </section>
+          <section class="settings-card">
+            <header class="settings-card-head">
+              <h3 class="settings-card-title" id="platformTuneCompareTitle">调参 A/B 对比</h3>
+            </header>
+            <div class="settings-card-body platform-pane-body tune-ab-pane">
+              <div class="tune-ab-form">
+                <label class="field">
+                  <span class="field-label" id="platformTuneRouteALabel">路线 A（调参前）</span>
+                  <select id="platformTuneRouteA" class="toolbar-select"></select>
+                </label>
+                <label class="field">
+                  <span class="field-label" id="platformTuneRouteBLabel">路线 B（调参后）</span>
+                  <select id="platformTuneRouteB" class="toolbar-select"></select>
+                </label>
+                <button type="button" id="platformTuneCompareBtn" class="btn small primary tune-ab-run-btn">开始对比</button>
+              </div>
+              <div id="platformTuneCompareStatus" class="field-hint" hidden></div>
+              <div id="platformTuneCompareResult" class="tune-ab-result" hidden></div>
             </div>
           </section>
           <section class="settings-card">
@@ -930,6 +977,31 @@
           <span class="field-label" id="onboardingModelLabel">模型</span>
           <div id="onboardingModelCombobox" class="model-combobox-host"></div>
         </label>
+        <label class="field">
+          <span class="field-label" id="onboardingCarLabel">车型（可选）</span>
+          <input type="text" id="onboardingCar" autocomplete="off" placeholder="例如 RAV4 2023">
+        </label>
+        <label class="field">
+          <span class="field-label" id="onboardingBrandLabel">品牌（可选）</span>
+          <select id="onboardingBrand">
+            <option value="">—</option>
+            <option value="toyota">Toyota / Lexus</option>
+            <option value="honda">Honda / Acura</option>
+            <option value="hyundai">Hyundai / Kia</option>
+            <option value="volkswagen">VAG</option>
+            <option value="gm">GM</option>
+            <option value="ford">Ford</option>
+            <option value="tesla">Tesla</option>
+            <option value="other">其他</option>
+          </select>
+        </label>
+        <fieldset class="onboarding-goals">
+          <legend class="field-label" id="onboardingGoalsLabel">你最需要哪类帮助？</legend>
+          <label><input type="checkbox" name="onboardingGoal" value="tuning"> <span id="onboardingGoalTuning">调参优化</span></label>
+          <label><input type="checkbox" name="onboardingGoal" value="engage"> <span id="onboardingGoalEngage">无法接合</span></label>
+          <label><input type="checkbox" name="onboardingGoal" value="adaptation"> <span id="onboardingGoalAdapt">新车适配</span></label>
+          <label><input type="checkbox" name="onboardingGoal" value="routes"> <span id="onboardingGoalRoutes">路线复盘</span></label>
+        </fieldset>
         <p class="field-hint" id="onboardingResult"></p>
       </div>
       <div class="modal-footer actions">
@@ -988,13 +1060,13 @@
   }
   </script>
   <script type="module" src="/static/js/office-scene-3d.mjs?v=20260724c"></script>
-  <script src="/static/js/platform-panel.js?v=20260724d"></script>
+  <script src="/static/js/platform-panel.js?v=20260728e"></script>
   <script src="/static/js/office-panel.js?v=20260724c"></script>
   <script src="/static/js/command-queue.js?v=20260723k"></script>
   <script src="/static/js/canvas-panel.js?v=20260723a"></script>
   <script src="/static/js/terminal-panel.js?v=20260723e"></script>
   <script src="/static/js/ai.js?v=20260723k"></script>
   <script src="/static/vendor/uplot/uPlot.iife.min.js"></script>
-  <script src="/static/js/cabana-panel.js?v=20260728b"></script>
+  <script src="/static/js/cabana-panel.js?v=20260728e"></script>
 </body>
 </html>

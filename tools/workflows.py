@@ -22,10 +22,24 @@ WORKFLOWS: dict[str, dict[str, Any]] = {
       "勿输出完整私钥。完成后提示用户在 stable.konik.ai 扫码配对。"
     ),
   },
+  "health_check": {
+    "name": "一键健康检查",
+    "mode": "execute",
+    "steps": [
+      "run_health_check(scope=engage)",
+      "run_health_check(scope=system) if needed",
+      "Route to engage-troubleshooting / secoc-toyota / c3-dos-panda per failed checks",
+    ],
+    "prompt": (
+      "执行一键健康检查：先 run_health_check(scope=engage)，再按需 scope=system 或 full。"
+      "按 checks 中 fail/warn 项给出编号清单与下一步技能；引用工具返回的 summary，勿臆测。"
+    ),
+  },
   "engage_triage": {
     "name": "无法 Engage 分诊",
     "mode": "execute",
     "steps": [
+      "run_health_check(scope=engage)",
       "get_vehicle_state + read_onroad_events",
       "lookup_secoc_tier if Toyota/Lexus",
       "trip_review",

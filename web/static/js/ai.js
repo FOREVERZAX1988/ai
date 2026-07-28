@@ -117,6 +117,8 @@ const els = {
   onboardingTestBtn: $('#onboardingTestBtn'),
   onboardingSaveBtn: $('#onboardingSaveBtn'),
   onboardingResult: $('#onboardingResult'),
+  onboardingCar: $('#onboardingCar'),
+  onboardingBrand: $('#onboardingBrand'),
   pcSessionsList: $('#pcSessionsList'),
   devAssetsList: $('#devAssetsList'),
   devRefreshBtn: $('#devRefreshBtn'),
@@ -4505,6 +4507,18 @@ async function saveOnboardingWizard() {
   if (!data.ok) {
     if (els.onboardingResult) els.onboardingResult.textContent = data.error || t('saveFailed', '保存失败');
     return;
+  }
+  const goals = Array.from(document.querySelectorAll('input[name="onboardingGoal"]:checked')).map((el) => el.value);
+  const car = els.onboardingCar?.value?.trim();
+  const brand = els.onboardingBrand?.value?.trim();
+  const vehicleProfile = {};
+  if (car) vehicleProfile.car = car;
+  if (brand) vehicleProfile.brand = brand;
+  if (vehicleProfile.car || vehicleProfile.brand || goals.length) {
+    await api('POST', '/api/ai/onboarding/profile', {
+      vehicle_profile: vehicleProfile,
+      goals,
+    }).catch(() => ({}));
   }
   await api('POST', '/api/ai/onboarding/complete', {});
   configured = !!data.configured;

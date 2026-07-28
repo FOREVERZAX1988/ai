@@ -46,6 +46,19 @@ async def _startup_rag_seed_and_reindex() -> None:
   except Exception as e:
     cloudlog.warning(f"aid: builtin RAG seed skipped: {e}")
   try:
+    from ai.fork.wiki_ingest import ingest_wikis_for_current_fork
+
+    wiki = await loop.run_in_executor(
+      None,
+      lambda: ingest_wikis_for_current_fork(_PARAMS, max_files_per_repo=35, force=False),
+    )
+    if wiki.get("indexed"):
+      cloudlog.info(
+        f"aid: community wiki ingest indexed={wiki.get('indexed')} mode={wiki.get('mode')}"
+      )
+  except Exception as e:
+    cloudlog.warning(f"aid: community wiki ingest skipped: {e}")
+  try:
     config = read_ai_config()
     embed_cfg = load_embedding_config(_PARAMS, config)
     if not embed_cfg.is_configured:

@@ -779,6 +779,8 @@ LOG_SEGMENT_LENGTH_SEC = 60
 _THUMB_CACHE: dict[str, bytes] = {}
 _THUMB_CACHE_ORDER: list[str] = []
 _THUMB_CACHE_MAX = 64
+_ENCODE_IDX_CACHE: dict[str, list[tuple[float, int, int]]] = {}
+_QCAMERA_FPS = 20.0
 
 
 def _qcamera_paths_sorted(route_name: str) -> list[tuple[int, Path]]:
@@ -811,6 +813,71 @@ def _thumb_cache_put(key: str, data: bytes) -> None:
   while len(_THUMB_CACHE_ORDER) > _THUMB_CACHE_MAX:
     old = _THUMB_CACHE_ORDER.pop(0)
     _THUMB_CACHE.pop(old, None)
+
+
+def _encode_index_samples(route_name: str) -> list[tuple[float, int, int]]:
+  """Build [(route_rel_sec, segment_num, frame_id)] from qRoadEncodeIdx / roadEncodeIdx."""
+  cached = _ENCODE_IDX_CACHE.get(route_name)
+  if cached is not None:
+    return cached
+  if LogReader is None:
+    return []
+  routes_dir = _get_routes_dir()
+  if routes_dir is None:
+    return []
+  route_path = routes_dir / route_name
+  if not route_path.is_dir():
+    return []
+  samples: list[tuple[float, int, int]] = []
+  origin: int | None = None
+  for qlog in _find_qlogs(route_path):
+    try:
+      lr = LogReader(str(qlog))
+      for msg in lr:
+        if origin is None:
+          origin = int(msg.logMonoTime)
+        which = msg.which()
+        if which not in ("qRoadEncodeIdx", "roadEncodeIdx"):
+          continue
+        enc = getattr(msg, which)
+        seg = int(getattr(enc, "segmentNum", 0) or 0)
+        fid = int(getattr(enc, "frameId", 0) or 0)
+        t_rel = (int(msg.logMonoTime) - origin) / 1e9
+        samples.append((t_rel, seg, fid))
+    except Exception:
+      continue
+  samples.sort(key=lambda x: x[0])
+  if len(samples) > 50_000:
+    samples = samples[:50_000]
+  _ENCODE_IDX_CACHE[route_name] = samples
+  return samples
+
+
+def _qcamera_offset_in_segment(route_name: str, rel_sec: float, seg_num: int) -> float | None:
+  samples = _encode_index_samples(route_name)
+  if not samples:
+    return None
+  best_fid: int | None = None
+  best_dt = 1e9
+  for t_rel, seg, fid in samples:
+    if seg != seg_num:
+      continue
+    dt = abs(t_rel - rel_sec)
+    if dt < best_dt:
+      best_dt = dt
+      best_fid = fid
+  if best_fid is not None and best_dt < 12.0:
+    return best_fid / _QCAMERA_FPS
+  best_fid = None
+  best_dt = 1e9
+  for t_rel, _seg, fid in samples:
+    dt = abs(t_rel - rel_sec)
+    if dt < best_dt:
+      best_dt = dt
+      best_fid = fid
+  if best_fid is not None and best_dt < 12.0:
+    return best_fid / _QCAMERA_FPS
+  return None
 
 
 def _extract_qcamera_jpeg(path: Path, offset_sec: float, *, max_width: int = 480) -> bytes | None:
@@ -856,8 +923,11 @@ def _qcamera_thumbnail_at_time(route_name: str, rel_sec: float) -> bytes | None:
   seg_idx = int(rel_sec // LOG_SEGMENT_LENGTH_SEC)
   if seg_idx >= len(segs):
     seg_idx = len(segs) - 1
-  offset = rel_sec - seg_idx * LOG_SEGMENT_LENGTH_SEC
-  cache_key = f"{route_name}:{segs[seg_idx][0]}:{offset:.1f}"
+  seg_num = segs[seg_idx][0]
+  offset = _qcamera_offset_in_segment(route_name, rel_sec, seg_num)
+  if offset is None:
+    offset = rel_sec - seg_idx * LOG_SEGMENT_LENGTH_SEC
+  cache_key = f"{route_name}:{seg_num}:{offset:.2f}"
   cached = _thumb_cache_get(cache_key)
   if cached:
     return cached

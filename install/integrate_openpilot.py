@@ -401,6 +401,14 @@ def integrate(
   except Exception as exc:
     report["fork"] = {"ok": False, "error": str(exc)}
 
+  if not dry_run:
+    try:
+      from ai.fork.post_install import run_post_install_learn
+
+      report["post_install_learn"] = run_post_install_learn(root)
+    except Exception as exc:
+      report["post_install_learn"] = {"ok": False, "error": str(exc)}
+
   return report
 
 
