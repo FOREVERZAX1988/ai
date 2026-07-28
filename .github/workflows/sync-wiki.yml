@@ -1,5 +1,7 @@
 name: Sync GitHub Wiki
 
+# 需要仓库 Secret WIKI_SYNC_TOKEN（classic PAT，repo 权限）。
+# GITHUB_TOKEN 无法 push 到隐藏的 ai.wiki 仓库（会 404）。
 on:
   push:
     branches: [main]
@@ -14,6 +16,7 @@ permissions:
 
 jobs:
   sync-wiki:
+    if: ${{ secrets.WIKI_SYNC_TOKEN != '' }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout main repo (wiki source)
@@ -24,16 +27,11 @@ jobs:
       - name: Push docs/wiki to GitHub Wiki git
         env:
           WIKI_SYNC_TOKEN: ${{ secrets.WIKI_SYNC_TOKEN }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           WIKI_SLUG: ${{ github.repository_owner }}/${{ github.event.repository.name }}.wiki
           COMMIT_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
-          GH_TOKEN="${WIKI_SYNC_TOKEN:-${GITHUB_TOKEN}}"
-          if [[ -z "${GH_TOKEN}" ]]; then
-            echo "::error::Missing token; add repository secret WIKI_SYNC_TOKEN (classic PAT with repo scope)"
-            exit 1
-          fi
+          GH_TOKEN="${WIKI_SYNC_TOKEN}"
           COMMIT_MSG="docs: sync wiki from ${COMMIT_SHA}"
 
           SRC="${GITHUB_WORKSPACE}/src/docs/wiki"
@@ -48,7 +46,7 @@ jobs:
           elif git clone --depth 1 --branch main "$REMOTE" "$WORK/repo" 2>/dev/null; then
             echo "Cloned existing wiki (main)"
           else
-            echo "Wiki git not cloneable yet; creating fresh repo (first push)"
+            echo "Wiki git empty; initializing first push"
             mkdir -p "$WORK/repo"
             cd "$WORK/repo"
             git init -b master
@@ -56,11 +54,7 @@ jobs:
           fi
 
           cd "$WORK/repo"
-          if ! git remote get-url origin &>/dev/null; then
-            git remote add origin "$REMOTE"
-          else
-            git remote set-url origin "$REMOTE"
-          fi
+          git remote set-url origin "$REMOTE"
 
           cp "$SRC"/*.md .
           git config user.name "github-actions[bot]"
@@ -74,18 +68,5 @@ jobs:
 
           git commit -m "${COMMIT_MSG}"
           BRANCH="$(git branch --show-current)"
-          if git push -u origin "${BRANCH}"; then
-            echo "Wiki pushed successfully on branch ${BRANCH}."
-            exit 0
-          fi
-
-          echo "::warning::Push to ${BRANCH} failed; retrying master"
-          git branch -M master
-          if git push -u origin master; then
-            echo "Wiki pushed successfully on master."
-            exit 0
-          fi
-
-          echo "::error::Wiki push failed. Add secret WIKI_SYNC_TOKEN (classic PAT, repo scope):"
-          echo "::error::https://github.com/${{ github.repository }}/settings/secrets/actions"
-          exit 1
+          git push -u origin "${BRANCH}" || git push -u origin master
+          echo "Wiki pushed successfully."

@@ -1,6 +1,9 @@
 # OP Agent Wiki
 
-> 本页为 GitHub Wiki 首页源稿。发布到 https://github.com/mouxangithub/ai/wiki 见 [WIKI.md](../WIKI.md)。
+> 本页为 GitHub Wiki 首页源稿。在线阅读：
+> - **Pages**：https://mouxangithub.github.io/ai/
+> - **Wiki**：https://github.com/mouxangithub/ai/wiki
+> - 同步说明见 [WIKI.md](../WIKI.md)
 
 **OP Agent**（命令行：`op`）是 openpilot 的 AI 助手，帮助普通车主用自然语言完成**调优、新车适配、排障**，无需记参数名。
 

@@ -1,38 +1,38 @@
 # GitHub Wiki 同步
 
-Wiki 在线地址：https://github.com/mouxangithub/ai/wiki
+| 渠道 | 地址 | 是否需要 PAT |
+|------|------|----------------|
+| **GitHub Pages（推荐）** | https://mouxangithub.github.io/ai/ | 否（Actions 自动发布） |
+| 主仓源稿 | https://github.com/mouxangithub/ai/tree/main/docs/wiki | 否 |
+| GitHub Wiki | https://github.com/mouxangithub/ai/wiki | **是**（`WIKI_SYNC_TOKEN`） |
 
-源稿目录：**`docs/wiki/`**（与仓库同步维护，便于 PR 审阅）。
+源稿目录：**`docs/wiki/`**（PR 审阅后由 CI 发布）。
 
-## 为什么 Wiki 网页能开，但 CI / git clone 仍失败？
+## 为什么 Wiki git push 一直 404？
 
-| 现象 | 原因 |
-|------|------|
-| https://github.com/mouxangithub/ai/wiki 能打开 | Wiki **功能已开**，且可能已有**旧版**手写 Home 页 |
-| `git clone .../ai.wiki.git` 报 Repository not found | **未登录**或 **Token 无权限** 时 GitHub 会返回 404（不是「没开 Wiki」） |
-| 看不到 `docs/wiki` 里的新页面 | 同步脚本从未成功 push；线上仍是旧内容 |
+`GITHUB_TOKEN` **不能**读写隐藏仓库 `mouxangithub/ai.wiki`（GitHub 故意返回 `Repository not found`）。  
+本地未登录时 `git clone` 也会同样报错。
 
-**HTTPS 匿名 clone 经常失败**，需本机已 `gh auth login` / Git 凭据，或 CI 使用 `GITHUB_TOKEN` / Secret `WIKI_SYNC_TOKEN`（classic PAT，`repo`）。
+**不是你的操作问题**，必须配置个人 PAT。
 
-## 前置条件
+## 一次性配置 WIKI_SYNC_TOKEN（3 分钟）
 
-1. **Settings → Features → Wikis** 已勾选（你已完成）。
-2. **Actions → Sync GitHub Wiki → Run workflow** 手动跑一次（推荐在启用 Wiki 之后）。
-### 若 CI 仍报 `ai.wiki not found` 或 push 失败
+1. 打开 https://github.com/settings/tokens  
+2. **Generate new token** → 选 **classic**（不要 fine-grained）  
+3. 勾选 **`repo`**（整项）→ Generate → **复制 token**（只显示一次）  
+4. 打开 https://github.com/mouxangithub/ai/settings/secrets/actions  
+5. **New repository secret**  
+   - Name: `WIKI_SYNC_TOKEN`  
+   - Secret: 粘贴 token  
+6. **Actions → Sync GitHub Wiki → Run workflow**
 
-`GITHUB_TOKEN` 对部分账号**无法读写**隐藏 wiki 仓库。请添加 Secret：
+成功后 Wiki 会出现 9 页：`Home`、`GEPA-Evolution`、`OP-CLI` 等。
 
-1. https://github.com/settings/tokens → **Generate new token (classic)** → 勾选 **`repo`**
-2. 仓库 **Settings → Secrets → Actions** → New secret：`WIKI_SYNC_TOKEN` = 上述 PAT
-3. **Actions → Sync GitHub Wiki → Run workflow**
+## GitHub Pages（无需 PAT）
 
-Workflow 会在 clone 失败时**新建本地仓库并首次 push**（不再使用会留下残留 `.git` 的 checkout 步骤）。
-
-启用前/同步失败时，文档已在主仓可见：  
-https://github.com/mouxangithub/ai/tree/main/docs/wiki
-
-## 自动同步
-主仓 `main` 推送 `docs/wiki/**` 时，CI [sync-wiki.yml](../.github/workflows/sync-wiki.yml) 会尝试同步（Wiki 未启用则跳过）。
+1. 仓库 **Settings → Pages → Build and deployment → Source** 选 **GitHub Actions**（若尚未选）  
+2. 推送 `docs/wiki/**` 后 workflow **Deploy Wiki Docs (GitHub Pages)** 自动运行  
+3. 访问 https://mouxangithub.github.io/ai/
 
 ## 页面列表
 
@@ -48,52 +48,17 @@ https://github.com/mouxangithub/ai/tree/main/docs/wiki
 | Daily-Memory | `docs/wiki/Daily-Memory.md` |
 | GEPA-Evolution | `docs/wiki/GEPA-Evolution.md` |
 
-## 一键同步（推荐）
-
-```powershell
-# Windows（需已配置 git 凭据）
-.\ai\scripts\sync_github_wiki.ps1
-```
+## 本机手动同步 Wiki（可选）
 
 ```bash
-# 需已登录 GitHub（gh auth login 或 Git 凭据管理器）
+export WIKI_SYNC_TOKEN=ghp_xxxx   # 你的 classic PAT
 bash ai/scripts/sync_github_wiki.sh
 ```
-
-若仍报 `Repository not found`，请用 SSH 试一次：
-
-```bash
-git clone git@github.com:mouxangithub/ai.wiki.git
-```
-
-环境变量：`WIKI_REPO`、`WIKI_SYNC_TOKEN`（或 `GITHUB_TOKEN`）。
-
-## 发布到 GitHub Wiki（手动）
-
-GitHub Wiki 是独立 git 仓库：
-
-```bash
-git clone https://github.com/mouxangithub/ai.wiki.git
-cd ai.wiki
-
-# 从 openpilot/ai 仓库复制（路径按实际调整）
-cp /path/to/openpilot/ai/docs/wiki/Home.md Home.md
-cp /path/to/openpilot/ai/docs/wiki/Quick-Start.md Quick-Start.md
-# … 其余页面
-
-git add .
-git commit -m "docs: sync OP Agent wiki from docs/wiki"
-git push
-```
-
-首次需在 GitHub 仓库 **Settings → Features → Wikis** 启用 Wiki。
 
 ## 与 docs/ 关系
 
 | 类型 | 位置 |
 |------|------|
-| 用户 Wiki | `docs/wiki/` → GitHub Wiki |
+| 用户 Wiki / Pages | `docs/wiki/` |
 | 开发者长文 | `docs/*.md` |
 | Issue/PR 模板 | `.github/` |
-
-修改 Wiki 内容请编辑 `docs/wiki/` 后按上表同步，或在 PR 中一并提交源稿。

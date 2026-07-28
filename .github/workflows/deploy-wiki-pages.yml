@@ -1,0 +1,59 @@
+name: Deploy Wiki Docs (GitHub Pages)
+
+# 不依赖 ai.wiki git；GITHUB_TOKEN 即可发布 docs/wiki
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'docs/wiki/**'
+      - '.github/workflows/deploy-wiki-pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: wiki-pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Prepare site index
+        run: |
+          mkdir -p _site
+          cp docs/wiki/*.md _site/
+          cat > _site/README.md <<'EOF'
+          # OP Agent 用户文档
+
+          与 [GitHub Wiki](https://github.com/mouxangithub/ai/wiki) 同源（`docs/wiki/`）。
+
+          | 页面 | 链接 |
+          |------|------|
+          | 首页 | [Home.md](Home.md) |
+          | 快速开始 | [Quick-Start.md](Quick-Start.md) |
+          | OP CLI | [OP-CLI.md](OP-CLI.md) |
+          | Web 终端 | [Web-Terminal.md](Web-Terminal.md) |
+          | 车主调参 | [Tuning-for-Owners.md](Tuning-for-Owners.md) |
+          | 排障 | [Troubleshooting.md](Troubleshooting.md) |
+          | 新车适配 | [Vehicle-Adaptation.md](Vehicle-Adaptation.md) |
+          | 每日记忆 | [Daily-Memory.md](Daily-Memory.md) |
+          | GEPA 进化 | [GEPA-Evolution.md](GEPA-Evolution.md) |
+          EOF
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+      - id: deployment
+        uses: actions/deploy-pages@v4
