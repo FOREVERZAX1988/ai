@@ -6,8 +6,19 @@ Wiki 在线地址：https://github.com/mouxangithub/ai/wiki
 
 ## 前置条件
 
-1. GitHub 仓库 **Settings → Features → Wikis** 启用 Wiki（首次启用后才会创建 `ai.wiki` 裸仓库）。
-2. 主仓 `main` 推送 `docs/wiki/**` 时，CI [sync-wiki.yml](../.github/workflows/sync-wiki.yml) 会自动同步；也可本地运行脚本。
+GitHub Wiki 使用独立 git 仓库 `https://github.com/<owner>/<repo>.wiki.git`。若 clone 报 **Repository not found**，说明 **尚未启用 Wiki**：
+
+1. 打开 https://github.com/mouxangithub/ai/settings  
+2. **Features** → 勾选 **Wikis** → **Save**  
+3. 再运行同步（见下）
+
+> `GITHUB_TOKEN` 往往**无权**修改仓库 Features；CI 会 **跳过失败**（不标红 main）。若需全自动，在仓库 **Settings → Secrets** 添加 `WIKI_SYNC_TOKEN`（classic PAT，`repo` 权限）。
+
+启用前，用户文档已在主仓可见：  
+https://github.com/mouxangithub/ai/tree/main/docs/wiki
+
+## 自动同步
+主仓 `main` 推送 `docs/wiki/**` 时，CI [sync-wiki.yml](../.github/workflows/sync-wiki.yml) 会尝试同步（Wiki 未启用则跳过）。
 
 ## 页面列表
 
