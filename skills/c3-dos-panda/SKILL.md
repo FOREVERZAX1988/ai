@@ -1,67 +1,137 @@
-# C3 DOS / 黑熊 / 红熊 Panda 刷机与恢复
+# C3 DOS / 黑熊 / 红熊 Panda 刷机、恢复与 F4 移植
 
-适用于 **comma three（C3 / `tici`）** 内置 **DOS（F4）**、外接 **黑熊（F4, aux）** 或 **红熊（H7, aux）** 的多 Panda 场景。
+适用于 **comma three（C3 / `tici`）** 内置 **DOS（F4）**、外接 **黑熊（F4, aux）** 或 **红熊（H7, aux）**。
 
-> 事实来源：`ai/docs/PANDA_FLASH.md`、`ai/docs/COMMA_DEVICES.md`。CLI 脚本 `ai/scripts/recover_dos_panda.py` **可选**（部分 fork 无此文件）；op 助手 **内联刷机**，不依赖该脚本。
+> **事实来源**：`ai/docs/PANDA_FLASH.md`、`ai/docs/PANDA_C3_F4_PORTING.md`、`ai/docs/COMMA_DEVICES.md`。  
+> **F4 移植参考提交**（三层）：
+> - `panda@7d703710` — F4 固件与 Python
+> - `sp@43d4f56f` — 主仓 pandad 双 USB、`launch_chffrplus`、`num_pandas`
+> - `opendbc@3244efe` — 多 Panda 指纹、Toyota CanBus、F4 safety 裁剪
+> CLI `ai/scripts/recover_dos_panda.py` **可选**；op 助手 **内联刷机**（`ai/tools/panda_flash_tools.py`）。
+
+---
 
 ## 何时触发
 
-- 侧栏 **NO PANDA** / **否**
-- `panda_status` → `pandaStates` 为空但 USB 能看到 Panda（`usb_all` 非空）
-- `list_all_pandas` → `multi_panda.count >= 2` 且 `pandad.running` 为 false 或 `possible_crash_loop`
-- 日志：`xhci-hcd` 误枚举、`USBErrorBusy`、`pandad` 崩溃（exitcode -6）、固件签名不匹配
-- 更新 `panda/` 子模块后需手动刷内置 DOS
-- **内置 F4 + 外接红熊 H7**：GUI Panda 否但 `lsusb` 两只 `3801:ddcc`
+- 侧栏 **NO PANDA** / **否**（`pandaStates` 空但 USB 有 Panda）
+- 新 fork / OTA 后 **不适配黑熊、DOS、C3 内置 F4**
+- `from panda import Panda` → `unknown HW` / `SUPPORTED_DEVICES` 仅 H7
+- `panda/board/obj/panda.bin.signed` **不存在**
+- `panda_firmware_status` → `firmware_match: false` 或需刷写 sig
+- 刷写 Panda 后 GUI 仍 **Panda 否**（pandad 未恢复 → 重启 manager）
 
-## 固件与进程（勿混淆）
+---
 
-| 对象 | 固件路径 | 刷机方式 |
-|------|----------|----------|
-| 内置 DOS（F4） | `panda/board/obj/panda.bin.signed` | **手动** `recover_dos_panda` |
-| 外接黑熊（F4, aux） | 同上 | **手动** `recover_dos_panda(external=true)` |
-| 外接红熊（H7） | `panda_tici/board/obj/panda*.bin.signed` | `pandad_tici` 自动刷 |
+## 术语与固件来源
 
-- **进程栈**：C3 用 `pandad_tici` + `panda_tici` Python；**F4 固件永远来自 `panda/`**。
-- **多 Panda**：`set_aux_panda()` + `pandad` 进程 cmdline 带 **两个 serial**；异构 F4+H7 需较新的 `pandad_tici`（见 `PANDA_FLASH.md`）。
-- **禁止**：对 F4 使用 `panda_tici` 固件、或 `Panda.flash()`（`SUPPORTED_DEVICES` 仅 H7）。
-- **单内置 DOS**：`TICI_DOS=1` 时走 DOS 快速路径，**不自动刷机**。
+| 对象 | MCU | hw_type | 固件路径（openpilot 树下） | 刷机方式 |
+|------|-----|---------|---------------------------|----------|
+| 内置 DOS | F4 | `0x06` | `panda/board/obj/panda.bin.signed` | **手动**（offroad） |
+| 外接黑熊 | F4 | `0x03` | 同上 | **手动** `external=true` |
+| 外接红熊 | H7 | `0x07` | `panda_h7.bin.signed` 或 `panda_tici/...` | **pandad 自动** |
 
-## 推荐工具顺序（offroad）
+**固件不随 `ai` 分发**：`panda.bin.signed` 由 **`panda` 子模块 `scons` 生成**；`panda` 更新后须 `build_panda_firmware` 再刷写。`ai` 只提供路径检测、编译与刷写工具。
 
-1. `panda_status` — `pandaStates`、`usb_all`、`multi_panda`、`pandad_snapshot`
-2. `list_all_pandas` — 每只 serial 的 `hw_type_name` / `mcu` / `internal`
-3. `panda_recovery_hint` — 含双 Panda / 崩溃循环诊断
-4. `grep_log` — `pandad|panda|xhci|USBErrorBusy|DOS internal`
-5. `tsk_restart_pandad(confirm=true)` — 先尝试重启 pandad（不刷固件）
-6. 双 USB + 崩溃循环 → `rebuild_pandad_tici(confirm=true)` → `reboot_device`
-7. 仍失败且为 **F4** → `list_f4_pandas` 确认目标
-8. 缺固件 → `build_panda_firmware` 或 `scons` in `panda/board`
-9. `recover_dos_panda(confirm=true, internal=true)` — 内置 DOS
-10. `recover_dos_panda(confirm=true, external=true)` — 外接 aux **黑熊**（F4）
-11. `recover_dos_panda(confirm=true, serial="...")` — 指定序列号
-12. 再验 `panda_status`；`pgrep -af pandad` 应含所有 serial
+- **禁止**：把 `.signed` 复制进 `ai/`；对 F4 使用 `panda_tici` 固件。
+- **单内置 DOS**：`TICI_DOS=1` → pandad **跳过** Python 自动刷机；改 `panda/` 后须 **手动刷**。
+- **刷写后**：调用 `recover_pandad_after_flash` 逻辑或 **重启 manager**，否则 GUI Panda 否。
 
-**外接红熊 (H7)**：不要用 `recover_dos_panda`；确保 `pandad_tici` 已重编且进程带双 serial。
+---
+
+## F4 移植方法论（其他 openpilot 不适配时）
+
+当目标 fork 的 `panda` 子模块已 **淘汰 F4（仅 H7）**，但硬件仍是 C3 DOS / 黑熊：
+
+### 第一步：确认缺口
+
+1. `list_all_pandas` / `panda_firmware_status`
+2. 车机：`ls panda/board/obj/panda.bin.signed`
+3. 读 `panda/python/__init__.py`：`SUPPORTED_DEVICES` 是否含 `F4_DEVICES` / `HW_TYPE_DOS`
+
+### 第二步：合入 panda 子模块（对照 `7d703710`）
+
+**最小必改**（详见 `ai/docs/PANDA_C3_F4_PORTING.md` §3）：
+
+| 区域 | 内容 |
+|------|------|
+| `SConscript` | `base_project_f4` + `build_project("panda", ...)` |
+| `board/stm32f4/` | F4 HAL、启动文件、bxcan |
+| `board/boards/dos.h` | C3 DOS 板级 |
+| `board/stm32f4/board.h` | `detect_board_type` → DOS |
+| `board/main.c` / `drivers.h` | F4 用 bxcan，H7 用 fdcan |
+| `python/__init__.py` | `F4_DEVICES`、`get_mcu_type()`、`bytes` 化 `get_type()`、按 MCU 刷机 |
+
+```bash
+cd panda && git cherry-pick 7d703710   # 或按文档逐项合入
+cd board && scons -j$(nproc)
+```
+
+### 第三步：核对 openpilot 主仓（对照 `sp@43d4f56f`）
+
+| 区域 | 内容 |
+|------|------|
+| `launch_chffrplus.sh` | `set_tici_hw` → `TICI_DOS` / `TICI_TRES`；F4 时 `set_aux_panda` + `mount_nvme` |
+| `selfdrive/pandad/` | `panda_comms.cc` USB、`bus_offset` 多 Panda、`pandad.py` `should_launch_cpp_directly` |
+| `selfdrive/car/card.py` | `get_car(..., num_pandas=len(pandaStates))` |
+| `tools/scripts/car/fw_versions.py` | 同上 `num_pandas` |
+
+### 第四步：核对 opendbc_repo（对照 `opendbc@3244efe`）
+
+| 区域 | 内容 |
+|------|------|
+| `opendbc/car/fw_versions.py` | `num_pandas`：跳过超出 `num_pandas*4` 的 bus 查询 |
+| `opendbc/car/car_helpers.py` | `fingerprint` / `get_car` 透传 `num_pandas` |
+| `opendbc/car/toyota/*` | `CanBus` offset；`CAN.pt >= 4` 时双 safety config |
+| `opendbc/safety/safety.h` | `#ifdef CANFD` 包裹 CAN-FD-only safety（F4 无 CANFD） |
+
+### 第五步：刷机 + 恢复 pandad
+
+1. offroad → `flash_panda_firmware(confirm=true, all_pandas=true)` 或 SecOC 刷写
+2. 刷写后 **重启 manager** 或 `tsk_restart_pandad`（若仍 Panda 否）
+3. 验证：`panda_firmware_status` 签名匹配、`pgrep -af pandad`、GUI Panda **是**
+
+**AI 应优先阅读** `ai/docs/PANDA_C3_F4_PORTING.md` 获取完整文件列表与决策树。
+
+---
+
+## 推荐工具顺序（offroad，已有机型支持时）
+
+1. `panda_status` / `list_all_pandas`
+2. `panda_firmware_status` — 签名是否匹配
+3. `panda_recovery_hint` — NO PANDA 诊断
+4. 缺 `panda.bin.signed` → 先 **F4 移植**（上节），再 `build_panda_firmware`
+5. `flash_panda_firmware(confirm=true, all_pandas=true)` — 优先于仅 `recover_dos_panda`
+6. 刷写后仍 Panda 否 → **重启 manager**（`tsk_restart_manager` 或 SecOC 按钮）
+7. 双 USB 崩溃 → `rebuild_pandad` + reboot
+
+| 目标 | 工具 |
+|------|------|
+| 内置 DOS | `flash_panda_firmware` 或 `recover_dos_panda(internal=true)` |
+| 外接黑熊 F4 | `recover_dos_panda(external=true)` |
+| 外接红熊 H7 | **不要** `recover_dos_panda`；确保 pandad 自动刷 H7 |
+
+---
 
 ## CLI（车机 SSH）
 
 ```bash
+cd /data/openpilot/panda/board && scons -j$(nproc)
 cd /data/openpilot
-PATH=/usr/local/venv/bin:/usr/bin:/bin PYTHONPATH=/data/openpilot \
-  python3 ai/scripts/recover_dos_panda.py --internal   # 或 --external / --serial（仅 F4）
-bash tools/rebuild_pandad_tici.sh
-pgrep -af pandad
-sudo reboot
+PATH=/usr/local/venv/bin:$PATH PYTHONPATH=/data/openpilot \
+  python3 -c "from ai.tools.panda_flash_tools import flash_panda_firmware; print(flash_panda_firmware(confirm=True, all_pandas=True))"
+# 若 GUI Panda 否：
+# SecOC → 重启 manager，或 reboot
 ```
 
-## 与 TSK / SecOC 的关系
+---
 
-- TSK 采集 CAN / DataFlash 会 `stop_manager_and_pandad()`；完成后用 `tsk_restart_pandad` 恢复。
-- SecOC 排障见 `secoc-toyota`；**不要**把 F4 刷机与 SecOC 密钥安装混为一步。
+## 与 TSK / SecOC
+
+- TSK 采集会 `stop_manager_and_pandad()`；结束后恢复 pandad / manager。
+- SecOC 面板「刷写 Panda 固件」= `POST /api/panda/flash`；完成后应提示 pandad 恢复或重启 manager。
 
 ## 相关技能
 
-- `engage-troubleshooting` — 无法开启 OP 总入口
-- `diagnostics` — 日志与进程健康
-- `network-diagnostics` — 代码同步 / devsync
-- `sp-device-lite` — C3 Lite 硬件（与 Panda 独立）
+- `engage-troubleshooting` — 无法开启 OP
+- `diagnostics` — 进程与日志
+- `network-diagnostics` — devsync 同步移植后的 `panda` 子模块

@@ -157,21 +157,26 @@ def check_update(*, fetch_remote: bool = True) -> dict[str, Any]:
 
 
 def run_package_update(*, openpilot_root: str | None = None) -> dict[str, Any]:
-  """Run install/update.sh (git pull) in the ai package directory."""
+  """Run install/update.sh in the ai package directory (git pull or re-clone)."""
   script = UPDATE_SCRIPT if UPDATE_SCRIPT.is_file() else INSTALL_DIR / "install.sh"
   if not script.is_file():
     return {"ok": False, "error": f"更新脚本不存在: {script}"}
+
+  is_git = (AI_DIR / ".git").is_dir()
+  cmd = ["bash", str(script)]
+  if is_git:
+    cmd.append("--update")
 
   env = os.environ.copy()
   root = openpilot_root or str(AI_DIR.parent)
   env["OPENPILOT_ROOT"] = root
   try:
     proc = subprocess.run(
-      ["bash", str(script), "--update"],
+      cmd,
       cwd=str(AI_DIR),
       capture_output=True,
       text=True,
-      timeout=120,
+      timeout=300 if not is_git else 120,
       env=env,
     )
   except (OSError, subprocess.TimeoutExpired) as exc:
@@ -188,8 +193,9 @@ def run_package_update(*, openpilot_root: str | None = None) -> dict[str, Any]:
     **package_info(),
   }
   if proc.returncode != 0:
-    result["error"] = stderr or stdout or "git pull 失败"
+    result["error"] = stderr or stdout or ("git pull 失败" if is_git else "安装脚本更新失败")
     return result
+  result["update_mode"] = "git_pull" if is_git else "reinstall"
 
   integrate_py = INSTALL_DIR / "integrate_openpilot.py"
   if integrate_py.is_file():

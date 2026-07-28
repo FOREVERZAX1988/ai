@@ -42,6 +42,20 @@ class TestWikiIngest(unittest.TestCase):
     self.assertEqual(len(sources), 1)
     self.assertEqual(sources[0]["branch"], "master")
 
+  def test_collect_wiki_sources_merges_branch_and_max_files(self):
+    from ai.fork.wiki_ingest import collect_wiki_sources_for_profile
+
+    profile = {
+      "id": "dragonpilot/dragonpilot",
+      "wiki_repos": [
+        {"url": "https://github.com/dragonpilot/dragonpilot_wiki", "branch": "master", "max_files": 80},
+      ],
+    }
+    sources = collect_wiki_sources_for_profile(profile)
+    self.assertEqual(len(sources), 1)
+    self.assertEqual(sources[0]["branch"], "master")
+    self.assertEqual(sources[0]["max_files"], 80)
+
   def test_parse_discourse_category_url(self):
     src = parse_wiki_source("https://community.sunnypilot.ai/c/documentation/114")
     self.assertIsNotNone(src)

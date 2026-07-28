@@ -77,7 +77,7 @@ from ai.tools.scheduler import list_tasks, remove_task, upsert_task
 from ai.tools.session_store import get_sessions, save_sessions
 from ai.tools.workflows import list_workflows
 from ai.tools.write_pending import confirm_pending, list_pending
-from ai.usage_log import load_usage
+from ai.usage_log import load_embedding_usage, load_usage
 
 _PARAMS = params()
 _get_state_reader = get_state_reader
@@ -878,7 +878,11 @@ async def api_state(request: web.Request) -> web.Response:
 
 
 async def api_usage(request: web.Request) -> web.Response:
-  return _json_response({"ok": True, "usage": load_usage(_PARAMS)})
+  return _json_response({
+    "ok": True,
+    "usage": load_usage(_PARAMS),
+    "embeddingUsage": load_embedding_usage(_PARAMS),
+  })
 
 
 async def api_package_version(request: web.Request) -> web.Response:
@@ -906,10 +910,17 @@ async def api_package_update(request: web.Request) -> web.Response:
     except (json.JSONDecodeError, ValueError, aiohttp.ClientPayloadError):
       body = {}
     if not body.get("confirm"):
+      from ai.version_info import package_info
+      pkg = package_info()
+      hint = (
+        "将执行 git pull 并重新集成 openpilot。请 POST confirm=true。"
+        if pkg.get("is_git_install")
+        else "将备份当前 ai/ 并重新克隆最新版本。请 POST confirm=true。"
+      )
       return _json_response({
         "ok": True,
         "needs_confirmation": True,
-        "hint": "将执行 git pull 并重新集成 openpilot。请 POST confirm=true。",
+        "hint": hint,
       })
 
     root = body.get("openpilot_root") or str(openpilot_root())

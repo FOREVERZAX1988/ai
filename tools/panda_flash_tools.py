@@ -1,5 +1,13 @@
 """F4 (black/DOS) panda firmware helpers for op助手.
 
+Firmware policy
+---------------
+``panda.bin.signed`` / ``panda_h7.bin.signed`` are **build artifacts** under the
+connected openpilot tree (``panda/board/obj/``). They are **not** shipped inside
+the ``ai`` package and must **not** be copied into ``ai/`` — when the ``panda``
+submodule changes, run ``build_panda_firmware`` (``scons panda/board``) on the
+device or build host, then flash.
+
 Self-contained: does **not** require ``ai/scripts/recover_dos_panda.py`` (optional CLI wrapper on some forks).
 """
 
@@ -18,6 +26,16 @@ from ai.system.paths import is_comma_device, openpilot_root, source_path, tools_
 
 FW_REL = Path("panda", "board", "obj", "panda.bin.signed")
 TICI_FW_REL = Path("panda", "board", "obj", "panda_h7.bin.signed")
+# Resolved via openpilot_root() — never under ai/
+FIRMWARE_POLICY = {
+  "bundled_in_ai": False,
+  "source": "panda submodule (scons panda/board)",
+  "f4_path": str(FW_REL),
+  "h7_path": str(TICI_FW_REL),
+  "build_tool": "build_panda_firmware",
+  "build_cmd": "cd panda/board && scons -j$(nproc)",
+  "after_panda_submodule_update": "rebuild firmware, then offroad flash_panda_firmware",
+}
 REBUILD_SCRIPT = Path("ai", "scripts", "rebuild_pandad.sh")
 RECOVER_SCRIPT = Path("ai", "scripts", "recover_dos_panda.py")
 
@@ -711,6 +729,7 @@ def build_panda_firmware(*, jobs: int = 4, target: str = "auto") -> dict[str, An
     "guidance": guidance,
     "build_f4": build_f4,
     "build_h7": build_h7,
+    "firmware_policy": FIRMWARE_POLICY,
   }
   parts: list[dict[str, Any]] = []
   if build_f4:
@@ -902,6 +921,11 @@ def panda_recovery_hint(get_state_reader=None) -> dict[str, Any]:
     diagnosis.append("pgrep 无 pandad 进程，但 USB 已枚举多 Panda")
     steps.append("rebuild_pandad(confirm=true) — offroad")
 
+  if not listing.get("firmware_exists"):
+    diagnosis.append("缺少 panda/board/obj/panda.bin.signed（F4 固件未编译或 panda 子模块未移植 F4）")
+    steps.insert(0, "build_panda_firmware — scons panda/board 生成固件（ai 不内置 panda.bin.signed）")
+    steps.insert(1, "读 ai/docs/PANDA_C3_F4_PORTING.md — 合入 panda@7d703710 + sp@43d4f56f + opendbc@3244efe")
+
   if not live:
     steps.extend([
       "tsk_restart_pandad(confirm=true) — offroad",
@@ -941,6 +965,13 @@ def panda_recovery_hint(get_state_reader=None) -> dict[str, Any]:
     "recommended_steps": steps,
     "skill": "c3-dos-panda",
     "doc": "ai/docs/PANDA_FLASH.md",
+    "porting_doc": "ai/docs/PANDA_C3_F4_PORTING.md",
+    "firmware_policy": FIRMWARE_POLICY,
+    "reference_commits": {
+      "panda": "7d703710",
+      "openpilot": "43d4f56f",
+      "opendbc_repo": "3244efe",
+    },
   }
 
 

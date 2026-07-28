@@ -1612,7 +1612,10 @@ const CabanaPanel = (() => {
     if (!items.length || token !== bulkExplainToken) return;
 
     bulkExplainRunning = true;
-    if (els.autoLabelBtn) els.autoLabelBtn.disabled = true;
+    if (els.autoLabelBtn) {
+      els.autoLabelBtn.disabled = true;
+      els.autoLabelBtn.classList.add('is-loading');
+    }
     try {
       for (let i = 0; i < items.length; i += EXPLAIN_CHUNK) {
         if (token !== bulkExplainToken) return;
@@ -1647,7 +1650,10 @@ const CabanaPanel = (() => {
         const row = tableRows.get(key);
         if (row?.pending && !explainCache.get(key)) row.pending = false;
       }
-      if (els.autoLabelBtn) els.autoLabelBtn.disabled = false;
+      if (els.autoLabelBtn) {
+        els.autoLabelBtn.disabled = false;
+        els.autoLabelBtn.classList.remove('is-loading');
+      }
       scheduleVirtualRender();
     }
   }
@@ -2563,7 +2569,10 @@ const CabanaPanel = (() => {
       return;
     }
     aiAnalyzeRunning = true;
-    if (els.deepAnalyzeBtn) els.deepAnalyzeBtn.disabled = true;
+    if (els.deepAnalyzeBtn) {
+      els.deepAnalyzeBtn.disabled = true;
+      els.deepAnalyzeBtn.classList.add('is-loading');
+    }
     showAiResult(t('cabanaDeepAnalyzing', '正在深度分析，请稍候…'), { analyzing: true, noScroll: true });
     await new Promise((r) => setTimeout(r, 0));
 
@@ -2600,7 +2609,10 @@ const CabanaPanel = (() => {
       showAiResult(String(e?.message || e));
     } finally {
       aiAnalyzeRunning = false;
-      if (els.deepAnalyzeBtn) els.deepAnalyzeBtn.disabled = false;
+      if (els.deepAnalyzeBtn) {
+        els.deepAnalyzeBtn.disabled = false;
+        els.deepAnalyzeBtn.classList.remove('is-loading');
+      }
     }
   }
 

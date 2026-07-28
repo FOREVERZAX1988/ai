@@ -17,8 +17,9 @@
       "wiki_repos": [
         {
           "url": "https://github.com/dragonpilot/dragonpilot_wiki",
-          "branch": "main",
-          "notes": "C2 社区文档与 FAQ"
+          "branch": "master",
+          "max_files": 80,
+          "notes": "C2 社区文档与 FAQ（约 57 篇 md，默认分支 master）"
         }
       ],
       "community_urls": [
@@ -62,6 +63,27 @@
       ],
       "community_urls": ["https://github.com/sunnypilot/sunnypilot", "https://community.sunnypilot.ai"],
       "notes": "常见 C3 DOS / C3X / C4；含 sunnypilot/ 子树与 Sp* Param。"
+    },
+    {
+      "id": "mouxangithub/openpilot",
+      "name": "optskug openpilot",
+      "aliases": ["optskug", "mouxangithub", "tsk"],
+      "remotes": ["mouxangithub/openpilot"],
+      "branches": ["master-c3", "master-c3-new"],
+      "device_targets": ["c3", "c3x", "c4", "pc"],
+      "marker_dirs": ["sunnypilot"],
+      "marker_files": [],
+      "param_prefixes": ["Sp", "sp_"],
+      "settings_globs": ["sunnypilot/**/settings*.py"],
+      "wiki_repos": [
+        {
+          "url": "https://github.com/sunnypilot/user-docs",
+          "branch": "master",
+          "notes": "与 sunnypilot 共用用户文档"
+        }
+      ],
+      "community_urls": ["https://github.com/mouxangithub/openpilot"],
+      "notes": "基于 sunnypilot 的 C3 fork；分支 master-c3 / master-c3-new。"
     },
     {
       "id": "FrogAi/FrogPilot",

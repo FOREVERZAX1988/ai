@@ -141,7 +141,7 @@ async def index_document_vectors(
   if not embed_config.is_configured:
     return {"ok": False, "error": "embedding not configured", "fallback": "keyword"}
 
-  vectors, err = await embed_texts(embed_config, pieces)
+  vectors, err = await embed_texts(embed_config, pieces, params=params, source="rag_index")
   if err or vectors is None:
     return {"ok": False, "error": err or "embed failed"}
 
@@ -268,7 +268,7 @@ async def search_documents(
   vec_hits: list[dict[str, Any]] = []
   if embed_config is not None and embed_config.is_configured and chunk_count() > 0:
     from ai.embedding import embed_texts
-    vectors, err = await embed_texts(embed_config, [query])
+    vectors, err = await embed_texts(embed_config, [query], params=params, source="rag_search")
     if not err and vectors:
       vec_hits = search_vector_chunks(vectors[0], limit=limit * 2)
       for h in vec_hits:

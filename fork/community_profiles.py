@@ -66,17 +66,22 @@ def match_community_profile(scan: dict[str, Any]) -> dict[str, Any] | None:
   readme = (scan.get("readme_excerpt") or "").lower()
   prefixes = scan.get("param_prefixes") or {}
 
+  root_path = Path(scan.get("openpilot_root") or ".")
+  has_sunnypilot_tree = (root_path / "sunnypilot").is_dir()
+
   best: tuple[int, dict[str, Any]] | None = None
   for entry in list_known_forks():
     score = 0
     reasons: list[str] = []
 
     if _remote_matches(entry, remote):
-      score += 100
-      reasons.append(f"remote→{entry.get('id')}")
+      if not (entry.get("id") == "commaai/openpilot" and has_sunnypilot_tree):
+        score += 100
+        reasons.append(f"remote→{entry.get('id')}")
 
     for marker in entry.get("marker_dirs") or []:
-      if marker.lower() in dirs:
+      marker_l = marker.lower()
+      if marker_l in dirs or (root_path / marker).is_dir():
         score += 40
         reasons.append(f"dir:{marker}")
 

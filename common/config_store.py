@@ -14,6 +14,7 @@ from ai.system.paths import is_comma_device, openpilot_root
 
 _EXTRA_DEFAULTS: dict[str, dict[str, str]] = {
   "ai_usage_log": {"param_type": "STRING", "default": ""},
+  "ai_embedding_usage_log": {"param_type": "STRING", "default": ""},
   "ai_param_watchlist": {"param_type": "STRING", "default": ""},
   "ai_param_watchlist_baseline": {"param_type": "STRING", "default": ""},
 }

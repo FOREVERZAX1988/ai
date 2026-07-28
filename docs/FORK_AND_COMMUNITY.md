@@ -101,7 +101,9 @@ Web：**设置 → 开发 → Fork 分析** → 检测 / AI 分析 / 生成草�
 
 实现：`ai/fork/wiki_ingest.py`。缓存：`ai/data/wiki_cache/<slug>/manifest.json`（按 git tree sha 增量）。
 
-Dragonpilot 示例源：[dragonpilot_wiki](https://github.com/dragonpilot/dragonpilot_wiki)；sunnypilot：[community 文档区](https://community.sunnypilot.ai/c/documentation/114)（Discourse API）+ [user-docs](https://github.com/sunnypilot/user-docs) + [sunnylink-wiki](https://github.com/vinnie291/sunnylink-wiki)；FrogPilot：[frogpilot.wiki.gg](https://frogpilot.wiki.gg/)（MediaWiki API）；BluePilot：user-docs + 主仓 README/RELEASES；CarrotPilot：ajouatom/openpilot 主仓。comma 官方 Wiki 仍以内置 `wiki_rag_pages.py` 为主。
+Dragonpilot：[dragonpilot_wiki](https://github.com/dragonpilot/dragonpilot_wiki)（**master**，约 57 篇 md；registry `max_files: 80`）。**仅 fork 匹配 dragonpilot 时**自动 ingest；在 sunnypilot 等仓上需 `sync_community_wiki(all_registered=true)`。
+
+其它社区：sunnypilot [community 文档区](https://community.sunnypilot.ai/c/documentation/114)（Discourse）+ [user-docs](https://github.com/sunnypilot/user-docs) + [sunnylink-wiki](https://github.com/vinnie291/sunnylink-wiki)；FrogPilot [frogpilot.wiki.gg](https://frogpilot.wiki.gg/)；BluePilot / CarrotPilot 见 registry。comma 官方 Wiki 仍以内置 `wiki_rag_pages.py` 为主。
 
 ## 扩展路线图（建议）
 

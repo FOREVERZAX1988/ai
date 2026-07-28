@@ -7,6 +7,9 @@ Supports common community layouts, for example:
 - **Hybrid**: ``panda_tici`` present but only ``selfdrive/pandad`` (no ``pandad_tici``)
 
 Detection is filesystem-based under ``openpilot_root()`` (``OPENPILOT_ROOT`` / ``OP_ROOT``).
+
+Signed firmware (``panda.bin.signed``, ``panda_h7.bin.signed``) lives under ``panda/board/obj/``
+after ``scons`` — **not** in the ``ai`` package. op助手 only resolves paths and invokes build/flash tools.
 """
 
 from __future__ import annotations
@@ -188,6 +191,7 @@ def rebuild_script_path(*, prefer_tici: bool | None = None) -> Path:
   if legacy.is_file():
     return legacy
   return ai_std if ai_std.is_file() else std
+
 
 def can_hash_sync_targets() -> list[str]:
   """Human-readable firmware trees to mention when opendbc/safety/can.h changes."""

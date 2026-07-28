@@ -138,7 +138,7 @@ TOOL_DESCRIPTIONS: dict[str, str] = {
   "recover_dos_panda": "刷 F4 固件（panda.bin.signed）",
   "rebuild_pandad": "重编 pandad 二进制",
   "build_panda_h7_firmware": "scons 编译 panda_h7.bin.signed",
-  "build_panda_firmware": "scons 编译 panda/board 固件",
+  "build_panda_firmware": "scons 编译 panda/board 固件（产物在 openpilot 树，非 ai 内置）",
   "github_runner_status": "GitHub Runner 安装路径、Param 门控与 systemd 状态",
   "github_runner_recovery_hint": "CI Pending / Runner 离线排查步骤",
   "install_github_runner": "安装或恢复 C3 自建 GitHub Actions Runner",

@@ -3,10 +3,37 @@
  */
 const PlatformPanel = (() => {
   let api = null;
+  let showToast = null;
   let tuneRoutesLoaded = false;
 
   function tr(key, fallback) {
     return (typeof t === 'function') ? t(key, fallback) : fallback;
+  }
+
+  function toast(msg, type = 'info') {
+    if (typeof showToast === 'function') showToast(msg, type);
+  }
+
+  function busyBtn(btn, busy, busyLabel) {
+    if (typeof UiBusy !== 'undefined') {
+      UiBusy.setButtonBusy(btn, busy, busyLabel ? { busyLabel } : {});
+      return;
+    }
+    if (!btn) return;
+    btn.disabled = busy;
+  }
+
+  async function withBusy(btn, fn, busyLabel) {
+    if (typeof UiBusy !== 'undefined') {
+      return UiBusy.withButtonBusy(btn, fn, busyLabel ? { busyLabel } : {});
+    }
+    if (!btn) return fn();
+    btn.disabled = true;
+    try {
+      return await fn();
+    } finally {
+      btn.disabled = false;
+    }
   }
 
   function esc(s) {
@@ -15,6 +42,7 @@ const PlatformPanel = (() => {
 
   function init(deps = {}) {
     api = deps.api || (typeof WebApi !== 'undefined' ? WebApi.api : null);
+    showToast = deps.showToast || null;
     bind();
     loadDebugToggles();
   }
@@ -38,16 +66,29 @@ const PlatformPanel = (() => {
   }
 
   async function loadWorkspace() {
-    const key = document.getElementById('platformWorkspaceKey')?.value || 'user';
-    const { data } = await api('GET', `/api/ai/workspace?key=${encodeURIComponent(key)}`);
+    const btn = document.getElementById('platformWorkspaceLoad');
     const editor = document.getElementById('platformWorkspaceEditor');
-    if (editor && data?.ok) editor.value = data.content || '';
+    const key = document.getElementById('platformWorkspaceKey')?.value || 'user';
+    await withBusy(btn, async () => {
+      if (typeof UiBusy !== 'undefined' && editor) {
+        UiBusy.showPanelLoading(editor, tr('uiLoading', '加载中…'));
+      }
+      const { data } = await api('GET', `/api/ai/workspace?key=${encodeURIComponent(key)}`);
+      if (editor && data?.ok) editor.value = data.content || '';
+      if (typeof UiBusy !== 'undefined') UiBusy.clearPanelBusy(editor);
+      if (!data?.ok) toast(data?.error || tr('platformWorkspaceLoadFail', '加载失败'), 'error');
+    }, tr('uiLoading', '加载中…'));
   }
 
   async function saveWorkspace() {
+    const btn = document.getElementById('platformWorkspaceSave');
     const key = document.getElementById('platformWorkspaceKey')?.value || 'user';
     const content = document.getElementById('platformWorkspaceEditor')?.value || '';
-    await api('POST', '/api/ai/workspace', { key, content });
+    await withBusy(btn, async () => {
+      const { data } = await api('POST', '/api/ai/workspace', { key, content });
+      if (data?.ok) toast(tr('saved', '已保存'), 'success');
+      else toast(data?.error || tr('saveFailed', '保存失败'), 'error');
+    }, tr('uiSaving', '保存中…'));
   }
 
   async function refreshMcp() {
@@ -64,17 +105,32 @@ const PlatformPanel = (() => {
   }
 
   async function addMcp() {
+    const btn = document.getElementById('platformMcpAdd');
     const id = document.getElementById('platformMcpId')?.value?.trim();
     const command = document.getElementById('platformMcpCmd')?.value?.trim();
-    if (!id || !command) return;
-    await api('POST', '/api/ai/mcp', { id, command, enabled: true });
-    await refreshMcp();
+    if (!id || !command) {
+      toast(tr('platformMcpMissing', '请填写 ID 与命令'), 'warning');
+      return;
+    }
+    await withBusy(btn, async () => {
+      const { data } = await api('POST', '/api/ai/mcp', { id, command, enabled: true });
+      if (data?.ok) {
+        toast(tr('platformMcpAdded', 'MCP 已添加'), 'success');
+        await refreshMcp();
+      } else {
+        toast(data?.error || tr('saveFailed', '保存失败'), 'error');
+      }
+    }, tr('uiSaving', '保存中…'));
   }
 
   async function refreshLearned() {
     const box = document.getElementById('platformLearnedList');
     if (!box) return;
+    if (typeof UiBusy !== 'undefined') {
+      UiBusy.showPanelLoading(box, tr('uiLoading', '加载中…'));
+    }
     const { data } = await api('GET', '/api/ai/learned-skills');
+    if (typeof UiBusy !== 'undefined') UiBusy.clearPanelBusy(box);
     box.innerHTML = '';
     for (const s of (data?.skills || [])) {
       const row = document.createElement('div');
@@ -86,10 +142,17 @@ const PlatformPanel = (() => {
         const btn = document.createElement('button');
         btn.type = 'button';
         btn.className = 'btn small';
-        btn.textContent = '批准';
+        btn.textContent = tr('platformLearnedApprove', '批准');
         btn.addEventListener('click', async () => {
-          await api('POST', '/api/ai/learned-skills', { skill_id: s.id });
-          refreshLearned();
+          await withBusy(btn, async () => {
+            const { data: res } = await api('POST', '/api/ai/learned-skills', { skill_id: s.id });
+            if (res?.ok) {
+              toast(tr('platformLearnedApproved', '技能已批准'), 'success');
+              refreshLearned();
+            } else {
+              toast(res?.error || tr('saveFailed', '保存失败'), 'error');
+            }
+          }, tr('uiWorking', '处理中…'));
         });
         row.appendChild(btn);
       }
@@ -98,17 +161,33 @@ const PlatformPanel = (() => {
   }
 
   async function searchSessions() {
+    const btn = document.getElementById('platformSessionSearch');
     const q = document.getElementById('platformSessionQuery')?.value?.trim();
     const box = document.getElementById('platformSessionHits');
-    if (!box || !q) return;
-    const { data } = await api('GET', `/api/ai/sessions/search?q=${encodeURIComponent(q)}`);
-    box.innerHTML = '';
-    for (const hit of (data?.hits || [])) {
-      const row = document.createElement('div');
-      row.className = 'platform-list-item';
-      row.textContent = `${hit.sessionTitle || hit.sessionId}: ${hit.snippet || ''}`;
-      box.appendChild(row);
+    if (!box) return;
+    if (!q) {
+      toast(tr('platformSessionQueryRequired', '请输入搜索词'), 'warning');
+      return;
     }
+    await withBusy(btn, async () => {
+      if (typeof UiBusy !== 'undefined') {
+        UiBusy.showPanelLoading(box, tr('uiSearching', '搜索中…'));
+      }
+      const { data } = await api('GET', `/api/ai/sessions/search?q=${encodeURIComponent(q)}`);
+      box.innerHTML = '';
+      const hits = data?.hits || [];
+      if (!hits.length) {
+        box.innerHTML = `<p class="field-hint">${tr('platformSessionNoHits', '无匹配结果')}</p>`;
+        return;
+      }
+      for (const hit of hits) {
+        const row = document.createElement('div');
+        row.className = 'platform-list-item';
+        row.textContent = `${hit.sessionTitle || hit.sessionId}: ${hit.snippet || ''}`;
+        box.appendChild(row);
+      }
+      if (typeof UiBusy !== 'undefined') UiBusy.clearPanelBusy(box);
+    }, tr('uiSearching', '搜索中…'));
   }
 
   async function loadMemoryAndPassport() {
@@ -236,33 +315,57 @@ const PlatformPanel = (() => {
         status.hidden = false;
         status.textContent = tr('platformTunePickRoutes', '请选择两条路线');
       }
+      toast(tr('platformTunePickRoutes', '请选择两条路线'), 'warning');
       return;
     }
-    if (status) {
-      status.hidden = false;
-      status.textContent = tr('platformTuneComparing', '正在对比…');
-    }
-    if (result) result.hidden = true;
-    if (btn) btn.disabled = true;
-    try {
-      const { data } = await api('POST', '/api/ai/tune/compare', {
-        route_a: routeA,
-        route_b: routeB,
-        label_a: 'before',
-        label_b: 'after',
-        with_scores: true,
-      }, { timeoutMs: 120000 });
-      if (!data?.ok) {
-        if (status) status.textContent = data?.error || tr('platformTuneCompareError', '对比失败');
-        return;
+    await withBusy(btn, async () => {
+      if (status) {
+        status.hidden = false;
+        status.textContent = tr('platformTuneComparing', '正在对比…');
       }
-      if (status) status.hidden = true;
-      renderTuneCompareResult(data);
-    } catch (e) {
-      if (status) status.textContent = String(e?.message || e);
-    } finally {
-      if (btn) btn.disabled = false;
+      if (result) result.hidden = true;
+      try {
+        const { data } = await api('POST', '/api/ai/tune/compare', {
+          route_a: routeA,
+          route_b: routeB,
+          label_a: 'before',
+          label_b: 'after',
+          with_scores: true,
+        }, { timeoutMs: 120000 });
+        if (!data?.ok) {
+          const err = data?.error || tr('platformTuneCompareError', '对比失败');
+          if (status) status.textContent = err;
+          toast(err, 'error');
+          return;
+        }
+        if (status) status.hidden = true;
+        renderTuneCompareResult(data);
+        toast(tr('platformTuneCompareDone', '对比完成'), 'success');
+      } catch (e) {
+        const err = String(e?.message || e);
+        if (status) status.textContent = err;
+        toast(err, 'error');
+      }
+    }, tr('platformTuneComparing', '正在对比…'));
+  }
+
+  async function addSchedulerFromNl() {
+    const btn = document.getElementById('schedNlBtn');
+    const text = document.getElementById('schedNlInput')?.value?.trim();
+    if (!text || !api) {
+      toast(tr('schedNlMissing', '请输入自然语言描述'), 'warning');
+      return;
     }
+    await withBusy(btn, async () => {
+      const { data } = await api('POST', '/api/ai/scheduler', { nl: text });
+      if (data?.ok) {
+        document.getElementById('schedNlInput').value = '';
+        toast(tr('schedAdded'), 'success');
+        if (typeof loadSchedulerPanel === 'function') await loadSchedulerPanel();
+      } else {
+        toast(data?.error || tr('saveFailed', '保存失败'), 'error');
+      }
+    }, tr('uiWorking', '处理中…'));
   }
 
   function applyPlatformTranslations() {
@@ -290,13 +393,7 @@ const PlatformPanel = (() => {
     document.getElementById('chatVerboseToggle')?.addEventListener('change', saveDebugToggles);
     document.getElementById('chatTraceToggle')?.addEventListener('change', saveDebugToggles);
     document.getElementById('platformTuneCompareBtn')?.addEventListener('click', () => runTuneCompare().catch(console.error));
-    document.getElementById('schedNlBtn')?.addEventListener('click', async () => {
-      const text = document.getElementById('schedNlInput')?.value?.trim();
-      if (!text || !api) return;
-      await api('POST', '/api/ai/scheduler', { nl: text });
-      document.getElementById('schedNlInput').value = '';
-      if (typeof loadSchedulerTasks === 'function') loadSchedulerTasks();
-    });
+    document.getElementById('schedNlBtn')?.addEventListener('click', () => addSchedulerFromNl().catch(console.error));
   }
 
   function onSettingsOpen(tab) {

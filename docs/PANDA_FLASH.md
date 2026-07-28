@@ -1,6 +1,8 @@
 # Panda 刷机与恢复（sunnypilot / C3 DOS）
 
-> **单一事实来源**（与 `ai/docs/COMMA_DEVICES.md` 互补）。op 助手工具：`list_all_pandas`、`list_f4_pandas`、`recover_dos_panda`、`rebuild_pandad_tici`、`panda_recovery_hint`。
+> **单一事实来源**（与 `ai/docs/COMMA_DEVICES.md` 互补）。  
+> **C3 / DOS / 黑熊 / 多 Panda 移植**：见 [`PANDA_C3_F4_PORTING.md`](PANDA_C3_F4_PORTING.md)（`panda@7d703710`、`sp@43d4f56f`、`opendbc@3244efe`）。  
+> op 助手工具：`list_all_pandas`、`list_f4_pandas`、`flash_panda_firmware`、`recover_dos_panda`、`rebuild_pandad`、`panda_recovery_hint`。
 
 ## 术语
 
@@ -13,11 +15,13 @@
 ## sunnypilot C3 架构要点
 
 1. **`pandad_tici`** 负责 C3 上 pandad 进程（含 DOS 快速路径、**多 Panda USB**）。
-2. **内置 F4** 固件包：`panda/board/obj/panda.bin.signed`（子模块 `panda/`）。
-3. **`panda_tici` 固件** 仅用于 **H7**（外接红熊）；刷到 F4 会损坏或无法启动。
-4. `pandad_tici` 对非 H7 **跳过自动刷机**；代码更新后内置 DOS **需手动刷**。
-5. `Panda.flash()` 在 `panda`/`panda_tici` Python 中 assert 仅 H7；F4 使用 **`Panda.flash_static` + bootstub**（`recover_dos_panda` 内联实现）。
-6. **多 Panda** 靠 `pandad_tici` + `panda_tici` Python 的 `set_aux_panda()`，不是只替换 `panda_tici` 子模块。
+2. **内置 F4 固件**：`panda/board/obj/panda.bin.signed` — **`panda` 子模块 `scons` 生成**，随 `panda` 迭代更新；**不内置在 `ai/`**。
+3. op助手通过 `build_panda_firmware` 调 `scons panda/board`，刷写时读 openpilot 树下的产物路径。
+4. **`panda_tici` 固件** 仅用于 **H7**（外接红熊）；刷到 F4 会损坏或无法启动。
+5. `pandad_tici` 对非 H7 **跳过自动刷机**；代码更新后内置 DOS **需手动刷**。
+6. `Panda.flash()` 在 `panda`/`panda_tici` Python 中 assert 仅 H7；F4 使用 **`Panda.flash_static` + bootstub**（`recover_dos_panda` 内联实现）。
+7. **多 Panda** 靠 `pandad_tici` + `panda_tici` Python 的 `set_aux_panda()`，不是只替换 `panda_tici` 子模块。
+8. **`panda` 子模块 bump 后**：必须重新 `scons` 生成 `.signed`，再刷写；勿把旧固件复制进 `ai`。
 
 ## 脚本与工具
 
@@ -26,7 +30,7 @@
 | `ai/scripts/recover_dos_panda.py` | 可选 CLI（部分 fork 有）；**op 助手不依赖此文件** |
 | op助手 `recover_dos_panda` | 内联实现于 `ai/tools/panda_flash_tools.py`，需 `confirm=true` |
 | `tools/rebuild_pandad_tici.sh` | `updated` git reset 后重链 `pandad` 二进制 |
-| op助手 `build_panda_firmware` | `scons` 编译 `panda/board` |
+| op助手 `build_panda_firmware` | 在 openpilot 树下 `scons panda/board` 生成 `.signed`（**非 ai 内置**） |
 | op助手 `list_all_pandas` | 全部 USB Panda + 多 Panda 场景 + `pgrep pandad` 快照 |
 
 ## 标准流程（车机）

@@ -132,17 +132,30 @@ def _distinctive_top_dirs(root: Path) -> list[str]:
 
 
 def _parse_remote_identity(remotes: list[str]) -> dict[str, Any]:
+  slugs: list[dict[str, Any]] = []
+  seen: set[str] = set()
   for remote in remotes:
     m = re.search(r"github\.com[:/]([^/]+)/([^/\s]+?)(?:\.git)?$", remote, re.I)
-    if m:
-      owner, repo = m.group(1).lower(), m.group(2).lower()
-      return {
-        "owner": owner,
-        "repo": repo,
-        "slug": f"{owner}/{repo}",
-        "url": remote,
-      }
-  return {}
+    if not m:
+      continue
+    owner, repo = m.group(1).lower(), m.group(2).lower()
+    slug = f"{owner}/{repo}"
+    if slug in seen:
+      continue
+    seen.add(slug)
+    slugs.append({
+      "owner": owner,
+      "repo": repo,
+      "slug": slug,
+      "url": remote,
+    })
+  if not slugs:
+    return {}
+  # Prefer fork remotes over upstream commaai when multiple URLs are configured.
+  for item in slugs:
+    if item["slug"] != "commaai/openpilot":
+      return item
+  return slugs[0]
 
 
 def scan_openpilot_repo(root: Path) -> dict[str, Any]:

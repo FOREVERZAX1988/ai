@@ -85,7 +85,27 @@ def load_embedding_config(params: Any, chat_config: Any | None = None) -> Embedd
   return EmbeddingConfig(mode=mode, provider=provider, model=model, api_key=api_key, base_url=base_url)
 
 
-async def embed_texts(config: EmbeddingConfig, texts: list[str]) -> tuple[list[list[float]] | None, str | None]:
+def normalize_embedding_usage(raw: dict[str, Any] | None) -> dict[str, int]:
+  if not isinstance(raw, dict):
+    return {}
+  prompt = int(raw.get("prompt_tokens", 0) or 0)
+  total = int(raw.get("total_tokens", 0) or 0)
+  if not total:
+    total = prompt
+  if not prompt and total:
+    prompt = total
+  if not total:
+    return {}
+  return {"prompt_tokens": prompt, "completion_tokens": 0, "total_tokens": total}
+
+
+async def embed_texts(
+  config: EmbeddingConfig,
+  texts: list[str],
+  *,
+  params: Any | None = None,
+  source: str = "embedding",
+) -> tuple[list[list[float]] | None, str | None]:
   if not config.is_configured:
     return None, "Embedding not configured (API key / model / endpoint)."
   if not texts:
@@ -117,6 +137,17 @@ async def embed_texts(config: EmbeddingConfig, texts: list[str]) -> tuple[list[l
           vectors.append([float(x) for x in emb])
         if len(vectors) != len(texts):
           return None, f"Expected {len(texts)} embeddings, got {len(vectors)}"
+        usage = normalize_embedding_usage(body.get("usage") if isinstance(body, dict) else None)
+        if params is not None and usage:
+          from ai.usage_log import record_embedding_usage
+
+          record_embedding_usage(
+            params,
+            usage,
+            provider=config.provider,
+            model=config.model,
+            source=source,
+          )
         return vectors, None
   except Exception as e:
     return None, str(e)

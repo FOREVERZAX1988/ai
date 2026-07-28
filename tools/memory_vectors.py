@@ -49,7 +49,7 @@ async def index_memory_notes(params, embed_config) -> dict[str, Any]:
 
   texts = [(n.get("text") or "").strip() for n in notes]
   texts = [t for t in texts if t]
-  vectors, err = await embed_texts(embed_config, texts)
+  vectors, err = await embed_texts(embed_config, texts, params=params, source="memory_index")
   if err or not vectors:
     return {"ok": False, "error": err or "embedding failed"}
 
@@ -93,7 +93,7 @@ async def search_memory_semantic(
   store = _load()
   chunks = store.get("chunks") or []
   if chunks and embed_config and embed_config.is_configured:
-    vectors, err = await embed_texts(embed_config, [q])
+    vectors, err = await embed_texts(embed_config, [q], params=params, source="memory_search")
     if not err and vectors:
       scored = []
       for ch in chunks:

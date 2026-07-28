@@ -58,13 +58,9 @@ def shutdown_device(*, delay_sec: int = 5) -> dict[str, Any]:
 
 def _manager_running() -> bool:
   try:
-    r = subprocess.run(
-      ["pgrep", "-f", _MANAGER_PATTERN],
-      capture_output=True,
-      text=True,
-      timeout=5,
-    )
-    return r.returncode == 0
+    from ai.tsk.lib.panda_connect import is_manager_running
+
+    return is_manager_running()
   except Exception:
     return False
 

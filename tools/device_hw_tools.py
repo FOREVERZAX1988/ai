@@ -45,7 +45,7 @@ def get_sp_device_hw(params: Params | None = None, get_state_reader=None) -> dic
     "panda_count": panda_count,
     "pandas_preview": pandas[:3],
     "board": board,
-    "hint": "NO PANDA / F4 刷机见技能 c3-dos-panda 与 ai/docs/PANDA_FLASH.md。Aux Panda 为启动时配置（launch_chffrplus.sh set_aux_panda）。",
+    "hint": "NO PANDA / F4 刷机见技能 c3-dos-panda；C3 移植见 ai/docs/PANDA_C3_F4_PORTING.md（panda@7d703710、sp@43d4f56f、opendbc@3244efe）。Aux Panda：launch_chffrplus.sh set_aux_panda。",
   }
 
 

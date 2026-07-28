@@ -309,15 +309,26 @@ def _repo_default_branch(owner: str, repo: str) -> str:
 
 
 def _list_repo_markdown(owner: str, repo: str, branch: str) -> tuple[str, list[str]]:
-  status, body = _http_get(
-    f"https://api.github.com/repos/{owner}/{repo}/git/trees/{branch}?recursive=1",
-    accept="application/vnd.github+json",
-  )
+  def _fetch_tree(ref: str) -> tuple[int, dict[str, Any]]:
+    status, body = _http_get(
+      f"https://api.github.com/repos/{owner}/{repo}/git/trees/{ref}?recursive=1",
+      accept="application/vnd.github+json",
+    )
+    if status != 200:
+      return status, {}
+    try:
+      return status, json.loads(body)
+    except json.JSONDecodeError:
+      return status, {}
+
+  status, data = _fetch_tree(branch)
   if status != 200:
-    return "", []
-  try:
-    data = json.loads(body)
-  except json.JSONDecodeError:
+    fallback = _repo_default_branch(owner, repo)
+    if fallback and fallback != branch:
+      status, data = _fetch_tree(fallback)
+      if status == 200:
+        branch = fallback
+  if status != 200:
     return "", []
   tree_sha = str(data.get("sha") or "")
   paths: list[str] = []

@@ -10,7 +10,9 @@
 4. `grep_log` — `pandad|panda|xhci|USBErrorBusy|DOS internal`
 5. offroad：`tsk_restart_pandad(confirm=true)`
 6. 双 Panda 崩溃 → `rebuild_pandad(confirm=true)` + `reboot_device`
-7. 仍失败且为 F4 → 技能 **`c3-dos-panda`**：`list_f4_pandas`（外接黑熊）→ `recover_dos_panda(confirm=true, internal=true)` 或 `external=true`
+7. 仍失败且为 F4 → 技能 **`c3-dos-panda`**：`flash_panda_firmware` 或 `recover_dos_panda(confirm=true, internal=true)` / `external=true`（外接黑熊）
+8. **不适配 C3/DOS/黑熊**（缺 `panda.bin.signed`、`unknown HW`、双 Panda 指纹失败）→ `ai/docs/PANDA_C3_F4_PORTING.md`：三层合入 `panda@7d703710`、`sp@43d4f56f`、`opendbc@3244efe` → `scons` + 刷写
+9. **刷写后 GUI 仍 Panda 否** → 重启 manager（pandad 被 kill 后 manager 不会自动重建子进程）
 
 **禁忌**：F4 不要用 H7 固件；见 `ai/docs/PANDA_FLASH.md`。
 

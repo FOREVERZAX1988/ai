@@ -81,6 +81,11 @@ const els = {
   usageDetailTotals: $('#usageDetailTotals'),
   usageByProviderTable: $('#usageByProviderTable'),
   usageByModelTable: $('#usageByModelTable'),
+  usageEmbeddingTotals: $('#usageEmbeddingTotals'),
+  usageEmbeddingByProviderTable: $('#usageEmbeddingByProviderTable'),
+  usageEmbeddingByModelTable: $('#usageEmbeddingByModelTable'),
+  embeddingUsageGrid: $('#embeddingUsageGrid'),
+  embeddingUsageHint: $('#embeddingUsageHint'),
   toast: $('#toast'),
   schedulerTaskList: $('#schedulerTaskList'),
   schedName: $('#schedName'),
@@ -110,6 +115,8 @@ const els = {
   devForkBadge: $('#devForkBadge'),
   devForkRefreshBtn: $('#devForkRefreshBtn'),
   devForkSyncBtn: $('#devForkSyncBtn'),
+  ragStatusBox: $('#ragStatusBox'),
+  devRagBadge: $('#devRagBadge'),
   onboardingModal: $('#onboardingModal'),
   onboardingBackdrop: $('#onboardingBackdrop'),
   onboardingProvider: $('#onboardingProvider'),
@@ -119,6 +126,17 @@ const els = {
   onboardingResult: $('#onboardingResult'),
   onboardingCar: $('#onboardingCar'),
   onboardingBrand: $('#onboardingBrand'),
+  onboardingEmbeddingMode: $('#onboardingEmbeddingMode'),
+  onboardingEmbeddingProvider: $('#onboardingEmbeddingProvider'),
+  onboardingEmbeddingApiKey: $('#onboardingEmbeddingApiKey'),
+  onboardingEmbeddingSeparateFields: $('#onboardingEmbeddingSeparateFields'),
+  onboardingRagSetup: $('#onboardingRagSetup'),
+  onboardingRagReindex: $('#onboardingRagReindex'),
+  onboardingRagWiki: $('#onboardingRagWiki'),
+  onboardingRagStatus: $('#onboardingRagStatus'),
+  onboardingRagStartBtn: $('#onboardingRagStartBtn'),
+  onboardingRagSkipBtn: $('#onboardingRagSkipBtn'),
+  knowledgeMainContent: $('#knowledgeMainContent'),
   pcSessionsList: $('#pcSessionsList'),
   devAssetsList: $('#devAssetsList'),
   devRefreshBtn: $('#devRefreshBtn'),
@@ -126,6 +144,7 @@ const els = {
   ragTitle: $('#ragTitle'),
   ragText: $('#ragText'),
   ragSaveBtn: $('#ragSaveBtn'),
+  ragSyncWikiBtn: $('#ragSyncWikiBtn'),
   ragReindexBtn: $('#ragReindexBtn'),
   ragVectorStatus: $('#ragVectorStatus'),
   embeddingModeSelect: $('#embeddingModeSelect'),
@@ -180,6 +199,8 @@ let models = [];
 let mainModelCombo = null;
 let embeddingModelCombo = null;
 let onboardingModelCombo = null;
+let onboardingEmbeddingModelCombo = null;
+let onboardingRagSetupActive = false;
 let embeddingProviders = [];
 let embeddingProviderLabels = {};
 let embeddingModelCatalog = {};
@@ -195,6 +216,7 @@ const FALLBACK_EMBEDDING_PROVIDER_LABELS = {
   custom: 'Custom',
 };
 let usageData = null;
+let embeddingUsageData = null;
 let usageDetailOpen = false;
 let configured = false;
 let configureError = '';
@@ -475,6 +497,10 @@ function applyTranslations() {
   if (els.usageDetailBtn) els.usageDetailBtn.textContent = t('usageDetail', 'Usage detail');
   setI18nText('#usageDetailTitle', 'usageDetail', 'Usage detail');
   setI18nText('#usageDetailDesc', 'usageDetailDesc', 'All usage by provider and model');
+  setI18nText('#usageEmbeddingSectionTitle', 'usageEmbeddingSection', 'Embedding usage');
+  setI18nText('#usageEmbeddingByProviderTitle', 'usageEmbeddingByProvider', 'Embedding · by provider');
+  setI18nText('#usageEmbeddingByModelTitle', 'usageEmbeddingByModel', 'Embedding · by model');
+  setI18nText('#embeddingUsageTitle', 'embeddingUsageTitle', 'Embedding usage');
   setI18nText('#usageByProviderTitle', 'usageByProvider', 'By provider');
   setI18nText('#usageByModelTitle', 'usageByModel', 'By model');
   setI18nText('#langLabel', 'langLabel', 'Language');
@@ -503,6 +529,8 @@ function applyTranslations() {
   if (els.devPackageUpdateBtn) els.devPackageUpdateBtn.textContent = t('devPackageUpdate', '立即更新');
   const devForkTitle = $('#devForkTitle');
   if (devForkTitle) devForkTitle.textContent = t('devForkTitle', 'Fork 分析');
+  const devRagTitle = $('#devRagTitle');
+  if (devRagTitle) devRagTitle.textContent = t('devRagTitle', '知识库');
   if (els.devForkRefreshBtn) els.devForkRefreshBtn.textContent = t('devForkRefresh', '扫描仓库');
   if (els.devForkSyncBtn) els.devForkSyncBtn.textContent = t('devForkAnalyze', 'AI 分析并生成草稿');
   const forkThinkingSummary = $('#forkProgressThinkingSummary');
@@ -548,9 +576,42 @@ function applyTranslations() {
   if (els.ragTitle) els.ragTitle.placeholder = t('ragTitlePlaceholder');
   if (els.ragText) els.ragText.placeholder = t('ragTextPlaceholder');
   if (els.ragSaveBtn) els.ragSaveBtn.textContent = t('ragAddDoc');
+  if (els.ragSyncWikiBtn) els.ragSyncWikiBtn.textContent = t('ragSyncWiki');
   if (els.ragReindexBtn) els.ragReindexBtn.textContent = t('ragReindex');
   if (els.ragTitleLabel) els.ragTitleLabel.textContent = t('ragTitleLabel');
   if (els.ragTextLabel) els.ragTextLabel.textContent = t('ragTextLabel');
+  setI18nText('#onboardingTitle', 'onboardingTitle', 'Welcome to op助手');
+  setI18nText('#onboardingDesc', 'onboardingDesc', 'Configure chat and embedding API on first run.');
+  setI18nText('#onboardingProviderLabel', 'provider', 'Provider');
+  setI18nText('#onboardingApiKeyLabel', 'apiKey', 'API Key');
+  setI18nText('#onboardingModelLabel', 'model', 'Model');
+  setI18nText('#onboardingEmbeddingTitle', 'onboardingEmbeddingTitle', 'Embedding (RAG)');
+  setI18nText('#onboardingEmbeddingDesc', 'onboardingEmbeddingDesc', 'For knowledge search; shares chat API key by default.');
+  setI18nText('#onboardingEmbeddingModeLabel', 'embeddingModeLabel', 'Embedding mode');
+  setI18nText('#onboardingEmbeddingProviderLabel', 'embeddingProviderLabel', 'Embedding provider');
+  setI18nText('#onboardingEmbeddingApiKeyLabel', 'embeddingApiKeyLabel', 'Embedding API Key');
+  setI18nText('#onboardingEmbeddingModelLabel', 'embeddingModelLabel', 'Embedding model');
+  setI18nText('#onboardingCarLabel', 'onboardingCarLabel', 'Car model (optional)');
+  setI18nText('#onboardingBrandLabel', 'onboardingBrandLabel', 'Brand (optional)');
+  setI18nText('#onboardingGoalsLabel', 'onboardingGoalsLabel', 'What do you need most?');
+  setI18nText('#onboardingGoalTuning', 'onboardingGoalTuning', 'Tuning');
+  setI18nText('#onboardingGoalEngage', 'onboardingGoalEngage', 'Cannot engage');
+  setI18nText('#onboardingGoalAdapt', 'onboardingGoalAdapt', 'New car');
+  setI18nText('#onboardingGoalRoutes', 'onboardingGoalRoutes', 'Route review');
+  setI18nText('#onboardingRagTitle', 'onboardingRagTitle', 'Knowledge base setup');
+  setI18nText('#onboardingRagDesc', 'onboardingRagDesc', 'Index built-in docs and community wiki for RAG.');
+  setI18nText('#onboardingRagReindexLabel', 'onboardingRagReindexLabel', 'Vectorize existing documents');
+  setI18nText('#onboardingRagWikiLabel', 'onboardingRagWikiLabel', 'Pull community wiki and vectorize');
+  if (els.onboardingTestBtn) els.onboardingTestBtn.textContent = t('testConnection', 'Test connection');
+  if (els.onboardingSaveBtn) els.onboardingSaveBtn.textContent = t('onboardingSaveBtn', 'Save and continue');
+  if (els.onboardingRagSkipBtn) els.onboardingRagSkipBtn.textContent = t('onboardingRagSkip', 'Set up later');
+  if (els.onboardingRagStartBtn) els.onboardingRagStartBtn.textContent = t('onboardingRagStart', 'Start setup');
+  if (els.onboardingEmbeddingMode) {
+    const same = els.onboardingEmbeddingMode.querySelector('option[value="same"]');
+    const sep = els.onboardingEmbeddingMode.querySelector('option[value="separate"]');
+    if (same) same.textContent = t('embeddingModeSame', 'Same provider as chat');
+    if (sep) sep.textContent = t('embeddingModeSeparate', 'Separate embedding provider');
+  }
   const writeTitle = $('#writeConfirmTitle');
   if (writeTitle) writeTitle.textContent = t('writeConfirmTitle');
   const writeHint = $('#writeConfirmHint');
@@ -1031,15 +1092,99 @@ function syncBodyScrollLock() {
   document.body.style.overflow = locked ? 'hidden' : '';
 }
 
-function openKnowledgeModal() {
+function openKnowledgeModal(opts = {}) {
   knowledgeOpen = true;
   setOverlayVisible(els.knowledgeModal, true);
   els.knowledgeBtn?.classList.add('active');
   syncBodyScrollLock();
+  if (opts.onboarding) {
+    onboardingRagSetupActive = true;
+    if (els.onboardingRagSetup) els.onboardingRagSetup.hidden = false;
+    if (els.knowledgeMainContent) els.knowledgeMainContent.classList.add('hidden');
+    if (els.onboardingRagReindex) els.onboardingRagReindex.checked = true;
+    if (els.onboardingRagWiki) els.onboardingRagWiki.checked = true;
+    if (els.onboardingRagStatus) els.onboardingRagStatus.textContent = '';
+    if (els.knowledgeClose) els.knowledgeClose.hidden = true;
+  } else {
+    finishOnboardingKnowledgeSetup({ keepOpen: true });
+  }
   loadRagPanel();
 }
 
+function finishOnboardingKnowledgeSetup({ keepOpen = false } = {}) {
+  onboardingRagSetupActive = false;
+  if (els.onboardingRagSetup) els.onboardingRagSetup.hidden = true;
+  if (els.knowledgeMainContent) els.knowledgeMainContent.classList.remove('hidden');
+  if (els.knowledgeClose) els.knowledgeClose.hidden = false;
+  if (!keepOpen && knowledgeOpen) {
+    closeKnowledgeModal();
+  }
+}
+
+async function runOnboardingRagSetup() {
+  const doReindex = !!els.onboardingRagReindex?.checked;
+  const doWiki = !!els.onboardingRagWiki?.checked;
+  if (!doReindex && !doWiki) {
+    finishOnboardingKnowledgeSetup();
+    return;
+  }
+  const setStatus = (msg) => {
+    if (els.onboardingRagStatus) els.onboardingRagStatus.textContent = msg;
+  };
+  const run = async () => {
+    if (doWiki) {
+      setStatus(t('onboardingRagWikiRunning', '正在拉取社区 Wiki…'));
+      const { data } = await api('POST', '/api/ai/rag', {
+        operation: 'wiki_ingest',
+        all_registered: true,
+        max_files_per_repo: 80,
+        force: true,
+      });
+      if (!data.ok) throw new Error(data.error || t('ragWikiSyncFailed', 'Wiki 同步失败'));
+      setStatus(tf('ragWikiSyncResult', { indexed: Number(data.indexed) || 0 }));
+    }
+    if (doReindex || doWiki) {
+      setStatus(t('onboardingRagIndexRunning', '正在建立向量索引…'));
+      const { data } = await api('POST', '/api/ai/rag', { operation: 'reindex' });
+      if (!data.ok) throw new Error(data.error || t('ragReindexFailed', '索引失败'));
+      setStatus(tf('onboardingRagDone', { indexed: data.indexed, total: data.total }));
+    }
+    showToast(t('onboardingRagComplete', '知识库设置完成'), 'success');
+    loadUsage();
+    finishOnboardingKnowledgeSetup({ keepOpen: true });
+    loadRagPanel();
+  };
+  if (typeof UiBusy !== 'undefined') {
+    if (els.onboardingRagSkipBtn) els.onboardingRagSkipBtn.disabled = true;
+    try {
+      await UiBusy.withButtonBusy(els.onboardingRagStartBtn, run, { busyLabel: t('uiWorking', '处理中…') });
+    } catch (e) {
+      setStatus(String(e?.message || e));
+      showToast(String(e?.message || e), 'error');
+    } finally {
+      if (els.onboardingRagSkipBtn) els.onboardingRagSkipBtn.disabled = false;
+    }
+  } else {
+    try {
+      await run();
+    } catch (e) {
+      setStatus(String(e?.message || e));
+      showToast(String(e?.message || e), 'error');
+    }
+  }
+}
+
+function openOnboardingKnowledgeSetup() {
+  openKnowledgeModal({ onboarding: true });
+}
+
 function closeKnowledgeModal() {
+  if (onboardingRagSetupActive) {
+    onboardingRagSetupActive = false;
+    if (els.onboardingRagSetup) els.onboardingRagSetup.hidden = true;
+    if (els.knowledgeMainContent) els.knowledgeMainContent.classList.remove('hidden');
+    if (els.knowledgeClose) els.knowledgeClose.hidden = false;
+  }
   knowledgeOpen = false;
   setOverlayVisible(els.knowledgeModal, false);
   els.knowledgeBtn?.classList.remove('active');
@@ -1734,7 +1879,12 @@ function getSchedActionValue() {
 }
 
 async function loadRagPanel() {
+  if (!els.ragDocList) return;
+  if (typeof UiBusy !== 'undefined') {
+    UiBusy.showPanelLoading(els.ragDocList, t('uiLoading', '加载中…'));
+  }
   const { data } = await api('GET', '/api/ai/rag');
+  if (typeof UiBusy !== 'undefined') UiBusy.clearPanelBusy(els.ragDocList);
   if (!data.ok || !els.ragDocList) return;
   const docs = data.documents || [];
   const chunks = data.vector_chunks ?? 0;
@@ -1751,35 +1901,125 @@ async function loadRagPanel() {
     : `<p class="field-hint">${t('ragNoDocs')}</p>`;
   els.ragDocList.querySelectorAll('.rag-del').forEach((btn) => {
     btn.addEventListener('click', async () => {
-      await api('POST', '/api/ai/rag', { operation: 'remove', doc_id: btn.dataset.id });
-      loadRagPanel();
+      if (btn.classList.contains('is-loading')) return;
+      const docId = btn.dataset.id;
+      if (typeof UiBusy !== 'undefined') {
+        UiBusy.setButtonBusy(btn, true, { busyLabel: t('uiDeleting', '删除中…') });
+      } else {
+        btn.disabled = true;
+      }
+      const { data } = await api('POST', '/api/ai/rag', { operation: 'remove', doc_id: docId });
+      if (typeof UiBusy !== 'undefined') {
+        UiBusy.setButtonBusy(btn, false);
+      } else {
+        btn.disabled = false;
+      }
+      if (data.ok) {
+        showToast(t('ragDeleted', '文档已删除'), 'success');
+        loadRagPanel();
+      } else {
+        showToast(data.error || t('ragDeleteFailed', '删除失败'), 'error');
+      }
     });
   });
 }
 
-async function reindexRag() {
-  if (!els.ragReindexBtn) return;
-  els.ragReindexBtn.disabled = true;
-  const { data } = await api('POST', '/api/ai/rag', { operation: 'reindex' });
-  els.ragReindexBtn.disabled = false;
-  if (data.ok) {
-    showToast(tf('ragReindexResult', { indexed: data.indexed, total: data.total }), data.errors?.length ? 'warning' : 'success');
-    loadRagPanel();
-  } else {
-    showToast(data.error || t('ragReindexFailed'), 'error');
+function setRagActionsBusy(busy, busyLabel) {
+  const buttons = [els.ragSaveBtn, els.ragSyncWikiBtn, els.ragReindexBtn];
+  if (typeof UiBusy !== 'undefined') {
+    UiBusy.setGroupBusy(buttons, busy, busyLabel ? { busyLabel } : {});
+    return;
   }
+  buttons.forEach((btn) => {
+    if (btn) btn.disabled = busy;
+  });
+}
+
+async function reindexRag({ silent = false } = {}) {
+  if (!els.ragReindexBtn) return false;
+  if (els.ragReindexBtn.classList.contains('is-loading')) return false;
+  if (typeof UiBusy !== 'undefined') {
+    UiBusy.setButtonBusy(els.ragReindexBtn, true, { busyLabel: t('ragReindexing', '索引中…') });
+  } else {
+    els.ragReindexBtn.disabled = true;
+  }
+  const { data } = await api('POST', '/api/ai/rag', { operation: 'reindex' });
+  if (typeof UiBusy !== 'undefined') {
+    UiBusy.setButtonBusy(els.ragReindexBtn, false);
+  } else {
+    els.ragReindexBtn.disabled = false;
+  }
+  if (data.ok) {
+    if (!silent) {
+      showToast(tf('ragReindexResult', { indexed: data.indexed, total: data.total }), data.errors?.length ? 'warning' : 'success');
+    }
+    loadRagPanel();
+    loadUsage();
+    return true;
+  }
+  if (!silent) showToast(data.error || t('ragReindexFailed'), 'error');
+  return false;
+}
+
+async function syncWikiRag() {
+  if (!els.ragSyncWikiBtn || els.ragSyncWikiBtn.classList.contains('is-loading')) return;
+  if (typeof UiBusy !== 'undefined') {
+    UiBusy.setButtonBusy(els.ragSyncWikiBtn, true, { busyLabel: t('ragWikiSyncingShort', '同步中…') });
+  } else {
+    els.ragSyncWikiBtn.disabled = true;
+  }
+  setRagActionsBusy(true);
+  const { data } = await api('POST', '/api/ai/rag', {
+    operation: 'wiki_ingest',
+    all_registered: true,
+    max_files_per_repo: 80,
+    force: true,
+  });
+  if (!data.ok) {
+    if (typeof UiBusy !== 'undefined') UiBusy.setButtonBusy(els.ragSyncWikiBtn, false);
+    else els.ragSyncWikiBtn.disabled = false;
+    setRagActionsBusy(false);
+    showToast(data.error || t('ragWikiSyncFailed', 'Wiki 同步失败'), 'error');
+    return;
+  }
+  const indexed = Number(data.indexed) || 0;
+  showToast(tf('ragWikiSyncResult', { indexed }), 'success');
+  await loadRagPanel();
+  if (indexed > 0) {
+    await reindexRag({ silent: true });
+    showToast(t('ragWikiSyncDone', 'Wiki 已同步并完成索引'), 'success');
+  }
+  if (typeof UiBusy !== 'undefined') UiBusy.setButtonBusy(els.ragSyncWikiBtn, false);
+  else els.ragSyncWikiBtn.disabled = false;
+  setRagActionsBusy(false);
+  loadUsage();
 }
 
 async function saveRagDoc() {
   const title = (els.ragTitle?.value || '').trim();
   const text = (els.ragText?.value || '').trim();
-  if (!text) return;
-  const { data } = await api('POST', '/api/ai/rag', { title: title || t('ragNoteDefault'), text });
-  if (data.ok) {
-    if (els.ragTitle) els.ragTitle.value = '';
-    if (els.ragText) els.ragText.value = '';
-    showToast(t('saved', '已保存'), 'success');
-    loadRagPanel();
+  if (!text || els.ragSaveBtn?.classList.contains('is-loading')) return;
+  const run = async () => {
+    const { data } = await api('POST', '/api/ai/rag', { title: title || t('ragNoteDefault'), text });
+    if (data.ok) {
+      if (els.ragTitle) els.ragTitle.value = '';
+      if (els.ragText) els.ragText.value = '';
+      showToast(t('saved', '已保存'), 'success');
+      loadRagPanel();
+      loadUsage();
+    } else {
+      showToast(data.error || t('saveFailed', '保存失败'), 'error');
+    }
+  };
+  if (typeof UiBusy !== 'undefined') {
+    await UiBusy.withButtonBusy(els.ragSaveBtn, run, { busyLabel: t('uiSaving', '保存中…') });
+  } else {
+    els.ragSaveBtn.disabled = true;
+    try {
+      await run();
+    } finally {
+      els.ragSaveBtn.disabled = false;
+    }
   }
 }
 
@@ -1862,6 +2102,7 @@ async function addSchedulerTask() {
   const interval = parseInt(els.schedInterval?.value || '60', 10);
   const prevText = els.schedAddBtn.textContent;
   els.schedAddBtn.disabled = true;
+  els.schedAddBtn.classList.add('is-loading');
   els.schedAddBtn.textContent = t('schedAdding');
   try {
     const trigger = els.schedTrigger?.value || 'interval';
@@ -1890,6 +2131,7 @@ async function addSchedulerTask() {
     showToast(t('saveFailed', 'Save failed'), 'error');
   } finally {
     els.schedAddBtn.disabled = false;
+    els.schedAddBtn.classList.remove('is-loading');
     els.schedAddBtn.textContent = prevText;
   }
 }
@@ -3319,11 +3561,22 @@ function initModelCombos() {
   embeddingModelCombo = ModelCombobox.mount('#embeddingModelCombobox', {
     ...labels(),
     placeholder: t('embeddingModelPlaceholder', 'BAAI/bge-m3'),
-    onChange: persistConfigDraft,
-    onInput: persistConfigDraft,
+    onChange: () => {
+      persistConfigDraft();
+      refreshEmbeddingUsageForCurrentModel();
+    },
+    onInput: () => {
+      persistConfigDraft();
+      refreshEmbeddingUsageForCurrentModel();
+    },
   });
   onboardingModelCombo = ModelCombobox.mount('#onboardingModelCombobox', {
     placeholder: 'deepseek-v4-flash',
+    emptyLabel: t('noModels', 'No models loaded'),
+    loadingLabel: t('loadingModels', 'Loading...'),
+  });
+  onboardingEmbeddingModelCombo = ModelCombobox.mount('#onboardingEmbeddingModelCombobox', {
+    placeholder: t('embeddingModelPlaceholder', 'BAAI/bge-m3'),
     emptyLabel: t('noModels', 'No models loaded'),
     loadingLabel: t('loadingModels', 'Loading...'),
   });
@@ -3920,8 +4173,23 @@ async function saveConfig(opts = {}) {
   configSaveInFlight = true;
   configSaveState = 'saving';
   updateConfigSaveHint();
-  const { status, data } = await api('POST', '/api/ai/config', body);
-  configSaveInFlight = false;
+  if (typeof UiBusy !== 'undefined') {
+    UiBusy.setButtonBusy(els.saveBtn, true, { busyLabel: t('uiSaving', '保存中…') });
+  } else if (els.saveBtn) {
+    els.saveBtn.disabled = true;
+  }
+  let status = 0;
+  let data = {};
+  try {
+    ({ status, data } = await api('POST', '/api/ai/config', body));
+  } finally {
+    configSaveInFlight = false;
+    if (typeof UiBusy !== 'undefined') {
+      UiBusy.setButtonBusy(els.saveBtn, false);
+    } else if (els.saveBtn) {
+      els.saveBtn.disabled = false;
+    }
+  }
   if (data.ok) {
     configured = !!data.configured;
     configureError = data.configureError || '';
@@ -3986,28 +4254,37 @@ async function verifyConnection(opts = {}) {
     els.connectionResult.textContent = t('testing', 'Testing...');
     els.connectionResult.className = 'connection-result';
   }
-  const { data } = await api('POST', '/api/ai/test_connection', payload);
-  if (!data.ok) {
-    const msg = formatApiError(data.error || t('connectionFailed', 'Connection failed'));
-    configureError = data.error || msg;
-    configured = false;
-    if (els.connectionResult) {
-      els.connectionResult.textContent = msg;
-      els.connectionResult.className = 'connection-result error';
+  if (opts.testBtn && typeof UiBusy !== 'undefined') {
+    UiBusy.setButtonBusy(opts.testBtn, true, { busyLabel: t('testing', '测试中…') });
+  }
+  try {
+    const { data } = await api('POST', '/api/ai/test_connection', payload);
+    if (!data.ok) {
+      const msg = formatApiError(data.error || t('connectionFailed', 'Connection failed'));
+      configureError = data.error || msg;
+      configured = false;
+      if (els.connectionResult) {
+        els.connectionResult.textContent = msg;
+        els.connectionResult.className = 'connection-result error';
+      }
+      if (!silent) showToast(msg.split('\n')[0], 'error');
+      return false;
     }
-    if (!silent) showToast(msg.split('\n')[0], 'error');
-    return false;
+    configured = true;
+    configureError = '';
+    if (els.connectionResult) {
+      els.connectionResult.textContent = data.message || t('connectionOk', 'Connection OK');
+      els.connectionResult.className = `connection-result ${data.model_available ? 'success' : 'warning'}`;
+    }
+    if (!silent) {
+      showToast(data.message || t('connectionOk', 'Connection OK'), data.model_available ? 'success' : 'warning');
+    }
+    return true;
+  } finally {
+    if (opts.testBtn && typeof UiBusy !== 'undefined') {
+      UiBusy.setButtonBusy(opts.testBtn, false);
+    }
   }
-  configured = true;
-  configureError = '';
-  if (els.connectionResult) {
-    els.connectionResult.textContent = data.message || t('connectionOk', 'Connection OK');
-    els.connectionResult.className = `connection-result ${data.model_available ? 'success' : 'warning'}`;
-  }
-  if (!silent) {
-    showToast(data.message || t('connectionOk', 'Connection OK'), data.model_available ? 'success' : 'warning');
-  }
-  return true;
 }
 
 // ---------------------------------------------------------------------------
@@ -4211,9 +4488,32 @@ function renderPackageVersionCard(pkg) {
     ? `<p class="dev-env-hint">${t('devPackageUpdateAvailable', '有新版本可更新')}${pkg.remote_version ? ` → v${escapeHtml(pkg.remote_version)}` : ''}</p>`
     : (pkg.fetch_error ? `<p class="dev-env-hint muted">${escapeHtml(pkg.fetch_error)}</p>` : '');
   const installHint = !pkg.is_git_install
-    ? `<p class="dev-env-hint muted">${t('devPackageInstallHint', '一键安装: curl -fsSL https://raw.githubusercontent.com/mouxangithub/ai/main/install/install.sh | bash')}</p>`
+    ? `<p class="dev-env-hint muted">${t('devPackageNonGitUpdateHint', '非 git 安装：点「立即更新」将备份当前 ai/ 并重新克隆最新版')}</p>`
     : '';
   return rows + hint + installHint;
+}
+
+function renderRagStatusCard(rag, cfg) {
+  const docCount = Number(rag?.count) || 0;
+  const vectorChunks = Number(rag?.vector_chunks) || 0;
+  const embedded = (rag?.documents || []).filter((d) => d.embedded).length;
+  const embedOk = !!cfg?.embeddingConfigured;
+  const chatRag = embedOk && vectorChunks > 0;
+  const lines = [
+    [t('devRagDocs', '文档'), `${docCount}（已向量化 ${embedded}）`],
+    [t('devRagVectors', '向量块'), String(vectorChunks)],
+    [t('devRagEmbedding', 'Embedding'), embedOk ? t('devRagEmbeddingOk', '已配置') : t('devRagEmbeddingMissing', '未配置')],
+    [t('devRagChat', '对话检索'), chatRag ? t('devRagChatOn', '已启用（每轮自动注入）') : t('devRagChatOff', '未启用')],
+  ];
+  const rows = lines.map(([label, val]) => `
+    <div class="dev-kv">
+      <span class="dev-kv-label">${escapeHtml(label)}</span>
+      <span class="dev-kv-value">${escapeHtml(String(val))}</span>
+    </div>`).join('');
+  const hint = chatRag
+    ? `<p class="dev-env-hint muted">${escapeHtml(t('devRagChatHintOn', '聊天时会把相关文档片段写入 system prompt。'))}</p>`
+    : `<p class="dev-env-hint muted">${escapeHtml(t('devRagChatHintOff', '请在设置中配置 Embedding，并在知识库中执行「重建索引」或同步 Wiki。'))}</p>`;
+  return rows + hint;
 }
 
 function renderForkDetectCard(fork) {
@@ -4222,10 +4522,16 @@ function renderForkDetectCard(fork) {
   }
   const scan = fork.scan || {};
   const analysis = fork.analysis || {};
+  const community = fork.community_match || {};
+  const displayId = community.id || fork.fork_id || '—';
+  const displayLabel = community.name || fork.fork_label || displayId;
+  const remotes = (fork.git_remotes || scan.git_remotes || []).slice(0, 2).join(' · ') || '—';
   const lines = [
-    ['识别', `${fork.fork_label || fork.fork_id} (${fork.confidence || '—'})`],
+    ['识别', `${displayLabel} (${fork.confidence || '—'})`],
+    ['仓库', displayId],
     ['模式', fork.mode === 'ai_cached' ? t('devForkModeAi', 'AI 已分析') : t('devForkModeScan', '仓库扫描')],
     ['分支', fork.git_branch || '—'],
+    ['Remote', remotes],
     ['特征目录', (scan.distinctive_dirs || []).slice(0, 4).join(', ') || '—'],
     ['Param 前缀', Object.keys(scan.param_prefixes || {}).slice(0, 5).join(', ') || '—'],
   ];
@@ -4410,7 +4716,7 @@ async function refreshForkDetectCard() {
   }
   const { data: fork } = await api('GET', '/api/ai/fork/detect');
   if (els.forkDetectBox) els.forkDetectBox.innerHTML = renderForkDetectCard(fork);
-  if (els.devForkBadge) els.devForkBadge.textContent = fork?.fork_id || '—';
+  if (els.devForkBadge) els.devForkBadge.textContent = fork?.community_match?.id || fork?.fork_id || '—';
   return fork;
 }
 
@@ -4422,8 +4728,13 @@ async function runForkAnalyzePipeline({ force = false } = {}) {
   }
   resetForkRunUi();
   setForkRunBusy(true, t('devForkRunning', 'AI 分析进行中…'));
-  els.devForkSyncBtn.disabled = true;
-  els.devForkRefreshBtn.disabled = true;
+  if (typeof UiBusy !== 'undefined') {
+    UiBusy.setButtonBusy(els.devForkSyncBtn, true, { busyLabel: t('uiWorking', '处理中…') });
+    UiBusy.setButtonBusy(els.devForkRefreshBtn, true);
+  } else {
+    els.devForkSyncBtn.disabled = true;
+    els.devForkRefreshBtn.disabled = true;
+  }
   let finalResult = null;
   try {
     await postSseStream('/api/ai/fork/run', { confirm: true, force }, (event) => {
@@ -4449,8 +4760,13 @@ async function runForkAnalyzePipeline({ force = false } = {}) {
     showToast(err);
     return null;
   } finally {
-    els.devForkSyncBtn.disabled = false;
-    els.devForkRefreshBtn.disabled = false;
+    if (typeof UiBusy !== 'undefined') {
+      UiBusy.setButtonBusy(els.devForkSyncBtn, false);
+      UiBusy.setButtonBusy(els.devForkRefreshBtn, false);
+    } else {
+      els.devForkSyncBtn.disabled = false;
+      els.devForkRefreshBtn.disabled = false;
+    }
   }
 }
 
@@ -4460,6 +4776,7 @@ async function refreshOnboardingModels() {
   const catalog = catalogModelsForProvider(provider);
   if (!apiKey) {
     onboardingModelCombo?.setOptions(catalog);
+    refreshOnboardingEmbeddingModels();
     return;
   }
   onboardingModelCombo?.setLoading(true);
@@ -4476,6 +4793,44 @@ async function refreshOnboardingModels() {
   }
   onboardingModelCombo?.setLoading(false);
   onboardingModelCombo?.setOptions(list);
+  refreshOnboardingEmbeddingModels();
+}
+
+function renderOnboardingEmbeddingProviders() {
+  if (!els.onboardingEmbeddingProvider) return;
+  if (!embeddingProviders.length) {
+    embeddingProviders = FALLBACK_EMBEDDING_PROVIDERS.slice();
+  }
+  const html = embeddingProviders.map((p) => `<option value="${p}">${embeddingProviderDisplayName(p)}</option>`).join('');
+  els.onboardingEmbeddingProvider.innerHTML = html;
+}
+
+function getOnboardingEmbeddingProvider() {
+  const mode = els.onboardingEmbeddingMode?.value || 'same';
+  if (mode === 'separate') {
+    return els.onboardingEmbeddingProvider?.value || 'siliconflow';
+  }
+  return els.onboardingProvider?.value || 'opencode-zen';
+}
+
+function refreshOnboardingEmbeddingModels() {
+  const mode = els.onboardingEmbeddingMode?.value || 'same';
+  const provider = getOnboardingEmbeddingProvider();
+  const list = embeddingCatalogForProvider(provider, mode === 'same');
+  onboardingEmbeddingModelCombo?.setOptions(list);
+  const current = onboardingEmbeddingModelCombo?.getValue()?.trim();
+  const def = embeddingDefaults[provider] || '';
+  if (!current && def) {
+    onboardingEmbeddingModelCombo?.setValue(def, { silent: true });
+  } else if (!current && list.length) {
+    onboardingEmbeddingModelCombo?.setValue(list[0].id || list[0], { silent: true });
+  }
+}
+
+function onOnboardingEmbeddingModeChange() {
+  const separate = els.onboardingEmbeddingMode?.value === 'separate';
+  els.onboardingEmbeddingSeparateFields?.classList.toggle('hidden', !separate);
+  refreshOnboardingEmbeddingModels();
 }
 
 function openOnboardingWizard() {
@@ -4489,8 +4844,16 @@ function openOnboardingWizard() {
   const p = sel?.value || 'opencode-zen';
   const defaultModel = defaults[p] || modelCatalog[p]?.[0] || 'deepseek-v4-flash';
   onboardingModelCombo?.setValue(defaultModel, { silent: true });
-  refreshOnboardingModels().catch(() => {});
-  if (els.onboardingResult) els.onboardingResult.textContent = '';
+  if (els.onboardingEmbeddingMode) els.onboardingEmbeddingMode.value = 'same';
+  renderOnboardingEmbeddingProviders();
+  onOnboardingEmbeddingModeChange();
+  refreshOnboardingModels().catch(() => {
+    refreshOnboardingEmbeddingModels();
+  });
+  if (els.onboardingResult) {
+    els.onboardingResult.textContent = '';
+    els.onboardingResult.className = 'field-hint';
+  }
   els.onboardingModal.hidden = false;
 }
 
@@ -4498,49 +4861,91 @@ function closeOnboardingWizard() {
   if (els.onboardingModal) els.onboardingModal.hidden = true;
 }
 
+async function testOnboardingWizard() {
+  const provider = els.onboardingProvider?.value || 'opencode-zen';
+  const apiKey = els.onboardingApiKey?.value?.trim() || '';
+  const model = onboardingModelCombo?.getValue()?.trim() || '';
+  const run = async () => {
+    if (els.onboardingResult) els.onboardingResult.textContent = t('testing', '测试中…');
+    const { data } = await api('POST', '/api/ai/test_connection', { provider, apiKey, model });
+    if (els.onboardingResult) {
+      els.onboardingResult.textContent = data.ok
+        ? t('connectionOk', '连接成功')
+        : (data.error || t('connectionFail', '连接失败'));
+      els.onboardingResult.className = `connection-result ${data.ok ? 'success' : 'error'}`;
+    }
+  };
+  if (typeof UiBusy !== 'undefined') {
+    await UiBusy.withButtonBusy(els.onboardingTestBtn, run, { busyLabel: t('testing', '测试中…') });
+  } else {
+    await run();
+  }
+}
+
 async function saveOnboardingWizard() {
   const provider = els.onboardingProvider?.value || 'opencode-zen';
   const apiKey = els.onboardingApiKey?.value?.trim() || '';
   const model = onboardingModelCombo?.getValue()?.trim() || '';
   if (!apiKey || !model) {
-    if (els.onboardingResult) els.onboardingResult.textContent = t('onboardingMissing', '请填写 API Key 和模型');
+    if (els.onboardingResult) {
+      els.onboardingResult.textContent = t('onboardingMissing', '请填写 API Key 和模型');
+      els.onboardingResult.className = 'connection-result warning';
+    }
     return;
   }
-  const payload = { provider, apiKey, model };
-  const { data } = await api('POST', '/api/ai/config', payload);
-  if (!data.ok) {
-    if (els.onboardingResult) els.onboardingResult.textContent = data.error || t('saveFailed', '保存失败');
-    return;
-  }
-  const goals = Array.from(document.querySelectorAll('input[name="onboardingGoal"]:checked')).map((el) => el.value);
-  const car = els.onboardingCar?.value?.trim();
-  const brand = els.onboardingBrand?.value?.trim();
-  const vehicleProfile = {};
-  if (car) vehicleProfile.car = car;
-  if (brand) vehicleProfile.brand = brand;
-  if (vehicleProfile.car || vehicleProfile.brand || goals.length) {
-    await api('POST', '/api/ai/onboarding/profile', {
-      vehicle_profile: vehicleProfile,
-      goals,
-    }).catch(() => ({}));
-  }
-  await api('POST', '/api/ai/onboarding/complete', {});
-  configured = !!data.configured;
-  closeOnboardingWizard();
-  showToast(t('onboardingDone', '配置已保存，可以开始对话'));
-  await loadBootstrap();
-}
-
-async function testOnboardingWizard() {
-  const provider = els.onboardingProvider?.value || 'opencode-zen';
-  const apiKey = els.onboardingApiKey?.value?.trim() || '';
-  const model = onboardingModelCombo?.getValue()?.trim() || '';
-  if (els.onboardingResult) els.onboardingResult.textContent = t('testing', '测试中…');
-  const { data } = await api('POST', '/api/ai/test_connection', { provider, apiKey, model });
-  if (els.onboardingResult) {
-    els.onboardingResult.textContent = data.ok
-      ? t('connectionOk', '连接成功')
-      : (data.error || t('connectionFail', '连接失败'));
+  const run = async () => {
+    const embeddingMode = els.onboardingEmbeddingMode?.value || 'same';
+    const embeddingModel = onboardingEmbeddingModelCombo?.getValue()?.trim() || '';
+    const embeddingProvider = els.onboardingEmbeddingProvider?.value || 'siliconflow';
+    const embeddingApiKey = els.onboardingEmbeddingApiKey?.value?.trim() || '';
+    if (!embeddingModel) {
+      if (els.onboardingResult) {
+        els.onboardingResult.textContent = t('onboardingEmbeddingMissing', '请选择 Embedding 模型');
+        els.onboardingResult.className = 'connection-result warning';
+      }
+      return;
+    }
+    const payload = {
+      provider,
+      apiKey,
+      model,
+      embeddingMode,
+      embeddingProvider,
+      embeddingModel,
+      embeddingApiKey,
+    };
+    const { data } = await api('POST', '/api/ai/config', payload);
+    if (!data.ok) {
+      if (els.onboardingResult) {
+        els.onboardingResult.textContent = data.error || t('saveFailed', '保存失败');
+        els.onboardingResult.className = 'connection-result error';
+      }
+      return;
+    }
+    const goals = Array.from(document.querySelectorAll('input[name="onboardingGoal"]:checked')).map((el) => el.value);
+    const car = els.onboardingCar?.value?.trim();
+    const brand = els.onboardingBrand?.value?.trim();
+    const vehicleProfile = {};
+    if (car) vehicleProfile.car = car;
+    if (brand) vehicleProfile.brand = brand;
+    if (vehicleProfile.car || vehicleProfile.brand || goals.length) {
+      await api('POST', '/api/ai/onboarding/profile', {
+        vehicle_profile: vehicleProfile,
+        goals,
+      }).catch(() => ({}));
+    }
+    await api('POST', '/api/ai/onboarding/complete', {});
+    configured = !!data.configured;
+    closeOnboardingWizard();
+    showToast(t('onboardingDone', '配置已保存，可以开始对话'));
+    await loadConfig();
+    refreshEmbeddingModels();
+    openOnboardingKnowledgeSetup();
+  };
+  if (typeof UiBusy !== 'undefined') {
+    await UiBusy.withButtonBusy(els.onboardingSaveBtn, run, { busyLabel: t('uiSaving', '保存中…') });
+  } else {
+    await run();
   }
 }
 
@@ -4558,13 +4963,14 @@ async function loadDevPane() {
   if (!els.hostEnvBox) return;
   setDevPaneLoading(true);
   try {
-    const [{ data: boot }, { data: assets }, { data: pcs }, { data: passport }, { data: pkg }, { data: fork }] = await Promise.all([
+    const [{ data: boot }, { data: assets }, { data: pcs }, { data: passport }, { data: pkg }, { data: fork }, { data: rag }] = await Promise.all([
       api('GET', '/api/ai/bootstrap').catch(() => ({ data: {} })),
       api('GET', '/api/ai/dev-assets').catch(() => ({ data: {} })),
       api('GET', '/api/ai/pc-sessions').catch(() => ({ data: {} })),
       api('GET', '/api/ai/tune_passport?limit=15').catch(() => ({ data: {} })),
       api('GET', '/api/ai/package/version?fetch=1').catch(() => ({ data: {} })),
       api('GET', '/api/ai/fork/detect').catch(() => ({ data: {} })),
+      api('GET', '/api/ai/rag').catch(() => ({ data: {} })),
     ]);
     const env = boot.hostEnvironment || hostEnvironment;
     if (env) {
@@ -4588,8 +4994,17 @@ async function loadDevPane() {
     if (els.forkDetectBox) {
       els.forkDetectBox.innerHTML = renderForkDetectCard(fork);
     }
+    const forkBadge = fork?.community_match?.id || fork?.fork_id || '—';
     if (els.devForkBadge) {
-      els.devForkBadge.textContent = fork?.fork_id || '—';
+      els.devForkBadge.textContent = forkBadge;
+    }
+
+    if (els.ragStatusBox) {
+      els.ragStatusBox.innerHTML = renderRagStatusCard(rag, boot?.config || savedConfig);
+    }
+    if (els.devRagBadge) {
+      const chunks = Number(rag?.vector_chunks) || 0;
+      els.devRagBadge.textContent = chunks > 0 ? String(chunks) : '—';
     }
 
     const sessions = pcs?.sessions || [];
@@ -4654,12 +5069,36 @@ function startStatusPolling() {
 }
 
 async function loadUsage() {
-  if (!els.usageGrid) return;
+  if (!els.usageGrid && !els.embeddingUsageGrid) return;
   const { data } = await api('GET', '/api/ai/usage');
-  if (!data.ok || !data.usage) return;
-  usageData = data.usage;
+  if (!data.ok) return;
+  if (data.usage) usageData = data.usage;
+  if (data.embeddingUsage) embeddingUsageData = data.embeddingUsage;
   refreshUsageForCurrentModel();
+  refreshEmbeddingUsageForCurrentModel();
   if (usageDetailOpen) renderUsageDetailModal();
+}
+
+function getCurrentEmbeddingModelKey() {
+  const provider = getActiveEmbeddingProvider();
+  const model = getEmbeddingModelValue();
+  if (!provider || !model) return '';
+  return `${provider}::${model}`;
+}
+
+function refreshEmbeddingUsageForCurrentModel() {
+  if (!els.embeddingUsageGrid || !embeddingUsageData) return;
+  const key = getCurrentEmbeddingModelKey();
+  const bucket = (key && embeddingUsageData.by_model?.[key])
+    ? embeddingUsageData.by_model[key]
+    : emptyUsageBucket();
+  els.embeddingUsageGrid.innerHTML = usageGridHtml(bucket, { hideCompletion: true });
+  if (els.embeddingUsageHint) {
+    const modelName = key ? key.split('::').slice(1).join('::') : '';
+    els.embeddingUsageHint.textContent = modelName
+      ? tf('usageCurrentEmbeddingModel', { model: modelName })
+      : t('usagePickEmbeddingModel', '请选择 Embedding 服务商与模型');
+  }
 }
 
 function fmtUsageNum(n) {
@@ -4679,14 +5118,17 @@ function fmtTokenNum(n) {
   return String(v);
 }
 
-function usageStatCols({ tokensAsM = true } = {}) {
+function usageStatCols({ tokensAsM = true, includeCompletion = true } = {}) {
   const fmtTok = tokensAsM ? fmtTokenNum : fmtUsageNum;
-  return [
+  const cols = [
     { label: t('usageCalls'), render: (r) => fmtUsageNum(r.calls) },
     { label: t('usagePrompt'), render: (r) => fmtTok(r.prompt_tokens) },
-    { label: t('usageCompletion'), render: (r) => fmtTok(r.completion_tokens) },
-    { label: t('usageTotal'), render: (r) => fmtTok(r.total_tokens) },
   ];
+  if (includeCompletion) {
+    cols.push({ label: t('usageCompletion'), render: (r) => fmtTok(r.completion_tokens) });
+  }
+  cols.push({ label: t('usageTotal'), render: (r) => fmtTok(r.total_tokens) });
+  return cols;
 }
 
 function emptyUsageBucket() {
@@ -4700,12 +5142,13 @@ function getCurrentModelKey() {
   return `${provider}::${model}`;
 }
 
-function usageGridHtml(bucket) {
+function usageGridHtml(bucket, { hideCompletion = false } = {}) {
   const u = bucket || emptyUsageBucket();
+  const completionCell = hideCompletion ? '' : `
+    <div class="usage-cell"><span>${t('usageCompletion')}</span><b>${fmtTokenNum(u.completion_tokens)}</b></div>`;
   return `
     <div class="usage-cell"><span>${t('usageCalls')}</span><b>${fmtUsageNum(u.calls)}</b></div>
-    <div class="usage-cell"><span>${t('usagePrompt')}</span><b>${fmtTokenNum(u.prompt_tokens)}</b></div>
-    <div class="usage-cell"><span>${t('usageCompletion')}</span><b>${fmtTokenNum(u.completion_tokens)}</b></div>
+    <div class="usage-cell"><span>${t('usagePrompt')}</span><b>${fmtTokenNum(u.prompt_tokens)}</b></div>${completionCell}
     <div class="usage-cell"><span>${t('usageTotal')}</span><b>${fmtTokenNum(u.total_tokens)}</b></div>
   `;
 }
@@ -4738,10 +5181,15 @@ function renderUsageDetailTable(rows, columns) {
 function renderUsageDetailModal() {
   if (!usageData) return;
   const u = usageData;
+  const emb = embeddingUsageData || emptyUsageBucket();
   if (els.usageDetailTotals) {
     els.usageDetailTotals.innerHTML = `<div class="usage-grid usage-grid-inline">${usageGridHtml(u)}</div>`;
   }
+  if (els.usageEmbeddingTotals) {
+    els.usageEmbeddingTotals.innerHTML = `<div class="usage-grid usage-grid-inline usage-grid-embedding">${usageGridHtml(emb, { hideCompletion: true })}</div>`;
+  }
   const statCols = usageStatCols();
+  const embStatCols = usageStatCols({ includeCompletion: false });
   const providers = Object.entries(u.by_provider || {})
     .map(([id, row]) => ({ id, ...row }))
     .sort((a, b) => (b.total_tokens || 0) - (a.total_tokens || 0));
@@ -4761,6 +5209,28 @@ function renderUsageDetailModal() {
         { label: t('usageProviderCol', '服务商'), render: (r) => r.provider || String(r.id).split('::')[0] },
         { label: t('usageModelCol', '模型'), render: (r) => r.model || String(r.id).split('::').slice(1).join('::') },
         ...statCols,
+      ],
+    );
+  }
+  const embProviders = Object.entries(emb.by_provider || {})
+    .map(([id, row]) => ({ id, ...row }))
+    .sort((a, b) => (b.total_tokens || 0) - (a.total_tokens || 0));
+  if (els.usageEmbeddingByProviderTable) {
+    els.usageEmbeddingByProviderTable.innerHTML = renderUsageDetailTable(
+      embProviders,
+      [{ label: t('usageProviderCol', '服务商'), render: (r) => r.provider || r.id }, ...embStatCols],
+    );
+  }
+  const embModels = Object.entries(emb.by_model || {})
+    .map(([id, row]) => ({ id, ...row }))
+    .sort((a, b) => (b.total_tokens || 0) - (a.total_tokens || 0));
+  if (els.usageEmbeddingByModelTable) {
+    els.usageEmbeddingByModelTable.innerHTML = renderUsageDetailTable(
+      embModels,
+      [
+        { label: t('usageProviderCol', '服务商'), render: (r) => r.provider || String(r.id).split('::')[0] },
+        { label: t('usageModelCol', '模型'), render: (r) => r.model || String(r.id).split('::').slice(1).join('::') },
+        ...embStatCols,
       ],
     );
   }
@@ -5005,30 +5475,45 @@ function bindUiEvents() {
   els.devRefreshBtn?.addEventListener('click', () => renderDevPane());
   els.devPackageCheckBtn?.addEventListener('click', () => renderDevPane());
   els.devPackageUpdateBtn?.addEventListener('click', async () => {
-    if (!window.confirm(t('devPackageUpdateConfirm', '将 git pull 更新 op助手（/ai）。继续？'))) return;
-    els.devPackageUpdateBtn.disabled = true;
-    try {
+    const run = async () => {
       const { data } = await api('POST', '/api/ai/package/update', { confirm: true });
       if (data.ok) {
-        showToast(t('devPackageUpdateOk', '更新完成，请重启 ai.aid'));
+        const msg = data.update_mode === 'reinstall'
+          ? t('devPackageUpdateOkReinstall', '更新完成（已重新克隆），请重启 ai.aid')
+          : t('devPackageUpdateOk', '更新完成，请重启 ai.aid');
+        showToast(msg);
         renderDevPane();
       } else {
         showToast(data.error || t('devPackageUpdateFail', '更新失败'));
+        throw new Error(data.error || 'update failed');
+      }
+    };
+    if (typeof UiBusy !== 'undefined') {
+      await UiBusy.withButtonBusy(els.devPackageUpdateBtn, run, { busyLabel: t('uiWorking', '处理中…') });
+    } else {
+      els.devPackageUpdateBtn.disabled = true;
+      try {
+        await run();
+      } catch {
         els.devPackageUpdateBtn.disabled = false;
       }
-    } catch {
-      showToast(t('devPackageUpdateFail', '更新失败'));
-      els.devPackageUpdateBtn.disabled = false;
     }
   });
   els.devForkRefreshBtn?.addEventListener('click', async () => {
-    els.devForkRefreshBtn.disabled = true;
-    try {
+    const run = async () => {
       await refreshForkDetectCard();
-    } catch {
-      showToast(t('devForkLoadFail', '无法扫描 fork'));
-    } finally {
-      els.devForkRefreshBtn.disabled = false;
+    };
+    if (typeof UiBusy !== 'undefined') {
+      await UiBusy.withButtonBusy(els.devForkRefreshBtn, run, { busyLabel: t('uiWorking', '处理中…') });
+    } else {
+      els.devForkRefreshBtn.disabled = true;
+      try {
+        await run();
+      } catch {
+        showToast(t('devForkLoadFail', '无法扫描 fork'));
+      } finally {
+        els.devForkRefreshBtn.disabled = false;
+      }
     }
   });
   els.devForkSyncBtn?.addEventListener('click', async () => {
@@ -5043,11 +5528,15 @@ function bindUiEvents() {
     if (!onboardingModelCombo?.getValue()) {
       onboardingModelCombo?.setValue(defaults[p] || '', { silent: true });
     }
-    await refreshOnboardingModels().catch(() => {});
+    await refreshOnboardingModels().catch(() => refreshOnboardingEmbeddingModels());
   });
+  els.onboardingEmbeddingMode?.addEventListener('change', onOnboardingEmbeddingModeChange);
+  els.onboardingEmbeddingProvider?.addEventListener('change', refreshOnboardingEmbeddingModels);
   els.onboardingApiKey?.addEventListener('change', () => {
     refreshOnboardingModels().catch(() => {});
   });
+  els.onboardingRagStartBtn?.addEventListener('click', () => runOnboardingRagSetup());
+  els.onboardingRagSkipBtn?.addEventListener('click', () => finishOnboardingKnowledgeSetup({ keepOpen: true }));
   els.settingsBtn?.addEventListener('click', () => openSettings());
   els.settingsSidebarClose?.addEventListener('click', () => closeSettings());
   els.settingsBackdrop?.addEventListener('click', () => closeSettings());
@@ -5060,6 +5549,7 @@ function bindUiEvents() {
     persistConfigDraft();
     fetchModels().catch(() => {});
     refreshUsageForCurrentModel();
+    refreshEmbeddingUsageForCurrentModel();
   });
   els.baseUrlInput?.addEventListener('change', fetchModels);
   els.apiKeyInput?.addEventListener('change', fetchModels);
@@ -5082,14 +5572,17 @@ function bindUiEvents() {
   els.schedTrigger?.addEventListener('change', updateSchedDailyFieldsVisibility);
   els.schedAddBtn?.addEventListener('click', addSchedulerTask);
   els.ragSaveBtn?.addEventListener('click', saveRagDoc);
-  els.ragReindexBtn?.addEventListener('click', reindexRag);
+  els.ragReindexBtn?.addEventListener('click', () => reindexRag());
+  els.ragSyncWikiBtn?.addEventListener('click', syncWikiRag);
   els.embeddingModeSelect?.addEventListener('change', () => {
     onEmbeddingModeChange();
     persistConfigDraft();
+    refreshEmbeddingUsageForCurrentModel();
   });
   els.embeddingProviderSelect?.addEventListener('change', () => {
     onEmbeddingProviderChange();
     persistConfigDraft();
+    refreshEmbeddingUsageForCurrentModel();
   });
   document.addEventListener('keydown', onOverlayKeydown);
   window.addEventListener('pagehide', flushSessionSyncOnUnload);
@@ -5150,7 +5643,7 @@ async function init() {
   }
   initChatJobs();
   if (typeof PlatformPanel !== 'undefined') {
-    PlatformPanel.init({ api });
+    PlatformPanel.init({ api, showToast });
   }
   initModelCombos();
   if (typeof AgentsPanel !== 'undefined') {

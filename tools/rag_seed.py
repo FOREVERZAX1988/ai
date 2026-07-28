@@ -205,6 +205,26 @@ manager 离路且电压>9V、非计量网络时 systemctl 启停；github_runner
 工具：github_runner_status, github_runner_recovery_hint, install_github_runner。
 文档：ai/docs/GITHUB_RUNNER.md；技能 github-runner。""",
   },
+  {
+    "id": "builtin_panda_f4_c3_porting",
+    "title": "C3 / DOS / 黑熊 / 多 Panda 移植（三层参考提交）",
+    "tags": ["panda", "f4", "dos", "black-panda", "c3", "tici", "porting", "opendbc", "dual-panda", "faq"],
+    "refresh": True,
+    "text": """当 openpilot fork 不适配 C3 内置 DOS（F4）、外接黑熊（F4）或双 Panda 时，按三层合入：
+
+重要：panda.bin.signed 不内置在 ai/ 中。它是 panda 子模块 scons 产物（panda/board/obj/），随 panda 迭代更新；panda 子模块 bump 后须 build_panda_firmware 再刷写。
+
+参考提交（本 fork master-c3）：
+- panda@7d703710 — F4 构建、dos.h、python F4_DEVICES/get_mcu_type；scons 产出 panda.bin.signed
+- sp@43d4f56f — launch_chffrplus set_tici_hw/TICI_DOS/set_aux_panda；pandad panda_comms.cc USB 双 Panda bus_offset；card.py num_pandas
+- opendbc@3244efe — fw_versions/car_helpers num_pandas 跳过无效 bus；Toyota CanBus offset；safety.h #ifdef CANFD（F4 无 CANFD）
+
+完整步骤：ai/docs/PANDA_C3_F4_PORTING.md；技能 c3-dos-panda。
+
+流程：三层 cherry-pick 或手工合入 → build_panda_firmware（scons panda/board）→ offroad flash_panda_firmware → 重启 manager。
+
+禁忌：勿把 panda.bin.signed 放进 ai。勿用 panda_tici/H7 固件刷 F4。外接红熊 H7 由 pandad 自动刷 panda_h7.bin.signed。""",
+  },
   *COMMA_DOCS_RAG,
   *SECOC_RAG,
   *WIKI_RAG,

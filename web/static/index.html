@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>op助手</title>
   <link rel="icon" type="image/svg+xml" href="/static/img/favicon.svg">
-  <link rel="stylesheet" href="/static/css/ai.css?v=20260728i">
+  <link rel="stylesheet" href="/static/css/ai.css?v=20260728l">
   <link rel="stylesheet" href="/static/css/office-panel.css?v=20260728f">
   <link rel="stylesheet" href="/static/css/canvas-panel.css?v=20260723e">
   <link rel="stylesheet" href="/static/css/cabana-panel.css?v=20260728f">
@@ -423,6 +423,17 @@
               </label>
             </div>
           </section>
+          <section class="settings-card settings-card-compact" id="embeddingUsageSection">
+            <header class="settings-card-head">
+              <div>
+                <h3 class="settings-card-title" id="embeddingUsageTitle">Embedding 用量</h3>
+                <p class="settings-card-sub" id="embeddingUsageHint"></p>
+              </div>
+            </header>
+            <div class="settings-card-body usage-grid-wrap">
+              <div class="usage-grid" id="embeddingUsageGrid"></div>
+            </div>
+          </section>
         </div>
 
         <!-- 定时 -->
@@ -647,6 +658,16 @@
             </div>
           </section>
 
+          <section class="dev-card" aria-labelledby="devRagTitle">
+            <div class="dev-card-head">
+              <h3 class="dev-card-title" id="devRagTitle">知识库</h3>
+              <span class="dev-count-badge" id="devRagBadge">—</span>
+            </div>
+            <div class="dev-env-body" id="ragStatusBox">
+              <div class="dev-skeleton dev-skeleton-line"></div>
+            </div>
+          </section>
+
           <section class="dev-card" aria-labelledby="devEnvTitle">
             <h3 class="dev-card-title" id="devEnvTitle">运行环境</h3>
             <div class="dev-env-body" id="hostEnvBox">
@@ -749,6 +770,12 @@
         <div class="usage-detail-table-wrap" id="usageByProviderTable"></div>
         <h3 class="usage-detail-subtitle" id="usageByModelTitle">按模型</h3>
         <div class="usage-detail-table-wrap" id="usageByModelTable"></div>
+        <h3 class="usage-detail-subtitle" id="usageEmbeddingSectionTitle">Embedding 用量</h3>
+        <div class="usage-detail-totals" id="usageEmbeddingTotals"></div>
+        <h3 class="usage-detail-subtitle" id="usageEmbeddingByProviderTitle">Embedding · 按服务商</h3>
+        <div class="usage-detail-table-wrap" id="usageEmbeddingByProviderTable"></div>
+        <h3 class="usage-detail-subtitle" id="usageEmbeddingByModelTitle">Embedding · 按模型</h3>
+        <div class="usage-detail-table-wrap" id="usageEmbeddingByModelTable"></div>
       </div>
     </div>
   </div>
@@ -764,6 +791,26 @@
         </button>
       </div>
       <div class="modal-body knowledge-modal-body">
+        <div id="onboardingRagSetup" class="onboarding-rag-setup" hidden>
+          <h3 class="onboarding-section-title" id="onboardingRagTitle">设置知识库</h3>
+          <p class="settings-pane-desc" id="onboardingRagDesc">内置 FAQ 与社区 Wiki 可通过向量检索增强对话。首次使用建议完成以下步骤（需要网络）。</p>
+          <fieldset class="onboarding-rag-options">
+            <label class="onboarding-rag-option">
+              <input type="checkbox" id="onboardingRagReindex" checked>
+              <span id="onboardingRagReindexLabel">为已有文档建立向量索引</span>
+            </label>
+            <label class="onboarding-rag-option">
+              <input type="checkbox" id="onboardingRagWiki" checked>
+              <span id="onboardingRagWikiLabel">拉取社区 Wiki 并向量化</span>
+            </label>
+          </fieldset>
+          <p class="field-hint" id="onboardingRagStatus"></p>
+          <div class="actions onboarding-rag-actions">
+            <button type="button" id="onboardingRagSkipBtn" class="btn ghost small">稍后设置</button>
+            <button type="button" id="onboardingRagStartBtn" class="btn primary small">开始设置</button>
+          </div>
+        </div>
+        <div id="knowledgeMainContent">
         <p class="settings-pane-desc" id="knowledgePaneDesc">对话时通过向量检索引用；内置 FAQ 已预置，可追加个人笔记。</p>
         <p class="field-hint" id="ragVectorStatus"></p>
         <div id="ragDocList" class="rag-list"></div>
@@ -771,7 +818,9 @@
         <label class="field"><span class="field-label" id="ragTextLabel">内容</span><textarea id="ragText" rows="4" placeholder="粘贴文档内容…"></textarea></label>
         <div class="actions">
           <button type="button" id="ragSaveBtn" class="btn primary small">添加文档</button>
+          <button type="button" id="ragSyncWikiBtn" class="btn small">同步社区 Wiki</button>
           <button type="button" id="ragReindexBtn" class="btn small">重建向量索引</button>
+        </div>
         </div>
       </div>
     </div>
@@ -977,6 +1026,31 @@
           <span class="field-label" id="onboardingModelLabel">模型</span>
           <div id="onboardingModelCombobox" class="model-combobox-host"></div>
         </label>
+        <div class="onboarding-section">
+          <h3 class="onboarding-section-title" id="onboardingEmbeddingTitle">Embedding（知识库向量）</h3>
+          <p class="field-hint" id="onboardingEmbeddingDesc">用于知识库检索，默认与聊天共用 API Key。</p>
+          <label class="field">
+            <span class="field-label" id="onboardingEmbeddingModeLabel">Embedding 模式</span>
+            <select id="onboardingEmbeddingMode">
+              <option value="same">与聊天同一服务商 Key</option>
+              <option value="separate">单独 Embedding 服务商</option>
+            </select>
+          </label>
+          <div id="onboardingEmbeddingSeparateFields" class="hidden">
+            <label class="field">
+              <span class="field-label" id="onboardingEmbeddingProviderLabel">Embedding 服务商</span>
+              <select id="onboardingEmbeddingProvider"></select>
+            </label>
+            <label class="field">
+              <span class="field-label" id="onboardingEmbeddingApiKeyLabel">Embedding API Key</span>
+              <input type="password" id="onboardingEmbeddingApiKey" autocomplete="off" placeholder="留空则使用上方聊天 Key">
+            </label>
+          </div>
+          <label class="field">
+            <span class="field-label" id="onboardingEmbeddingModelLabel">Embedding 模型</span>
+            <div id="onboardingEmbeddingModelCombobox" class="model-combobox-host"></div>
+          </label>
+        </div>
         <label class="field">
           <span class="field-label" id="onboardingCarLabel">车型（可选）</span>
           <input type="text" id="onboardingCar" autocomplete="off" placeholder="例如 RAV4 2023">
@@ -1032,7 +1106,7 @@
     </div>
   </div>
 
-  <script src="/static/js/i18n.js?v=20260715ab"></script>
+  <script src="/static/js/i18n.js?v=20260728c"></script>
   <script src="/static/js/theme.js?v=20260715h"></script>
   <script src="/static/js/markdown.js"></script>
   <script src="/static/js/sessions.js?v=20260722k"></script>
@@ -1045,6 +1119,7 @@
   <script src="/static/js/tsk-panel.js?v=20260728j"></script>
   <script src="/static/js/web-chat-jobs.js?v=20260728f"></script>
   <script src="/static/js/web-api.js?v=20260722h"></script>
+  <script src="/static/js/ui-busy.js?v=20260728a"></script>
   <script src="/static/js/web-config.js?v=20260722h"></script>
   <script src="/static/js/fallback-models.js?v=20260722h"></script>
   <script src="/static/js/web-sync-ws.js?v=20260722h"></script>
@@ -1060,13 +1135,13 @@
   }
   </script>
   <script type="module" src="/static/js/office-scene-3d.mjs?v=20260724c"></script>
-  <script src="/static/js/platform-panel.js?v=20260728e"></script>
+  <script src="/static/js/platform-panel.js?v=20260728f"></script>
   <script src="/static/js/office-panel.js?v=20260724c"></script>
   <script src="/static/js/command-queue.js?v=20260723k"></script>
   <script src="/static/js/canvas-panel.js?v=20260723a"></script>
   <script src="/static/js/terminal-panel.js?v=20260723e"></script>
-  <script src="/static/js/ai.js?v=20260728f"></script>
+  <script src="/static/js/ai.js?v=20260728j"></script>
   <script src="/static/vendor/uplot/uPlot.iife.min.js"></script>
-  <script src="/static/js/cabana-panel.js?v=20260728h"></script>
+  <script src="/static/js/cabana-panel.js?v=20260728i"></script>
 </body>
 </html>

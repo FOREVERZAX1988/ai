@@ -108,16 +108,21 @@ async def api_workspace_write(request: web.Request) -> web.Response:
 
 async def api_usage_detail(request: web.Request) -> web.Response:
   from ai.server.deps import json_response, params
-  from ai.usage_log import load_usage
+  from ai.usage_log import load_embedding_usage, load_usage
 
   p = request.app.get("params") or params()
   usage = load_usage(p)
+  embedding_usage = load_embedding_usage(p)
   return json_response({
     "ok": True,
     "usage": usage,
+    "embeddingUsage": embedding_usage,
     "byProvider": usage.get("by_provider") or {},
     "byModel": usage.get("by_model") or {},
-    "recent": (usage.get("recent") or [])[-20:],
+    "embeddingByProvider": embedding_usage.get("by_provider") or {},
+    "embeddingByModel": embedding_usage.get("by_model") or {},
+    "recent": (usage.get("history") or [])[-20:],
+    "embeddingRecent": (embedding_usage.get("history") or [])[-20:],
   })
 
 
