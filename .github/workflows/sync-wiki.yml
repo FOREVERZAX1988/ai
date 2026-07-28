@@ -21,45 +21,68 @@ jobs:
         with:
           path: src
 
-      - name: Checkout GitHub Wiki git repo
-        id: wiki_checkout
-        continue-on-error: true
-        uses: actions/checkout@v4
-        with:
-          repository: ${{ github.repository_owner }}/${{ github.event.repository.name }}.wiki
-          token: ${{ secrets.WIKI_SYNC_TOKEN || secrets.GITHUB_TOKEN }}
-          path: wiki-repo
-
-      - name: Init wiki git repo (first-time)
-        if: steps.wiki_checkout.outcome != 'success'
+      - name: Push docs/wiki to GitHub Wiki git
         env:
           GH_TOKEN: ${{ secrets.WIKI_SYNC_TOKEN || secrets.GITHUB_TOKEN }}
+          WIKI_SLUG: ${{ github.repository_owner }}/${{ github.event.repository.name }}.wiki
+          COMMIT_MSG: docs: sync wiki from ${{ github.sha }}
         run: |
           set -euo pipefail
-          mkdir -p wiki-repo
-          cd wiki-repo
-          git init
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          cp ../src/docs/wiki/*.md .
-          git add -A
-          git commit -m "docs: initial wiki from docs/wiki"
-          git branch -M master
-          git remote add origin "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository_owner }}/${{ github.event.repository.name }}.wiki.git"
-          git push -u origin master
+          if [[ -z "${GH_TOKEN}" ]]; then
+            echo "::error::Missing GH_TOKEN; add repository secret WIKI_SYNC_TOKEN (classic PAT with repo scope)"
+            exit 1
+          fi
 
-      - name: Sync docs/wiki into wiki repo
-        if: steps.wiki_checkout.outcome == 'success'
-        run: |
-          set -euo pipefail
-          cp src/docs/wiki/*.md wiki-repo/
-          cd wiki-repo
+          SRC="${GITHUB_WORKSPACE}/src/docs/wiki"
+          REMOTE="https://x-access-token:${GH_TOKEN}@github.com/${WIKI_SLUG}.git"
+          WORK="$(mktemp -d)"
+          trap 'rm -rf "$WORK"' EXIT
+
+          echo "Wiki remote: https://github.com/${WIKI_SLUG}.git"
+
+          if git clone --depth 1 --branch master "$REMOTE" "$WORK/repo" 2>/dev/null; then
+            echo "Cloned existing wiki (master)"
+          elif git clone --depth 1 --branch main "$REMOTE" "$WORK/repo" 2>/dev/null; then
+            echo "Cloned existing wiki (main)"
+          else
+            echo "Wiki git not cloneable yet; creating fresh repo (first push)"
+            mkdir -p "$WORK/repo"
+            cd "$WORK/repo"
+            git init -b master
+            git remote add origin "$REMOTE"
+          fi
+
+          cd "$WORK/repo"
+          if ! git remote get-url origin &>/dev/null; then
+            git remote add origin "$REMOTE"
+          else
+            git remote set-url origin "$REMOTE"
+          fi
+
+          cp "$SRC"/*.md .
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
+
           if git diff --staged --quiet; then
             echo "Wiki already up to date."
             exit 0
           fi
-          git commit -m "docs: sync wiki from ${{ github.sha }}"
-          git push
+
+          git commit -m "${COMMIT_MSG}"
+          BRANCH="$(git branch --show-current)"
+          if git push -u origin "${BRANCH}"; then
+            echo "Wiki pushed successfully on branch ${BRANCH}."
+            exit 0
+          fi
+
+          echo "::warning::Push to ${BRANCH} failed; retrying master"
+          git branch -M master
+          if git push -u origin master; then
+            echo "Wiki pushed successfully on master."
+            exit 0
+          fi
+
+          echo "::error::Wiki push failed. Create secret WIKI_SYNC_TOKEN (classic PAT, repo scope) at"
+          echo "::error::https://github.com/${{ github.repository }}/settings/secrets/actions"
+          exit 1

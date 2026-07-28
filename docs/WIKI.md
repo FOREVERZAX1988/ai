@@ -18,7 +18,15 @@ Wiki 在线地址：https://github.com/mouxangithub/ai/wiki
 
 1. **Settings → Features → Wikis** 已勾选（你已完成）。
 2. **Actions → Sync GitHub Wiki → Run workflow** 手动跑一次（推荐在启用 Wiki 之后）。
-3. 若仍失败：添加 Secret **`WIKI_SYNC_TOKEN`**（PAT，`repo` 权限），再重跑 workflow。
+### 若 CI 仍报 `ai.wiki not found` 或 push 失败
+
+`GITHUB_TOKEN` 对部分账号**无法读写**隐藏 wiki 仓库。请添加 Secret：
+
+1. https://github.com/settings/tokens → **Generate new token (classic)** → 勾选 **`repo`**
+2. 仓库 **Settings → Secrets → Actions** → New secret：`WIKI_SYNC_TOKEN` = 上述 PAT
+3. **Actions → Sync GitHub Wiki → Run workflow**
+
+Workflow 会在 clone 失败时**新建本地仓库并首次 push**（不再使用会留下残留 `.git` 的 checkout 步骤）。
 
 启用前/同步失败时，文档已在主仓可见：  
 https://github.com/mouxangithub/ai/tree/main/docs/wiki
