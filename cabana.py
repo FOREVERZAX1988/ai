@@ -118,6 +118,56 @@ def _load_car_params() -> dict[str, Any] | None:
   return _load_car_params_from_params() or _load_car_params_from_cereal()
 
 
+def _load_car_params_from_route(route_name: str) -> dict[str, Any] | None:
+  """Read carParams from a local route qlog/rlog (replay DBC auto-detect)."""
+  if LogReader is None or not route_name:
+    return None
+  base = _route_dir(route_name)
+  if base is None:
+    return None
+  log_paths = _find_qlogs(base) or _find_rlogs(base)
+  if not log_paths:
+    return None
+  for log_path in log_paths:
+    try:
+      lr = LogReader(str(log_path))
+      cp_msg = lr.first("carParams") if hasattr(lr, "first") else None
+      if cp_msg is None:
+        for msg in lr:
+          if msg.which() == "carParams":
+            cp_msg = msg
+            break
+      if cp_msg is None:
+        continue
+      cp = getattr(cp_msg, "carParams", cp_msg)
+      fingerprint = getattr(cp, "carFingerprint", "") or ""
+      if not fingerprint:
+        continue
+      return {
+        "brand": getattr(cp, "brand", "") or "",
+        "carFingerprint": fingerprint,
+        "openpilotLongitudinalControl": bool(getattr(cp, "openpilotLongitudinalControl", False)),
+        "source": "route",
+        "route": route_name,
+      }
+    except Exception as e:
+      cloudlog.warning(f"cabana: carParams from {log_path.name}: {e}")
+  return None
+
+
+def _resolve_car_params(route_name: str = "") -> dict[str, Any] | None:
+  route_name = (route_name or "").strip()
+  if route_name:
+    cp = _load_car_params_from_route(route_name)
+    if cp is not None:
+      return cp
+  cp = _load_car_params()
+  if cp is not None:
+    cp = dict(cp)
+    cp.setdefault("source", "device")
+  return cp
+
+
 def _list_dbc_names() -> list[str]:
   dbcs: list[str] = []
   if DBC_PATH:
@@ -308,6 +358,23 @@ def _pick_preferred_dbc(dbc_names: list[str]) -> str | None:
     if "_pt" in name or name.endswith("_pt"):
       return name
   return dbc_names[0]
+
+
+def _suggest_dbc_for_fingerprint(car_fingerprint: str, *, brand: str = "") -> str | None:
+  dbc_dict = _get_dbc_dict(car_fingerprint)
+  if dbc_dict:
+    return _pick_preferred_dbc(list(dbc_dict.values()))
+  try:
+    from opendbc.car.fingerprints import MIGRATION
+    from openpilot.tools.cabana.dbc.generate_dbc_json import generate_dbc_dict
+
+    platform = MIGRATION.get(car_fingerprint, car_fingerprint)
+    dbc = generate_dbc_dict().get(platform)
+    if dbc:
+      return dbc
+  except Exception:
+    pass
+  return _suggest_dbc_for_car({"carFingerprint": car_fingerprint, "brand": brand})
 
 
 def _suggest_dbc_for_car(car: dict[str, Any]) -> str | None:
@@ -1017,21 +1084,27 @@ def _list_routes(params: Params | None = None) -> list[dict[str, Any]]:
 # -----------------------------------------------------------------------------
 
 async def api_car(request: web.Request) -> web.Response:
-  cp = _load_car_params()
+  route = request.query.get("route", "").strip()
+  loop = asyncio.get_running_loop()
+  cp = await loop.run_in_executor(None, lambda: _resolve_car_params(route))
   if cp is None:
     return _json_response({
       "ok": False,
       "error": "CarParams not available",
-      "hint": "Drive once or set CarParams on device, then refresh. You can pick a DBC manually.",
+      "hint": "Drive once, pick a route with carParams in qlog/rlog, or choose a DBC manually.",
     })
 
+  suggested_dbc = _suggest_dbc_for_fingerprint(
+    cp.get("carFingerprint", ""),
+    brand=cp.get("brand", ""),
+  )
   dbc_dict = _get_dbc_dict(cp.get("carFingerprint", ""))
-  suggested_dbc = _pick_preferred_dbc(list(dbc_dict.values())) if dbc_dict else _suggest_dbc_for_car(cp)
   return _json_response({
     "ok": True,
     "car": cp,
     "dbc_dict": dbc_dict,
     "suggested_dbc": suggested_dbc,
+    "source": cp.get("source", "device"),
   })
 
 

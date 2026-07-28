@@ -2120,20 +2120,32 @@ const CabanaPanel = (() => {
     els.dbcSearch?.blur();
   }
 
-  async function loadCar() {
+  async function loadCar(routeName) {
+    const route = (routeName || '').trim();
+    const carPath = route
+      ? `/api/cabana/car?route=${encodeURIComponent(route)}`
+      : '/api/cabana/car';
     const dbcs = await api('GET', '/api/cabana/dbcs');
     const catalog = dbcs.ok
       ? (dbcs.catalog || (dbcs.dbcs || []).map((name) => ({ name, searchText: name })))
       : [];
-    const data = await api('GET', '/api/cabana/car');
+    const data = await api('GET', carPath);
     if (!data.ok) {
       const hint = data.hint || data.error || t('cabanaNoCarParams', '无车型信息');
-      if (els.metaBar) els.metaBar.textContent = `${hint} · ${t('cabanaOfflineHint', '可手动选择 DBC')}`;
+      if (els.metaBar) {
+        els.metaBar.textContent = route
+          ? `${hint} · ${t('cabanaOfflineHint', '可手动选择 DBC')}`
+          : `${hint} · ${t('cabanaOfflineHint', '可手动选择 DBC')}`;
+      }
       await setDbcCatalog(catalog, catalog[0]?.name);
       return;
     }
     const { car, suggested_dbc } = data;
-    if (els.metaBar) els.metaBar.textContent = `${car.brand} · ${car.carFingerprint}`;
+    const src = data.source || car?.source || 'device';
+    if (els.metaBar) {
+      const routeHint = src === 'route' && car?.route ? ` · ${car.route}` : '';
+      els.metaBar.textContent = `${car.brand} · ${car.carFingerprint}${routeHint}`;
+    }
     await setDbcCatalog(catalog, suggested_dbc || catalog[0]?.name);
   }
 
@@ -2239,7 +2251,10 @@ const CabanaPanel = (() => {
       els.routeSelect.appendChild(opt);
     }
     replayRoute = els.routeSelect.value;
-    if (replayRoute) await refreshRouteMedia(replayRoute);
+    if (replayRoute) {
+      await refreshRouteMedia(replayRoute);
+      await loadCar(replayRoute);
+    }
   }
 
   function connectReplay() {
@@ -2930,6 +2945,7 @@ const CabanaPanel = (() => {
       disconnectReplay();
       replayProgress = 0;
       refreshRouteMedia(replayRoute).catch(console.error);
+      loadCar(replayRoute).catch(console.error);
       clearTableRows();
       updateProgressUI();
     });
@@ -2972,7 +2988,8 @@ const CabanaPanel = (() => {
 
   async function refresh() {
     applyTranslations();
-    await loadCar();
+    const route = panelMode === 'replay' ? (els.routeSelect?.value || replayRoute || '') : '';
+    await loadCar(route);
   }
 
   function init(options = {}) {
