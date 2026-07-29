@@ -164,11 +164,39 @@ def write_workspace_file(key: str, content: str) -> dict[str, Any]:
 
 
 def ensure_default_workspace_files() -> None:
+  _migrate_legacy_workspace_package()
   base = workspace_dir()
   for filename, default in _DEFAULTS.items():
     path = base / filename
     if not path.is_file():
       path.write_text(default, encoding="utf-8")
+
+
+def _migrate_legacy_workspace_package() -> None:
+  """ai/workspace/ 包曾遮蔽 workspace.py；把用户数据迁到 <openpilot>/workspace/。"""
+  import shutil
+
+  legacy = Path(__file__).resolve().parent / "workspace"
+  if not legacy.is_dir():
+    return
+  target = workspace_path("workspace", mkdir=True)
+  for filename in _FILE_MAP.values():
+    src = legacy / filename
+    dst = target / filename
+    if src.is_file() and not dst.is_file():
+      shutil.copy2(src, dst)
+  legacy_mem = legacy / "memory"
+  if legacy_mem.is_dir():
+    tgt_mem = target / "memory"
+    tgt_mem.mkdir(parents=True, exist_ok=True)
+    for item in legacy_mem.iterdir():
+      if item.is_file() and not (tgt_mem / item.name).is_file():
+        shutil.copy2(item, tgt_mem / item.name)
+
+
+def heartbeat_checklist() -> str:
+  ensure_default_workspace_files()
+  return read_workspace_file("heartbeat").strip()
 
 
 def workspace_prompt_blocks(*, max_chars: int = 2500) -> list[str]:
