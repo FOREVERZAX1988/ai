@@ -1,9 +1,10 @@
-"""Platform backup / export / restore — memory, sessions, skills, MCP, workspace."""
+"""Platform backup / export / restore — config, memory, sessions, skills, MCP, workspace."""
 
 from __future__ import annotations
 
+import io
 import json
-import re
+import tarfile
 import time
 from pathlib import Path
 from typing import Any
@@ -15,12 +16,14 @@ from ai.mcp.host import MCP_SERVERS_KEY, _load_servers as _load_mcp
 from ai.tools.memory_store import NOTES_KEY, PROFILE_KEY, get_memory
 from ai.tools.session_store import SESSIONS_KEY, get_sessions
 from ai.tools.skill_learning import LEARNED_KEY, _load as _load_learned
-from ai.workspace import _FILE_MAP, list_workspace_files, read_workspace_file, write_workspace_file, workspace_dir
+from ai.workspace_store import _FILE_MAP, list_workspace_files, read_workspace_file, write_workspace_file
 
-BUNDLE_VERSION = 1
+BUNDLE_VERSION = 2
+OPBAK_SUFFIX = ".opbak"
+BUNDLE_INNER_NAME = "bundle.json"
 _EXPORTS_DIR = Path(__file__).resolve().parent.parent / "data" / "exports"
 
-# Params copied on export (tokens redacted unless include_secrets).
+# Legacy Params keys still mirrored in some bundles.
 _PARAM_KEYS = [
   "ai_context_window",
   "ai_compaction_enabled",
@@ -34,7 +37,13 @@ _PARAM_KEYS = [
   "ai_issue_publish",
 ]
 
-_SECRET_KEYS = {"ai_github_actions_pat", "ai_gitee_token"}
+_SECRET_KEYS = {
+  "ai_api_key",
+  "ai_embedding_api_key",
+  "ai_web_pin",
+  "ai_github_actions_pat",
+  "ai_gitee_token",
+}
 
 
 def _redact(value: str) -> str:
@@ -43,6 +52,45 @@ def _redact(value: str) -> str:
   if len(value) <= 8:
     return "***"
   return value[:4] + "…" + value[-4:]
+
+
+def _export_ai_config(*, include_secrets: bool) -> dict[str, Any]:
+  """Full ai_* config from config store (model, embedding, evolution, etc.)."""
+  try:
+    from ai.common.config_store import get_config_store
+    raw = get_config_store().read_all()
+  except Exception:
+    raw = {}
+  out: dict[str, Any] = {}
+  for key, value in raw.items():
+    text = "" if value is None else str(value)
+    if key in _SECRET_KEYS and text and not include_secrets:
+      out[key] = _redact(text)
+      out[f"{key}__redacted"] = True
+    else:
+      out[key] = text
+  return out
+
+
+def _restore_ai_config(data: dict[str, Any]) -> None:
+  if not isinstance(data, dict) or not data:
+    return
+  try:
+    from ai.common.config_store import get_config_store
+    store = get_config_store()
+  except Exception:
+    return
+  for key, value in data.items():
+    if not isinstance(key, str) or key.endswith("__redacted"):
+      continue
+    if data.get(f"{key}__redacted"):
+      continue
+    if not key.startswith("ai_"):
+      continue
+    try:
+      store.put(key, value)
+    except Exception:
+      continue
 
 
 def _read_param_map(params: Params, *, include_secrets: bool) -> dict[str, str]:
@@ -82,8 +130,27 @@ def _learned_skill_files(params: Params) -> dict[str, str]:
   return out
 
 
+def _enabled_skills(params: Params) -> list[str]:
+  try:
+    from ai.skills.loader import load_enabled_skill_ids
+    ids = load_enabled_skill_ids(params)
+    return sorted(ids) if ids else []
+  except Exception:
+    return []
+
+
+def _restore_enabled_skills(params: Params, skills: list[str]) -> None:
+  if not skills:
+    return
+  try:
+    from ai.skills.loader import save_enabled_skill_ids
+    save_enabled_skill_ids(params, list(skills))
+  except Exception:
+    pass
+
+
 def build_platform_bundle(params: Params | None = None, *, include_secrets: bool = False) -> dict[str, Any]:
-  """Assemble a portable JSON bundle of platform state."""
+  """Assemble a portable bundle of platform state."""
   params = params or Params()
   mem = get_memory(params)
   sessions = get_sessions(params)
@@ -93,6 +160,8 @@ def build_platform_bundle(params: Params | None = None, *, include_secrets: bool
       "version": BUNDLE_VERSION,
       "exportedAt": int(time.time()),
       "includeSecrets": include_secrets,
+      "ai_config": _export_ai_config(include_secrets=include_secrets),
+      "enabled_skills": _enabled_skills(params),
       "memory": {
         "notes": mem.get("notes") or [],
         "vehicle_profile": mem.get("vehicle_profile") or {},
@@ -112,19 +181,68 @@ def build_platform_bundle(params: Params | None = None, *, include_secrets: bool
   }
 
 
+def _model_configured(ai_cfg: dict[str, Any]) -> bool:
+  model = str(ai_cfg.get("ai_model") or "").strip()
+  if not model:
+    return False
+  provider = str(ai_cfg.get("ai_provider") or "").strip().lower()
+  if provider in ("local", "ollama", "lmstudio"):
+    return True
+  if str(ai_cfg.get("ai_api_key") or "").strip() and not ai_cfg.get("ai_api_key__redacted"):
+    return True
+  if ai_cfg.get("ai_api_key__redacted"):
+    return True
+  try:
+    from ai.common.config_store import get_config_store
+    return bool(str(get_config_store().read_all().get("ai_api_key") or "").strip())
+  except Exception:
+    return True
+
+
 def backup_manifest(params: Params | None = None) -> dict[str, Any]:
   params = params or Params()
   mem = get_memory(params)
   ws = list_workspace_files()
+  ai_cfg = _export_ai_config(include_secrets=False)
+  configured = _model_configured(ai_cfg)
   return {
     "version": BUNDLE_VERSION,
+    "modelConfigured": configured,
+    "provider": ai_cfg.get("ai_provider") or "",
+    "model": ai_cfg.get("ai_model") or "",
+    "embeddingModel": ai_cfg.get("ai_embedding_model") or "",
     "memoryNotes": len(mem.get("notes") or []),
     "sessions": len((get_sessions(params).get("sessions") or [])),
     "learnedSkills": len(_load_learned(params)),
+    "enabledSkills": len(_enabled_skills(params)),
     "mcpServers": len(_load_mcp(params)),
     "workspaceFiles": sum(1 for f in ws if f.get("exists")),
     "workspaceKeys": [f.get("key") for f in ws if f.get("exists")],
   }
+
+
+def pack_opbak(bundle: dict[str, Any]) -> bytes:
+  """Pack bundle JSON into gzip tar with .opbak convention (not zip)."""
+  payload = json.dumps(bundle, ensure_ascii=False, indent=2).encode("utf-8")
+  buf = io.BytesIO()
+  with tarfile.open(fileobj=buf, mode="w:gz") as tar:
+    info = tarfile.TarInfo(name=BUNDLE_INNER_NAME)
+    info.size = len(payload)
+    tar.addfile(info, io.BytesIO(payload))
+  return buf.getvalue()
+
+
+def unpack_opbak(data: bytes) -> dict[str, Any]:
+  """Extract bundle dict from .opbak bytes."""
+  with tarfile.open(fileobj=io.BytesIO(data), mode="r:gz") as tar:
+    member = tar.getmember(BUNDLE_INNER_NAME)
+    extracted = tar.extractfile(member)
+    if extracted is None:
+      raise ValueError("missing bundle.json in archive")
+    inner = json.loads(extracted.read().decode("utf-8"))
+  if not isinstance(inner, dict):
+    raise ValueError("invalid bundle.json")
+  return inner
 
 
 def export_platform_bundle(
@@ -142,9 +260,9 @@ def export_platform_bundle(
 
   _EXPORTS_DIR.mkdir(parents=True, exist_ok=True)
   stamp = time.strftime("%Y%m%d-%H%M%S")
-  name = f"platform-backup-{stamp}.json"
+  name = f"opassist-backup-{stamp}{OPBAK_SUFFIX}"
   path = _EXPORTS_DIR / name
-  path.write_text(json.dumps(bundle, ensure_ascii=False, indent=2), encoding="utf-8")
+  path.write_bytes(pack_opbak(bundle))
   return {
     **result,
     "download": {
@@ -152,6 +270,7 @@ def export_platform_bundle(
       "path": str(path),
       "url": f"/api/ai/dev-assets/exports/{name}",
       "bytes": path.stat().st_size,
+      "format": "opbak",
     },
   }
 
@@ -185,11 +304,18 @@ def restore_platform_bundle(
       "preview": {
         "version": inner.get("version"),
         "exportedAt": inner.get("exportedAt"),
-        "sections": sections or ["memory", "sessions", "learned_skills", "mcp_servers", "workspace", "params"],
+        "sections": sections or [
+          "ai_config", "enabled_skills", "memory", "sessions",
+          "learned_skills", "mcp_servers", "workspace", "params",
+        ],
         "manifest": {
+          "provider": (inner.get("ai_config") or {}).get("ai_provider"),
+          "model": (inner.get("ai_config") or {}).get("ai_model"),
+          "embeddingModel": (inner.get("ai_config") or {}).get("ai_embedding_model"),
           "memoryNotes": len((inner.get("memory") or {}).get("notes") or []),
           "sessions": len((inner.get("sessions") or {}).get("sessions") or []),
           "learnedSkills": len(inner.get("learned_skills") or []),
+          "enabledSkills": len(inner.get("enabled_skills") or []),
           "mcpServers": len(inner.get("mcp_servers") or []),
           "workspaceFiles": len(inner.get("workspace") or {}),
         },
@@ -200,11 +326,29 @@ def restore_platform_bundle(
   data = bundle.get("bundle") if isinstance(bundle.get("bundle"), dict) else bundle
   if not isinstance(data, dict):
     return {"ok": False, "error": "invalid bundle"}
-  if int(data.get("version") or 0) != BUNDLE_VERSION:
-    return {"ok": False, "error": f"unsupported bundle version (expected {BUNDLE_VERSION})"}
+  ver = int(data.get("version") or 0)
+  if ver not in (1, BUNDLE_VERSION):
+    return {"ok": False, "error": f"unsupported bundle version (expected 1 or {BUNDLE_VERSION})"}
 
-  allowed = set(sections or ["memory", "sessions", "learned_skills", "mcp_servers", "workspace", "params"])
+  allowed = set(sections or [
+    "ai_config", "enabled_skills", "memory", "sessions",
+    "learned_skills", "mcp_servers", "workspace", "params",
+  ])
   applied: list[str] = []
+
+  if "ai_config" in allowed and isinstance(data.get("ai_config"), dict):
+    if mode == "replace" or data.get("ai_config"):
+      _restore_ai_config(data["ai_config"])
+      applied.append("ai_config")
+
+  if "enabled_skills" in allowed and isinstance(data.get("enabled_skills"), list):
+    if mode == "replace":
+      _restore_enabled_skills(params, data["enabled_skills"])
+    else:
+      cur = set(_enabled_skills(params))
+      cur.update(str(s) for s in data["enabled_skills"])
+      _restore_enabled_skills(params, sorted(cur))
+    applied.append("enabled_skills")
 
   if "memory" in allowed and isinstance(data.get("memory"), dict):
     mem = data["memory"]
@@ -295,6 +439,12 @@ def restore_platform_bundle(
   except Exception:
     pass
 
+  try:
+    from ai.common.config_store import get_config_store
+    get_config_store().reload()
+  except Exception:
+    pass
+
   return {"ok": True, "applied": applied, "mode": mode}
 
 
@@ -308,3 +458,22 @@ def parse_uploaded_bundle(text: str) -> dict[str, Any]:
   if isinstance(data, dict) and data.get("version"):
     return {"ok": True, "bundle": {"bundle": data}}
   return {"ok": False, "error": "not a platform backup bundle"}
+
+
+def parse_uploaded_payload(payload: bytes | str) -> dict[str, Any]:
+  """Parse .opbak archive or legacy JSON backup."""
+  if isinstance(payload, str):
+    return parse_uploaded_bundle(payload)
+  if not payload:
+    return {"ok": False, "error": "empty backup file"}
+  if payload[:2] == b"\x1f\x8b":
+    try:
+      inner = unpack_opbak(payload)
+      return {"ok": True, "bundle": {"bundle": inner}}
+    except Exception as exc:
+      return {"ok": False, "error": f"invalid {OPBAK_SUFFIX}: {exc}"}
+  try:
+    text = payload.decode("utf-8")
+  except UnicodeDecodeError:
+    return {"ok": False, "error": "unsupported backup format (use .opbak or JSON)"}
+  return parse_uploaded_bundle(text)

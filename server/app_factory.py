@@ -63,7 +63,7 @@ async def _startup_rag_seed_and_reindex() -> None:
     embed_cfg = load_embedding_config(_PARAMS, config)
     if not embed_cfg.is_configured:
       return
-    res = await reindex_all(_PARAMS, embed_cfg)
+    res = await loop.run_in_executor(None, lambda: asyncio.run(reindex_all(_PARAMS, embed_cfg)))
     cloudlog.info(f"aid: RAG auto-reindex indexed={res.get('indexed')}/{res.get('total')}")
   except Exception as e:
     cloudlog.warning(f"aid: RAG auto-reindex skipped: {e}")
@@ -132,7 +132,7 @@ def create_app() -> web.Application:
     application["scheduler_task"] = asyncio.create_task(scheduler_loop(application))
     application["status_watch_task"] = asyncio.create_task(status_watch_loop(application))
     try:
-      from ai.workspace import ensure_default_workspace_files
+      from ai.workspace_store import ensure_default_workspace_files
       ensure_default_workspace_files()
     except Exception as e:
       cloudlog.warning(f"aid: workspace seed skipped: {e}")
@@ -153,9 +153,21 @@ def create_app() -> web.Application:
       ensure_stuck_watchdog()
     except Exception as e:
       cloudlog.warning(f"aid: skills snapshot / stuck watchdog skipped: {e}")
+    try:
+      from ai.cabana import warm_dbc_catalog
+
+      async def _warm_dbc_catalog() -> None:
+        loop = asyncio.get_running_loop()
+        n = await loop.run_in_executor(None, warm_dbc_catalog)
+        if n:
+          cloudlog.info(f"aid: dbc catalog warmed entries={n}")
+
+      application["dbc_warm_task"] = asyncio.create_task(_warm_dbc_catalog())
+    except Exception as e:
+      cloudlog.warning(f"aid: dbc catalog warm skipped: {e}")
 
   async def _on_cleanup(application: web.Application) -> None:
-    for key in ("scheduler_task", "status_watch_task", "memory_index_task", "session_index_task", "rag_reindex_task"):
+    for key in ("scheduler_task", "status_watch_task", "memory_index_task", "session_index_task", "rag_reindex_task", "dbc_warm_task"):
       task = application.get(key)
       if task:
         task.cancel()

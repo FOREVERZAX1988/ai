@@ -71,18 +71,40 @@ const ChatJobs = (() => {
   }
 
   function abortActive() {
-    const jobId = activeJobId || deps.SessionStore?.getActiveJobId(deps.SessionStore.activeId);
-    if (jobId) {
-      deps.api('DELETE', `/api/ai/chat/jobs/${encodeURIComponent(jobId)}`).catch(() => {});
-      deps.SessionStore?.clearActiveJobId(deps.SessionStore.activeId);
-      deps.syncSessionsToDevice?.().catch(() => {});
-    }
+    const sessionId = deps.SessionStore?.activeId;
+    const jobId = activeJobId || deps.SessionStore?.getActiveJobId(sessionId);
+
     if (deps.getAbortController?.()) {
       const ac = deps.getAbortController();
+      ac.cancelled = true;
       if (typeof ac.abort === 'function') ac.abort();
-      else ac.cancelled = true;
     }
-    deps.endChatStream?.(deps.getStreamSessionId?.());
+
+    endPoll();
+
+    for (const [key, ctx] of [...contexts.entries()]) {
+      if (sessionId && ctx.sessionId && ctx.sessionId !== sessionId && key !== jobId) continue;
+      if (ctx.mdRenderTimer) {
+        clearTimeout(ctx.mdRenderTimer);
+        ctx.mdRenderTimer = null;
+      }
+      flushMarkdownRender(ctx.ui, ctx.assistantMessage?.content || '', ctx);
+      deps.hideAssistantLoading?.(ctx.ui);
+      deps.clearLiveStreamChrome?.(ctx.ui);
+      if (deps.assistantMessageHasContent?.(ctx.assistantMessage)) {
+        deps.finishAssistant?.(ctx.ui, ctx.assistantMessage, ctx.sessionId);
+      }
+      contexts.delete(key);
+    }
+
+    if (jobId) {
+      deps.api('DELETE', `/api/ai/chat/jobs/${encodeURIComponent(jobId)}`).catch(() => {});
+      deps.SessionStore?.clearActiveJobId(sessionId);
+      deps.syncSessionsToDevice?.().catch(() => {});
+    }
+
+    activeJobId = null;
+    deps.endChatStream?.(sessionId || deps.getStreamSessionId?.());
   }
 
   function endPoll() {

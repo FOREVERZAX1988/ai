@@ -12,6 +12,7 @@ import json
 import os
 import re
 import subprocess
+import threading
 import time
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -23,7 +24,9 @@ from urllib.parse import quote
 from aiohttp import web
 
 from ai.cabana_replay_util import (
+  REPLAY_SNAPSHOT_INTERVAL,
   build_replay_snapshots as _build_replay_snapshots,
+  compact_can_batch as _compact_can_batch,
   latest_frames_at_rel as _latest_frames_at_rel,
 )
 
@@ -118,6 +121,35 @@ def _load_car_params() -> dict[str, Any] | None:
   return _load_car_params_from_params() or _load_car_params_from_cereal()
 
 
+def _load_car_params_from_profile() -> dict[str, Any] | None:
+  """Fallback: ai_vehicle_profile written by aid state sync."""
+  try:
+    raw = Params().get("ai_vehicle_profile")
+    if not raw:
+      return None
+    if isinstance(raw, bytes):
+      raw = raw.decode("utf-8", errors="replace")
+    profile = json.loads(raw) if isinstance(raw, str) else raw
+    if not isinstance(profile, dict):
+      return None
+    fingerprint = (
+      profile.get("fingerprint")
+      or profile.get("carFingerprint")
+      or profile.get("car_fingerprint")
+      or ""
+    ).strip()
+    if not fingerprint:
+      return None
+    return {
+      "brand": (profile.get("brand") or "").strip(),
+      "carFingerprint": fingerprint,
+      "openpilotLongitudinalControl": bool(profile.get("openpilotLongitudinalControl")),
+      "source": "profile",
+    }
+  except Exception:
+    return None
+
+
 def _load_car_params_from_route(route_name: str) -> dict[str, Any] | None:
   """Read carParams from a local route qlog/rlog (replay DBC auto-detect)."""
   if LogReader is None or not route_name:
@@ -161,7 +193,7 @@ def _resolve_car_params(route_name: str = "") -> dict[str, Any] | None:
     cp = _load_car_params_from_route(route_name)
     if cp is not None:
       return cp
-  cp = _load_car_params()
+  cp = _load_car_params() or _load_car_params_from_profile()
   if cp is not None:
     cp = dict(cp)
     cp.setdefault("source", "device")
@@ -213,6 +245,11 @@ _EN_TO_ZH_ALIASES: dict[str, list[str]] = {
 }
 
 _dbc_catalog_cache: list[dict[str, Any]] | None = None
+_dbc_catalog_lock = threading.Lock()
+
+
+def _quick_dbc_catalog() -> list[dict[str, Any]]:
+  return [{"name": name, "searchText": name} for name in _list_dbc_names()]
 
 
 def _search_tokens(text: str) -> list[str]:
@@ -233,96 +270,100 @@ def _build_dbc_catalog() -> list[dict[str, Any]]:
   if _dbc_catalog_cache is not None:
     return _dbc_catalog_cache
 
-  buckets: dict[str, dict[str, set[str]]] = defaultdict(
-    lambda: {
-      "brands": set(),
-      "makes": set(),
-      "models": set(),
-      "fingerprints": set(),
-      "labels": set(),
-      "tokens": set(),
-    }
-  )
+  with _dbc_catalog_lock:
+    if _dbc_catalog_cache is not None:
+      return _dbc_catalog_cache
 
-  if PLATFORMS:
-    for fingerprint, platform in PLATFORMS.items():
-      cfg = getattr(platform, "config", None)
-      if cfg is None:
-        continue
+    buckets: dict[str, dict[str, set[str]]] = defaultdict(
+      lambda: {
+        "brands": set(),
+        "makes": set(),
+        "models": set(),
+        "fingerprints": set(),
+        "labels": set(),
+        "tokens": set(),
+      }
+    )
 
-      dbc_names: set[str] = set()
-      dbc_dict = getattr(cfg, "dbc_dict", None) or {}
-      if isinstance(dbc_dict, dict):
-        for val in dbc_dict.values():
-          if val:
-            dbc_names.add(str(val))
+    if PLATFORMS:
+      for fingerprint, platform in PLATFORMS.items():
+        cfg = getattr(platform, "config", None)
+        if cfg is None:
+          continue
 
-      doc_rows: list[tuple[str, str, str]] = []
-      for doc in getattr(cfg, "car_docs", None) or []:
-        name = getattr(doc, "name", "") or ""
-        make = getattr(doc, "make", "") or ""
-        model = getattr(doc, "model", "") or ""
-        if name or make or model:
-          doc_rows.append((name, make, model))
+        dbc_names: set[str] = set()
+        dbc_dict = getattr(cfg, "dbc_dict", None) or {}
+        if isinstance(dbc_dict, dict):
+          for val in dbc_dict.values():
+            if val:
+              dbc_names.add(str(val))
 
-      brand_hint = ""
-      if doc_rows and doc_rows[0][1]:
-        brand_hint = doc_rows[0][1].lower()
-      elif fingerprint:
-        brand_hint = fingerprint.split()[0].lower()
+        doc_rows: list[tuple[str, str, str]] = []
+        for doc in getattr(cfg, "car_docs", None) or []:
+          name = getattr(doc, "name", "") or ""
+          make = getattr(doc, "make", "") or ""
+          model = getattr(doc, "model", "") or ""
+          if name or make or model:
+            doc_rows.append((name, make, model))
 
-      for dbc_name in dbc_names:
-        bucket = buckets[dbc_name]
-        if fingerprint:
-          bucket["fingerprints"].add(fingerprint)
-          bucket["tokens"].update(_search_tokens(fingerprint))
-        if brand_hint:
-          bucket["brands"].add(brand_hint)
-          bucket["tokens"].add(brand_hint)
-        for label, make, model in doc_rows:
-          if label:
-            bucket["labels"].add(label)
-            bucket["tokens"].update(_search_tokens(label))
-          if make:
-            bucket["makes"].add(make.lower())
-            bucket["tokens"].update(_search_tokens(make))
-          if model:
-            bucket["models"].add(model.lower())
-            bucket["tokens"].update(_search_tokens(model))
+        brand_hint = ""
+        if doc_rows and doc_rows[0][1]:
+          brand_hint = doc_rows[0][1].lower()
+        elif fingerprint:
+          brand_hint = fingerprint.split()[0].lower()
 
-  catalog: list[dict[str, Any]] = []
-  for dbc_name in _list_dbc_names():
-    bucket = buckets.get(dbc_name) or {
-      "brands": set(),
-      "makes": set(),
-      "models": set(),
-      "fingerprints": set(),
-      "labels": set(),
-      "tokens": set(),
-    }
-    tokens = set(bucket["tokens"])
-    tokens.update(_search_tokens(dbc_name))
-    _append_zh_aliases(tokens)
+        for dbc_name in dbc_names:
+          bucket = buckets[dbc_name]
+          if fingerprint:
+            bucket["fingerprints"].add(fingerprint)
+            bucket["tokens"].update(_search_tokens(fingerprint))
+          if brand_hint:
+            bucket["brands"].add(brand_hint)
+            bucket["tokens"].add(brand_hint)
+          for label, make, model in doc_rows:
+            if label:
+              bucket["labels"].add(label)
+              bucket["tokens"].update(_search_tokens(label))
+            if make:
+              bucket["makes"].add(make.lower())
+              bucket["tokens"].update(_search_tokens(make))
+            if model:
+              bucket["models"].add(model.lower())
+              bucket["tokens"].update(_search_tokens(model))
 
-    labels = sorted(bucket["labels"])[:8]
-    models = sorted(bucket["models"])[:12]
-    makes = sorted(bucket["makes"])[:8]
-    brands = sorted(bucket["brands"])[:8]
-    fingerprints = sorted(bucket["fingerprints"])[:10]
+    catalog: list[dict[str, Any]] = []
+    for dbc_name in _list_dbc_names():
+      bucket = buckets.get(dbc_name) or {
+        "brands": set(),
+        "makes": set(),
+        "models": set(),
+        "fingerprints": set(),
+        "labels": set(),
+        "tokens": set(),
+      }
+      tokens = set(bucket["tokens"])
+      tokens.update(_search_tokens(dbc_name))
+      _append_zh_aliases(tokens)
 
-    search_text = " ".join(sorted(tokens))
-    catalog.append({
-      "name": dbc_name,
-      "brands": brands,
-      "makes": makes,
-      "models": models,
-      "fingerprints": fingerprints,
-      "labels": labels,
-      "searchText": search_text,
-    })
+      labels = sorted(bucket["labels"])[:8]
+      models = sorted(bucket["models"])[:12]
+      makes = sorted(bucket["makes"])[:8]
+      brands = sorted(bucket["brands"])[:8]
+      fingerprints = sorted(bucket["fingerprints"])[:10]
 
-  _dbc_catalog_cache = catalog
-  return catalog
+      search_text = " ".join(sorted(tokens))
+      catalog.append({
+        "name": dbc_name,
+        "brands": brands,
+        "makes": makes,
+        "models": models,
+        "fingerprints": fingerprints,
+        "labels": labels,
+        "searchText": search_text,
+      })
+
+    _dbc_catalog_cache = catalog
+    return catalog
 
 
 def _get_dbc_dict(car_fingerprint: str) -> dict[str, str]:
@@ -1092,6 +1133,9 @@ async def api_car(request: web.Request) -> web.Response:
       "ok": False,
       "error": "CarParams not available",
       "hint": "Drive once, pick a route with carParams in qlog/rlog, or choose a DBC manually.",
+      "car": None,
+      "dbc_dict": {},
+      "suggested_dbc": None,
     })
 
   suggested_dbc = _suggest_dbc_for_fingerprint(
@@ -1099,6 +1143,8 @@ async def api_car(request: web.Request) -> web.Response:
     brand=cp.get("brand", ""),
   )
   dbc_dict = _get_dbc_dict(cp.get("carFingerprint", ""))
+  if not suggested_dbc and dbc_dict:
+    suggested_dbc = _pick_preferred_dbc(list(dbc_dict.values()))
   return _json_response({
     "ok": True,
     "car": cp,
@@ -1111,19 +1157,36 @@ async def api_car(request: web.Request) -> web.Response:
 async def api_dbcs(request: web.Request) -> web.Response:
   if DBC_PATH is None or not DBC_PATH:
     return _json_response({"ok": False, "error": "opendbc not available"}, status=503)
-  catalog = _build_dbc_catalog()
+  quick = str(request.query.get("quick") or "").lower() in ("1", "true", "yes")
+  loop = asyncio.get_running_loop()
+  if _dbc_catalog_cache is not None:
+    catalog = _dbc_catalog_cache
+  elif quick:
+    catalog = _quick_dbc_catalog()
+    loop.run_in_executor(None, _build_dbc_catalog)
+  else:
+    catalog = await loop.run_in_executor(None, _build_dbc_catalog)
   return _json_response({
     "ok": True,
     "dbcs": [item["name"] for item in catalog],
     "catalog": catalog,
+    "quick": quick and _dbc_catalog_cache is None,
   })
+
+
+def warm_dbc_catalog() -> int:
+  """Build DBC catalog cache (safe to call from a background thread)."""
+  if DBC_PATH is None or not DBC_PATH:
+    return 0
+  return len(_build_dbc_catalog())
 
 
 async def api_dbc(request: web.Request) -> web.Response:
   name = request.match_info["name"]
   if DBC is None:
     return _json_response({"ok": False, "error": "opendbc DBC parser not available"}, status=503)
-  signals = _parse_dbc_signals(name)
+  loop = asyncio.get_running_loop()
+  signals = await loop.run_in_executor(None, lambda: _parse_dbc_signals(name))
   return _json_response({"ok": True, "name": name, "signals": signals})
 
 
@@ -1294,7 +1357,7 @@ async def ws_offline(request: web.Request) -> web.WebSocketResponse:
       return
     while True:
       try:
-        payload = await asyncio.wait_for(progress_queue.get(), timeout=0.45)
+        payload = await asyncio.wait_for(progress_queue.get(), timeout=2.0)
         if not await ws_send({"type": "loading", **payload}):
           return
       except asyncio.TimeoutError:
@@ -1343,7 +1406,7 @@ async def ws_offline(request: web.Request) -> web.WebSocketResponse:
 
       frames, dec = await loop.run_in_executor(None, read_qlog_only)
       if route_path.is_dir() and frames:
-        asyncio.create_task(loop.run_in_executor(
+        asyncio.ensure_future(loop.run_in_executor(
           None,
           lambda: _save_route_cache(route_path, frames, decimated=dec, full=False),
         ))
@@ -1451,6 +1514,7 @@ async def ws_offline(request: web.Request) -> web.WebSocketResponse:
       "has_rlog": bool(rlogs),
       "streaming": streaming_load,
       "snapshots": 0,
+      "init_frames": init_state or [],
     }))
 
     if init_state:
@@ -1469,45 +1533,57 @@ async def ws_offline(request: web.Request) -> web.WebSocketResponse:
       "original_frame_count": original_count,
     }))
 
+    await asyncio.sleep(0)
+
     if streaming_load and drain_task is not None and not load_complete.is_set():
       try:
         await asyncio.wait_for(load_complete.wait(), timeout=90.0)
       except asyncio.TimeoutError:
         pass
 
-    snapshots = await loop.run_in_executor(
-      None, lambda: _build_replay_snapshots(all_frames),
-    )
-
-    snap_idx = 0
-    while snap_idx < len(snapshots) and snapshots[snap_idx][0] < start_time:
-      snap_idx += 1
-
+    # Stream playback without pre-building the full snapshot list (avoids multi-second stall).
+    latest: dict[tuple[int, int], dict[str, Any]] = {}
+    prev_sig: dict[tuple[int, int], tuple[float, str]] = {}
+    frame_i = 0
+    n = len(all_frames)
+    interval = REPLAY_SNAPSHOT_INTERVAL
+    next_emit = first_time + max(0.0, start_time)
     playback_start = time.monotonic()
-    first_snap_progress = snapshots[snap_idx][0] if snap_idx < len(snapshots) else 0.0
+    base_progress = max(0.0, start_time)
+    sent_any = False
 
-    while snap_idx < len(snapshots):
+    while frame_i < n and float(all_frames[frame_i]["time"]) <= next_emit + 1e-6:
+      f = all_frames[frame_i]
+      latest[(int(f["bus"]), int(f["address"]))] = f
+      frame_i += 1
+
+    while next_emit <= last_time + interval or frame_i < n:
       if seek_time_rel is not None:
         st_rel = seek_time_rel
         seek_time_rel = None
-        snap_idx = 0
-        while snap_idx < len(snapshots) and snapshots[snap_idx][0] < st_rel:
-          snap_idx += 1
+        next_emit = first_time + st_rel
+        base_progress = st_rel
+        frame_i = 0
+        latest.clear()
+        prev_sig.clear()
+        while frame_i < n and float(all_frames[frame_i]["time"]) <= next_emit + 1e-6:
+          f = all_frames[frame_i]
+          latest[(int(f["bus"]), int(f["address"]))] = f
+          frame_i += 1
         playback_start = time.monotonic()
-        first_snap_progress = snapshots[snap_idx][0] if snap_idx < len(snapshots) else st_rel
         await ws.send_str(json.dumps({"type": "seeked", "time": st_rel}))
-        seek_state = _latest_frames_at_rel(all_frames, st_rel, first_time)
+        seek_state = list(latest.values())
         if seek_state:
           await ws_send({
             "type": "can",
-            "frames": seek_state,
+            "frames": _compact_can_batch(seek_state),
             "progress": st_rel,
             "preview": True,
           })
         continue
 
-      progress, ui_batch = snapshots[snap_idx]
-      rel = (progress - first_snap_progress) / max(speed, 0.01)
+      progress = max(0.0, next_emit - first_time)
+      rel = (progress - base_progress) / max(speed, 0.01)
       target = playback_start + rel
       while time.monotonic() < target and not paused:
         await asyncio.sleep(0.01)
@@ -1516,25 +1592,36 @@ async def ws_offline(request: web.Request) -> web.WebSocketResponse:
         while paused:
           await asyncio.sleep(0.05)
         playback_start += time.monotonic() - paused_at
-        first_snap_progress = progress
+        base_progress = progress
 
-      if not ui_batch:
+      delta: list[dict[str, Any]] = []
+      while frame_i < n and float(all_frames[frame_i]["time"]) <= next_emit + 1e-6:
+        f = all_frames[frame_i]
+        k = (int(f["bus"]), int(f["address"]))
+        sig = (float(f["time"]), str(f.get("data", "")))
+        if prev_sig.get(k) != sig:
+          prev_sig[k] = sig
+          delta.append(f)
+        latest[k] = f
+        frame_i += 1
+
+      if not delta and not sent_any and latest:
+        delta = list(latest.values())
+
+      if delta:
+        sent_any = True
         if not await ws_send({
           "type": "can",
-          "frames": [],
+          "frames": _compact_can_batch(delta),
           "progress": progress,
         }):
           break
-        snap_idx += 1
-        continue
-
-      if not await ws_send({
-        "type": "can",
-        "frames": ui_batch,
-        "progress": progress,
-      }):
+      elif not await ws_send({"type": "progress", "progress": progress}):
         break
-      snap_idx += 1
+
+      next_emit += interval
+      if frame_i >= n and next_emit > last_time + interval:
+        break
       await asyncio.sleep(0)
 
     await ws_send({"type": "done"})

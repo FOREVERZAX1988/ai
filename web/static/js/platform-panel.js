@@ -415,13 +415,37 @@ const PlatformPanel = (() => {
     if (!box) return;
     const { data } = await api('GET', '/api/ai/platform/backup');
     const m = data?.manifest || {};
+    const modelLine = m.modelConfigured
+      ? `${m.provider || ''} / ${m.model || ''}`
+      : tr('platformBackupModelMissing', '未配置模型');
     box.innerHTML = [
+      `<div class="platform-list-item">${tr('platformBackupModel', '模型')}: ${esc(modelLine)}</div>`,
+      `<div class="platform-list-item">${tr('platformBackupEmbedding', 'Embedding')}: ${esc(m.embeddingModel || '—')}</div>`,
       `<div class="platform-list-item">${tr('platformBackupMemory', '记忆')}: ${m.memoryNotes ?? 0}</div>`,
       `<div class="platform-list-item">${tr('platformBackupSessions', '会话')}: ${m.sessions ?? 0}</div>`,
-      `<div class="platform-list-item">${tr('platformBackupSkills', '技能')}: ${m.learnedSkills ?? 0}</div>`,
+      `<div class="platform-list-item">${tr('platformBackupSkills', '技能')}: ${m.learnedSkills ?? 0} (+${m.enabledSkills ?? 0} 启用)</div>`,
       `<div class="platform-list-item">MCP: ${m.mcpServers ?? 0}</div>`,
       `<div class="platform-list-item">${tr('platformBackupWorkspace', '工作区')}: ${m.workspaceFiles ?? 0}</div>`,
     ].join('');
+  }
+
+  function triggerBlobDownload(blob, filename) {
+    const objectUrl = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = objectUrl;
+    a.download = filename.endsWith('.opbak') ? filename : `${filename}.opbak`;
+    a.rel = 'noopener';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(objectUrl);
+  }
+
+  function parseDownloadFilename(res, fallback) {
+    const disp = res.headers?.get?.('content-disposition') || '';
+    const match = /filename\*?=(?:UTF-8''|")?([^";\n]+)"?/i.exec(disp);
+    const raw = match?.[1] ? decodeURIComponent(match[1].trim()) : '';
+    return raw || fallback || `opassist-backup-${Date.now()}.opbak`;
   }
 
   async function exportBackup() {
@@ -429,18 +453,66 @@ const PlatformPanel = (() => {
     const includeSecrets = !!document.getElementById('platformBackupIncludeSecrets')?.checked;
     const link = document.getElementById('platformBackupDownload');
     await withBusy(btn, async () => {
-      const { data } = await api('POST', '/api/ai/platform/backup', {
-        operation: 'export',
-        include_secrets: includeSecrets,
-      });
+      const headers = {
+        ...((typeof WebApi !== 'undefined' && WebApi.getApiHeaders) ? WebApi.getApiHeaders() : {}),
+        'Content-Type': 'application/json',
+      };
+      let data = null;
+      try {
+        const res = await fetch('/api/ai/platform/backup', {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            operation: 'export',
+            include_secrets: includeSecrets,
+            direct_download: true,
+          }),
+        });
+        const contentType = (res.headers.get('content-type') || '').toLowerCase();
+        if (res.ok && !contentType.includes('application/json')) {
+          const blob = await res.blob();
+          const filename = parseDownloadFilename(res, `opassist-backup-${Date.now()}.opbak`);
+          triggerBlobDownload(blob, filename);
+          if (link) link.hidden = true;
+          toast(tr('platformBackupExported', '备份已导出'), 'success');
+          refreshBackupManifest().catch(() => {});
+          return;
+        }
+        data = await res.json();
+      } catch (e) {
+        console.error('backup export', e);
+        toast(tr('saveFailed', '保存失败'), 'error');
+        return;
+      }
       if (!data?.ok) {
         toast(data?.error || tr('saveFailed', '保存失败'), 'error');
         return;
       }
       const dl = data?.download;
+      if (dl?.url && dl?.filename) {
+        try {
+          const dlHeaders = (typeof WebApi !== 'undefined' && WebApi.getApiHeaders) ? WebApi.getApiHeaders() : {};
+          const res = await fetch(dl.url, { headers: dlHeaders });
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const blob = await res.blob();
+          triggerBlobDownload(blob, dl.filename);
+        } catch (e) {
+          console.error('backup download', e);
+          if (link) {
+            link.href = dl.url;
+            link.download = dl.filename;
+            link.textContent = tr('platformBackupDownload', '下载') + ` (${dl.filename})`;
+            link.hidden = false;
+          }
+          toast(tr('platformBackupExported', '备份已导出') + ' — ' + tr('platformBackupDownload', '下载'), 'success');
+          refreshBackupManifest().catch(() => {});
+          return;
+        }
+      }
       if (link && dl?.url) {
         link.href = dl.url;
-        link.textContent = tr('platformBackupDownload', '下载') + ` (${dl.filename})`;
+        link.download = dl.filename || 'backup.opbak';
+        link.textContent = tr('platformBackupDownload', '下载') + (dl.filename ? ` (${dl.filename})` : '');
         link.hidden = false;
       }
       toast(tr('platformBackupExported', '备份已导出'), 'success');
@@ -448,24 +520,71 @@ const PlatformPanel = (() => {
     }, tr('uiWorking', '处理中…'));
   }
 
-  async function restoreBackupPreview() {
+  function bindFilePicker(inputId, nameId, buttonId) {
+    const input = document.getElementById(inputId);
+    const nameEl = document.getElementById(nameId);
+    const btn = document.getElementById(buttonId);
+    if (!input) return;
+    const defaultLabel = tr('platformBackupNoFile', '未选择文件');
+    const update = () => {
+      const file = input.files?.[0];
+      if (nameEl) {
+        nameEl.textContent = file ? file.name : defaultLabel;
+        nameEl.classList.toggle('has-file', !!file);
+      }
+    };
+    btn?.addEventListener('click', () => input.click());
+    input.addEventListener('change', update);
+    update();
+  }
+
+  async function uploadBackupFile(file, { mode = 'merge', confirm = false } = {}) {
+    if (!file || !api) return { data: { ok: false, error: 'no file' } };
+    const form = new FormData();
+    form.append('file', file);
+    form.append('mode', mode);
+    form.append('confirm', confirm ? 'true' : 'false');
+    const headers = (typeof WebApi !== 'undefined' && WebApi.getApiHeaders) ? WebApi.getApiHeaders() : {};
+    const res = await fetch('/api/ai/platform/backup', { method: 'POST', headers, body: form });
+    const text = await res.text();
+    let data;
+    try { data = JSON.parse(text); } catch { data = { ok: false, error: text }; }
+    return { status: res.status, data };
+  }
+
+  function getRestoreBundleFromJsonField() {
     const raw = document.getElementById('platformBackupRestoreJson')?.value?.trim();
-    const status = document.getElementById('platformBackupRestoreStatus');
-    if (!raw) {
-      toast(tr('platformBackupPasteJson', '请粘贴备份 JSON'), 'warning');
-      return;
-    }
-    let bundle;
+    if (!raw) return null;
     try {
-      bundle = JSON.parse(raw);
-    } catch (e) {
-      toast(tr('platformBackupInvalidJson', 'JSON 无效'), 'error');
+      const bundle = JSON.parse(raw);
+      return bundle.bundle ? bundle : { bundle };
+    } catch {
+      return null;
+    }
+  }
+
+  async function restoreBackupPreview() {
+    const file = document.getElementById('platformBackupRestoreFile')?.files?.[0];
+    const status = document.getElementById('platformBackupRestoreStatus');
+    const mode = document.getElementById('platformBackupRestoreMode')?.value || 'merge';
+    if (file) {
+      const { data } = await uploadBackupFile(file, { mode, confirm: false });
+      if (status) {
+        status.textContent = data?.preview
+          ? JSON.stringify(data.preview, null, 2)
+          : (data?.error || '');
+      }
+      if (!data?.preview && data?.error) toast(data.error, 'error');
       return;
     }
-    const mode = document.getElementById('platformBackupRestoreMode')?.value || 'merge';
+    const bundle = getRestoreBundleFromJsonField();
+    if (!bundle) {
+      toast(tr('platformBackupPickFile', '请选择 .opbak 文件或粘贴 JSON'), 'warning');
+      return;
+    }
     const { data } = await api('POST', '/api/ai/platform/backup', {
       operation: 'restore',
-      bundle: bundle.bundle ? bundle : { bundle },
+      bundle,
       mode,
       confirm: false,
     });
@@ -478,32 +597,32 @@ const PlatformPanel = (() => {
 
   async function restoreBackupApply() {
     const btn = document.getElementById('platformBackupRestoreApply');
-    const raw = document.getElementById('platformBackupRestoreJson')?.value?.trim();
-    if (!raw) {
-      toast(tr('platformBackupPasteJson', '请粘贴备份 JSON'), 'warning');
-      return;
-    }
-    let bundle;
-    try {
-      bundle = JSON.parse(raw);
-    } catch (e) {
-      toast(tr('platformBackupInvalidJson', 'JSON 无效'), 'error');
-      return;
-    }
+    const file = document.getElementById('platformBackupRestoreFile')?.files?.[0];
     const mode = document.getElementById('platformBackupRestoreMode')?.value || 'merge';
     await withBusy(btn, async () => {
-      const { data } = await api('POST', '/api/ai/platform/backup', {
-        operation: 'restore',
-        bundle: bundle.bundle ? bundle : { bundle },
-        mode,
-        confirm: true,
-      });
+      let data;
+      if (file) {
+        ({ data } = await uploadBackupFile(file, { mode, confirm: true }));
+      } else {
+        const bundle = getRestoreBundleFromJsonField();
+        if (!bundle) {
+          toast(tr('platformBackupPickFile', '请选择 .opbak 文件或粘贴 JSON'), 'warning');
+          return;
+        }
+        ({ data } = await api('POST', '/api/ai/platform/backup', {
+          operation: 'restore',
+          bundle,
+          mode,
+          confirm: true,
+        }));
+      }
       if (data?.ok) {
         toast(tr('platformBackupRestored', '恢复完成') + `: ${(data.applied || []).join(', ')}`, 'success');
         refreshBackupManifest().catch(() => {});
         refreshLearned().catch(() => {});
         loadWorkspace().catch(() => {});
         refreshMcp().catch(() => {});
+        loadMemoryAndPassport().catch(() => {});
       } else {
         toast(data?.error || tr('saveFailed', '保存失败'), 'error');
       }
@@ -559,6 +678,7 @@ const PlatformPanel = (() => {
     document.getElementById('platformBackupExport')?.addEventListener('click', () => exportBackup().catch(console.error));
     document.getElementById('platformBackupRestorePreview')?.addEventListener('click', () => restoreBackupPreview().catch(console.error));
     document.getElementById('platformBackupRestoreApply')?.addEventListener('click', () => restoreBackupApply().catch(console.error));
+    bindFilePicker('platformBackupRestoreFile', 'platformBackupRestoreFileName', 'platformBackupRestorePick');
     document.getElementById('platformEvolutionScan')?.addEventListener('click', () => scanEvolutionTraces().catch(console.error));
     document.getElementById('platformEvolutionPropose')?.addEventListener('click', () => proposeEvolution().catch(console.error));
     document.getElementById('platformWorkspaceLoad')?.addEventListener('click', () => loadWorkspace().catch(console.error));
@@ -586,9 +706,15 @@ const PlatformPanel = (() => {
     loadDebugToggles();
   }
 
-  return { init, onSettingsOpen, getChatDebugPrefs: () => (
-    (typeof LocalPrefs !== 'undefined' && LocalPrefs.getChatDebugPrefs)
-      ? LocalPrefs.getChatDebugPrefs()
-      : { verbose: false, trace: false }
-  ) };
+  return {
+    init,
+    onSettingsOpen,
+    bindFilePicker,
+    restoreFromFile: (file, opts) => uploadBackupFile(file, { mode: opts?.mode || 'merge', confirm: !!opts?.confirm }),
+    getChatDebugPrefs: () => (
+      (typeof LocalPrefs !== 'undefined' && LocalPrefs.getChatDebugPrefs)
+        ? LocalPrefs.getChatDebugPrefs()
+        : { verbose: false, trace: false }
+    ),
+  };
 })();

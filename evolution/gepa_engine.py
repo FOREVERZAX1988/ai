@@ -10,8 +10,8 @@ from ai.evolution.config import EvolutionRunConfig
 from ai.evolution.constraints import all_passed, validate_artifact
 from ai.evolution.dataset import EvalDataset, build_eval_dataset
 from ai.evolution.dspy_backend import dspy_available, evolve_with_dspy
-from ai.evolution.fitness import combine_feedback, score_skill_on_split
-from ai.evolution.reflect_mutate import reflective_mutate
+from ai.evolution.fitness import score_skill_on_split
+from ai.evolution.reflect_mutate import combine_feedback, reflective_mutate
 from ai.evolution.skill_source import load_skill_for_evolution
 from ai.tools.skill_evaluation import pick_best_candidate
 from ai.tools.skill_learning import propose_learned_skill

@@ -72,9 +72,7 @@
   flex-shrink: 0;
 }
 
-.cabana-mode-replay .cabana-live-toolbar {
-  display: none;
-}
+/* DBC picker visible in both live and replay modes */
 
 .cabana-car-bar {
   display: none;

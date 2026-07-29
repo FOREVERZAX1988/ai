@@ -104,7 +104,7 @@ body.app-booting {
 .app-splash-logo {
   width: 72px;
   height: 72px;
-  border-radius: 20px;
+  border-radius: 50%;
   background: linear-gradient(135deg, var(--accent), #6dd9d2);
   display: flex;
   align-items: center;
@@ -217,7 +217,7 @@ html, body {
 .brand-mark {
   width: 34px;
   height: 34px;
-  border-radius: 10px;
+  border-radius: 50%;
   background: linear-gradient(135deg, var(--accent), #6dd9d2);
   display: flex;
   align-items: center;
@@ -765,13 +765,40 @@ html, body {
   border: 1px solid var(--border);
   padding: 0.45rem 0.65rem;
   text-align: left;
+  vertical-align: top;
+  word-break: break-word;
 }
 .md-content .md-table th {
   background: var(--surface);
   font-weight: 600;
+  white-space: nowrap;
+  width: 1%;
+}
+.md-content .md-table td:last-child {
+  width: auto;
 }
 .md-content .md-table tr:nth-child(even) td {
   background: rgba(255, 255, 255, 0.02);
+}
+.md-content .md-table.md-kv-table th:first-child,
+.md-content .md-table.md-kv-table td:first-child {
+  width: auto;
+  min-width: 7rem;
+  max-width: 38%;
+  white-space: nowrap;
+  font-weight: 500;
+  color: var(--text-secondary, rgba(255, 255, 255, 0.72));
+}
+.md-content .md-table.md-kv-table th:last-child,
+.md-content .md-table.md-kv-table td:last-child {
+  width: auto;
+  white-space: normal;
+}
+.md-content .md-h3 {
+  margin: 0.85rem 0 0.35rem;
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: var(--text-primary, inherit);
 }
 .md-content a { color: var(--accent); }
 
@@ -1418,22 +1445,18 @@ html, body {
   padding: 0.55rem 0.75rem;
   border-radius: var(--radius-sm);
   border: 1px solid var(--input-border, var(--border-strong));
-  background: var(--input-bg, var(--bg));
+  background-color: var(--input-bg, var(--bg));
+  background-image: none;
   color: var(--text);
   font-size: 0.9rem;
   outline: none;
   width: 100%;
   box-sizing: border-box;
-  transition: border-color var(--transition), box-shadow var(--transition), background var(--transition);
+  transition: border-color var(--transition), box-shadow var(--transition), background-color var(--transition);
 }
 
-.field input, .field select, .field textarea {
-  cursor: pointer;
-  -webkit-appearance: menulist;
-  appearance: menulist;
-}
-
-.field input, .field textarea,
+.field input,
+.field textarea,
 .settings-card-body input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
 .settings-card-body textarea {
   cursor: text;
@@ -1441,10 +1464,20 @@ html, body {
   appearance: none;
 }
 
+.field select,
 .settings-card-body select {
   cursor: pointer;
-  -webkit-appearance: menulist;
-  appearance: menulist;
+  -webkit-appearance: none;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%23a0a8bc' stroke-width='2' stroke-linecap='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.65rem center;
+  padding-right: 2.25rem;
+}
+
+[data-theme="light"] .field select,
+[data-theme="light"] .settings-card-body select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%234a5060' stroke-width='2' stroke-linecap='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
 }
 
 .field input:focus, .field select:focus, .field textarea:focus,
@@ -2142,6 +2175,11 @@ html, body {
   background: rgba(255, 255, 255, 0.05);
 }
 
+.dev-status.warn {
+  color: #fbbf24;
+  background: rgba(251, 191, 36, 0.12);
+}
+
 .dev-kind-tag {
   flex-shrink: 0;
   font-size: 0.65rem;
@@ -2565,7 +2603,7 @@ html, body {
 .brand-mark.sm {
   width: 30px;
   height: 30px;
-  border-radius: 8px;
+  border-radius: 50%;
   background: linear-gradient(135deg, var(--accent), #6dd9d2);
   display: flex;
   align-items: center;
@@ -3541,6 +3579,59 @@ html, body {
     var(--bg);
 }
 
+.platform-restore-preview {
+  white-space: pre-wrap;
+  font-family: var(--mono, ui-monospace, monospace);
+  font-size: 0.8rem;
+  max-height: 12rem;
+  overflow: auto;
+}
+
+.platform-file-input {
+  width: 100%;
+  font-size: 0.85rem;
+}
+
+.file-picker {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.55rem 0.75rem;
+  padding: 0.55rem 0.65rem;
+  border-radius: var(--radius-sm, 8px);
+  border: 1px dashed var(--border, rgba(255, 255, 255, 0.14));
+  background: rgba(0, 0, 0, 0.18);
+}
+
+.file-picker-btn {
+  flex-shrink: 0;
+}
+
+.file-picker-name {
+  flex: 1 1 8rem;
+  min-width: 0;
+  font-size: 0.85rem;
+  color: var(--text-muted, rgba(255, 255, 255, 0.55));
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-picker-name.has-file {
+  color: var(--text, #e8e8e8);
+  font-family: var(--mono, ui-monospace, monospace);
+}
+
+.platform-advanced-restore {
+  margin-top: 0.75rem;
+}
+
+.onboarding-restore-block {
+  margin-top: 1rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--border, rgba(255, 255, 255, 0.08));
+}
+
 .op-quick-actions {
   display: flex;
   flex-wrap: wrap;
@@ -3566,6 +3657,13 @@ html, body {
 .op-quick-btn:hover {
   background: rgba(78, 205, 196, 0.12);
   border-color: rgba(78, 205, 196, 0.35);
+}
+
+.op-quick-btn:disabled,
+.op-quick-btn.is-busy {
+  opacity: 0.55;
+  cursor: wait;
+  pointer-events: none;
 }
 
 .write-confirm-consumer {
@@ -3722,6 +3820,10 @@ html, body {
 }
 
 [data-theme="light"] .dev-item {
+  background: rgba(15, 18, 28, 0.03);
+}
+
+[data-theme="light"] .publish-unit-card {
   background: rgba(15, 18, 28, 0.03);
 }
 
@@ -4455,9 +4557,118 @@ html, body {
   gap: 0.5rem;
 }
 
-.publish-token-row .password-field {
-  flex: 1 1 12rem;
-  min-width: 10rem;
+/* Dev tab — publish / issue forms */
+#paneDev input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="button"]):not([type="submit"]),
+#paneDev select,
+#paneDev textarea {
+  padding: 0.5rem 0.65rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--input-border, var(--border-strong));
+  background-color: var(--input-bg, var(--bg));
+  color: var(--text);
+  font-size: 0.85rem;
+  font-family: inherit;
+  line-height: 1.4;
+  outline: none;
+  width: 100%;
+  box-sizing: border-box;
+  transition: border-color var(--transition), box-shadow var(--transition), background-color var(--transition);
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+#paneDev select {
+  cursor: pointer;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%23a0a8bc' stroke-width='2' stroke-linecap='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.6rem center;
+  padding-right: 2.2rem;
+}
+
+#paneDev input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):focus,
+#paneDev select:focus,
+#paneDev textarea:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-glow);
+}
+
+#paneDev input::placeholder,
+#paneDev textarea::placeholder {
+  color: var(--text-muted);
+  opacity: 1;
+}
+
+#paneDev .field-hint a,
+#paneDev .dev-env-hint a {
+  color: #b8f0eb;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  font-weight: 500;
+}
+
+#paneDev .field-hint a:hover,
+#paneDev .dev-env-hint a:hover {
+  color: #e4fffc;
+}
+
+[data-theme="light"] #paneDev .field-hint a,
+[data-theme="light"] #paneDev .dev-env-hint a {
+  color: #0d6b64;
+}
+
+[data-theme="light"] #paneDev select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%234a5060' stroke-width='2' stroke-linecap='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+}
+
+#paneDev .dev-form-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+#paneDev .dev-form-stack-compact {
+  gap: 0.65rem;
+}
+
+#paneDev .dev-form-stack .field {
+  margin: 0;
+}
+
+#paneDev .dev-form-stack .field-label,
+#paneDev .publish-unit-mode-field .field-label {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+#paneDev .dev-form-stack .field-hint,
+#paneDev .dev-env-hint {
+  margin: 0;
+  line-height: 1.5;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+#paneDev .dev-forge-field .password-field {
+  width: 100%;
+}
+
+#paneDev .password-field input {
+  width: 100%;
+  padding-right: 2.6rem;
+}
+
+.publish-token-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.55rem;
+  margin-top: 0.15rem;
+}
+
+.publish-token-meta .field-label {
+  margin: 0;
+  font-size: 0.78rem;
 }
 
 .publish-token-actions {
@@ -4465,22 +4676,30 @@ html, body {
   flex-wrap: wrap;
   gap: 0.35rem;
   align-items: center;
+  margin-left: auto;
 }
 
 .publish-token-user {
-  font-size: 0.8rem;
-  color: var(--text-secondary, #9aa);
+  font-size: 0.75rem;
+  color: var(--text-secondary);
 }
 
 .publish-units-wrap {
   margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px dashed var(--border);
 }
 
 .publish-unit-card {
-  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
-  border-radius: 8px;
-  padding: 0.65rem 0.75rem;
-  margin-bottom: 0.5rem;
+  background: rgba(0, 0, 0, 0.12);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.7rem 0.75rem;
+  margin-bottom: 0.55rem;
+}
+
+.publish-unit-card:last-child {
+  margin-bottom: 0;
 }
 
 .publish-unit-head {
@@ -4488,30 +4707,60 @@ html, body {
   align-items: center;
   justify-content: space-between;
   gap: 0.5rem;
-  margin-bottom: 0.35rem;
+  margin-bottom: 0.25rem;
+}
+
+.publish-unit-title {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.publish-unit-meta {
+  margin: 0 0 0.55rem;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  line-height: 1.4;
+  word-break: break-word;
 }
 
 .publish-unit-actions {
   display: flex;
-  gap: 0.5rem;
-  align-items: center;
-  margin-top: 0.5rem;
+  gap: 0.55rem;
+  align-items: flex-end;
   flex-wrap: wrap;
 }
 
-.publish-unit-actions .field-input {
-  flex: 1;
-  min-width: 8rem;
+.publish-unit-mode-field {
+  flex: 1 1 10rem;
+  min-width: 0;
+  margin: 0;
+}
+
+.publish-unit-mode-field .field-label {
+  font-size: 0.72rem;
+}
+
+.publish-unit-actions .publish-unit-btn {
+  flex-shrink: 0;
+  align-self: flex-end;
 }
 
 .publish-prompt-panel {
   max-width: 28rem;
 }
 
+.issue-form-wrap {
+  margin-top: 0.65rem;
+  padding-top: 0.65rem;
+  border-top: 1px dashed var(--border);
+}
+
 .issue-form-wrap .issue-summary-input {
-  width: 100%;
-  min-height: 5rem;
+  min-height: 5.5rem;
   resize: vertical;
+  font-family: inherit;
+  line-height: 1.45;
 }
 
 .settings-sub-accordion {

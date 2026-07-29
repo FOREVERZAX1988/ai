@@ -78,7 +78,7 @@ async def api_canvas(request: web.Request) -> web.Response:
 
 async def api_workspace(request: web.Request) -> web.Response:
   from ai.server.deps import json_response
-  from ai.workspace import list_workspace_files, read_workspace_file
+  from ai.workspace_store import list_workspace_files, read_workspace_file
 
   key = str(request.query.get("key") or "").strip()
   if key:
@@ -92,7 +92,7 @@ async def api_workspace(request: web.Request) -> web.Response:
 
 async def api_workspace_write(request: web.Request) -> web.Response:
   from ai.server.deps import json_response
-  from ai.workspace import write_workspace_file
+  from ai.workspace_store import write_workspace_file
 
   try:
     body = await request.json()
@@ -185,6 +185,7 @@ async def api_platform_backup(request: web.Request) -> web.Response:
     build_platform_bundle,
     export_platform_bundle,
     parse_uploaded_bundle,
+    parse_uploaded_payload,
     restore_platform_bundle,
   )
 
@@ -196,6 +197,31 @@ async def api_platform_backup(request: web.Request) -> web.Response:
       return json_response(build_platform_bundle(p, include_secrets=include_secrets))
     return json_response({"ok": True, "manifest": backup_manifest(p)})
 
+  content_type = (request.content_type or "").lower()
+  if content_type.startswith("multipart/"):
+    reader = await request.multipart()
+    file_bytes: bytes | None = None
+    mode = "merge"
+    confirm = False
+    async for part in reader:
+      if part.name == "file":
+        file_bytes = await part.read()
+      elif part.name == "mode":
+        mode = (await part.text()) or "merge"
+      elif part.name == "confirm":
+        confirm = (await part.text() or "").lower() in ("1", "true", "yes")
+    if file_bytes is None:
+      return json_response({"ok": False, "error": "backup file required"}, status=400)
+    parsed = parse_uploaded_payload(file_bytes)
+    if not parsed.get("ok"):
+      return json_response(parsed, status=400)
+    return json_response(restore_platform_bundle(
+      p,
+      parsed,
+      mode=str(mode or "merge"),
+      confirm=confirm,
+    ))
+
   try:
     body = await request.json()
   except Exception:
@@ -206,12 +232,30 @@ async def api_platform_backup(request: web.Request) -> web.Response:
 
   if op == "export":
     include_secrets = bool(body.get("include_secrets"))
-    return json_response(export_platform_bundle(p, include_secrets=include_secrets))
+    result = export_platform_bundle(p, include_secrets=include_secrets)
+    if body.get("direct_download"):
+      dl = result.get("download") or {}
+      path_str = dl.get("path")
+      name = str(dl.get("filename") or "backup.opbak")
+      if path_str:
+        from pathlib import Path
+        from aiohttp import web
+
+        path = Path(path_str)
+        if path.is_file():
+          return web.FileResponse(
+            path,
+            headers={
+              "Content-Disposition": f'attachment; filename="{name}"',
+              "Content-Type": "application/gzip",
+            },
+          )
+    return json_response(result)
 
   if op == "restore":
     bundle = body.get("bundle")
     if isinstance(bundle, str):
-      parsed = parse_uploaded_bundle(bundle)
+      parsed = parse_uploaded_payload(bundle)
       if not parsed.get("ok"):
         return json_response(parsed, status=400)
       bundle = parsed

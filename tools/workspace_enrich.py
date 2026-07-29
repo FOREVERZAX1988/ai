@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from ai.tools.memory_store import get_memory
-from ai.workspace import _FILE_MAP, read_workspace_file, write_workspace_file
+from ai.workspace_store import _FILE_MAP, read_workspace_file, write_workspace_file
 
 # Minimum useful content length (excluding boilerplate headers).
 _MIN_CHARS = {
@@ -141,7 +141,7 @@ def update_workspace_file(
 
 def bootstrap_workspace_templates(*, force: bool = False) -> dict[str, Any]:
   """Write structured templates for empty/sparse files."""
-  from ai.workspace import _DEFAULTS, workspace_dir
+  from ai.workspace_store import _DEFAULTS, workspace_dir
 
   written: list[str] = []
   base = workspace_dir()

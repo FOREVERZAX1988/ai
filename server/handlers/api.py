@@ -399,14 +399,10 @@ async def api_bootstrap(request: web.Request) -> web.Response:
       {"id": mid} for mid in (AI_PROVIDER_MODEL_CATALOG.get(config.provider) or []) if mid
     ]
     models_source = "catalog"
-    if config.is_configured:
-      try:
-        lm = await list_models(config)
-        if lm.get("ok") and lm.get("models"):
-          bootstrap_models = lm["models"]
-          models_source = str(lm.get("source") or "api")
-      except Exception as e:
-        cloudlog.warning(f"aid: bootstrap list_models failed: {e}")
+    if config.is_configured and config.model:
+      known = {m.get("id") for m in bootstrap_models}
+      if config.model not in known:
+        bootstrap_models.insert(0, {"id": config.model})
 
     return _json_response({
     "ok": True,
@@ -894,7 +890,18 @@ async def api_dev_assets(request: web.Request) -> web.Response:
     path = resolve_dev_asset(kind, name)
     if path is None:
       return web.Response(status=404, text="Not found")
-    return web.FileResponse(path)
+    if name.lower().endswith(".opbak"):
+      content_type = "application/gzip"
+    else:
+      import mimetypes
+      content_type = mimetypes.guess_type(name)[0] or "application/octet-stream"
+    return web.FileResponse(
+      path,
+      headers={
+        "Content-Disposition": f'attachment; filename="{name}"',
+        "Content-Type": content_type,
+      },
+    )
   limit = int(request.query.get("limit", "40"))
   return _json_response(list_dev_assets(limit=limit))
 

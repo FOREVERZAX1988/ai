@@ -830,5 +830,30 @@ class TestMadsDiagnostics(unittest.TestCase):
       self.assertTrue(latch)
 
 
+class TestPlatformBackup(unittest.TestCase):
+  def test_opbak_roundtrip(self):
+    from ai.tools.platform_backup import BUNDLE_VERSION, pack_opbak, parse_uploaded_payload, unpack_opbak
+
+    sample = {
+      "version": BUNDLE_VERSION,
+      "exportedAt": 1,
+      "ai_config": {"ai_provider": "deepseek", "ai_model": "deepseek-v4-flash"},
+      "memory": {"notes": [], "vehicle_profile": {}},
+      "sessions": {"sessions": []},
+      "learned_skills": [],
+      "mcp_servers": [],
+      "workspace": {},
+      "params": {},
+      "enabled_skills": ["sp-tuning"],
+    }
+    blob = pack_opbak(sample)
+    self.assertTrue(blob[:2] == b"\x1f\x8b")
+    inner = unpack_opbak(blob)
+    self.assertEqual(inner.get("version"), BUNDLE_VERSION)
+    parsed = parse_uploaded_payload(blob)
+    self.assertTrue(parsed.get("ok"))
+    self.assertEqual(parsed["bundle"]["bundle"]["ai_model"], "deepseek-v4-flash")
+
+
 if __name__ == "__main__":
   unittest.main()

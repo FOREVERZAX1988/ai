@@ -170,6 +170,9 @@ const els = {
   onboardingRagStatus: $('#onboardingRagStatus'),
   onboardingRagStartBtn: $('#onboardingRagStartBtn'),
   onboardingRagSkipBtn: $('#onboardingRagSkipBtn'),
+  onboardingBackupFile: $('#onboardingBackupFile'),
+  onboardingRestoreBtn: $('#onboardingRestoreBtn'),
+  onboardingRestoreStatus: $('#onboardingRestoreStatus'),
   knowledgeMainContent: $('#knowledgeMainContent'),
   pcSessionsList: $('#pcSessionsList'),
   devAssetsList: $('#devAssetsList'),
@@ -363,6 +366,7 @@ function initChatJobs() {
     getLiveStreamUi,
     getLastAssistantUi,
     stripLeakedToolCalls,
+    renderMarkdownContent,
     hydrateAssistantUi,
     assistantMessageHasContent,
     isLocallyStreaming,
@@ -450,6 +454,7 @@ function tf(key, vars, fallback) {
 
 function applyDataI18n() {
   document.querySelectorAll('[data-i18n]').forEach((el) => {
+    if (el.id === 'cabanaMetaBar') return;
     const key = el.dataset.i18n;
     if (!key) return;
     const val = t(key);
@@ -474,6 +479,20 @@ function applyCachedUiState() {
   if (!src?.model) return;
   if (savedConfig?.model) updateModelBadgeFromSaved();
   else updateModelBadge(src.model);
+}
+
+function hydrateFromLocalPrefs() {
+  const cache = LocalPrefs.getConfigCache();
+  if (cache && Object.keys(cache).length) {
+    savedConfig = { ...savedConfig, ...cache };
+    if (cache._providers?.length) {
+      providers = cache._providers;
+      renderProviderOptions();
+    }
+    applyConfigToForm(cache);
+  }
+  applyCachedUiState();
+  primeModelsFromCacheOrCatalog(savedConfig?.provider || els.providerSelect?.value);
 }
 
 function timezoneOptionKey(id) {
@@ -2095,32 +2114,37 @@ async function saveRagDoc() {
   }
 }
 
-function renderConsumerQuickActions(wizards) {
-  const host = els.opQuickActions;
-  if (!host) return;
-  const list = wizards || window.__consumerWizards || [];
-  if (!list.length) {
-    host.hidden = true;
-    return;
-  }
-  host.hidden = false;
-  host.innerHTML = list.map((w) => `
-    <button type="button" class="op-quick-btn" data-wizard="${escapeHtml(w.id)}" data-workflow="${escapeHtml(w.workflow_id || '')}" title="${escapeHtml(w.description || '')}">
-      <span>${w.icon || '•'}</span><span>${escapeHtml(w.name || w.id)}</span>
-    </button>`).join('');
-  host.querySelectorAll('.op-quick-btn').forEach((btn) => {
-    btn.addEventListener('click', () => startConsumerWizard(btn.dataset.wizard, btn.dataset.workflow));
-  });
+function renderConsumerQuickActions(_wizards) {
+  // Top quick-action bar removed; use welcome cards + slash commands instead.
+}
+
+function resolveConsumerWizard(wizardId) {
+  const list = window.__consumerWizards || [];
+  return list.find((w) => w.id === wizardId) || null;
 }
 
 async function startConsumerWizard(wizardId, workflowId) {
-  const { data } = await api('GET', `/api/ai/consumer/wizards/${encodeURIComponent(wizardId)}/start`).catch(() => ({ data: {} }));
-  const prompt = data?.message || data?.wizard?.starter_prompt || '';
-  if (els.chatInput) {
-    els.chatInput.value = prompt;
-    els.chatInput.focus();
+  const cached = resolveConsumerWizard(wizardId);
+  let prompt = cached?.starter_prompt || '';
+  let workflow = workflowId || cached?.workflow_id || '';
+
+  if (!prompt) {
+    const { data } = await api(
+      'GET',
+      `/api/ai/consumer/wizards/${encodeURIComponent(wizardId)}/start`,
+      null,
+      { timeoutMs: 8000 },
+    ).catch(() => ({ data: {} }));
+    prompt = data?.message || data?.wizard?.starter_prompt || '';
+    workflow = workflow || data?.workflow || data?.wizard?.workflow_id || '';
   }
-  await sendUserMessage(prompt, { workflow: workflowId || data?.workflow, consumerMode: true });
+
+  if (!prompt?.trim()) {
+    showToast(t('quickActionsMissing', '快捷卡片未加载，请刷新页面。'), 'error');
+    return;
+  }
+
+  await sendUserMessage(prompt, { workflow, consumerMode: true });
 }
 
 function renderConsumerWritePreview(consumerPreview, rawPreview) {
@@ -2428,7 +2452,10 @@ function renderMarkdownContent(el, text) {
   }
   if (typeof Markdown !== 'undefined') {
     el.classList.add('md-content');
-    el.innerHTML = Markdown.render(clean);
+    const normalized = typeof Markdown.normalizeMarkdownInput === 'function'
+      ? Markdown.normalizeMarkdownInput(clean)
+      : clean;
+    el.innerHTML = Markdown.render(normalized);
   } else {
     el.textContent = clean;
   }
@@ -3410,14 +3437,16 @@ function onComposerInput() {
 
 async function sendChat(e) {
   e.preventDefault();
-  let text = els.chatInput.value.trim();
-  const images = pendingImages.slice();
-  if (!text && images.length === 0) return;
-
-  if (abortController) {
+  const jobActive = (typeof ChatJobs !== 'undefined' && ChatJobs.getActiveJobId())
+    || SessionStore.getActiveJobId(SessionStore.activeId);
+  if (abortController || jobActive) {
     abortActiveChat();
     return;
   }
+
+  let text = els.chatInput.value.trim();
+  const images = pendingImages.slice();
+  if (!text && images.length === 0) return;
 
   const slashResolved = await resolveSlashSend(text);
   if (slashResolved?.blockSend) {
@@ -4263,7 +4292,7 @@ async function loadBootstrap() {
 
   const savedModel = savedConfig?.model || defaults[provider] || '';
   const gotLiveModels = data.modelsSource === 'api' && Array.isArray(data.models) && data.models.length > 0;
-  await ensureModelsLoaded(savedModel, { refresh: false });
+  ensureModelsLoaded(savedModel, { refresh: false }).catch(() => {});
   if (!gotLiveModels && canFetchModelsFromForm()) {
     fetchModels({ savedModel }).catch(() => {});
   }
@@ -4278,7 +4307,7 @@ async function loadBootstrap() {
     window.__consumerWizards = data.consumer.wizards;
     renderConsumerQuickActions(data.consumer.wizards);
   }
-  await loadUsage();
+  loadUsage().catch(() => {});
 }
 
 async function loadConfig() {
@@ -4719,27 +4748,39 @@ function renderPackageVersionCard(pkg) {
 }
 
 function renderForgeTokenRow(forge, auth, inputId, placeholderKey, placeholderDefault) {
-  const statusClass = auth.valid ? 'on' : (auth.configured ? 'off' : '');
+  const forgeLabel = forge === 'gitee' ? 'Gitee' : 'GitHub';
+  const statusClass = auth.valid ? 'on' : (auth.configured ? 'warn' : '');
   const statusText = auth.valid
     ? t('devPublishTokenOk', '已验证')
     : (auth.configured ? t('devPublishTokenBad', '无效') : t('devPublishTokenMissing', '未配置'));
   const userLine = auth.valid && auth.user
     ? `<span class="publish-token-user">${t('devPublishTokenBound', '已绑定')} @${escapeHtml(auth.user)}</span>`
     : '';
+  const hintKey = forge === 'gitee' ? 'devPublishTokenHintGitee' : 'devPublishTokenHintGithub';
+  const hintDefault = forge === 'gitee'
+    ? 'Gitee 私人令牌，需具备 Pull Request 权限。'
+    : '需 classic/细粒度 PAT，含 repo 权限（存为 ai_github_actions_pat）。';
+  const hintLink = forge === 'gitee'
+    ? '<a href="https://gitee.com/profile/personal_access_tokens" target="_blank" rel="noopener noreferrer">gitee.com/profile/personal_access_tokens</a>'
+    : '<a href="https://github.com/settings/tokens" target="_blank" rel="noopener noreferrer">github.com/settings/tokens</a>';
   const eyeSvg = `<svg class="icon-svg eye-open" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
     <svg class="icon-svg eye-closed hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true"><path d="M3 3l18 18"/><path d="M10.6 10.6a2 2 0 0 0 2.8 2.8"/><path d="M6.7 6.7C4.1 8.5 2.5 12 2.5 12s3.5 7 9.5 7c1.8 0 3.4-.5 4.8-1.3"/><path d="M9.9 5.1A10.8 10.8 0 0 1 12 5c6 0 9.5 7 9.5 7a16.2 16.2 0 0 1-3.6 4.5"/><path d="M14.1 14.1a2 2 0 0 1-2.8-2.8"/></svg>`;
   return `
-    <div class="publish-token-row" data-forge="${forge}">
+    <div class="field dev-forge-field" data-forge="${forge}">
+      <span class="field-label">${forgeLabel}</span>
       <div class="password-field">
-        <input type="password" id="${inputId}" class="field-input publish-token-input" placeholder="${t(placeholderKey, placeholderDefault)}" autocomplete="off">
+        <input type="password" id="${inputId}" placeholder="${t(placeholderKey, placeholderDefault)}" autocomplete="off">
         <button type="button" class="password-reveal" data-password-for="${inputId}" aria-pressed="false" tabindex="-1">${eyeSvg}</button>
       </div>
-      <div class="publish-token-actions">
+      <div class="publish-token-meta">
         <span class="dev-status ${statusClass}">${statusText}</span>
         ${userLine}
-        <button type="button" class="btn small ghost publish-token-verify" data-forge="${forge}" data-input="${inputId}">${t('devPublishVerify', '验证')}</button>
-        <button type="button" class="btn small ghost publish-token-clear" data-forge="${forge}" data-input="${inputId}">${t('devPublishClear', '清除')}</button>
+        <div class="publish-token-actions">
+          <button type="button" class="btn small ghost publish-token-verify" data-forge="${forge}" data-input="${inputId}">${t('devPublishVerify', '验证')}</button>
+          <button type="button" class="btn small ghost publish-token-clear" data-forge="${forge}" data-input="${inputId}">${t('devPublishClear', '清除')}</button>
+        </div>
       </div>
+      <p class="field-hint">${t(hintKey, hintDefault)} ${hintLink}</p>
     </div>`;
 }
 
@@ -4753,36 +4794,22 @@ function renderPublishSettingsCard(status) {
   const forks = proj.forks || {};
   const opFork = forks.openpilot || {};
   return `
-    <div class="dev-kv">
-      <span class="dev-kv-label">GitHub</span>
-      <span class="dev-kv-value">
-        ${renderForgeTokenRow('github', gh, 'publishGithubToken', 'devPublishTokenPh', 'PAT (repo)')}
-        <p class="dev-env-hint muted">${t('devPublishTokenHintGithub', '需 classic/细粒度 PAT，含 repo 权限（存为 ai_github_actions_pat）。')} <a href="https://github.com/settings/tokens" target="_blank" rel="noopener noreferrer">github.com/settings/tokens</a></p>
-      </span>
-    </div>
-    <div class="dev-kv">
-      <span class="dev-kv-label">Gitee</span>
-      <span class="dev-kv-value">
-        ${renderForgeTokenRow('gitee', gitee, 'publishGiteeToken', 'devPublishGiteeTokenPh', '私人令牌')}
-        <p class="dev-env-hint muted">${t('devPublishTokenHintGitee', 'Gitee 私人令牌，需具备 Pull Request 权限。')} <a href="https://gitee.com/profile/personal_access_tokens" target="_blank" rel="noopener noreferrer">gitee.com/profile/personal_access_tokens</a></p>
-      </span>
-    </div>
-    <div class="dev-kv">
-      <span class="dev-kv-label">${t('devPublishDefaultMode', '项目仓默认')}</span>
-      <span class="dev-kv-value">
-        <select id="publishDefaultMode" class="field-input">
+    <div class="dev-form-stack">
+      ${renderForgeTokenRow('github', gh, 'publishGithubToken', 'devPublishTokenPh', 'PAT（repo 权限）')}
+      ${renderForgeTokenRow('gitee', gitee, 'publishGiteeToken', 'devPublishGiteeTokenPh', '私人令牌')}
+      <label class="field">
+        <span class="field-label">${t('devPublishDefaultMode', '项目仓默认')}</span>
+        <select id="publishDefaultMode">
           <option value="current_remote" ${mode === 'current_remote' ? 'selected' : ''}>${t('devPublishModeCurrent', '当前 remote')}</option>
           <option value="user_fork" ${mode === 'user_fork' ? 'selected' : ''}>${t('devPublishModeFork', '我的 fork')}</option>
         </select>
-      </span>
-    </div>
-    <div class="dev-kv">
-      <span class="dev-kv-label">openpilot fork</span>
-      <span class="dev-kv-value">
-        <input type="url" id="publishOpenpilotForkUrl" class="field-input" placeholder="https://gitee.com/user/openpilot" value="${escapeHtml(opFork.fork_url || '')}">
-      </span>
-    </div>
-    <p class="dev-env-hint muted">${t('devPublishAssistantHint', 'op助手 (ai) 默认 PR 到 mouxangithub/ai；项目仓 PR 目标由 remote 或 fork 决定。')}</p>`;
+      </label>
+      <label class="field">
+        <span class="field-label">openpilot fork</span>
+        <input type="url" id="publishOpenpilotForkUrl" placeholder="https://gitee.com/user/openpilot" value="${escapeHtml(opFork.fork_url || '')}">
+      </label>
+      <p class="field-hint">${t('devPublishAssistantHint', 'op助手 (ai) 默认 PR 到 mouxangithub/ai；项目仓 PR 目标由 remote 或 fork 决定。')}</p>
+    </div>`;
 }
 
 function renderPublishUnits(units) {
@@ -4803,15 +4830,15 @@ function renderPublishUnits(units) {
     return `
     <div class="publish-unit-card" data-unit-id="${escapeHtml(u.id)}">
       <div class="publish-unit-head">
-        <strong>${escapeHtml(u.id)}</strong>
+        <strong class="publish-unit-title">${escapeHtml(u.display_name || u.id)}</strong>
         <span class="dev-status ${dirty ? 'on' : ''}">${dirty ? `${dirty} ${t('devPublishDirty', '处改动')}` : t('devPublishClean', '无改动')}</span>
       </div>
-      <div class="dev-kv">
-        <span class="dev-kv-label">${t('devPublishBranch', '分支')}</span>
-        <span class="dev-kv-value">${escapeHtml(u.branch || '—')} · ${escapeHtml(targetHint)}</span>
-      </div>
+      <p class="publish-unit-meta">${escapeHtml(u.branch || '—')} · ${escapeHtml(targetHint)}</p>
       <div class="publish-unit-actions">
-        <select class="field-input publish-unit-mode">${modeOpts}</select>
+        <label class="field publish-unit-mode-field">
+          <span class="field-label">${t('devPublishTarget', '发布目标')}</span>
+          <select class="publish-unit-mode">${modeOpts}</select>
+        </label>
         <button type="button" class="btn small primary publish-unit-btn" data-unit="${escapeHtml(u.id)}" ${dirty ? '' : 'disabled'}>${t('devPublishBtn', '发布 PR')}</button>
       </div>
     </div>`;
@@ -5037,26 +5064,30 @@ function renderIssueSettingsCard(status) {
   const gh = status?.forge_auth?.github || {};
   const unit = settings.default_unit || 'assistant';
   const tpl = settings.default_template || 'bug';
+  const ghStatus = gh.valid ? t('devPublishTokenOk', '已验证') : (gh.configured ? t('devPublishTokenBad', '无效') : t('devPublishTokenMissing', '未配置'));
+  const ghClass = gh.valid ? 'on' : (gh.configured ? 'warn' : '');
   return `
-    <div class="dev-kv">
-      <span class="dev-kv-label">${t('devIssueDefaultUnit', '默认单元')}</span>
-      <span class="dev-kv-value">
-        <select id="issueDefaultUnit" class="field-input">
-          <option value="assistant" ${unit === 'assistant' ? 'selected' : ''}>assistant</option>
-          <option value="openpilot" ${unit === 'openpilot' ? 'selected' : ''}>openpilot</option>
+    <div class="dev-form-stack dev-form-stack-compact">
+      <label class="field">
+        <span class="field-label">${t('devIssueDefaultUnit', 'Issue 提交到')}</span>
+        <select id="issueDefaultUnit">
+          <option value="assistant" ${unit === 'assistant' ? 'selected' : ''}>${t('devUnitAssistant', 'op助手 (mouxangithub/ai)')}</option>
+          <option value="openpilot" ${unit === 'openpilot' ? 'selected' : ''}>${t('devUnitOpenpilot', 'openpilot 主仓')}</option>
         </select>
-      </span>
-    </div>
-    <div class="dev-kv">
-      <span class="dev-kv-label">${t('devIssueDefaultTemplate', '默认模板')}</span>
-      <span class="dev-kv-value">
-        <select id="issueDefaultTemplate" class="field-input">
+      </label>
+      <label class="field">
+        <span class="field-label">${t('devIssueDefaultTemplate', '默认模板')}</span>
+        <select id="issueDefaultTemplate">
           ${(status?.templates || []).map((x) => `<option value="${escapeHtml(x.id)}" ${x.id === tpl ? 'selected' : ''}>${escapeHtml(x.name || x.id)}</option>`).join('')}
         </select>
-      </span>
-    </div>
-    <p class="dev-env-hint muted">${t('devIssueHint', 'Bug/建议先开 Issue；已改代码请用「代码发布」开 PR。Token 与发布共用。')}</p>
-    <p class="dev-env-hint">${t('devIssueGithub', 'GitHub')}: <span class="dev-status ${gh.valid ? 'on' : 'off'}">${gh.valid ? t('devPublishTokenOk', '已验证') : t('devPublishTokenMissing', '未配置')}</span></p>`;
+      </label>
+      <p class="field-hint">${t('devIssueUnitHint', '选择 GitHub Issue 要开在哪个仓库；与「代码发布」里的发布单元对应。')}</p>
+      <p class="field-hint">${t('devIssueHint', 'Bug/建议先开 Issue；已改代码请用「代码发布」开 PR。Token 与发布共用。')}</p>
+      <div class="publish-token-meta">
+        <span class="field-label">${t('devIssueGithub', 'GitHub')}</span>
+        <span class="dev-status ${ghClass}">${ghStatus}</span>
+      </div>
+    </div>`;
 }
 
 function renderIssueForm(templates) {
@@ -5064,18 +5095,28 @@ function renderIssueForm(templates) {
   const tplOpts = issueTemplatesCache.map((x) =>
     `<option value="${escapeHtml(x.id)}">${escapeHtml(x.name || x.id)}</option>`).join('');
   return `
-    <label class="field-label" for="issueKindSelect">${t('devIssueKind', '类型')}</label>
-    <select id="issueKindSelect" class="field-input">
-      <option value="bug">${t('devIssueKindBug', 'Bug')}</option>
-      <option value="feature">${t('devIssueKindFeature', '功能建议')}</option>
-      <option value="suggestion">${t('devIssueKindSuggestion', '体验反馈')}</option>
-    </select>
-    <label class="field-label" for="issueTemplateSelect">${t('devIssueTemplate', '模板')}</label>
-    <select id="issueTemplateSelect" class="field-input">${tplOpts}</select>
-    <label class="field-label" for="issueTitleInput">${t('devIssueTitleLabel', '标题')}</label>
-    <input type="text" id="issueTitleInput" class="field-input" placeholder="${t('devIssueTitlePh', '简要描述问题')}">
-    <label class="field-label" for="issueSummaryInput">${t('devIssueSummary', '描述')}</label>
-    <textarea id="issueSummaryInput" class="field-input issue-summary-input" rows="4" placeholder="${t('devIssueSummaryPh', '复现步骤、期望与实际行为…')}"></textarea>`;
+    <div class="dev-form-stack">
+      <label class="field">
+        <span class="field-label" id="issueKindSelectLabel">${t('devIssueKind', '类型')}</span>
+        <select id="issueKindSelect">
+          <option value="bug">${t('devIssueKindBug', 'Bug')}</option>
+          <option value="feature">${t('devIssueKindFeature', '功能建议')}</option>
+          <option value="suggestion">${t('devIssueKindSuggestion', '体验反馈')}</option>
+        </select>
+      </label>
+      <label class="field">
+        <span class="field-label" id="issueTemplateSelectLabel">${t('devIssueTemplate', '模板')}</span>
+        <select id="issueTemplateSelect">${tplOpts}</select>
+      </label>
+      <label class="field">
+        <span class="field-label" id="issueTitleInputLabel">${t('devIssueTitleLabel', '标题')}</span>
+        <input type="text" id="issueTitleInput" placeholder="${t('devIssueTitlePh', '简要描述问题')}">
+      </label>
+      <label class="field">
+        <span class="field-label" id="issueSummaryInputLabel">${t('devIssueSummary', '描述')}</span>
+        <textarea id="issueSummaryInput" class="issue-summary-input" rows="4" placeholder="${t('devIssueSummaryPh', '复现步骤、期望与实际行为…')}"></textarea>
+      </label>
+    </div>`;
 }
 
 async function loadIssuePane() {
@@ -5543,6 +5584,39 @@ async function testOnboardingWizard() {
   };
   if (typeof UiBusy !== 'undefined') {
     await UiBusy.withButtonBusy(els.onboardingTestBtn, run, { busyLabel: t('testing', '测试中…') });
+  } else {
+    await run();
+  }
+}
+
+async function restoreOnboardingBackup() {
+  const file = els.onboardingBackupFile?.files?.[0];
+  if (!file) {
+    if (els.onboardingRestoreStatus) els.onboardingRestoreStatus.textContent = t('platformBackupPickFile', '请选择 .opbak 文件');
+    return;
+  }
+  const run = async () => {
+    if (els.onboardingRestoreStatus) els.onboardingRestoreStatus.textContent = t('uiWorking', '处理中…');
+    const restore = typeof PlatformPanel !== 'undefined' && PlatformPanel.restoreFromFile
+      ? PlatformPanel.restoreFromFile.bind(PlatformPanel)
+      : null;
+    if (!restore) {
+      if (els.onboardingRestoreStatus) els.onboardingRestoreStatus.textContent = t('saveFailed', '保存失败');
+      return;
+    }
+    const { data } = await restore(file, { mode: 'merge', confirm: true });
+    if (!data?.ok) {
+      if (els.onboardingRestoreStatus) els.onboardingRestoreStatus.textContent = data?.error || t('saveFailed', '保存失败');
+      return;
+    }
+    await api('POST', '/api/ai/onboarding/complete', {}).catch(() => ({}));
+    configured = true;
+    closeOnboardingWizard();
+    showToast(t('platformBackupRestored', '恢复完成'), 'success');
+    await loadBootstrap();
+  };
+  if (typeof UiBusy !== 'undefined') {
+    await UiBusy.withButtonBusy(els.onboardingRestoreBtn, run, { busyLabel: t('uiWorking', '处理中…') });
   } else {
     await run();
   }
@@ -6223,6 +6297,7 @@ function bindUiEvents() {
   els.onboardingBackdrop?.addEventListener('click', closeOnboardingWizard);
   els.onboardingTestBtn?.addEventListener('click', () => testOnboardingWizard());
   els.onboardingSaveBtn?.addEventListener('click', () => saveOnboardingWizard());
+  els.onboardingRestoreBtn?.addEventListener('click', () => restoreOnboardingBackup().catch(console.error));
   els.onboardingProvider?.addEventListener('change', async () => {
     const p = els.onboardingProvider.value;
     if (!onboardingModelCombo?.getValue()) {
@@ -6344,6 +6419,7 @@ async function init() {
   initChatJobs();
   if (typeof PlatformPanel !== 'undefined') {
     PlatformPanel.init({ api, showToast });
+    PlatformPanel.bindFilePicker?.('onboardingBackupFile', 'onboardingBackupFileName', 'onboardingBackupPick');
   }
   initModelCombos();
   if (typeof AgentsPanel !== 'undefined') {
@@ -6401,40 +6477,41 @@ async function init() {
   updateThemeIcon();
   if (els.langSelect) els.langSelect.value = i18n.getLang();
   applyTranslations();
-  applyCachedUiState();
+  hydrateFromLocalPrefs();
 
   if (typeof CabanaPanel !== 'undefined') {
     ensureCabanaInited();
   }
 
-  startSyncWebSocket();
-
-  try {
-    await Promise.all([
-      loadBootstrap().catch((e) => {
-        console.error('loadBootstrap failed', e);
-        applyCachedUiState();
-      }),
-      waitForSyncHello(6000),
-    ]);
-  } catch (e) {
-    console.error('init bootstrap/hello failed', e);
-    applyCachedUiState();
-  }
-
-  if (!_gatewayHydrated) {
-    await refreshSessionViewFromRemote().catch((e) => {
-      console.warn('initial session pull failed', e);
-    });
-  }
-
-  await migrateLegacySessionsOnce().catch(() => {});
-
   loadSessionMode();
   renderSessionList();
   renderStoredMessages();
   updateModelBadgeFromSaved();
-  if (typeof ChatJobs !== 'undefined') ChatJobs.recoverStuckStreams?.().catch(() => {});
+
+  await dismissAppSplash();
+
+  startSyncWebSocket();
+
+  loadBootstrap()
+    .then(() => {
+      renderSessionList();
+      renderStoredMessages();
+      updateModelBadgeFromSaved();
+      if (typeof ChatJobs !== 'undefined') ChatJobs.recoverStuckStreams?.().catch(() => {});
+    })
+    .catch((e) => {
+      console.error('loadBootstrap failed', e);
+      hydrateFromLocalPrefs();
+    });
+
+  if (!_gatewayHydrated) {
+    refreshSessionViewFromRemote().catch((e) => {
+      console.warn('initial session pull failed', e);
+    });
+  }
+
+  migrateLegacySessionsOnce().catch(() => {});
+
   if (typeof CanvasPanel !== 'undefined') {
     CanvasPanel.loadSession(SessionStore.activeId).catch(() => {});
   }
@@ -6450,8 +6527,6 @@ async function init() {
   const settingsTab = new URLSearchParams(location.search).get('settings');
   if (settingsTab === 'secoc') openSecocModal();
   else if (settingsTab) openSettingsTab(settingsTab);
-
-  await dismissAppSplash();
 }
 
 function dismissAppSplash() {

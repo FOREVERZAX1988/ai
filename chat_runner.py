@@ -131,7 +131,7 @@ async def build_chat_messages(
     pass
 
   try:
-    from ai.workspace import workspace_prompt_blocks
+    from ai.workspace_store import workspace_prompt_blocks
     for block in workspace_prompt_blocks():
       system_parts.append(block)
   except Exception:

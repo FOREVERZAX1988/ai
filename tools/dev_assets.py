@@ -20,7 +20,7 @@ def _scan_dir(directory: Path, *, kind: str, limit: int = 40) -> list[dict[str, 
   for path in sorted(directory.iterdir(), key=lambda p: p.stat().st_mtime, reverse=True):
     if not path.is_file():
       continue
-    if path.suffix.lower() not in (".html", ".mp4", ".wav", ".json"):
+    if path.suffix.lower() not in (".html", ".mp4", ".wav", ".json", ".opbak"):
       continue
     try:
       st = path.stat()

@@ -1,11 +1,12 @@
-"""Workspace markdown files under <openpilot>/workspace/ — USER, MEMORY, SOUL, fork profile."""
+"""Workspace markdown under <openpilot>/ai/workspace/ — USER, MEMORY, SOUL, daily logs."""
 
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
 from typing import Any
 
-from ai.system.paths import openpilot_root, workspace_path
+from ai.system.paths import openpilot_root
 
 _FILE_MAP: dict[str, str] = {
   "user": "USER.md",
@@ -53,7 +54,7 @@ _DEFAULTS: dict[str, str] = {
 （未完成事项与下次对话入口）
 
 ## 每日日志
-（按天见 `workspace/memory/YYYY-MM-DD.md`；此处只放跨日仍重要的结论）
+（按天见 `ai/workspace/memory/YYYY-MM-DD.md`；此处只放跨日仍重要的结论）
 
 ## 禁忌与边界
 （不要重复的错误、用户明确拒绝的方案）
@@ -109,9 +110,13 @@ read_file / write_file / run_shell_command / search_past_conversations
   "FORK_PROFILE.md": "# Fork profile\n\n（安装后由 op助手 自动写入当前 openpilot 分支摘要；也可手动编辑。）\n",
 }
 
+_AI_ROOT = Path(__file__).resolve().parent
+
 
 def workspace_dir() -> Path:
-  return workspace_path("workspace", mkdir=True)
+  path = _AI_ROOT / "workspace"
+  path.mkdir(parents=True, exist_ok=True)
+  return path
 
 
 def _resolve_key(key: str) -> str | None:
@@ -163,35 +168,43 @@ def write_workspace_file(key: str, content: str) -> dict[str, Any]:
   return {"ok": True, "key": key, "filename": filename, "path": str(path)}
 
 
+def _copy_tree_files(src_dir: Path, dst_dir: Path) -> None:
+  if not src_dir.is_dir():
+    return
+  dst_dir.mkdir(parents=True, exist_ok=True)
+  for item in src_dir.iterdir():
+    if not item.is_file():
+      continue
+    dst = dst_dir / item.name
+    if not dst.is_file():
+      shutil.copy2(item, dst)
+
+
+def _migrate_legacy_workspace_dirs() -> None:
+  """One-time: pull data from mistaken openpilot/workspace or _legacy_workspace_backup."""
+  target = workspace_dir()
+  sources = [
+    openpilot_root() / "workspace",
+    _AI_ROOT / "_legacy_workspace_backup",
+  ]
+  for src_root in sources:
+    if not src_root.is_dir() or src_root.resolve() == target.resolve():
+      continue
+    for filename in _FILE_MAP.values():
+      src = src_root / filename
+      dst = target / filename
+      if src.is_file() and not dst.is_file():
+        shutil.copy2(src, dst)
+    _copy_tree_files(src_root / "memory", target / "memory")
+
+
 def ensure_default_workspace_files() -> None:
-  _migrate_legacy_workspace_package()
+  _migrate_legacy_workspace_dirs()
   base = workspace_dir()
   for filename, default in _DEFAULTS.items():
     path = base / filename
     if not path.is_file():
       path.write_text(default, encoding="utf-8")
-
-
-def _migrate_legacy_workspace_package() -> None:
-  """ai/workspace/ 包曾遮蔽 workspace.py；把用户数据迁到 <openpilot>/workspace/。"""
-  import shutil
-
-  legacy = Path(__file__).resolve().parent / "workspace"
-  if not legacy.is_dir():
-    return
-  target = workspace_path("workspace", mkdir=True)
-  for filename in _FILE_MAP.values():
-    src = legacy / filename
-    dst = target / filename
-    if src.is_file() and not dst.is_file():
-      shutil.copy2(src, dst)
-  legacy_mem = legacy / "memory"
-  if legacy_mem.is_dir():
-    tgt_mem = target / "memory"
-    tgt_mem.mkdir(parents=True, exist_ok=True)
-    for item in legacy_mem.iterdir():
-      if item.is_file() and not (tgt_mem / item.name).is_file():
-        shutil.copy2(item, tgt_mem / item.name)
 
 
 def heartbeat_checklist() -> str:

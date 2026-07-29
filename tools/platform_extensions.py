@@ -34,7 +34,7 @@ from ai.tools.daily_memory import (
   read_daily_memory,
   read_recent_daily_memories,
 )
-from ai.workspace import read_workspace_file, write_workspace_file
+from ai.workspace_store import read_workspace_file, write_workspace_file
 
 PLATFORM_TOOL_META: dict[str, dict[str, Any]] = {
   "sessions_list": {"label": "会话列表", "group": "read", "default_enabled": True, "driving": True},

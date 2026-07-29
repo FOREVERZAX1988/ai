@@ -64,6 +64,37 @@ def _unit_id_from_path(rel: str) -> str:
   return base or "submodule"
 
 
+def unit_display_name(unit_id: str, *, kind: str = "") -> str:
+  uid = (unit_id or "").strip()
+  if uid == "assistant" or kind == "assistant":
+    return "op助手 (ai)"
+  if uid == "openpilot":
+    return "openpilot 主仓"
+  return uid
+
+
+def _dedupe_units_by_git_root(units: list[dict[str, Any]]) -> list[dict[str, Any]]:
+  """Same git checkout must appear once — prefer assistant over submodule id 'ai'."""
+  by_root: dict[str, dict[str, Any]] = {}
+  order: list[str] = []
+  for unit in units:
+    root = unit.get("git_root") or unit.get("root") or ""
+    try:
+      key = str(Path(root).resolve())
+    except OSError:
+      key = str(root)
+    prev = by_root.get(key)
+    if not prev:
+      by_root[key] = unit
+      order.append(key)
+      continue
+    if unit.get("kind") == "assistant" and prev.get("kind") != "assistant":
+      by_root[key] = unit
+    elif unit.get("id") == "assistant" and prev.get("id") in ("ai", "assistant"):
+      by_root[key] = unit
+  return [by_root[k] for k in order]
+
+
 def _build_unit(
   *,
   unit_id: str,
@@ -108,6 +139,7 @@ def _build_unit(
 
   return {
     "id": unit_id,
+    "display_name": unit_display_name(unit_id, kind=kind),
     "kind": kind,
     "root": str(root),
     "git_root": str(git_root),
@@ -144,6 +176,9 @@ def discover_publish_units(*, include_clean: bool = True) -> dict[str, Any]:
       sub = (op_root / rel).resolve()
       if not _git_is_repo(sub):
         continue
+      # ai 子模块与 assistant 单元是同一 git 仓，只保留 assistant 条目
+      if sub == ai_path:
+        continue
       uid = _unit_id_from_path(rel)
       units.append(_build_unit(
         unit_id=uid,
@@ -178,6 +213,8 @@ def discover_publish_units(*, include_clean: bool = True) -> dict[str, Any]:
 
   if not include_clean:
     units = [u for u in units if u.get("has_changes")]
+
+  units = _dedupe_units_by_git_root(units)
 
   dirty_total = sum(int(u.get("dirty_count") or 0) for u in units)
   return {

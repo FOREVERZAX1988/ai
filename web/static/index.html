@@ -5,10 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>OP 助手</title>
   <link rel="icon" type="image/svg+xml" href="/static/img/favicon.svg">
-  <link rel="stylesheet" href="/static/css/ai.css?v=20260728r">
+  <link rel="stylesheet" href="/static/css/ai.css?v=20260730d">
   <link rel="stylesheet" href="/static/css/office-panel.css?v=20260728f">
   <link rel="stylesheet" href="/static/css/canvas-panel.css?v=20260723e">
-  <link rel="stylesheet" href="/static/css/cabana-panel.css?v=20260728f">
+  <link rel="stylesheet" href="/static/css/cabana-panel.css?v=20260730d">
   <link rel="stylesheet" href="/static/vendor/uplot/uPlot.min.css">
   <link rel="stylesheet" href="/static/vendor/xterm/xterm.css?v=20260722i">
 </head>
@@ -92,7 +92,6 @@
       <main class="workspace" id="workspace">
         <section class="chat-layout" id="chatLayout">
           <div class="chat-thread">
-          <div class="op-quick-actions" id="opQuickActions" hidden aria-label="快捷向导"></div>
           <div class="messages" id="messages"></div>
           <div class="composer-wrap">
             <div class="composer-attachments hidden" id="composerAttachments"></div>
@@ -159,7 +158,7 @@
             <button type="button" class="cabana-mode-tab active" data-mode="live" id="cabanaTabLive">实时</button>
             <button type="button" class="cabana-mode-tab" data-mode="replay" id="cabanaTabReplay">回放</button>
           </div>
-          <p class="cabana-meta" id="cabanaMetaBar" data-i18n="cabanaCarLoading">加载中…</p>
+          <p class="cabana-meta" id="cabanaMetaBar">加载中…</p>
           <div class="cabana-head-actions">
             <span id="cabanaLabelProgress" class="cabana-label-progress" hidden></span>
             <button type="button" id="cabanaAutoLabelBtn" class="btn small ghost">自动标注</button>
@@ -563,32 +562,43 @@
           <section class="settings-card">
             <header class="settings-card-head"><h3 class="settings-card-title" id="platformBackupTitle">平台备份</h3></header>
             <div class="settings-card-body platform-pane-body">
-              <p class="field-hint" id="platformBackupDesc">导出/恢复：记忆、会话、技能、MCP、工作区与上下文设置（Token 默认脱敏）。</p>
+              <p class="field-hint" id="platformBackupDesc">打包为 <code>.opbak</code> 压缩包（非 zip），包含模型/Embedding 配置、记忆、会话、技能、MCP、工作区等。Token 默认脱敏，换机恢复请勾选「包含 Token」。</p>
               <div id="platformBackupManifest" class="platform-list"></div>
               <div class="platform-toolbar platform-backup-actions">
-                <label class="platform-check-row"><input type="checkbox" id="platformBackupIncludeSecrets"> <span id="platformBackupSecretsLabel">包含 Token（慎用）</span></label>
-                <button type="button" id="platformBackupExport" class="btn small primary">导出备份</button>
+                <label class="platform-check-row"><input type="checkbox" id="platformBackupIncludeSecrets"> <span id="platformBackupSecretsLabel">包含 Token（换机恢复时勾选）</span></label>
+                <button type="button" id="platformBackupExport" class="btn small primary">导出 .opbak</button>
                 <a id="platformBackupDownload" class="btn small" href="#" hidden download>下载</a>
               </div>
-              <label class="field platform-restore-field">
-                <span class="field-label" id="platformBackupRestoreLabel">恢复备份（粘贴 JSON）</span>
-                <textarea id="platformBackupRestoreJson" rows="5" class="platform-editor" placeholder='{"version":1,...}'></textarea>
-              </label>
-              <div class="platform-toolbar platform-toolbar-secondary">
-                <select id="platformBackupRestoreMode" class="toolbar-select">
-                  <option value="merge">合并</option>
-                  <option value="replace">覆盖</option>
-                </select>
-                <button type="button" id="platformBackupRestorePreview" class="btn small">预览</button>
-                <button type="button" id="platformBackupRestoreApply" class="btn small primary">确认恢复</button>
+              <div class="platform-restore-upload">
+                <label class="field">
+                  <span class="field-label" id="platformBackupRestoreLabel">从备份恢复</span>
+                  <div class="file-picker">
+                    <input type="file" id="platformBackupRestoreFile" accept=".opbak,application/gzip" class="file-picker-input" hidden>
+                    <button type="button" id="platformBackupRestorePick" class="btn small file-picker-btn">选择 .opbak 文件</button>
+                    <span id="platformBackupRestoreFileName" class="file-picker-name">未选择文件</span>
+                  </div>
+                </label>
+                <div class="platform-toolbar platform-toolbar-secondary">
+                  <select id="platformBackupRestoreMode" class="toolbar-select">
+                    <option value="merge">合并（保留本机已有数据）</option>
+                    <option value="replace">覆盖（以备份为准）</option>
+                  </select>
+                  <button type="button" id="platformBackupRestorePreview" class="btn small">预览</button>
+                  <button type="button" id="platformBackupRestoreApply" class="btn small primary">确认恢复</button>
+                </div>
               </div>
-              <div id="platformBackupRestoreStatus" class="field-hint"></div>
+              <details class="platform-advanced-restore">
+                <summary class="field-hint" id="platformBackupJsonRestoreSummary">高级：粘贴旧版 JSON 备份</summary>
+                <textarea id="platformBackupRestoreJson" rows="4" class="platform-editor" placeholder='{"version":2,...}'></textarea>
+              </details>
+              <div id="platformBackupRestoreStatus" class="field-hint platform-restore-preview"></div>
             </div>
           </section>
           <section class="settings-card">
             <header class="settings-card-head"><h3 class="settings-card-title" id="platformEvolutionTitle">技能进化</h3></header>
             <div class="settings-card-body platform-pane-body">
-              <p class="field-hint" id="platformEvolutionDesc">借鉴 Hermes 闭环：分析会话轨迹 → 生成技能改进草案（需人工批准）。</p>
+              <p class="field-hint" id="platformEvolutionDesc">内置技能（<code>ai/skills</code>）不会自动改写。本功能分析对话失败轨迹，为<strong>已学技能</strong>生成改进草案，需在「已学技能」里人工批准后才生效。日常调参/排障请直接用聊天。</p>
+              <p class="field-hint" id="platformEvolutionHow">用法：多聊几轮有问题的场景 → 点「扫描轨迹」→「生成进化提案」→ 到下方「已学技能」批准。</p>
               <div id="platformEvolutionStatus" class="platform-list"></div>
               <div class="platform-toolbar platform-toolbar-secondary">
                 <button type="button" id="platformEvolutionScan" class="btn small">扫描轨迹</button>
@@ -635,7 +645,8 @@
           </section>
           <section class="settings-card">
             <header class="settings-card-head"><h3 class="settings-card-title" id="platformMemoryTitle">设备记忆</h3></header>
-            <div class="settings-card-body settings-card-body-flush">
+            <div class="settings-card-body platform-pane-body">
+              <p class="field-hint" id="platformMemoryDesc">AI 从对话中提炼的长期记忆：车型档案 + 文字备注（非聊天记录全文）。可在聊天中说「记住我喜欢跟车远一点」；也可编辑 设置→平台→工作区 里的 MEMORY.md。</p>
               <div id="platformMemoryProfile" class="platform-memory-profile"></div>
               <ul id="platformMemoryNotes" class="dev-item-list platform-memory-notes"></ul>
             </div>
@@ -645,7 +656,8 @@
               <h3 class="settings-card-title" id="platformPassportTitle">调参护照</h3>
               <span class="dev-count-badge" id="platformPassportCount">0</span>
             </header>
-            <div class="settings-card-body settings-card-body-flush">
+            <div class="settings-card-body platform-pane-body">
+              <p class="field-hint" id="platformPassportDesc">每次通过 AI 修改驾驶参数（write_params）的审计记录：时间、改了哪些项、改前改后。用于回溯「上次动了什么」；撤销调参请在聊天中说「撤销上次调参」。</p>
               <ul class="dev-item-list" id="platformPassportList"></ul>
             </div>
           </section>
@@ -654,6 +666,7 @@
               <h3 class="settings-card-title" id="platformTuneCompareTitle">调参 A/B 对比</h3>
             </header>
             <div class="settings-card-body platform-pane-body tune-ab-pane">
+              <p class="field-hint" id="platformTuneCompareDesc">高级：对比两条路线的 CAN/驾驶信号差异。日常更推荐在聊天中说「对比 xxx 和 yyy 两趟调参效果」—— AI 会调用同样工具并解释结果。</p>
               <div class="tune-ab-form">
                 <label class="field">
                   <span class="field-label" id="platformTuneRouteALabel">路线 A（调参前）</span>
@@ -672,8 +685,9 @@
           <section class="settings-card">
             <header class="settings-card-head"><h3 class="settings-card-title" id="platformDebugTitle">调试开关</h3></header>
             <div class="settings-card-body platform-debug-body">
-              <label class="platform-check-row"><input type="checkbox" id="chatVerboseToggle"> <span>Verbose（工具轨迹详情）</span></label>
-              <label class="platform-check-row"><input type="checkbox" id="chatTraceToggle"> <span>Trace（轮次跟踪事件）</span></label>
+              <p class="field-hint" id="platformDebugDesc">仅影响本浏览器：在聊天里显示更详细的工具调用轨迹（Verbose）或轮次跟踪事件（Trace）。正常使用请保持关闭。</p>
+              <label class="platform-check-row"><input type="checkbox" id="chatVerboseToggle"> <span id="platformDebugVerboseLabel">Verbose（工具轨迹详情）</span></label>
+              <label class="platform-check-row"><input type="checkbox" id="chatTraceToggle"> <span id="platformDebugTraceLabel">Trace（轮次跟踪事件）</span></label>
             </div>
           </section>
         </div>
@@ -1206,6 +1220,17 @@
           <label><input type="checkbox" name="onboardingGoal" value="adaptation"> <span id="onboardingGoalAdapt">新车适配</span></label>
           <label><input type="checkbox" name="onboardingGoal" value="routes"> <span id="onboardingGoalRoutes">路线复盘</span></label>
         </fieldset>
+        <details class="onboarding-restore-block">
+          <summary class="field-label" id="onboardingRestoreSummary">已有备份？快速恢复</summary>
+          <p class="field-hint" id="onboardingRestoreDesc">选择之前导出的 <code>.opbak</code> 文件，可恢复模型配置、记忆、会话等（换机请用含 Token 的备份）。</p>
+          <div class="file-picker">
+            <input type="file" id="onboardingBackupFile" accept=".opbak,application/gzip" class="file-picker-input" hidden>
+            <button type="button" id="onboardingBackupPick" class="btn small file-picker-btn">选择 .opbak 文件</button>
+            <span id="onboardingBackupFileName" class="file-picker-name">未选择文件</span>
+          </div>
+          <button type="button" id="onboardingRestoreBtn" class="btn small">恢复备份</button>
+          <p class="field-hint" id="onboardingRestoreStatus"></p>
+        </details>
         <p class="field-hint" id="onboardingResult"></p>
       </div>
       <div class="modal-footer actions">
@@ -1236,9 +1261,9 @@
     </div>
   </div>
 
-  <script src="/static/js/i18n.js?v=20260728n"></script>
+  <script src="/static/js/i18n.js?v=20260729b"></script>
   <script src="/static/js/theme.js?v=20260715h"></script>
-  <script src="/static/js/markdown.js"></script>
+  <script src="/static/js/markdown.js?v=20260730d"></script>
   <script src="/static/js/sessions.js?v=20260722k"></script>
   <script src="/static/vendor/xterm/xterm.js?v=20260722i"></script>
   <script src="/static/vendor/xterm/addon-fit.js?v=20260722i"></script>
@@ -1247,7 +1272,7 @@
   <script src="/static/js/local-prefs.js?v=20260722k"></script>
   <script src="/static/js/quick-actions.js?v=20260715h"></script>
   <script src="/static/js/tsk-panel.js?v=20260728j"></script>
-  <script src="/static/js/web-chat-jobs.js?v=20260728r"></script>
+  <script src="/static/js/web-chat-jobs.js?v=20260729n"></script>
   <script src="/static/js/web-api.js?v=20260722h"></script>
   <script src="/static/js/ui-busy.js?v=20260728a"></script>
   <script src="/static/js/web-config.js?v=20260722h"></script>
@@ -1265,13 +1290,13 @@
   }
   </script>
   <script type="module" src="/static/js/office-scene-3d.mjs?v=20260724c"></script>
-  <script src="/static/js/platform-panel.js?v=20260728p"></script>
+  <script src="/static/js/platform-panel.js?v=20260729t"></script>
   <script src="/static/js/office-panel.js?v=20260724c"></script>
   <script src="/static/js/command-queue.js?v=20260723k"></script>
   <script src="/static/js/canvas-panel.js?v=20260723a"></script>
   <script src="/static/js/terminal-panel.js?v=20260723e"></script>
-  <script src="/static/js/ai.js?v=20260728r"></script>
+  <script src="/static/js/ai.js?v=20260730e"></script>
   <script src="/static/vendor/uplot/uPlot.iife.min.js"></script>
-  <script src="/static/js/cabana-panel.js?v=20260728i"></script>
+  <script src="/static/js/cabana-panel.js?v=20260730d"></script>
 </body>
 </html>

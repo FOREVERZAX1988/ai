@@ -9,7 +9,7 @@ from typing import Any
 from openpilot.common.params import Params
 from openpilot.common.swaglog import cloudlog
 
-from ai.workspace import heartbeat_checklist
+from ai.workspace_store import heartbeat_checklist
 
 
 def _parse_llm_decision(content: str) -> dict[str, Any]:
