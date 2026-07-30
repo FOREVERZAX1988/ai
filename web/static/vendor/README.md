@@ -118,3 +118,31 @@ rm -rf package *.tgz
 ```
 
 引用见 `index.html` → `/static/vendor/...`
+
+## markdown-it（聊天 Markdown，OpenClaw 对齐）
+
+| 文件 | 说明 |
+|------|------|
+| `markdown-it/markdown-it-tasklists.bundle.js` | markdown-it@14.3.0 + task-lists（esbuild 打包） |
+| `markdown-it/purify.min.js` | DOMPurify@3.x HTML 消毒 |
+| `markdown-it/highlight.min.js` | highlight.js@11.11.1 代码高亮 |
+| `markdown-it/highlight-github-dark.min.css` | 代码块主题 |
+
+页面加载顺序（`index.html`）：bundle → purify → highlight → `js/markdown.js`。
+
+**维护者重建 bundle**（开发机，需 Node）：
+
+```bash
+cd ai/web/static/vendor/markdown-it
+npm install markdown-it@14.3.0 markdown-it-task-lists@2.1.1 --no-save
+npx esbuild build-entry.js --bundle --format=iife --global-name=OpMarkdown --outfile=markdown-it-tasklists.bundle.js --minify
+```
+
+更新 purify / highlight：
+
+```bash
+curl -fsSL "https://cdn.jsdelivr.net/npm/dompurify@3.2.4/dist/purify.min.js" -o purify.min.js
+curl -fsSL "https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.11.1/build/highlight.min.js" -o highlight.min.js
+curl -fsSL "https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.11.1/build/styles/github-dark.min.css" -o highlight-github-dark.min.css
+```
+

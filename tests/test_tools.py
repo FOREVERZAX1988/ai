@@ -6,6 +6,7 @@ import json
 import os
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -853,6 +854,66 @@ class TestPlatformBackup(unittest.TestCase):
     parsed = parse_uploaded_payload(blob)
     self.assertTrue(parsed.get("ok"))
     self.assertEqual(parsed["bundle"]["bundle"]["ai_model"], "deepseek-v4-flash")
+
+
+
+
+class TestDevCacheTools(unittest.TestCase):
+  def test_clear_within_window(self):
+    from ai.tools import dev_cache_tools
+
+    with tempfile.TemporaryDirectory() as tmp:
+      root = Path(tmp)
+      recent = root / "recent.bin"
+      old = root / "old.bin"
+      recent.write_bytes(b"x" * 10)
+      old.write_bytes(b"y" * 20)
+      now = time.time()
+      os.utime(recent, (now, now))
+      os.utime(old, (now - 10 * 86400, now - 10 * 86400))
+
+      original = dev_cache_tools._cache_group_defs
+      dev_cache_tools._cache_group_defs = lambda: [{
+        "id": "test",
+        "label": "test",
+        "paths": [root],
+      }]
+      try:
+        result = dev_cache_tools.clear_dev_cache(days=3, mode="within")
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["deleted_files"], 1)
+        self.assertTrue(recent.exists() is False)
+        self.assertTrue(old.exists())
+      finally:
+        dev_cache_tools._cache_group_defs = original
+
+  def test_status_filter_within(self):
+    from ai.tools import dev_cache_tools
+
+    with tempfile.TemporaryDirectory() as tmp:
+      root = Path(tmp)
+      recent = root / "recent.bin"
+      old = root / "old.bin"
+      recent.write_bytes(b"x" * 10)
+      old.write_bytes(b"y" * 20)
+      now = time.time()
+      os.utime(recent, (now, now))
+      os.utime(old, (now - 10 * 86400, now - 10 * 86400))
+
+      original = dev_cache_tools._cache_group_defs
+      dev_cache_tools._cache_group_defs = lambda: [{
+        "id": "test",
+        "label": "test",
+        "paths": [root],
+      }]
+      try:
+        all_status = dev_cache_tools.get_cache_status()
+        self.assertEqual(all_status["total_files"], 2)
+        filtered = dev_cache_tools.get_cache_status(days=3, mode="within")
+        self.assertEqual(filtered["total_files"], 1)
+        self.assertEqual(filtered["groups"][0]["files"], 1)
+      finally:
+        dev_cache_tools._cache_group_defs = original
 
 
 if __name__ == "__main__":

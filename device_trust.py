@@ -1,4 +1,4 @@
-"""Device trust and pairing — extends ai_web_pin with device fingerprints."""
+"""Device trust and pairing — optional device fingerprints (no LAN PIN)."""
 
 from __future__ import annotations
 
@@ -58,11 +58,7 @@ def fingerprint_from_request(request: web.Request) -> str:
 
 
 def is_pin_enabled(params: Params) -> bool:
-  pin = read_param(params, "ai_web_pin")
-  if not pin:
-    return False
-  pin_str = pin.decode() if isinstance(pin, bytes) else str(pin)
-  return bool(pin_str.strip())
+  return False
 
 
 def check_device_trust(request: web.Request, params: Params) -> dict[str, Any]:

@@ -251,9 +251,6 @@ const OfficePanel = (() => {
     toggleBtn?.classList.toggle('active', visible);
     onVisibilityChange?.(visible);
     if (visible) {
-      if (getDriving()) {
-        showToast?.('行驶中：办公室动画已暂停，不影响辅助驾驶');
-      }
       setDrivingMode(getDriving());
       setVehicleState(getVehicleState());
       ensureAgentsLoaded().catch(() => {});

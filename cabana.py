@@ -1256,6 +1256,12 @@ async def ws_live(request: web.Request) -> web.WebSocketResponse:
   ws = web.WebSocketResponse()
   await ws.prepare(request)
   LIVE_CAN.add(ws)
+  if LIVE_CAN._sm is None:
+    await ws.send_str(json.dumps({
+      "type": "error",
+      "code": "live_can_unavailable",
+      "error": "Live CAN requires comma device and cereal messaging (use replay mode on PC).",
+    }, ensure_ascii=False))
   try:
     async for _ in ws:
       pass

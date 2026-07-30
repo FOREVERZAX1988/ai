@@ -47,17 +47,14 @@ const DeviceTrust = (() => {
     return data;
   }
 
-  async function ensureTrusted(apiFn, promptPinFn) {
+  async function ensureTrusted(apiFn) {
     const status = await refreshTrust(apiFn);
     if (!status?.ok) return status;
     if (!status.needsPairing) return status;
-    const pin = typeof promptPinFn === 'function' ? await promptPinFn() : '';
-    if (!pin) return status;
     const { data } = await apiFn('POST', '/api/ai/device/pair', {
       deviceId: deviceId(),
       fingerprint: fingerprint(),
       label: 'Browser',
-      pin,
     });
     return data?.ok ? { ...status, trusted: true, needsPairing: false } : status;
   }

@@ -2754,22 +2754,57 @@ const CabanaPanel = (() => {
   function connectLive() {
     if (panelMode !== 'live') return;
     disconnectLive();
+    if (els.connectBtn) els.connectBtn.disabled = true;
+    if (els.status) {
+      els.status.textContent = t('cabanaConnecting', '连接中…');
+      els.status.className = 'cab-status connecting';
+    }
+    if (els.hint) els.hint.textContent = '';
     ws = new WebSocket(wsUrl('/api/cabana/ws'));
     ws.onopen = () => {
       liveConnectedAt = Date.now();
       liveFrameBatches = 0;
       els.status.textContent = t('cabanaLive', '实时');
       els.status.className = 'cab-status live';
+      if (els.connectBtn) els.connectBtn.disabled = false;
       updateAiButtons();
     };
     ws.onmessage = (ev) => {
-      const msg = JSON.parse(ev.data);
+      let msg;
+      try {
+        msg = JSON.parse(ev.data);
+      } catch {
+        return;
+      }
+      if (msg.type === 'error') {
+        const hint = msg.code === 'live_can_unavailable'
+          ? t('cabanaLiveUnavailable', '实时 CAN 需要 comma 设备与 cereal 进程；PC 预览请切换到「回放」模式。')
+          : (msg.error || msg.message || t('cabanaWsFailed', '连接失败'));
+        if (els.hint) els.hint.textContent = hint;
+        if (els.status) {
+          els.status.textContent = t('cabanaOffline', '离线');
+          els.status.className = 'cab-status';
+        }
+        disconnectLive();
+        if (els.connectBtn) els.connectBtn.disabled = false;
+        updateAiButtons();
+        return;
+      }
       if (msg.type === 'can') enqueueCanFrames(msg.frames);
+    };
+    ws.onerror = () => {
+      if (els.hint) els.hint.textContent = t('cabanaWsFailed', 'WebSocket 连接失败');
+      if (els.status) {
+        els.status.textContent = t('cabanaOffline', '离线');
+        els.status.className = 'cab-status';
+      }
+      if (els.connectBtn) els.connectBtn.disabled = false;
     };
     ws.onclose = () => {
       ws = null;
       liveConnectedAt = 0;
       liveFrameBatches = 0;
+      if (els.connectBtn) els.connectBtn.disabled = false;
       if (panelMode === 'live') {
         els.status.textContent = t('cabanaOffline', '离线');
         els.status.className = 'cab-status';

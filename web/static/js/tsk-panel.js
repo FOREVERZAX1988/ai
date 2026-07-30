@@ -132,9 +132,24 @@ const TskPanel = (() => {
     syncActionButtons();
   }
 
+  async function readJsonResponse(res) {
+    const text = await res.text();
+    if (!text.trim()) return {};
+    try {
+      return JSON.parse(text);
+    } catch (e) {
+      const preview = text.slice(0, 160).replace(/\s+/g, ' ').trim();
+      throw new Error(
+        preview
+          ? `服务器返回非 JSON（HTTP ${res.status}）：${preview}`
+          : `服务器返回非 JSON（HTTP ${res.status}）`
+      );
+    }
+  }
+
   async function fetchJson(url) {
     const res = await fetch(url, { cache: 'no-store' });
-    return res.json();
+    return readJsonResponse(res);
   }
 
   async function postJson(url, payload = {}) {
@@ -144,7 +159,7 @@ const TskPanel = (() => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
-    const result = await res.json();
+    const result = await readJsonResponse(res);
     return { response: res, result };
   }
 

@@ -357,16 +357,30 @@ def publish_changes(
 
 def publish_status() -> dict[str, Any]:
   from ai.common.publish_config import get_publish_settings
+  from ai.tools.forge import infer_forge_from_url
 
-  units = discover_publish_units(include_clean=True)
+  units_payload = discover_publish_units(include_clean=True)
+  units = units_payload.get("units") or []
   settings = get_publish_settings()
   auth = {
     "github": forge_auth_status("github"),
     "gitee": forge_auth_status("gitee"),
   }
+  forge_counts: dict[str, int] = {}
+  for unit in units:
+    url = str(unit.get("origin_url") or "").strip()
+    if url:
+      forge = infer_forge_from_url(url)
+      forge_counts[forge] = forge_counts.get(forge, 0) + 1
+  primary_forge = "github"
+  if forge_counts:
+    primary_forge = max(forge_counts, key=forge_counts.get)
+  secondary_forges = sorted(f for f in forge_counts if f != primary_forge)
   return {
     "ok": True,
-    **units,
+    **units_payload,
     "settings": settings.get("settings"),
     "forge_auth": auth,
+    "primary_forge": primary_forge,
+    "secondary_forges": secondary_forges,
   }

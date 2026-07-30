@@ -45,7 +45,9 @@ def reserve_tokens() -> int:
   return _int_param("ai_reserve_tokens", 8000, lo=0, hi=500_000)
 
 
-def context_window_for_model(model: str = "") -> int:
+def context_window_for_model(model: str = "", route_override: int = 0) -> int:
+  if route_override and route_override > 0:
+    return route_override
   override = _int_param("ai_context_window", 0, lo=0, hi=2_000_000)
   if override > 0:
     return override
@@ -94,8 +96,8 @@ def estimate_messages_tokens(messages: list[dict[str, Any]]) -> int:
   return total
 
 
-def compaction_settings(*, model: str = "") -> dict[str, Any]:
-  window = context_window_for_model(model)
+def compaction_settings(*, model: str = "", context_window: int = 0) -> dict[str, Any]:
+  window = context_window_for_model(model, route_override=context_window)
   return {
     "enabled": compaction_enabled(),
     "compactAfterTurns": compact_after_turns(),
@@ -107,10 +109,10 @@ def compaction_settings(*, model: str = "") -> dict[str, Any]:
   }
 
 
-def should_compact_by_tokens(messages: list[dict[str, Any]], *, model: str = "") -> bool:
+def should_compact_by_tokens(messages: list[dict[str, Any]], *, model: str = "", context_window: int = 0) -> bool:
   if not token_trigger_enabled():
     return False
-  window = context_window_for_model(model)
+  window = context_window_for_model(model, route_override=context_window)
   threshold = window - reserve_tokens()
   if threshold <= 0:
     return False

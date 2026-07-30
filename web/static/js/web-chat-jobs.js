@@ -9,6 +9,18 @@ const ChatJobs = (() => {
 
   function init(d) {
     deps = d;
+    if (typeof document !== 'undefined' && !document.__opChatVisibilityBound) {
+      document.__opChatVisibilityBound = true;
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState !== 'visible') return;
+        for (const ctx of contexts.values()) {
+          if (!ctx?.ui?.content || !ctx.assistantMessage?.content) continue;
+          const streaming = Boolean(activeJobId && contexts.has(activeJobId));
+          renderChatMarkdown(ctx.ui.content, ctx.assistantMessage.content, { streaming });
+          if (streaming) ctx.ui.content.classList.add('streaming');
+        }
+      });
+    }
   }
 
   function getActiveJobId() {
@@ -36,18 +48,36 @@ const ChatJobs = (() => {
     contexts.set(jobId, ctx);
   }
 
+  function renderChatMarkdown(el, text, options) {
+    if (!el) return;
+    const clean = typeof deps.stripLeakedToolCalls === 'function'
+      ? deps.stripLeakedToolCalls(text || '')
+      : (text || '');
+    if (!clean) {
+      el.textContent = '';
+      return;
+    }
+    const streaming = Boolean(options && options.streaming);
+    if (typeof Markdown !== 'undefined' && typeof Markdown.renderToElement === 'function') {
+      Markdown.renderToElement(el, clean, { streaming });
+      return;
+    }
+    if (typeof deps.renderMarkdownContent === 'function') {
+      deps.renderMarkdownContent(el, clean);
+      return;
+    }
+    el.textContent = clean;
+  }
+
   function scheduleMarkdownRender(ui, text, ctx) {
     if (!ui?.content || !text) return;
     if (ctx.mdRenderTimer) clearTimeout(ctx.mdRenderTimer);
     ctx.mdRenderTimer = setTimeout(() => {
       ctx.mdRenderTimer = null;
-      if (typeof deps.renderMarkdownContent === 'function') {
-        deps.renderMarkdownContent(ui.content, text);
-      } else {
-        ui.content.textContent = text;
-      }
+      renderChatMarkdown(ui.content, text, { streaming: true });
+      ui.content?.classList.add('streaming');
       deps.scrollToBottom?.();
-    }, 100);
+    }, 80);
   }
 
   function flushMarkdownRender(ui, text, ctx) {
@@ -56,18 +86,8 @@ const ChatJobs = (() => {
       ctx.mdRenderTimer = null;
     }
     if (!ui?.content) return;
-    const clean = typeof deps.stripLeakedToolCalls === 'function'
-      ? deps.stripLeakedToolCalls(text || '')
-      : (text || '');
-    if (!clean) {
-      ui.content.textContent = '';
-      return;
-    }
-    if (typeof deps.renderMarkdownContent === 'function') {
-      deps.renderMarkdownContent(ui.content, clean);
-    } else {
-      ui.content.textContent = clean;
-    }
+    renderChatMarkdown(ui.content, text, { streaming: false });
+    ui.content?.classList.remove('streaming');
   }
 
   function abortActive() {

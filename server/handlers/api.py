@@ -15,6 +15,13 @@ from aiohttp import web
 from openpilot.common.swaglog import cloudlog
 
 from ai.model_router import fallbacks_for_api, load_fallback_entries, save_fallback_entries
+from ai.model_accounts import (
+  account_config_by_id,
+  hub_for_api,
+  load_model_hub,
+  save_model_hub,
+  update_account_models,
+)
 from ai.server.deps import (
   filter_tools,
   get_state_reader,
@@ -431,7 +438,6 @@ async def api_bootstrap(request: web.Request) -> web.Response:
       "maxTokens": config.max_tokens,
       "thinkingEnabled": config.thinking_enabled,
       "thinkingKeep": config.thinking_keep,
-      "webPin": _mask_key(_read_param_str("ai_web_pin")),
       "timezone": tz_name,
       "configured": config.is_configured,
       "configureError": config.configuration_error,
@@ -441,6 +447,8 @@ async def api_bootstrap(request: web.Request) -> web.Response:
       "embeddingApiKey": _mask_key(_read_param_str("ai_embedding_api_key")) if embed_cfg.mode == "separate" else "",
       "embeddingBaseUrl": embed_cfg.base_url,
       "embeddingConfigured": embed_cfg.is_configured,
+      "modelHub": hub_for_api(_PARAMS),
+      "modelFallbacks": fallbacks_for_api(_PARAMS, config),
     },
     "embeddingDefaults": DEFAULT_EMBEDDING_MODELS,
     "embeddingProviders": AI_EMBEDDING_PROVIDERS,
@@ -451,11 +459,10 @@ async def api_bootstrap(request: web.Request) -> web.Response:
     "hostEnvironment": get_host_environment(),
     "skills": list_skills(),
     "skillsEnabled": sorted(skills_on) if skills_on is not None else None,
-    "pinRequired": bool(_read_param_str("ai_web_pin").strip()),
     "adminMode": is_admin_mode(_PARAMS),
     "onboarding": {
       "firstRunDone": first_run_done,
-      "showWizard": not first_run_done or not config.is_configured,
+      "showWizard": not config.is_configured,
     },
     "fork": fork_detected if fork_detected.get("ok") else None,
     "workflows": list_workflows(),
@@ -508,11 +515,19 @@ async def api_providers(request: web.Request) -> web.Response:
 async def api_get_config(request: web.Request) -> web.Response:
   from ai.common.context_config import compaction_settings
   from ai.common.evolution_config import evolution_settings
+  from ai.model_accounts import load_model_hub, route_context_window
   from ai.timezone_util import read_ai_timezone_name
 
   config = _read_ai_config()
   embed_cfg = load_embedding_config(_PARAMS, config)
-  ctx = compaction_settings(model=config.model)
+  hub = load_model_hub(_PARAMS)
+  primary_route = hub.get("primary") if isinstance(hub.get("primary"), dict) else {}
+  route_cw = 0
+  try:
+    route_cw = int(primary_route.get("contextWindow") or 0)
+  except (TypeError, ValueError):
+    route_cw = 0
+  ctx = compaction_settings(model=config.model, context_window=route_cw)
   evo = evolution_settings()
   return _json_response({
     "ok": True,
@@ -522,13 +537,13 @@ async def api_get_config(request: web.Request) -> web.Response:
       "apiKey": _mask_key(config.api_key),
       "baseUrl": config.base_url,
       "modelFallbacks": fallbacks_for_api(_PARAMS, config),
+      "modelHub": hub_for_api(_PARAMS),
       "systemPrompt": config.system_prompt,
       "temperature": config.temperature,
       "topP": config.top_p,
       "maxTokens": config.max_tokens,
       "thinkingEnabled": config.thinking_enabled,
       "thinkingKeep": config.thinking_keep,
-      "webPin": _mask_key(_read_param_str("ai_web_pin")),
       "timezone": read_ai_timezone_name(_PARAMS),
       "configured": config.is_configured,
       "configureError": config.configuration_error,
@@ -611,11 +626,6 @@ async def api_post_config(request: web.Request) -> web.Response:
     _put("ai_evolution_use_dspy", body.get("evolutionUseDspy"))
     _put("ai_thinking_enabled", body.get("thinkingEnabled"))
     _put("ai_thinking_keep", body.get("thinkingKeep"))
-    web_pin = body.get("webPin", "")
-    if web_pin is not None and web_pin != "" and not str(web_pin).startswith("•"):
-      _put("ai_web_pin", web_pin)
-    elif body.get("clearWebPin"):
-      _put("ai_web_pin", "")
     _put("ai_embedding_mode", body.get("embeddingMode"))
     _put("ai_embedding_provider", body.get("embeddingProvider"))
     _put("ai_embedding_model", body.get("embeddingModel"))
@@ -626,7 +636,9 @@ async def api_post_config(request: web.Request) -> web.Response:
     tz = body.get("timezone")
     if tz is not None and str(tz).strip():
       _put("ai_timezone", str(tz).strip())
-    if "modelFallbacks" in body:
+    if "modelHub" in body and isinstance(body.get("modelHub"), dict):
+      save_model_hub(_PARAMS, body["modelHub"])
+    elif "modelFallbacks" in body:
       existing = load_fallback_entries(_PARAMS)
       incoming = body.get("modelFallbacks") or []
       merged: list[dict[str, Any]] = []
@@ -652,6 +664,7 @@ async def api_post_config(request: web.Request) -> web.Response:
     "ok": True,
     "configured": config.is_configured,
     "configureError": config.configuration_error,
+    "modelHub": hub_for_api(_PARAMS),
   })
 
 
@@ -664,16 +677,33 @@ async def api_models(request: web.Request) -> web.Response:
         body = await request.json()
       except json.JSONDecodeError:
         return _json_response({"ok": False, "error": "Invalid JSON body."}, status=400)
-    config = merge_config_from_body(saved, body)
-    from ai.client import list_models
+    account_id = ""
+    if body:
+      account_id = str(body.get("accountId") or body.get("account_id") or "").strip()
+    if account_id:
+      config = account_config_by_id(_PARAMS, account_id)
+      if not config:
+        return _json_response({"ok": False, "error": "账户不存在"}, status=404)
+    else:
+      config = merge_config_from_body(saved, body)
     result = await list_models(config)
-    return _json_response({
+    models = result.get("models") or []
+    if account_id and result.get("ok") and models:
+      ids = [str(m.get("id") if isinstance(m, dict) else m) for m in models]
+      ids = [m for m in ids if m]
+      if ids:
+        update_account_models(_PARAMS, account_id, ids)
+    payload: dict[str, Any] = {
       "ok": bool(result.get("ok")),
       "error": result.get("error"),
-      "models": result.get("models", []),
+      "models": models,
       "configured": config.is_configured,
       "configureError": config.configuration_error,
-    })
+      "source": result.get("source"),
+    }
+    if account_id:
+      payload["modelHub"] = hub_for_api(_PARAMS)
+    return _json_response(payload)
   except Exception as e:
     cloudlog.error(f"aid: api_models error: {e}")
     return _json_response({"ok": False, "error": f"Internal error: {e}", "models": []}, status=500)
@@ -688,7 +718,15 @@ async def api_test_connection(request: web.Request) -> web.Response:
         body = await request.json()
       except json.JSONDecodeError:
         return _json_response({"ok": False, "error": "Invalid JSON body."}, status=400)
-    config = merge_config_from_body(saved, body)
+    account_id = ""
+    if body:
+      account_id = str(body.get("accountId") or body.get("account_id") or "").strip()
+    if account_id:
+      config = account_config_by_id(_PARAMS, account_id)
+      if not config:
+        return _json_response({"ok": False, "error": "账户不存在"}, status=404)
+    else:
+      config = merge_config_from_body(saved, body)
     if not config.is_configured:
       return _json_response({
         "ok": False,
@@ -904,6 +942,88 @@ async def api_dev_assets(request: web.Request) -> web.Response:
     )
   limit = int(request.query.get("limit", "40"))
   return _json_response(list_dev_assets(limit=limit))
+
+
+async def api_dev_cache(request: web.Request) -> web.Response:
+  from ai.tools.dev_cache_tools import clear_dev_cache, get_cache_status
+
+  if request.method == "GET":
+    days_raw = request.query.get("days")
+    mode_raw = request.query.get("mode")
+    if days_raw is not None and mode_raw is not None:
+      return _json_response(get_cache_status(
+        days=int(days_raw),
+        mode=str(mode_raw),
+      ))
+    return _json_response(get_cache_status())
+  try:
+    body = await request.json()
+  except json.JSONDecodeError:
+    body = {}
+  groups = body.get("groups")
+  if groups is not None and not isinstance(groups, list):
+    groups = None
+  result = clear_dev_cache(
+    days=int(body.get("days", 3)),
+    mode=str(body.get("mode", "within")),
+    groups=groups,
+  )
+  status = 409 if not result.get("ok") else 200
+  return _json_response(result, status=status)
+
+
+async def api_model_hub_fetch(request: web.Request) -> web.Response:
+  """Fetch models for a provider account and optionally cache on the account."""
+  try:
+    body = await request.json()
+  except json.JSONDecodeError:
+    body = {}
+  account_id = str(body.get("accountId") or body.get("account_id") or "").strip()
+  if account_id:
+    config = account_config_by_id(_PARAMS, account_id)
+    if not config:
+      return _json_response({"ok": False, "error": "账户不存在"}, status=404)
+  else:
+    saved = read_ai_config()
+    config = merge_config_from_body(saved, body)
+  result = await list_models(config)
+  models = result.get("models") or []
+  if account_id and result.get("ok") and models:
+    ids = [str(m.get("id") if isinstance(m, dict) else m) for m in models]
+    ids = [m for m in ids if m]
+    if ids:
+      update_account_models(_PARAMS, account_id, ids)
+  return _json_response({
+    "ok": bool(result.get("ok")),
+    "error": result.get("error"),
+    "models": models,
+    "source": result.get("source"),
+    "modelHub": hub_for_api(_PARAMS),
+  })
+
+
+async def api_model_hub_test(request: web.Request) -> web.Response:
+  try:
+    body = await request.json()
+  except json.JSONDecodeError:
+    body = {}
+  account_id = str(body.get("accountId") or body.get("account_id") or "").strip()
+  if account_id:
+    config = account_config_by_id(_PARAMS, account_id)
+    if not config:
+      return _json_response({"ok": False, "error": "账户不存在"}, status=404)
+  else:
+    saved = read_ai_config()
+    config = merge_config_from_body(saved, body)
+  if not config or not config.is_configured:
+    err = config.configuration_error if config else "invalid account"
+    return _json_response({"ok": False, "error": err, "configured": False})
+  result = await test_connection(config)
+  return _json_response({
+    "ok": bool(result.get("ok")),
+    "error": result.get("error"),
+    "configured": True,
+  })
 
 
 async def api_pc_sessions(request: web.Request) -> web.Response:

@@ -67,15 +67,14 @@ def read_param_bool_val(key: str, default: bool = False) -> bool:
 
 
 def mask_key(key: str) -> str:
-  if not key:
-    return ""
-  if len(key) <= 8:
-    return "•" * len(key)
-  return "•" * (len(key) - 4) + key[-4:]
+  """Return API keys as-is for LAN-only Web UI (no masking)."""
+  return key or ""
 
 
 def read_ai_config() -> AIConfig:
-  return load_config_from_params(_PARAMS)
+  from ai.model_accounts import resolve_primary_config
+  base = load_config_from_params(_PARAMS)
+  return resolve_primary_config(_PARAMS, base)
 
 
 def get_tool_handlers() -> dict[str, Any]:

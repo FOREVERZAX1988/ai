@@ -87,11 +87,12 @@ const els = {
   composerSlashLabel: $('#composerSlashLabel'),
   composerSlashList: $('#composerSlashList'),
   saveBtn: $('#saveBtn'),
-  connectionResult: $('#connectionResult'),
+  personaSaveBtn: $('#personaSaveBtn'),
   usageSection: $('#usageSection'),
   usageGrid: $('#usageGrid'),
   usageModelHint: $('#usageModelHint'),
   usageDetailBtn: $('#usageDetailBtn'),
+  embeddingUsageDetailBtn: $('#embeddingUsageDetailBtn'),
   usageDetailModal: $('#usageDetailModal'),
   usageDetailBackdrop: $('#usageDetailBackdrop'),
   usageDetailClose: $('#usageDetailClose'),
@@ -117,10 +118,14 @@ const els = {
   tunePassportList: $('#tunePassportList'),
   hostEnvBox: $('#hostEnvBox'),
   packageVersionBox: $('#packageVersionBox'),
-  devPackageVersionBadge: $('#devPackageVersionBadge'),
   devPackageCheckBtn: $('#devPackageCheckBtn'),
   devPackageUpdateBtn: $('#devPackageUpdateBtn'),
+  collabVersionLine: $('#collabVersionLine'),
+  collabRepoLine: $('#collabRepoLine'),
+  collabAuthLine: $('#collabAuthLine'),
+  devCollabDirtyBadge: $('#devCollabDirtyBadge'),
   forkDetectBox: $('#forkDetectBox'),
+  forkDetailsBox: $('#forkDetailsBox'),
   forkProgressBox: $('#forkProgressBox'),
   forkProgressStatus: $('#forkProgressStatus'),
   forkProgressPhases: $('#forkProgressPhases'),
@@ -129,15 +134,20 @@ const els = {
   forkProgressThinking: $('#forkProgressThinking'),
   forkProgressContentWrap: $('#forkProgressContentWrap'),
   forkProgressContent: $('#forkProgressContent'),
-  devForkBadge: $('#devForkBadge'),
   devForkRefreshBtn: $('#devForkRefreshBtn'),
   devForkSyncBtn: $('#devForkSyncBtn'),
   ragStatusBox: $('#ragStatusBox'),
-  devRagBadge: $('#devRagBadge'),
+  knowledgeRagBadge: $('#knowledgeRagBadge'),
+  devRuntimeSummary: $('#devRuntimeSummary'),
+  devCacheStatusBox: $('#devCacheStatusBox'),
+  devCacheTotalBadge: $('#devCacheTotalBadge'),
+  devCacheDays: $('#devCacheDays'),
+  devCacheMode: $('#devCacheMode'),
+  devCacheClearBtn: $('#devCacheClearBtn'),
+  collabCredentialsBox: $('#collabCredentialsBox'),
+  collabCredentialsWrap: $('#collabCredentialsWrap'),
   publishSettingsBox: $('#publishSettingsBox'),
   publishUnitsBox: $('#publishUnitsBox'),
-  devPublishBadge: $('#devPublishBadge'),
-  devPublishRefreshBtn: $('#devPublishRefreshBtn'),
   devPublishSaveBtn: $('#devPublishSaveBtn'),
   publishPromptModal: $('#publishPromptModal'),
   publishPromptBackdrop: $('#publishPromptBackdrop'),
@@ -149,8 +159,8 @@ const els = {
   publishPromptHint: $('#publishPromptHint'),
   issueSettingsBox: $('#issueSettingsBox'),
   issueFormBox: $('#issueFormBox'),
-  devIssueRefreshBtn: $('#devIssueRefreshBtn'),
   devIssueSubmitBtn: $('#devIssueSubmitBtn'),
+  collabGoPublishPrTab: $('#collabGoPublishPrTab'),
   onboardingModal: $('#onboardingModal'),
   onboardingBackdrop: $('#onboardingBackdrop'),
   onboardingProvider: $('#onboardingProvider'),
@@ -190,7 +200,6 @@ const els = {
   embeddingBaseUrlInput: $('#embeddingBaseUrlInput'),
   embeddingSeparateFields: $('#embeddingSeparateFields'),
   embeddingBaseUrlField: $('#embeddingBaseUrlField'),
-  webPinInput: $('#webPinInput'),
   writeConfirmModal: $('#writeConfirmModal'),
   writeConfirmPreview: $('#writeConfirmPreview'),
   writeConfirmConsumer: $('#writeConfirmConsumer'),
@@ -199,14 +208,10 @@ const els = {
   writeConfirmCancel: $('#writeConfirmCancel'),
   writeConfirmClose: $('#writeConfirmClose'),
   writeConfirmBackdrop: $('#writeConfirmBackdrop'),
-  pinModal: $('#pinModal'),
-  pinModalInput: $('#pinModalInput'),
-  pinModalOk: $('#pinModalOk'),
   schedTrigger: $('#schedTrigger'),
 };
 
 let toolsMeta = {};
-let pinRequired = false;
 let embeddingDefaults = {};
 let configSaveState = 'idle';
 let configSaveInFlight = false;
@@ -240,6 +245,7 @@ let embeddingModelCombo = null;
 let onboardingModelCombo = null;
 let onboardingEmbeddingModelCombo = null;
 let onboardingRagSetupActive = false;
+let onboardingFetchedModels = [];
 let embeddingProviders = [];
 let embeddingProviderLabels = {};
 let embeddingModelCatalog = {};
@@ -257,6 +263,7 @@ const FALLBACK_EMBEDDING_PROVIDER_LABELS = {
 let usageData = null;
 let embeddingUsageData = null;
 let usageDetailOpen = false;
+let usageDetailView = { chat: 'provider', embedding: 'provider' };
 let configured = false;
 let configureError = '';
 let savedConfig = {};
@@ -541,9 +548,16 @@ function applySecocPaneI18n() {
   }
 }
 
+function applyChatPlaceholder() {
+  if (!els.chatInput) return;
+  const mobile = window.matchMedia('(max-width: 767px)').matches;
+  els.chatInput.placeholder = mobile
+    ? t('chatPlaceholderMobile', '描述问题…')
+    : t('chatPlaceholder', '描述问题，可贴图或日志');
+}
+
 function applyTranslations() {
   document.title = t('title', 'op助手');
-  els.chatInput.placeholder = t('chatPlaceholder', '描述问题，可粘贴日志或图片…');
   if (els.composerHintTooltip) {
     els.composerHintTooltip.textContent = t('composerHint', 'Enter 发送 · Shift+Enter 换行 · 支持粘贴图片');
   }
@@ -562,21 +576,24 @@ function applyTranslations() {
   setI18nText('#apiKeyLabel', 'apiKey');
   setI18nText('#baseUrlLabel', 'baseUrl');
   setI18nText('#systemPromptLabel', 'systemPrompt', 'System Prompt');
-  setI18nText('#temperatureLabel', 'temperature', 'Temperature');
-  setI18nText('#topPLabel', 'topP', 'Top P');
-  setI18nText('#maxTokensLabel', 'maxTokens', 'Max Tokens');
+  setI18nText('#personaSectionTitle', 'personaSectionTitle', '系统人设');
+  setI18nText('#personaGenHint', 'personaGenHint', 'Temperature、Max Tokens 等生成参数请在上方模型列表的配置弹窗里按模型设置。');
+  if (els.personaSaveBtn) els.personaSaveBtn.textContent = t('personaSaveBtn', '保存人设');
   setI18nText('#thinkingLabel', 'thinking', 'Thinking');
   updateConfigSaveHint();
   setI18nText('#usageTitle', 'usage', 'Usage');
   if (els.usageDetailBtn) els.usageDetailBtn.textContent = t('usageDetail', 'Usage detail');
+  if (els.embeddingUsageDetailBtn) els.embeddingUsageDetailBtn.textContent = t('usageDetail', 'Usage detail');
   setI18nText('#usageDetailTitle', 'usageDetail', 'Usage detail');
-  setI18nText('#usageDetailDesc', 'usageDetailDesc', 'All usage by provider and model');
-  setI18nText('#usageEmbeddingSectionTitle', 'usageEmbeddingSection', 'Embedding usage');
-  setI18nText('#usageEmbeddingByProviderTitle', 'usageEmbeddingByProvider', 'Embedding · by provider');
-  setI18nText('#usageEmbeddingByModelTitle', 'usageEmbeddingByModel', 'Embedding · by model');
+  setI18nText('#usageDetailDesc', 'usageDetailDesc', 'By provider and model');
+  setI18nText('#usageChatSectionTitle', 'usageChatSectionTitle', 'Chat models');
+  setI18nText('#usageEmbeddingSectionTitle', 'usageEmbeddingSection', 'Embedding');
+  setI18nText('#usageEmbeddingSectionDesc', 'usageEmbeddingSectionDesc', 'Knowledge base embedding usage');
+  setI18nText('#usageChatTabProvider', 'usageByProvider', 'By provider');
+  setI18nText('#usageChatTabModel', 'usageByModel', 'By model');
+  setI18nText('#usageEmbTabProvider', 'usageByProvider', 'By provider');
+  setI18nText('#usageEmbTabModel', 'usageByModel', 'By model');
   setI18nText('#embeddingUsageTitle', 'embeddingUsageTitle', 'Embedding usage');
-  setI18nText('#usageByProviderTitle', 'usageByProvider', 'By provider');
-  setI18nText('#usageByModelTitle', 'usageByModel', 'By model');
   setI18nText('#langLabel', 'langLabel', 'Language');
   setI18nText('#timezoneLabel', 'timezoneLabel', 'Timezone');
   renderTimezoneSelect();
@@ -587,36 +604,66 @@ function applyTranslations() {
   const tabSecocEl = $('#secocBtn');
   if (tabSecocEl) tabSecocEl.title = t('tabSecoc', 'SecOC');
   setI18nText('#tabScheduler', 'tabScheduler', '定时');
-  setI18nText('#modelPaneDesc', 'modelPaneDesc', '连接服务商、选择对话模型并查看用量。');
-  setI18nText('#modelConnectionTitle', 'modelConnectionTitle', '模型连接');
+  setI18nText('#modelPaneDesc', 'modelPaneDesc', '配置模型列表与服务商账户；修改后自动保存。');
+  setI18nText('#modelHubTitle', 'modelHubTitle', '模型中心');
   setI18nText('#schedulerListTitle', 'schedulerListTitle', '已添加任务');
   setI18nText('#schedulerFormTitle', 'schedulerFormTitle', '新建任务');
   const tabDevEl = $('#tabDev');
   if (tabDevEl) tabDevEl.textContent = t('tabDev', '开发');
   const devPaneDescEl = $('#devPaneDesc');
-  if (devPaneDescEl) devPaneDescEl.textContent = t('devPaneDesc', '运行环境、PC 工具会话与报告文件');
-  const devEnvTitle = $('#devEnvTitle');
-  if (devEnvTitle) devEnvTitle.textContent = t('devEnvTitle', '运行环境');
+  if (devPaneDescEl) devPaneDescEl.textContent = t('devPaneDescCollab', 'Fork 分析、发布 PR 与反馈');
+  setI18nText('#devPaneTabCollab', 'devPaneTabCollab', '代码协作');
+  setI18nText('#devPaneTabCache', 'devPaneTabCache', '本地缓存');
+  setI18nText('#devPaneTabRuntime', 'devPaneTabRuntime', '运行环境');
+  setI18nText('#devRuntimeTitle', 'devRuntimeTitle', '运行环境与输出');
+  setI18nText('#devCacheTitle', 'devCacheTitle', '本地缓存');
+  setI18nText('#devCacheDesc', 'devCacheDesc', '清理路线回放、TSK 提取等本地缓存，不影响已安装 SecOC 密钥。');
+  setI18nText('#devCacheDaysLabel', 'devCacheDaysLabel', '时间范围');
+  setI18nText('#devCacheModeLabel', 'devCacheModeLabel', '清理策略');
+  if (els.devCacheClearBtn) els.devCacheClearBtn.textContent = t('devCacheClearBtn', '清理全部');
+  setI18nText('#runtimeTabEnv', 'devRuntimeTabEnv', '环境');
+  setI18nText('#runtimeTabTools', 'devRuntimeTabTools', '工具');
+  setI18nText('#runtimeTabOutput', 'devRuntimeTabOutput', '输出');
+  setI18nText('#devCanvasDesc', 'devCanvasDesc', '调参报告、图表与结构化结果（随当前会话）');
+  setI18nText('#devCanvasFilterLabel', 'devCanvasFilterLabel', '筛选');
+  setI18nText('#knowledgeIndexTitle', 'knowledgeIndexTitle', '索引与检索');
   const devPackageTitle = $('#devPackageTitle');
   if (devPackageTitle) devPackageTitle.textContent = t('devPackageTitle', 'op助手 版本');
   if (els.devPackageCheckBtn) els.devPackageCheckBtn.textContent = t('devPackageCheck', '检查更新');
   if (els.devPackageUpdateBtn) els.devPackageUpdateBtn.textContent = t('devPackageUpdate', '立即更新');
+  setI18nText('#devCollabTitle', 'devCollabTitle', '代码协作');
+  setI18nText('#devCollabCredentialsTitle', 'devCollabCredentialsTitle', '凭据');
+  setI18nText('#collabTabRepo', 'devCollabTabRepo', '仓库');
+  setI18nText('#collabTabPublish', 'devCollabTabPublish', '发布');
+  setI18nText('#collabTabIssue', 'devCollabTabIssue', '反馈');
+  setI18nText('#forkDetailsSummary', 'devForkDetailsSummary', '技术详情');
+  setI18nText('#packageDetailsSummary', 'devPackageDetailsSummary', '版本详情');
+  setI18nText('#collabPublishConfigTitle', 'devCollabPublishConfigTitle', '发布策略');
+  setI18nText('#collabPublishUnitsTitle', 'devCollabPublishUnitsTitle', '发布单元');
+  if (els.collabGoPublishPrTab) els.collabGoPublishPrTab.textContent = t('devCollabGoPublishPr', '已改代码？去发布 PR');
   const devForkTitle = $('#devForkTitle');
   if (devForkTitle) devForkTitle.textContent = t('devForkTitle', 'Fork 分析');
-  const devRagTitle = $('#devRagTitle');
-  if (devRagTitle) devRagTitle.textContent = t('devRagTitle', '知识库');
   const devPublishTitle = $('#devPublishTitle');
   if (devPublishTitle) devPublishTitle.textContent = t('devPublishTitle', '代码发布');
-  if (els.devPublishRefreshBtn) els.devPublishRefreshBtn.textContent = t('devPublishRefresh', '刷新');
   if (els.devPublishSaveBtn) els.devPublishSaveBtn.textContent = t('devPublishSave', '保存配置');
   const devIssueTitle = $('#devIssueTitle');
   if (devIssueTitle) devIssueTitle.textContent = t('devIssueTitle', '反馈提交');
-  if (els.devIssueRefreshBtn) els.devIssueRefreshBtn.textContent = t('devPublishRefresh', '刷新');
   if (els.devIssueSubmitBtn) els.devIssueSubmitBtn.textContent = t('devIssueSubmit', '提交 Issue');
   setI18nText('#contextSettingsTitle', 'contextSettingsTitle', '上下文与压缩');
   setI18nText('#contextSettingsHint', 'contextSettingsHint', '长对话自动摘要写入记忆；手动压缩请用 /compact');
   setI18nText('#compactionEnabledLabel', 'compactionEnabledLabel', '自动压缩会话');
   setI18nText('#compactionTokenTriggerLabel', 'compactionTokenTriggerLabel', '按 token 数触发压缩');
+  setI18nText('#evolutionSettingsTitle', 'evolutionSettingsTitle', '助手学习与进化');
+  setI18nText('#evolutionEnabledLabel', 'evolutionEnabledLabel', '启用进化管线');
+  setI18nText('#evolutionAutoWorkspaceLabel', 'evolutionAutoWorkspaceLabel', '对话后自动补工作区模板');
+  setI18nText('#evolutionAutoMemoryLabel', 'evolutionAutoMemoryLabel', '对话后自动提炼记忆（每日日志 + MEMORY）');
+  setI18nText('#evolutionLlmReflectLabel', 'evolutionLlmReflectLabel', 'LLM 反思诊断 (GEPA)');
+  setI18nText('#evolutionAutoProposeLabel', 'evolutionAutoProposeLabel', '自动提案技能（需批准）');
+  setI18nText('#evolutionGepaEnabledLabel', 'evolutionGepaEnabledLabel', '内置 GEPA 技能进化');
+  setI18nText('#evolutionUseDspyLabel', 'evolutionUseDspyLabel', '使用 DSPy 后端（需 pip install dspy，PC）');
+  setI18nText('#evolutionSettingsHint', 'evolutionSettingsHint', '三层记忆 + 轨迹反思 + 技能/工具描述进化；详见 设置→平台→技能进化');
+  setI18nText('#skillsDisclosureMaxLabel', 'skillsDisclosureMaxLabel', '按需加载技能数');
+  setI18nText('#evolutionCandidatesLabel', 'evolutionCandidatesLabel', 'Pareto 候选数');
   const publishPromptTitle = $('#publishPromptTitle');
   if (publishPromptTitle) publishPromptTitle.textContent = t('publishPromptTitle', '发布改动');
   if (els.publishPromptCancel) els.publishPromptCancel.textContent = t('publishPromptLater', '稍后');
@@ -627,17 +674,12 @@ function applyTranslations() {
   if (forkThinkingSummary) forkThinkingSummary.textContent = t('devForkProgressThinking', '思考过程');
   const forkContentSummary = $('#forkProgressContentSummary');
   if (forkContentSummary) forkContentSummary.textContent = t('devForkProgressOutput', '模型输出');
-  const attrTsk = $('#attrTskLabel');
-  if (attrTsk) attrTsk.textContent = t('attrTskWeb', 'TSK Web');
-  const attrAi = $('#attrAiLabel');
-  if (attrAi) attrAi.textContent = t('attrOpAi', 'op助手');
   const devSessionsTitle = $('#devSessionsTitle');
   if (devSessionsTitle) devSessionsTitle.textContent = t('devSessionsTitle', 'PC 工具会话');
   const devAssetsTitle = $('#devAssetsTitle');
   if (devAssetsTitle) devAssetsTitle.textContent = t('devAssetsTitle', '报告与导出');
   const devRefreshLabel = $('#devRefreshLabel');
   if (devRefreshLabel) devRefreshLabel.textContent = t('devRefresh', '刷新');
-  setI18nText('#personaSectionTitle', 'personaSection', '人设与生成');
   setI18nText('#embeddingSectionTitle', 'embeddingSection', '知识库 Embedding');
   setI18nText('#embeddingPaneDesc', 'embeddingPaneDesc', '向量检索用（与聊天模型分开配置）');
   setI18nText('#schedulerPaneDesc', 'schedulerPaneDesc');
@@ -655,8 +697,6 @@ function applyTranslations() {
     els.notificationsMarkReadBtn.textContent = t('notificationsMarkRead', '全部已读');
   }
   applyDataI18n();
-  const webPinHint = $('#webPinHint');
-  if (webPinHint) webPinHint.textContent = t('webPinHint');
   if (els.apiKeyInput) els.apiKeyInput.placeholder = t('apiKeyPlaceholder');
   if (els.baseUrlInput) els.baseUrlInput.placeholder = t('baseUrlPlaceholder');
   mainModelCombo?.setPlaceholder(t('modelPlaceholder'));
@@ -671,7 +711,9 @@ function applyTranslations() {
   if (els.ragTitleLabel) els.ragTitleLabel.textContent = t('ragTitleLabel');
   if (els.ragTextLabel) els.ragTextLabel.textContent = t('ragTextLabel');
   setI18nText('#onboardingTitle', 'onboardingTitle', 'Welcome to op助手');
-  setI18nText('#onboardingDesc', 'onboardingDesc', 'Configure chat and embedding API on first run.');
+  setI18nText('#onboardingDesc', 'onboardingDesc', 'Configure one chat model to get started; add more providers and fallbacks in Settings.');
+  setI18nText('#onboardingModelTitle', 'onboardingModelTitle', 'Chat model');
+  setI18nText('#onboardingModelHint', 'onboardingModelHint', 'Pick a provider, enter API Key, and select a model.');
   setI18nText('#onboardingProviderLabel', 'provider', 'Provider');
   setI18nText('#onboardingApiKeyLabel', 'apiKey', 'API Key');
   setI18nText('#onboardingModelLabel', 'model', 'Model');
@@ -708,9 +750,6 @@ function applyTranslations() {
   if (writeHint) writeHint.textContent = t('writeConfirmHint');
   if (els.writeConfirmCancel) els.writeConfirmCancel.textContent = t('writeConfirmCancel');
   if (els.writeConfirmOk) els.writeConfirmOk.textContent = t('writeConfirmOk');
-  const pinTitle = $('#pinModalTitle');
-  if (pinTitle) pinTitle.textContent = t('pinModalTitle');
-  if (els.pinModalOk) els.pinModalOk.textContent = t('pinModalOk');
   if (els.sessionsToggleBtn) els.sessionsToggleBtn.title = t('sessionsToggleTitle');
   if (els.embeddingModeSelect) {
     const same = els.embeddingModeSelect.querySelector('option[value="same"]');
@@ -721,6 +760,7 @@ function applyTranslations() {
   const devPassportTitle = $('#devPassportTitle');
   if (devPassportTitle) devPassportTitle.textContent = t('devPassportTitle', 'Tune passport');
   applySecocPaneI18n();
+  applyChatPlaceholder();
   bindPasswordReveals();
 }
 
@@ -745,10 +785,6 @@ async function api(method, path, body, opts = {}) {
 
 function getApiHeaders() {
   return WebApi.getApiHeaders();
-}
-
-function promptForPin() {
-  return WebApi.promptForPin();
 }
 
 function showToast(msg, type = 'info') {
@@ -959,10 +995,7 @@ function updateLiveAssistantFromSession() {
 
 function aiSyncWsUrl() {
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-  let url = `${proto}//${location.host}/api/ai/sync/ws`;
-  const pin = sessionStorage.getItem('ai-web-pin');
-  if (pin) url += `?pin=${encodeURIComponent(pin)}`;
-  return url;
+  return `${proto}//${location.host}/api/ai/sync/ws`;
 }
 
 function isSyncWsConnected() {
@@ -1047,7 +1080,7 @@ async function handleSyncWsHello(data) {
   if (data.sessions) await handleSyncWsSessions(data);
   if (data.config) await applyRemoteConfigData(data.config);
   if (data.deviceTrust?.needsPairing && typeof DeviceTrust !== 'undefined') {
-    DeviceTrust.ensureTrusted(api, promptForPin).catch(() => {});
+    DeviceTrust.ensureTrusted(api).catch(() => {});
   }
   if (Array.isArray(data.activeJobs) && data.activeJobs.length) {
     await syncActiveSessionStreaming();
@@ -1177,7 +1210,6 @@ function syncBodyScrollLock() {
     els.settingsSidebar?.classList.contains('open') ||
     (els.writeConfirmModal && !els.writeConfirmModal.hidden) ||
     (els.publishPromptModal && !els.publishPromptModal.hidden) ||
-    (els.pinModal && !els.pinModal.hidden) ||
     usageDetailOpen,
   );
   document.body.style.overflow = locked ? 'hidden' : '';
@@ -1586,6 +1618,7 @@ function syncThinkingBlock(ui, msg) {
 function clearLiveStreamChrome(ui) {
   hideAssistantLoading(ui);
   if (!ui) return;
+  ui.content?.classList.remove('streaming');
   const hasReasoning = Boolean(String(ui.thinkingBody?.textContent || '').trim());
   if (!hasReasoning) ui.thinking?.classList.add('hidden');
 }
@@ -1709,14 +1742,7 @@ function hasUnsavedConfigDraft() {
   });
 }
 
-function showUnsavedConfigWarning() {
-  if (!hasUnsavedConfigDraft() || !els.connectionResult) return;
-  const hint = t('unsavedConfigHint', '有未保存的设置更改；对话仍使用上次保存的配置。');
-  if (!els.connectionResult.textContent?.includes(hint)) {
-    els.connectionResult.textContent = hint;
-    els.connectionResult.className = 'connection-result warning';
-  }
-}
+function showUnsavedConfigWarning() {}
 
 function deleteSession(id) {
   SessionStore.remove(id);
@@ -1780,11 +1806,9 @@ function normalizeSettingsTab(name) {
   return name;
 }
 
-function syncSettingsSaveBar(tabName) {
+function syncSettingsSaveBar(_tabName) {
   const bar = document.getElementById('settingsSaveBar');
-  if (!bar) return;
-  const show = tabName === 'model' || tabName === 'knowledge';
-  bar.hidden = !show;
+  if (bar) bar.hidden = true;
 }
 
 function openSecocModal() {
@@ -1809,7 +1833,9 @@ function openSettings(tab) {
   closeKnowledgeModal();
   closeSessionsDrawer();
   ensureProviderOptions();
-  loadConfig().catch(console.error);
+  loadConfig().then(() => {
+    if (savedConfig) applyModelHubFromConfig(savedConfig);
+  }).catch(console.error);
   if (!models.length) {
     ensureModelsLoaded(savedConfig?.model || '').catch(console.error);
   }
@@ -1842,6 +1868,9 @@ function activateSettingsTab(name) {
     if (typeof CanvasPanel !== 'undefined') {
       CanvasPanel.loadSession(SessionStore.activeId).catch(() => {});
     }
+  }
+  if (tabName === 'knowledge') {
+    loadKnowledgeRagStatus().catch(() => {});
   }
   if (tabName === 'model') loadUsage();
   if (tabName === 'platform' && typeof PlatformPanel !== 'undefined') {
@@ -1977,6 +2006,7 @@ async function loadRagPanel() {
   const { data } = await api('GET', '/api/ai/rag');
   if (typeof UiBusy !== 'undefined') UiBusy.clearPanelBusy(els.ragDocList);
   if (!data.ok || !els.ragDocList) return;
+  await loadKnowledgeRagStatus(data);
   const docs = data.documents || [];
   const chunks = data.vector_chunks ?? 0;
   if (els.ragVectorStatus) {
@@ -2450,8 +2480,12 @@ function renderMarkdownContent(el, text) {
     el.textContent = '';
     return;
   }
+  if (typeof Markdown !== 'undefined' && typeof Markdown.renderToElement === 'function') {
+    Markdown.renderToElement(el, clean, { streaming: false });
+    return;
+  }
   if (typeof Markdown !== 'undefined') {
-    el.classList.add('md-content');
+    el.classList.add('md-content', 'chat-text');
     const normalized = typeof Markdown.normalizeMarkdownInput === 'function'
       ? Markdown.normalizeMarkdownInput(clean)
       : clean;
@@ -2686,7 +2720,7 @@ function appendUserMessage(content) {
 
 function appendAssistantMessage({ withLoading = true } = {}) {
   const wrapper = document.createElement('div');
-  wrapper.className = 'message assistant-wrapper';
+  wrapper.className = 'message assistant-wrapper msg-in';
 
   let loading = null;
   if (withLoading) {
@@ -2707,7 +2741,7 @@ function appendAssistantMessage({ withLoading = true } = {}) {
   const agentCallsList = agentCallsBlock.querySelector('.agent-calls-list');
 
   const content = document.createElement('div');
-  content.className = 'message assistant md-content';
+  content.className = 'message assistant md-content chat-text';
 
   const toolsBlock = document.createElement('div');
   toolsBlock.className = 'tool-calls-block collapsed hidden';
@@ -2726,10 +2760,15 @@ function appendAssistantMessage({ withLoading = true } = {}) {
 
   const toolsList = toolsBlock.querySelector('.tool-calls-list');
 
+  const meta = document.createElement('div');
+  meta.className = 'message-meta';
+  meta.innerHTML = `<button type="button" class="msg-copy-btn" title="${t('copy', '复制')}" aria-label="${t('copy', '复制')}">⎘</button>`;
+
   wrapper.appendChild(thinking);
   wrapper.appendChild(agentCallsBlock);
   wrapper.appendChild(toolsBlock);
   wrapper.appendChild(content);
+  wrapper.appendChild(meta);
   els.messages.appendChild(wrapper);
   scrollToBottom();
   return {
@@ -3752,6 +3791,90 @@ function getEmbeddingModelValue() {
   return embeddingModelCombo?.getValue()?.trim() || '';
 }
 
+function syncLegacyFromModelHub(hubData) {
+  if (!hubData) return;
+  const primary = hubData.primary;
+  const acc = (hubData.accounts || []).find((a) => a.id === primary?.accountId)
+    || (hubData.accounts || [])[0];
+  if (!acc) return;
+  if (providers.includes(acc.provider)) els.providerSelect.value = acc.provider;
+  else if (acc.provider === 'zhipu' && providers.includes('bigmodel')) els.providerSelect.value = 'bigmodel';
+  els.apiKeyInput.value = acc.apiKey || '';
+  els.baseUrlInput.value = acc.baseUrl || '';
+  const model = primary?.model || acc.models?.[0] || '';
+  if (model) mainModelCombo?.setValue(model, { silent: true });
+  const provider = acc.provider;
+  const showBaseUrl = provider === 'custom' || OPTIONAL_BASE_URL_PROVIDERS.has(provider);
+  els.baseUrlField?.classList.toggle('hidden', !showBaseUrl);
+  refreshUsageForCurrentModel();
+}
+
+function effectiveModelHub(c) {
+  if (!c) return null;
+  const hub = c.modelHub;
+  if (Array.isArray(hub?.accounts) && hub.accounts.length > 0) {
+    return hub;
+  }
+  const provider = c.provider;
+  const model = c.model;
+  if (!provider && !model) return hub || null;
+  const providerId = provider === 'zhipu' ? 'bigmodel' : (provider || 'opencode-zen');
+  const accId = 'acc_default';
+  const account = {
+    id: accId,
+    provider: providerId,
+    label: '',
+    apiKey: c.apiKey || '',
+    baseUrl: c.baseUrl || '',
+    enabled: true,
+    models: model ? [model] : [],
+  };
+  const accounts = [account];
+  const index = { [`${providerId}\0${c.apiKey || ''}\0${c.baseUrl || ''}`]: accId };
+  const fallbacks = [];
+  for (const fb of c.modelFallbacks || []) {
+    const fbModel = (fb?.model || '').trim();
+    if (!fbModel) continue;
+    const fbProvider = fb.provider === 'zhipu' ? 'bigmodel' : ((fb.provider || providerId).trim() || providerId);
+    const fbKey = (fb.apiKey || '').trim() || (c.apiKey || '');
+    const fbUrl = (fb.baseUrl || '').trim() || (c.baseUrl || '');
+    const key = `${fbProvider}\0${fbKey}\0${fbUrl}`;
+    let aid = index[key];
+    if (!aid) {
+      aid = `acc_${accounts.length}_${fbProvider}`;
+      accounts.push({
+        id: aid,
+        provider: fbProvider,
+        label: '',
+        apiKey: fbKey,
+        baseUrl: fbUrl,
+        enabled: true,
+        models: [],
+      });
+      index[key] = aid;
+    }
+    const acc = accounts.find((a) => a.id === aid);
+    if (acc && !acc.models.includes(fbModel)) acc.models.push(fbModel);
+    const row = { accountId: aid, model: fbModel };
+    if (fb.label) row.label = fb.label;
+    fallbacks.push(row);
+  }
+  return {
+    version: 1,
+    accounts,
+    primary: model ? { accountId: accId, model } : null,
+    fallbacks,
+  };
+}
+
+function applyModelHubFromConfig(c) {
+  const hub = effectiveModelHub(c);
+  if (typeof ModelHub === 'undefined' || !hub) return;
+  ModelHub.setHub(hub, { silent: true });
+  syncLegacyFromModelHub(hub);
+  ModelHub.setProviders(providers, providerLabels);
+}
+
 function initModelCombos() {
   if (typeof ModelCombobox === 'undefined') return;
   const labels = () => ({
@@ -3774,11 +3897,11 @@ function initModelCombos() {
     ...labels(),
     placeholder: t('embeddingModelPlaceholder', 'BAAI/bge-m3'),
     onChange: () => {
-      persistConfigDraft();
+      scheduleEmbeddingSave();
       refreshEmbeddingUsageForCurrentModel();
     },
     onInput: () => {
-      persistConfigDraft();
+      scheduleEmbeddingSave();
       refreshEmbeddingUsageForCurrentModel();
     },
   });
@@ -3792,10 +3915,23 @@ function initModelCombos() {
     emptyLabel: t('noModels', 'No models loaded'),
     loadingLabel: t('loadingModels', 'Loading...'),
   });
-  if (typeof FallbackModels !== 'undefined') {
+  if (typeof ModelHub !== 'undefined') {
+    ModelHub.mount('#modelHubRoot', {
+      providers,
+      providerLabels,
+      getProviderLabel: (id) => providerDisplayName(id),
+      t: (key, fallback) => t(key, fallback),
+      api,
+      onLegacySync: syncLegacyFromModelHub,
+      onSaveHub: saveModelHubToServer,
+      initial: savedConfig?.modelHub,
+    });
+  } else if (typeof FallbackModels !== 'undefined') {
     FallbackModels.mount('#fallbackModelsRoot', {
       getProvider: () => els.providerSelect?.value || 'opencode-zen',
+      getProviderLabel: (id) => providerDisplayName(id),
       providers,
+      t: (key, fallback) => t(key, fallback),
     });
     document.getElementById('fallbackModelsRoot')?.addEventListener('fallbackchange', () => {
       persistConfigDraft();
@@ -3805,6 +3941,126 @@ function initModelCombos() {
   }
 }
 
+function sanitizeModelHubForSave(hub) {
+  if (!hub?.accounts) return hub;
+  return {
+    ...hub,
+    accounts: hub.accounts.map((acc) => {
+      const row = { ...acc };
+      if (row.apiKey?.startsWith('•')) delete row.apiKey;
+      return row;
+    }),
+  };
+}
+
+async function saveModelHubToServer(hub, opts = {}) {
+  const silent = !!opts.silent;
+  const body = { modelHub: sanitizeModelHubForSave(hub) };
+  const { data } = await api('POST', '/api/ai/config', body);
+  if (!data?.ok) {
+    if (!silent) showToast(data?.error || t('saveFailed', '保存失败'), 'error');
+    throw new Error(data?.error || 'save failed');
+  }
+  configured = !!data.configured;
+  configureError = data.configureError || '';
+  if (data.modelHub) {
+    savedConfig = { ...savedConfig, modelHub: data.modelHub };
+    if (typeof ModelHub !== 'undefined') {
+      ModelHub.setHub(data.modelHub, { silent: true });
+    }
+  }
+  syncLegacyFromModelHub(savedConfig.modelHub || hub);
+  updateModelBadgeFromSaved();
+  refreshUsageForCurrentModel();
+  LocalPrefs.clearConfigDraft();
+  if (!silent) {
+    showToast(t('saved', '已保存'), 'success');
+  }
+  return data;
+}
+
+function getPersonaPayload() {
+  return {
+    systemPrompt: els.systemPromptInput?.value?.trim() || '',
+    contextWindow: parseInt(els.contextWindowInput?.value, 10) || 0,
+    compactionEnabled: !!els.compactionEnabledToggle?.checked,
+    compactAfterTurns: parseInt(els.compactAfterTurnsInput?.value, 10) || 24,
+    keepRecentTurns: parseInt(els.keepRecentTurnsInput?.value, 10) || 8,
+    reserveTokens: parseInt(els.reserveTokensInput?.value, 10) || 8000,
+    compactionTokenTrigger: !!els.compactionTokenTriggerToggle?.checked,
+    evolutionEnabled: els.evolutionEnabledToggle?.checked !== false,
+    evolutionAutoWorkspace: els.evolutionAutoWorkspaceToggle?.checked !== false,
+    evolutionAutoMemory: els.evolutionAutoMemoryToggle?.checked !== false,
+    evolutionLlmReflect: els.evolutionLlmReflectToggle?.checked !== false,
+    evolutionAutoPropose: !!els.evolutionAutoProposeToggle?.checked,
+    evolutionToolDesc: els.evolutionToolDescToggle?.checked !== false,
+    evolutionGepaEnabled: els.evolutionGepaEnabledToggle?.checked !== false,
+    evolutionUseDspy: !!els.evolutionUseDspyToggle?.checked,
+    skillsDisclosureMax: parseInt(els.skillsDisclosureMaxInput?.value, 10) || 10,
+    evolutionCandidates: parseInt(els.evolutionCandidatesInput?.value, 10) || 3,
+    thinkingEnabled: !!els.thinkingToggle?.checked,
+    thinkingKeep: '',
+    timezone: els.timezoneSelect?.value || 'Asia/Shanghai',
+  };
+}
+
+async function savePersonaConfig() {
+  const body = getPersonaPayload();
+  const run = async () => {
+    const { data } = await api('POST', '/api/ai/config', body);
+    if (!data?.ok) {
+      showToast(data?.error || t('saveFailed', '保存失败'), 'error');
+      return;
+    }
+    savedConfig = { ...savedConfig, ...body };
+    LocalPrefs.clearConfigDraft();
+    showToast(t('saved', '已保存'), 'success');
+  };
+  if (typeof UiBusy !== 'undefined') {
+    await UiBusy.withButtonBusy(els.personaSaveBtn, run, { busyLabel: t('uiSaving', '保存中…') });
+  } else {
+    await run();
+  }
+}
+
+let embeddingSaveTimer = null;
+function scheduleEmbeddingSave() {
+  clearTimeout(embeddingSaveTimer);
+  embeddingSaveTimer = setTimeout(() => saveEmbeddingConfig({ silent: true }), 600);
+}
+
+async function saveEmbeddingConfig(opts = {}) {
+  const silent = !!opts.silent;
+  const body = {
+    embeddingMode: els.embeddingModeSelect?.value || 'same',
+    embeddingProvider: els.embeddingProviderSelect?.value || 'siliconflow',
+    embeddingModel: getEmbeddingModelValue(),
+    embeddingApiKey: els.embeddingApiKeyInput?.value?.trim() || '',
+    embeddingBaseUrl: els.embeddingBaseUrlInput?.value?.trim() || '',
+  };
+  if (body.embeddingApiKey?.startsWith('•')) delete body.embeddingApiKey;
+  const { data } = await api('POST', '/api/ai/config', body);
+  if (!data?.ok) {
+    if (!silent) showToast(data?.error || t('saveFailed', '保存失败'), 'error');
+    return;
+  }
+  savedConfig = { ...savedConfig, ...body };
+  if (!silent) showToast(t('saved', '已保存'), 'success');
+}
+
+function getModelHubPayload() {
+  if (typeof ModelHub === 'undefined') return undefined;
+  const hub = ModelHub.prepareForSave?.() || ModelHub.getHub();
+  if (hub?.accounts?.length) return hub;
+  return effectiveModelHub({
+    provider: els.providerSelect.value,
+    model: getMainModelValue(),
+    apiKey: els.apiKeyInput.value.trim(),
+    baseUrl: els.baseUrlInput.value.trim(),
+    modelFallbacks: typeof FallbackModels !== 'undefined' ? FallbackModels.getRows() : [],
+  });
+}
+
 function getConfigPayload() {
   return {
     provider: els.providerSelect.value,
@@ -3812,9 +4068,6 @@ function getConfigPayload() {
     apiKey: els.apiKeyInput.value.trim(),
     baseUrl: els.baseUrlInput.value.trim(),
     systemPrompt: els.systemPromptInput.value.trim(),
-    temperature: parseFloat(els.temperatureInput.value),
-    topP: parseFloat(els.topPInput.value),
-    maxTokens: parseInt(els.maxTokensInput.value, 10),
     contextWindow: parseInt(els.contextWindowInput?.value, 10) || 0,
     compactionEnabled: !!els.compactionEnabledToggle?.checked,
     compactAfterTurns: parseInt(els.compactAfterTurnsInput?.value, 10) || 24,
@@ -3833,13 +4086,13 @@ function getConfigPayload() {
     evolutionCandidates: parseInt(els.evolutionCandidatesInput?.value, 10) || 3,
     thinkingEnabled: els.thinkingToggle.checked,
     thinkingKeep: '',
-    webPin: els.webPinInput?.value?.trim() || '',
     timezone: els.timezoneSelect?.value || 'Asia/Shanghai',
     embeddingMode: els.embeddingModeSelect?.value || 'same',
     embeddingProvider: els.embeddingProviderSelect?.value || 'siliconflow',
     embeddingModel: getEmbeddingModelValue(),
     embeddingApiKey: els.embeddingApiKeyInput?.value?.trim() || '',
     embeddingBaseUrl: els.embeddingBaseUrlInput?.value?.trim() || '',
+    modelHub: getModelHubPayload(),
     modelFallbacks: typeof FallbackModels !== 'undefined' ? FallbackModels.getRows() : [],
   };
 }
@@ -3864,6 +4117,7 @@ async function applyServerConfig(config, opts = {}) {
   }
   updateConfigSaveHint();
   updateModelBadgeFromSaved();
+  maybeDismissOnboardingWizard();
   if (prevTz && prevTz !== config.timezone) {
     invalidateComposerSlashRoutes();
     if (cabanaInited && typeof CabanaPanel.reloadRoutes === 'function') {
@@ -3888,26 +4142,24 @@ async function pullConfigFromDevice() {
   return true;
 }
 
-function updateConfigSaveHint() {
-  const el = $('#changesHint');
-  if (!el) return;
-  const map = {
-    idle: 'configHintManual',
-    dirty: 'configHintDirty',
-    saving: 'configHintSaving',
-    saved: 'configHintSaved',
-    error: 'configHintSaveError',
-  };
-  el.textContent = t(map[configSaveState] || 'configHintManual', t('changesStoppedHint'));
-  el.className = `hint-box config-save-hint ${configSaveState}`;
-}
+function updateConfigSaveHint() {}
 
 function persistConfigDraft() {
   const draft = getConfigPayload();
   const safe = { ...draft };
   if (safe.apiKey?.startsWith('•')) delete safe.apiKey;
   if (safe.embeddingApiKey?.startsWith('•')) delete safe.embeddingApiKey;
-  if (safe.webPin?.startsWith('•')) delete safe.webPin;
+  if (safe.modelHub?.accounts) {
+    safe.modelHub = {
+      ...safe.modelHub,
+      accounts: safe.modelHub.accounts.map((acc) => {
+        const row = { ...acc };
+        if (row.apiKey?.startsWith('•')) delete row.apiKey;
+        return row;
+      }),
+    };
+    if (!safe.modelHub.accounts.length) delete safe.modelHub;
+  }
   LocalPrefs.setConfigDraft(safe);
   if (configSaveState !== 'saving') {
     configSaveState = 'dirty';
@@ -3917,15 +4169,8 @@ function persistConfigDraft() {
 }
 
 function bindConfigPersistence() {
-  const fields = [
-    els.providerSelect,
-    mainModelCombo?.input,
-    els.apiKeyInput,
-    els.baseUrlInput,
+  const personaFields = [
     els.systemPromptInput,
-    els.temperatureInput,
-    els.topPInput,
-    els.maxTokensInput,
     els.contextWindowInput,
     els.compactionEnabledToggle,
     els.compactAfterTurnsInput,
@@ -3933,17 +4178,34 @@ function bindConfigPersistence() {
     els.reserveTokensInput,
     els.compactionTokenTriggerToggle,
     els.thinkingToggle,
-    els.webPinInput,
+    els.evolutionEnabledToggle,
+    els.evolutionAutoWorkspaceToggle,
+    els.evolutionAutoMemoryToggle,
+    els.evolutionLlmReflectToggle,
+    els.evolutionAutoProposeToggle,
+    els.evolutionToolDescToggle,
+    els.evolutionGepaEnabledToggle,
+    els.evolutionUseDspyToggle,
+    els.skillsDisclosureMaxInput,
+    els.evolutionCandidatesInput,
     els.timezoneSelect,
+  ].filter(Boolean);
+  for (const field of personaFields) {
+    const evt = field.tagName === 'SELECT' || field.type === 'checkbox' ? 'change' : 'input';
+    field.addEventListener(evt, () => {
+      configSaveState = 'dirty';
+    });
+  }
+  const embeddingFields = [
     els.embeddingModeSelect,
     els.embeddingProviderSelect,
     embeddingModelCombo?.input,
     els.embeddingApiKeyInput,
     els.embeddingBaseUrlInput,
   ].filter(Boolean);
-  for (const field of fields) {
+  for (const field of embeddingFields) {
     const evt = field.tagName === 'SELECT' || field.type === 'checkbox' ? 'change' : 'input';
-    field.addEventListener(evt, () => persistConfigDraft());
+    field.addEventListener(evt, () => scheduleEmbeddingSave());
   }
 }
 
@@ -3951,7 +4213,7 @@ function reconcileConfigDraft(serverConfig) {
   const draft = LocalPrefs.getConfigDraft();
   if (!draft || !serverConfig) return false;
   const keys = [
-    'provider', 'model', 'baseUrl', 'systemPrompt', 'temperature', 'topP', 'maxTokens',
+    'provider', 'model', 'baseUrl', 'systemPrompt',
     'thinkingEnabled', 'embeddingMode', 'embeddingProvider', 'embeddingModel', 'embeddingBaseUrl',
   ];
   const differs = keys.some((k) => {
@@ -3960,9 +4222,10 @@ function reconcileConfigDraft(serverConfig) {
     if (d === undefined || d === null || d === '') return false;
     return String(d) !== String(s ?? '');
   });
-  const hasNewSecret = ['apiKey', 'embeddingApiKey', 'webPin'].some((k) => {
+  const hasNewSecret = ['apiKey', 'embeddingApiKey'].some((k) => {
     const v = draft[k];
-    return v && !String(v).startsWith('•');
+    if (!v || String(v).startsWith('•')) return false;
+    return String(v) !== String(serverConfig[k] ?? '');
   });
   if (!differs && !hasNewSecret) {
     LocalPrefs.clearConfigDraft();
@@ -3994,9 +4257,7 @@ function canFetchModelsFromForm() {
   if (payload.provider === 'custom' && !payload.baseUrl) {
     return false;
   }
-  const hasNewKey = payload.apiKey && !payload.apiKey.startsWith('•');
-  const hasStoredKey = payload.apiKey && payload.apiKey.startsWith('•');
-  return hasNewKey || hasStoredKey;
+  return !!(payload.apiKey?.trim());
 }
 
 function primeModelsFromCatalog(provider) {
@@ -4129,16 +4390,7 @@ function applyDefaultModelForProvider() {
   }
 }
 
-function showConfigureHint() {
-  if (configured) {
-    els.connectionResult.textContent = '';
-    els.connectionResult.className = 'connection-result';
-    return;
-  }
-  const msg = configureError || t('configureHint', 'Set API key and Base URL (for custom) then save.');
-  els.connectionResult.textContent = msg;
-  els.connectionResult.classList.add('warning');
-}
+function showConfigureHint() {}
 
 async function loadProviders() {
   const { data } = await api('GET', '/api/ai/providers');
@@ -4164,9 +4416,6 @@ function applyConfigToForm(c) {
   els.apiKeyInput.value = c.apiKey || '';
   els.baseUrlInput.value = c.baseUrl || '';
   els.systemPromptInput.value = c.systemPrompt || '';
-  els.temperatureInput.value = c.temperature ?? 0.7;
-  els.topPInput.value = c.topP ?? 1.0;
-  els.maxTokensInput.value = c.maxTokens ?? 4096;
   if (els.contextWindowInput) els.contextWindowInput.value = c.contextWindow ?? 0;
   if (els.compactionEnabledToggle) els.compactionEnabledToggle.checked = c.compactionEnabled !== false;
   if (els.compactAfterTurnsInput) els.compactAfterTurnsInput.value = c.compactAfterTurns ?? 24;
@@ -4184,7 +4433,6 @@ function applyConfigToForm(c) {
   if (els.skillsDisclosureMaxInput) els.skillsDisclosureMaxInput.value = c.skillsDisclosureMax ?? 10;
   if (els.evolutionCandidatesInput) els.evolutionCandidatesInput.value = c.evolutionCandidates ?? 3;
   els.thinkingToggle.checked = !!c.thinkingEnabled;
-  if (els.webPinInput) els.webPinInput.value = c.webPin || '';
   if (els.timezoneSelect) {
     renderTimezoneSelect(c.timezone || 'Asia/Shanghai');
   }
@@ -4201,7 +4449,8 @@ function applyConfigToForm(c) {
   refreshEmbeddingModels();
   if (c.model) mainModelCombo?.setValue(c.model, { silent: true });
   applyEmbeddingModelSelection(c.embeddingModel || embeddingDefaults[getActiveEmbeddingProvider()] || '');
-  if (typeof FallbackModels !== 'undefined') {
+  applyModelHubFromConfig(c);
+  if (typeof FallbackModels !== 'undefined' && !(effectiveModelHub(c)?.accounts?.length)) {
     FallbackModels.setRows(c.modelFallbacks || []);
     FallbackModels.setProviders(providers);
   }
@@ -4251,21 +4500,6 @@ async function loadBootstrap() {
   if (data.tools) {
     toolsMeta = data.tools;
     LocalPrefs.setServerToolDefaults(data.tools);
-  }
-  pinRequired = !!data.pinRequired;
-  if (typeof WebApi !== 'undefined') {
-    WebApi.configure({
-      pinRequired,
-      els: {
-        pinModal: els.pinModal,
-        pinModalInput: els.pinModalInput,
-        pinModalOk: els.pinModalOk,
-      },
-      onPinSuccess: () => {
-        reconnectSyncWebSocket();
-        refreshSessionViewFromRemote().catch(() => {});
-      },
-    });
   }
   hostEnvironment = data.hostEnvironment || hostEnvironment;
   applyHeaderChrome();
@@ -4377,12 +4611,6 @@ async function fetchModels(opts = {}) {
   mainModelCombo?.setLoading(false);
   renderModelSelect();
   if (savedModel) await applySavedModelSelection(savedModel);
-  if (!data.ok && data.error) {
-    els.connectionResult.textContent = data.error;
-    els.connectionResult.className = 'connection-result error';
-  } else {
-    showConfigureHint();
-  }
 }
 
 function onProviderChange() {
@@ -4402,7 +4630,12 @@ function onProviderChange() {
       applyEmbeddingModelSelection(embeddingDefaults[provider] || '');
     }
   }
-  if (typeof FallbackModels !== 'undefined') FallbackModels.setProviders(providers);
+  if (typeof ModelHub !== 'undefined') {
+    ModelHub.setProviders(providers, providerLabels);
+  } else if (typeof FallbackModels !== 'undefined') {
+    FallbackModels.setProviders(providers);
+    FallbackModels.refreshMainProviderLabels?.();
+  }
 }
 
 function onEmbeddingModeChange() {
@@ -4423,7 +4656,22 @@ function onEmbeddingProviderChange() {
 async function saveConfig(opts = {}) {
   const silent = !!opts.silent;
   if (configSaveInFlight) return;
+  if (typeof ModelHub !== 'undefined' && ModelHub.prepareForSave) {
+    ModelHub.prepareForSave();
+  }
   const body = getConfigPayload();
+  if (body.modelHub?.accounts) {
+    body.modelHub = {
+      ...body.modelHub,
+      accounts: body.modelHub.accounts.map((acc) => {
+        const row = { ...acc };
+        if (row.apiKey?.startsWith('•')) delete row.apiKey;
+        return row;
+      }),
+    };
+  }
+  if (body.apiKey?.startsWith('•')) delete body.apiKey;
+  if (body.embeddingApiKey?.startsWith('•')) delete body.embeddingApiKey;
   configSaveInFlight = true;
   configSaveState = 'saving';
   updateConfigSaveHint();
@@ -4447,6 +4695,12 @@ async function saveConfig(opts = {}) {
   if (data.ok) {
     configured = !!data.configured;
     configureError = data.configureError || '';
+    if (data.modelHub) {
+      savedConfig = { ...savedConfig, modelHub: data.modelHub };
+      if (typeof ModelHub !== 'undefined') {
+        ModelHub.setHub(data.modelHub, { silent: true });
+      }
+    }
     LocalPrefs.clearConfigDraft();
     await loadConfig();
     configSaveState = 'saved';
@@ -4456,6 +4710,8 @@ async function saveConfig(opts = {}) {
       showToast(t('saved', 'Saved'), 'success');
     }
     if (configured) {
+      await api('POST', '/api/ai/onboarding/complete', {}).catch(() => {});
+      closeOnboardingWizard();
       await fetchModels();
       await verifyConnection({ silent: true });
     } else {
@@ -4496,18 +4752,10 @@ async function verifyConnection(opts = {}) {
   }
   if (!canFetchModelsFromForm() && !savedConfig?.configured) {
     const msg = configureError || t('configureHint', 'Set API key and Base URL (for custom) then save.');
-    if (els.connectionResult) {
-      els.connectionResult.textContent = msg;
-      els.connectionResult.className = 'connection-result warning';
-    }
     if (!silent) showToast(msg, 'warning');
     return false;
   }
 
-  if (els.connectionResult) {
-    els.connectionResult.textContent = t('testing', 'Testing...');
-    els.connectionResult.className = 'connection-result';
-  }
   if (opts.testBtn && typeof UiBusy !== 'undefined') {
     UiBusy.setButtonBusy(opts.testBtn, true, { busyLabel: t('testing', '测试中…') });
   }
@@ -4517,19 +4765,11 @@ async function verifyConnection(opts = {}) {
       const msg = formatApiError(data.error || t('connectionFailed', 'Connection failed'));
       configureError = data.error || msg;
       configured = false;
-      if (els.connectionResult) {
-        els.connectionResult.textContent = msg;
-        els.connectionResult.className = 'connection-result error';
-      }
       if (!silent) showToast(msg.split('\n')[0], 'error');
       return false;
     }
     configured = true;
     configureError = '';
-    if (els.connectionResult) {
-      els.connectionResult.textContent = data.message || t('connectionOk', 'Connection OK');
-      els.connectionResult.className = `connection-result ${data.model_available ? 'success' : 'warning'}`;
-    }
     if (!silent) {
       showToast(data.message || t('connectionOk', 'Connection OK'), data.model_available ? 'success' : 'warning');
     }
@@ -4724,6 +4964,195 @@ function renderDevAssets(rows) {
   }).join('');
 }
 
+async function loadKnowledgeRagStatus(ragData) {
+  if (!els.ragStatusBox) return;
+  try {
+    let rag = ragData;
+    let cfg = savedConfig;
+    if (!rag) {
+      const [{ data }, boot] = await Promise.all([
+        api('GET', '/api/ai/rag'),
+        cfg ? Promise.resolve({ data: { config: cfg } }) : api('GET', '/api/ai/bootstrap').catch(() => ({ data: {} })),
+      ]);
+      rag = data;
+      cfg = boot?.data?.config || savedConfig;
+    }
+    els.ragStatusBox.innerHTML = renderRagStatusCard(rag, cfg);
+    if (els.knowledgeRagBadge) {
+      const chunks = Number(rag?.vector_chunks) || 0;
+      const docs = Number(rag?.count) || 0;
+      els.knowledgeRagBadge.textContent = chunks > 0 ? String(chunks) : (docs > 0 ? String(docs) : '—');
+    }
+  } catch (e) {
+    els.ragStatusBox.innerHTML = `<p class="dev-empty">${escapeHtml(e.message || t('devRagLoadFail', '无法加载知识库状态'))}</p>`;
+  }
+}
+
+const runtimeState = { activeTab: 'env' };
+const devPaneState = { activeSection: 'collab' };
+
+function setDevPaneSection(section) {
+  const id = section || 'collab';
+  devPaneState.activeSection = id;
+  document.querySelectorAll('[data-dev-pane]').forEach((btn) => {
+    const on = btn.dataset.devPane === id;
+    btn.classList.toggle('is-active', on);
+    btn.setAttribute('aria-selected', on ? 'true' : 'false');
+  });
+  document.querySelectorAll('[data-dev-section]').forEach((panel) => {
+    panel.classList.toggle('hidden', panel.dataset.devSection !== id);
+  });
+  const desc = $('#devPaneDesc');
+  if (desc) {
+    const key = id === 'cache' ? 'devPaneDescCache' : (id === 'runtime' ? 'devPaneDescRuntime' : 'devPaneDescCollab');
+    const fallback = id === 'cache'
+      ? '路线回放、TSK 提取等本地缓存管理'
+      : (id === 'runtime' ? '本机环境、工具会话与输出资产' : 'Fork 分析、发布 PR 与反馈');
+    desc.textContent = t(key, fallback);
+  }
+  if (id === 'cache') loadDevCacheStatus().catch(() => {});
+}
+
+function bindDevPaneSectionControls() {
+  document.querySelectorAll('[data-dev-pane]').forEach((btn) => {
+    btn.addEventListener('click', () => setDevPaneSection(btn.dataset.devPane));
+  });
+  setDevPaneSection(devPaneState.activeSection || 'collab');
+}
+
+function setRuntimeTab(tab) {
+  const id = tab || 'env';
+  runtimeState.activeTab = id;
+  document.querySelectorAll('[data-runtime-tab]').forEach((btn) => {
+    const on = btn.dataset.runtimeTab === id;
+    btn.classList.toggle('is-active', on);
+    btn.setAttribute('aria-selected', on ? 'true' : 'false');
+  });
+  document.querySelectorAll('[data-runtime-panel]').forEach((panel) => {
+    panel.classList.toggle('hidden', panel.dataset.runtimePanel !== id);
+  });
+}
+
+function bindRuntimeTabControls() {
+  document.querySelectorAll('[data-runtime-tab]').forEach((btn) => {
+    btn.addEventListener('click', () => setRuntimeTab(btn.dataset.runtimeTab));
+  });
+  setRuntimeTab(runtimeState.activeTab || 'env');
+}
+
+function updateRuntimeSummary({ env, sessions, passport, assets }) {
+  if (!els.devRuntimeSummary) return;
+  const kind = env ? formatEnvKindLabel(env) : '—';
+  const platform = (env?.platform || '').split(' - ')[0] || '—';
+  const hp = env?.hardware_profile || {};
+  const pandaOk = !!hp.panda_connected;
+  const pandaText = pandaOk
+    ? t('devEnvPandaConnected', 'Panda 已连接')
+    : t('devEnvPandaDisconnected', 'Panda 未连接');
+  const sessN = sessions?.length || 0;
+  const passportN = passport?.entries?.length ?? passport?.count ?? 0;
+  const assetN = assets?.length || 0;
+  const parts = [
+    kind,
+    platform,
+    pandaText,
+    `${sessN} ${t('devRuntimeSessionsShort', '会话')}`,
+    `${assetN} ${t('devRuntimeAssetsShort', '文件')}`,
+  ];
+  if (passportN > 0) parts.push(`${passportN} ${t('devRuntimePassportShort', '调参')}`);
+  els.devRuntimeSummary.textContent = parts.filter(Boolean).join(' · ');
+}
+
+const collabState = {
+  pkg: null,
+  fork: null,
+  publish: null,
+  primaryForge: 'github',
+  activeTab: 'repo',
+};
+
+function setCollabTab(tab) {
+  const id = tab || 'repo';
+  collabState.activeTab = id;
+  document.querySelectorAll('[data-collab-tab]').forEach((btn) => {
+    const on = btn.dataset.collabTab === id;
+    btn.classList.toggle('is-active', on);
+    btn.setAttribute('aria-selected', on ? 'true' : 'false');
+  });
+  document.querySelectorAll('[data-collab-panel]').forEach((panel) => {
+    panel.classList.toggle('hidden', panel.dataset.collabPanel !== id);
+  });
+}
+
+function bindCollabTabControls() {
+  document.querySelectorAll('[data-collab-tab]').forEach((btn) => {
+    btn.addEventListener('click', () => setCollabTab(btn.dataset.collabTab));
+  });
+  els.collabGoPublishPrTab?.addEventListener('click', () => setCollabTab('publish'));
+  setCollabTab(collabState.activeTab || 'repo');
+}
+
+function renderCollabForgeChip(forge, auth) {
+  const label = forge === 'gitee' ? 'Gitee' : 'GitHub';
+  const statusClass = auth?.valid ? 'on' : (auth?.configured ? 'warn' : 'off');
+  let text = label;
+  if (auth?.valid && auth.user) text = `${label} @${auth.user}`;
+  else if (auth?.valid) text = `${label} ✓`;
+  else if (auth?.configured) text = `${label} !`;
+  else text = `${label} —`;
+  return `<span class="dev-collab-chip dev-status ${statusClass}">${escapeHtml(text)}</span>`;
+}
+
+function updateCollabStatusBar() {
+  const pkg = collabState.pkg;
+  const fork = collabState.fork;
+  const publish = collabState.publish;
+  if (els.collabVersionLine) {
+    const version = pkg?.version ? `v${pkg.version}` : '—';
+    const git = pkg?.git_commit
+      ? `${pkg.git_commit.slice(0, 8)}${pkg.git_dirty ? ' *' : ''}`
+      : (pkg?.ok === false ? '' : t('devPackageNotGit', '非 git 安装'));
+    const updateHint = pkg?.update_available
+      ? ` · ${t('devPackageUpdateAvailable', '有新版本可更新')}`
+      : '';
+    els.collabVersionLine.textContent = `op助手 ${version}${git ? ` · ${git}` : ''}${updateHint}`;
+  }
+  if (els.collabRepoLine) {
+    if (!fork?.ok) {
+      els.collabRepoLine.textContent = fork?.error || t('devForkLoadFail', '无法扫描 fork');
+    } else {
+      const community = fork.community_match || {};
+      const displayId = community.id || fork.fork_id || '—';
+      const displayLabel = community.name || fork.fork_label || displayId;
+      const branch = fork.git_branch || '—';
+      const units = publish?.units || [];
+      const dirtyTotal = units.reduce((sum, u) => sum + (Number(u.dirty_count) || 0), 0);
+      const dirtyPart = dirtyTotal > 0
+        ? ` · ${dirtyTotal} ${t('devPublishDirty', '处改动')}`
+        : ` · ${t('devPublishClean', '无改动')}`;
+      els.collabRepoLine.textContent = `${displayLabel} · ${branch}${dirtyPart}`;
+    }
+  }
+  if (els.collabAuthLine) {
+    const auth = publish?.forge_auth || {};
+    const primary = collabState.primaryForge || inferCollabForge({ fork: collabState.fork, publish });
+    const chip = renderCollabForgeChip(primary, auth[primary] || {});
+    els.collabAuthLine.innerHTML = chip;
+  }
+  if (els.devCollabDirtyBadge) {
+    const units = publish?.units || [];
+    const dirtyUnits = units.filter((u) => u.has_changes).length;
+    els.devCollabDirtyBadge.textContent = dirtyUnits > 0 ? String(dirtyUnits) : '—';
+    els.devCollabDirtyBadge.title = dirtyUnits > 0
+      ? `${dirtyUnits} ${t('devCollabDirtyUnits', '个仓库有未发布改动')}`
+      : '';
+  }
+  if (els.devPackageUpdateBtn && pkg) {
+    els.devPackageUpdateBtn.hidden = !pkg.update_available;
+    els.devPackageUpdateBtn.disabled = false;
+  }
+}
+
 function renderPackageVersionCard(pkg) {
   if (!pkg || !pkg.ok) {
     return `<p class="dev-empty">${escapeHtml(pkg?.error || t('devPackageLoadFail', '无法加载版本信息'))}</p>`;
@@ -4747,8 +5176,40 @@ function renderPackageVersionCard(pkg) {
   return rows + hint + installHint;
 }
 
-function renderForgeTokenRow(forge, auth, inputId, placeholderKey, placeholderDefault) {
-  const forgeLabel = forge === 'gitee' ? 'Gitee' : 'GitHub';
+function inferForgeFromUrl(url) {
+  const u = String(url || '').toLowerCase();
+  if (u.includes('gitee.com')) return 'gitee';
+  if (u.includes('gitlab')) return 'gitlab';
+  return 'github';
+}
+
+function inferCollabForge({ fork, publish } = {}) {
+  if (publish?.primary_forge) return publish.primary_forge;
+  const counts = { github: 0, gitee: 0, gitlab: 0 };
+  const add = (url) => {
+    if (!url) return;
+    const f = inferForgeFromUrl(url);
+    counts[f] = (counts[f] || 0) + 1;
+  };
+  const forkRemotes = fork?.git_remotes || fork?.scan?.git_remotes || [];
+  forkRemotes.forEach(add);
+  (publish?.units || []).forEach((u) => add(u.origin_url));
+  const forks = publish?.settings?.project_publish?.forks || {};
+  Object.values(forks).forEach((f) => add(f?.fork_url));
+  const ranked = Object.entries(counts).filter(([, n]) => n > 0).sort((a, b) => b[1] - a[1]);
+  return ranked[0]?.[0] || 'github';
+}
+
+function collabForgeLabel(forge) {
+  if (forge === 'gitee') return 'Gitee';
+  if (forge === 'gitlab') return 'GitLab';
+  return 'GitHub';
+}
+
+function renderCollabCredentialsCard(publish, fork) {
+  const forge = inferCollabForge({ fork, publish });
+  collabState.primaryForge = forge;
+  const auth = publish?.forge_auth?.[forge] || {};
   const statusClass = auth.valid ? 'on' : (auth.configured ? 'warn' : '');
   const statusText = auth.valid
     ? t('devPublishTokenOk', '已验证')
@@ -4756,47 +5217,95 @@ function renderForgeTokenRow(forge, auth, inputId, placeholderKey, placeholderDe
   const userLine = auth.valid && auth.user
     ? `<span class="publish-token-user">${t('devPublishTokenBound', '已绑定')} @${escapeHtml(auth.user)}</span>`
     : '';
+  const secondary = (publish?.secondary_forges || []).filter((f) => f !== forge);
+  const secondaryHint = secondary.length
+    ? `<p class="field-hint muted">${escapeHtml(t('devCollabSecondaryForgeHint', '仓库也使用 {forges}，当前仅需配置主平台 Token。').replace('{forges}', secondary.map(collabForgeLabel).join(' / ')))}</p>`
+    : '';
   const hintKey = forge === 'gitee' ? 'devPublishTokenHintGitee' : 'devPublishTokenHintGithub';
   const hintDefault = forge === 'gitee'
     ? 'Gitee 私人令牌，需具备 Pull Request 权限。'
-    : '需 classic/细粒度 PAT，含 repo 权限（存为 ai_github_actions_pat）。';
+    : '需 classic/细粒度 PAT，含 repo 权限。';
   const hintLink = forge === 'gitee'
     ? '<a href="https://gitee.com/profile/personal_access_tokens" target="_blank" rel="noopener noreferrer">gitee.com/profile/personal_access_tokens</a>'
     : '<a href="https://github.com/settings/tokens" target="_blank" rel="noopener noreferrer">github.com/settings/tokens</a>';
-  const eyeSvg = `<svg class="icon-svg eye-open" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
-    <svg class="icon-svg eye-closed hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true"><path d="M3 3l18 18"/><path d="M10.6 10.6a2 2 0 0 0 2.8 2.8"/><path d="M6.7 6.7C4.1 8.5 2.5 12 2.5 12s3.5 7 9.5 7c1.8 0 3.4-.5 4.8-1.3"/><path d="M9.9 5.1A10.8 10.8 0 0 1 12 5c6 0 9.5 7 9.5 7a16.2 16.2 0 0 1-3.6 4.5"/><path d="M14.1 14.1a2 2 0 0 1-2.8-2.8"/></svg>`;
+  const detectHint = t('devCollabForgeAuto', '根据仓库 remote 自动识别为 {forge}').replace('{forge}', collabForgeLabel(forge));
   return `
-    <div class="field dev-forge-field" data-forge="${forge}">
-      <span class="field-label">${forgeLabel}</span>
-      <div class="password-field">
-        <input type="password" id="${inputId}" placeholder="${t(placeholderKey, placeholderDefault)}" autocomplete="off">
-        <button type="button" class="password-reveal" data-password-for="${inputId}" aria-pressed="false" tabindex="-1">${eyeSvg}</button>
-      </div>
-      <div class="publish-token-meta">
-        <span class="dev-status ${statusClass}">${statusText}</span>
-        ${userLine}
-        <div class="publish-token-actions">
-          <button type="button" class="btn small ghost publish-token-verify" data-forge="${forge}" data-input="${inputId}">${t('devPublishVerify', '验证')}</button>
-          <button type="button" class="btn small ghost publish-token-clear" data-forge="${forge}" data-input="${inputId}">${t('devPublishClear', '清除')}</button>
+    <div class="collab-credentials-card" data-primary-forge="${forge}">
+      <div class="collab-credentials-head">
+        <span class="field-label" id="collabForgeTokenLabel">${collabForgeLabel(forge)} Token</span>
+        <div class="publish-token-meta">
+          <span class="dev-status ${statusClass}">${statusText}</span>
+          ${userLine}
         </div>
       </div>
-      <p class="field-hint">${t(hintKey, hintDefault)} ${hintLink}</p>
+      <input type="text" id="collabForgeToken" class="collab-forge-token" data-forge="${forge}" placeholder="${t('devCollabTokenPlaceholder', '粘贴 Token，仓库/发布/反馈共用')}" autocomplete="off" spellcheck="false">
+      <div class="publish-token-actions">
+        <button type="button" class="btn small ghost collab-token-verify" data-forge="${forge}">${t('devPublishVerify', '验证')}</button>
+        <button type="button" class="btn small ghost collab-token-clear" data-forge="${forge}">${t('devPublishClear', '清除')}</button>
+      </div>
+      <p class="field-hint">${escapeHtml(detectHint)} · ${t(hintKey, hintDefault)} ${hintLink}</p>
+      ${secondaryHint}
     </div>`;
 }
 
-function renderPublishSettingsCard(status) {
-  const auth = status?.forge_auth || {};
+function refreshCollabCredentials(publish, fork) {
+  if (!els.collabCredentialsBox) return;
+  els.collabCredentialsBox.innerHTML = renderCollabCredentialsCard(publish, fork);
+}
+
+function bindCollabCredentialsControls() {
+  const wrap = els.collabCredentialsWrap;
+  if (!wrap || wrap.dataset.bound === '1') return;
+  wrap.dataset.bound = '1';
+  wrap.addEventListener('click', async (e) => {
+    const verifyBtn = e.target.closest('.collab-token-verify');
+    const clearBtn = e.target.closest('.collab-token-clear');
+    if (!verifyBtn && !clearBtn) return;
+    const forge = (verifyBtn || clearBtn).dataset.forge || collabState.primaryForge || 'github';
+    const input = document.getElementById('collabForgeToken');
+    if (clearBtn) {
+      if (!window.confirm(t('devPublishClearConfirm', '清除已保存的 Token？'))) return;
+      try {
+        await api('POST', '/api/ai/publish', { operation: 'set_forge_token', forge, token: '' });
+        showToast(t('devPublishTokenCleared', 'Token 已清除'));
+        await loadPublishPane();
+      } catch (err) {
+        showToast(err.message || t('devPublishFail', '发布失败'));
+      }
+      return;
+    }
+    const token = input?.value?.trim() || '';
+    const run = async () => {
+      const { data } = await api('POST', '/api/ai/publish', {
+        operation: 'verify_forge',
+        forge,
+        token,
+      });
+      if (!data.valid) throw new Error(data.error_detail || data.hint || t('devPublishTokenBad', '无效'));
+      if (token) {
+        await api('POST', '/api/ai/publish', { operation: 'set_forge_token', forge, token });
+      }
+      showToast(data.user ? `${t('devPublishTokenBound', '已绑定')} @${data.user}` : t('devPublishTokenOk', '已验证'));
+      await loadPublishPane();
+    };
+    const btn = verifyBtn;
+    if (typeof UiBusy !== 'undefined') {
+      await UiBusy.withButtonBusy(btn, run, { busyLabel: t('uiWorking', '处理中…') });
+    } else {
+      btn.disabled = true;
+      try { await run(); } catch (err) { showToast(err.message); } finally { btn.disabled = false; }
+    }
+  });
+}
+
+function renderPublishConfigCard(status) {
   const settings = status?.settings || {};
   const proj = settings.project_publish || {};
-  const gh = auth.github || {};
-  const gitee = auth.gitee || {};
   const mode = proj.default_mode || 'current_remote';
   const forks = proj.forks || {};
   const opFork = forks.openpilot || {};
   return `
-    <div class="dev-form-stack">
-      ${renderForgeTokenRow('github', gh, 'publishGithubToken', 'devPublishTokenPh', 'PAT（repo 权限）')}
-      ${renderForgeTokenRow('gitee', gitee, 'publishGiteeToken', 'devPublishGiteeTokenPh', '私人令牌')}
+    <div class="dev-form-stack dev-form-stack-compact">
       <label class="field">
         <span class="field-label">${t('devPublishDefaultMode', '项目仓默认')}</span>
         <select id="publishDefaultMode">
@@ -4811,6 +5320,7 @@ function renderPublishSettingsCard(status) {
       <p class="field-hint">${t('devPublishAssistantHint', 'op助手 (ai) 默认 PR 到 mouxangithub/ai；项目仓 PR 目标由 remote 或 fork 决定。')}</p>
     </div>`;
 }
+
 
 function renderPublishUnits(units) {
   const list = units || [];
@@ -4846,26 +5356,26 @@ function renderPublishUnits(units) {
 }
 
 async function loadPublishPane() {
-  if (!els.publishSettingsBox) return;
+  if (!els.collabCredentialsBox && !els.publishSettingsBox) return;
   try {
     const { data } = await api('GET', '/api/ai/publish');
     if (!data.ok) throw new Error(data.error || 'load failed');
-    els.publishSettingsBox.innerHTML = renderPublishSettingsCard(data);
-    bindPublishForgeTokenControls();
-    bindPasswordReveals();
+    collabState.publish = data;
+    refreshCollabCredentials(data, collabState.fork);
+    if (els.publishSettingsBox) {
+      els.publishSettingsBox.innerHTML = renderPublishConfigCard(data);
+    }
     const units = data.units || [];
     if (els.publishUnitsBox) {
       els.publishUnitsBox.innerHTML = renderPublishUnits(units);
       bindPublishUnitButtons();
     }
-    if (els.devPublishBadge) {
-      const dirty = units.filter((u) => u.has_changes).length;
-      els.devPublishBadge.textContent = dirty > 0 ? String(dirty) : '—';
-    }
+    updateCollabStatusBar();
   } catch (e) {
-    if (els.publishSettingsBox) {
-      els.publishSettingsBox.innerHTML = `<p class="dev-empty">${escapeHtml(e.message || t('devPublishLoadFail', '无法加载发布配置'))}</p>`;
-    }
+    const msg = `<p class="dev-empty">${escapeHtml(e.message || t('devPublishLoadFail', '无法加载发布配置'))}</p>`;
+    if (els.collabCredentialsBox) els.collabCredentialsBox.innerHTML = msg;
+    if (els.publishSettingsBox) els.publishSettingsBox.innerHTML = '';
+    if (els.publishUnitsBox) els.publishUnitsBox.innerHTML = '';
   }
 }
 
@@ -4889,63 +5399,7 @@ function collectPublishSettingsPatch() {
   return patch;
 }
 
-function bindPublishForgeTokenControls() {
-  els.publishSettingsBox?.querySelectorAll('.publish-token-verify').forEach((btn) => {
-    btn.addEventListener('click', async () => {
-      const forge = btn.dataset.forge || 'github';
-      const input = document.getElementById(btn.dataset.input || '');
-      const token = input?.value?.trim() || '';
-      const run = async () => {
-        const { data } = await api('POST', '/api/ai/publish', {
-          operation: 'verify_forge',
-          forge,
-          token,
-        });
-        if (!data.valid) throw new Error(data.error_detail || data.hint || t('devPublishTokenBad', '无效'));
-        if (token) {
-          await api('POST', '/api/ai/publish', { operation: 'set_forge_token', forge, token });
-        }
-        showToast(data.user ? `${t('devPublishTokenBound', '已绑定')} @${data.user}` : t('devPublishTokenOk', '已验证'));
-        await loadPublishPane();
-      };
-      if (typeof UiBusy !== 'undefined') {
-        await UiBusy.withButtonBusy(btn, run, { busyLabel: t('uiWorking', '处理中…') });
-      } else {
-        btn.disabled = true;
-        try { await run(); } catch (e) { showToast(e.message); } finally { btn.disabled = false; }
-      }
-    });
-  });
-  els.publishSettingsBox?.querySelectorAll('.publish-token-clear').forEach((btn) => {
-    btn.addEventListener('click', async () => {
-      const forge = btn.dataset.forge || 'github';
-      const input = document.getElementById(btn.dataset.input || '');
-      if (!window.confirm(t('devPublishClearConfirm', '清除已保存的 Token？'))) return;
-      const run = async () => {
-        await api('POST', '/api/ai/publish', { operation: 'set_forge_token', forge, token: '' });
-        if (input) input.value = '';
-        showToast(t('devPublishTokenCleared', 'Token 已清除'));
-        await loadPublishPane();
-      };
-      if (typeof UiBusy !== 'undefined') {
-        await UiBusy.withButtonBusy(btn, run, { busyLabel: t('uiWorking', '处理中…') });
-      } else {
-        btn.disabled = true;
-        try { await run(); } catch (e) { showToast(e.message); } finally { btn.disabled = false; }
-      }
-    });
-  });
-}
-
 async function savePublishSettings() {
-  const gh = document.getElementById('publishGithubToken')?.value?.trim();
-  const gitee = document.getElementById('publishGiteeToken')?.value?.trim();
-  if (gh) {
-    await api('POST', '/api/ai/publish', { operation: 'set_forge_token', forge: 'github', token: gh });
-  }
-  if (gitee) {
-    await api('POST', '/api/ai/publish', { operation: 'set_forge_token', forge: 'gitee', token: gitee });
-  }
   const { data } = await api('POST', '/api/ai/publish', {
     operation: 'save_settings',
     settings: collectPublishSettingsPatch(),
@@ -5061,11 +5515,8 @@ let issueTemplatesCache = [];
 
 function renderIssueSettingsCard(status) {
   const settings = status?.settings || {};
-  const gh = status?.forge_auth?.github || {};
   const unit = settings.default_unit || 'assistant';
   const tpl = settings.default_template || 'bug';
-  const ghStatus = gh.valid ? t('devPublishTokenOk', '已验证') : (gh.configured ? t('devPublishTokenBad', '无效') : t('devPublishTokenMissing', '未配置'));
-  const ghClass = gh.valid ? 'on' : (gh.configured ? 'warn' : '');
   return `
     <div class="dev-form-stack dev-form-stack-compact">
       <label class="field">
@@ -5081,12 +5532,8 @@ function renderIssueSettingsCard(status) {
           ${(status?.templates || []).map((x) => `<option value="${escapeHtml(x.id)}" ${x.id === tpl ? 'selected' : ''}>${escapeHtml(x.name || x.id)}</option>`).join('')}
         </select>
       </label>
-      <p class="field-hint">${t('devIssueUnitHint', '选择 GitHub Issue 要开在哪个仓库；与「代码发布」里的发布单元对应。')}</p>
-      <p class="field-hint">${t('devIssueHint', 'Bug/建议先开 Issue；已改代码请用「代码发布」开 PR。Token 与发布共用。')}</p>
-      <div class="publish-token-meta">
-        <span class="field-label">${t('devIssueGithub', 'GitHub')}</span>
-        <span class="dev-status ${ghClass}">${ghStatus}</span>
-      </div>
+      <p class="field-hint">${t('devIssueUnitHint', '选择 GitHub Issue 要开在哪个仓库；与「发布」里的发布单元对应。')}</p>
+      <p class="field-hint">${t('devIssueHint', 'Bug/建议先开 Issue；已改代码请用「发布」开 PR。')}</p>
     </div>`;
 }
 
@@ -5223,37 +5670,57 @@ function renderRagStatusCard(rag, cfg) {
   return rows + hint;
 }
 
-function renderForkDetectCard(fork) {
+function renderForkDetectSummary(fork) {
   if (!fork || !fork.ok) {
     return `<p class="dev-empty">${escapeHtml(fork?.error || t('devForkLoadFail', '无法扫描 fork'))}</p>`;
   }
-  const scan = fork.scan || {};
-  const analysis = fork.analysis || {};
   const community = fork.community_match || {};
   const displayId = community.id || fork.fork_id || '—';
   const displayLabel = community.name || fork.fork_label || displayId;
-  const remotes = (fork.git_remotes || scan.git_remotes || []).slice(0, 2).join(' · ') || '—';
+  const modeLabel = fork.mode === 'ai_cached' ? t('devForkModeAi', 'AI 已分析') : t('devForkModeScan', '仓库扫描');
+  const analysis = fork.analysis || {};
+  const summaryLine = analysis.summary
+    ? `<p class="dev-env-hint">${escapeHtml(analysis.summary.slice(0, 160))}${analysis.summary.length > 160 ? '…' : ''}</p>`
+    : '';
+  const hint = fork.hint ? `<p class="dev-env-hint muted">${escapeHtml(fork.hint)}</p>` : '';
+  return `
+    <div class="dev-kv dev-kv-compact">
+      <span class="dev-kv-label">${t('devForkSummaryId', '识别')}</span>
+      <span class="dev-kv-value">${escapeHtml(displayLabel)} <span class="dev-collab-muted">(${escapeHtml(fork.confidence || '—')})</span></span>
+    </div>
+    <div class="dev-kv dev-kv-compact">
+      <span class="dev-kv-label">${t('devForkSummaryRepo', '仓库')}</span>
+      <span class="dev-kv-value"><code>${escapeHtml(displayId)}</code> · ${escapeHtml(fork.git_branch || '—')}</span>
+    </div>
+    <div class="dev-kv dev-kv-compact">
+      <span class="dev-kv-label">${t('devForkSummaryMode', '模式')}</span>
+      <span class="dev-kv-value">${escapeHtml(modeLabel)}</span>
+    </div>
+    ${summaryLine}${hint}`;
+}
+
+function renderForkDetectDetails(fork) {
+  if (!fork || !fork.ok) return '';
+  const scan = fork.scan || {};
+  const remotes = [...new Set(fork.git_remotes || scan.git_remotes || [])].join('\n') || '—';
   const lines = [
-    ['识别', `${displayLabel} (${fork.confidence || '—'})`],
-    ['仓库', displayId],
-    ['模式', fork.mode === 'ai_cached' ? t('devForkModeAi', 'AI 已分析') : t('devForkModeScan', '仓库扫描')],
-    ['分支', fork.git_branch || '—'],
+    [t('devForkDetailBranch', '分支'), fork.git_branch || '—'],
     ['Remote', remotes],
-    ['特征目录', (scan.distinctive_dirs || []).slice(0, 4).join(', ') || '—'],
-    ['Param 前缀', Object.keys(scan.param_prefixes || {}).slice(0, 5).join(', ') || '—'],
+    [t('devForkDetailDirs', '特征目录'), (scan.distinctive_dirs || []).join(', ') || '—'],
+    [t('devForkDetailParams', 'Param 前缀'), Object.keys(scan.param_prefixes || {}).join(', ') || '—'],
   ];
-  if (analysis.summary) {
-    lines.push(['AI 摘要', analysis.summary.slice(0, 120)]);
-  }
   const rows = lines.map(([label, val]) => `
     <div class="dev-kv">
       <span class="dev-kv-label">${escapeHtml(label)}</span>
       <span class="dev-kv-value">${escapeHtml(String(val))}</span>
     </div>`).join('');
-  const reasons = (fork.reasons || []).slice(0, 3).join(' · ');
-  const hint = reasons ? `<p class="dev-env-hint muted">${escapeHtml(reasons)}</p>` : '';
-  const aiHint = fork.hint ? `<p class="dev-env-hint">${escapeHtml(fork.hint)}</p>` : '';
-  return rows + hint + aiHint;
+  const reasons = (fork.reasons || []).slice(0, 4).join(' · ');
+  const reasonHint = reasons ? `<p class="dev-env-hint muted">${escapeHtml(reasons)}</p>` : '';
+  return rows + reasonHint;
+}
+
+function renderForkDetectCard(fork) {
+  return renderForkDetectSummary(fork);
 }
 
 const forkRunUi = {
@@ -5422,8 +5889,13 @@ async function refreshForkDetectCard() {
       <div class="dev-skeleton dev-skeleton-line short"></div>`;
   }
   const { data: fork } = await api('GET', '/api/ai/fork/detect');
-  if (els.forkDetectBox) els.forkDetectBox.innerHTML = renderForkDetectCard(fork);
-  if (els.devForkBadge) els.devForkBadge.textContent = fork?.community_match?.id || fork?.fork_id || '—';
+  collabState.fork = fork;
+  if (els.forkDetectBox) els.forkDetectBox.innerHTML = renderForkDetectSummary(fork);
+  if (els.forkDetailsBox) els.forkDetailsBox.innerHTML = renderForkDetectDetails(fork);
+  const forkDetailsWrap = $('#forkDetailsWrap');
+  if (forkDetailsWrap) forkDetailsWrap.classList.toggle('hidden', !fork?.ok);
+  refreshCollabCredentials(collabState.publish, fork);
+  updateCollabStatusBar();
   return fork;
 }
 
@@ -5496,6 +5968,7 @@ async function refreshOnboardingModels() {
   let list = catalog;
   if (data.ok && Array.isArray(data.models) && data.models.length) {
     list = data.models;
+    onboardingFetchedModels = list.map((m) => (typeof m === 'string' ? m : m.id)).filter(Boolean);
     LocalPrefs.setModelsCache(provider, list);
   }
   onboardingModelCombo?.setLoading(false);
@@ -5520,16 +5993,20 @@ function getOnboardingEmbeddingProvider() {
   return els.onboardingProvider?.value || 'opencode-zen';
 }
 
-function refreshOnboardingEmbeddingModels() {
+function refreshOnboardingEmbeddingModels(preferredModel = '') {
   const mode = els.onboardingEmbeddingMode?.value || 'same';
   const provider = getOnboardingEmbeddingProvider();
   const list = embeddingCatalogForProvider(provider, mode === 'same');
   onboardingEmbeddingModelCombo?.setOptions(list);
-  const current = onboardingEmbeddingModelCombo?.getValue()?.trim();
+  const current = (preferredModel || onboardingEmbeddingModelCombo?.getValue() || savedConfig?.embeddingModel || '').trim();
+  if (current) {
+    onboardingEmbeddingModelCombo?.setValue(current, { silent: true });
+    return;
+  }
   const def = embeddingDefaults[provider] || '';
-  if (!current && def) {
+  if (def) {
     onboardingEmbeddingModelCombo?.setValue(def, { silent: true });
-  } else if (!current && list.length) {
+  } else if (list.length) {
     onboardingEmbeddingModelCombo?.setValue(list[0].id || list[0], { silent: true });
   }
 }
@@ -5540,22 +6017,64 @@ function onOnboardingEmbeddingModeChange() {
   refreshOnboardingEmbeddingModels();
 }
 
+function onboardingHasStoredApiKey() {
+  return !!(savedConfig?.configured && savedConfig?.apiKey?.trim());
+}
+
+function syncOnboardingFromSavedConfig() {
+  const c = savedConfig || {};
+  const hub = effectiveModelHub(c);
+  const acc = hub?.accounts?.[0];
+  const primary = hub?.primary;
+  const provider = acc?.provider
+    || ((c.provider && providers.includes(c.provider)) ? c.provider : null)
+    || els.providerSelect?.value
+    || providers[0]
+    || 'opencode-zen';
+  if (els.onboardingProvider && providers.includes(provider)) {
+    els.onboardingProvider.value = provider;
+  }
+  if (els.onboardingApiKey) {
+    const key = acc?.apiKey || c.apiKey || '';
+    els.onboardingApiKey.value = key.startsWith('•') ? '' : key;
+    els.onboardingApiKey.placeholder = t('apiKey', 'API Key');
+  }
+  const model = primary?.model || c.model || defaults[provider] || modelCatalog[provider]?.[0] || '';
+  if (model) onboardingModelCombo?.setValue(model, { silent: true });
+  if (acc?.models?.length) onboardingFetchedModels = acc.models.slice();
+  if (els.onboardingEmbeddingMode) {
+    els.onboardingEmbeddingMode.value = c.embeddingMode || 'same';
+  }
+  renderOnboardingEmbeddingProviders();
+  if (c.embeddingProvider && els.onboardingEmbeddingProvider) {
+    if (embeddingProviders.includes(c.embeddingProvider)) {
+      els.onboardingEmbeddingProvider.value = c.embeddingProvider;
+    }
+  }
+  if (els.onboardingEmbeddingApiKey) {
+    els.onboardingEmbeddingApiKey.value = c.embeddingApiKey || '';
+    els.onboardingEmbeddingApiKey.placeholder = t('embeddingApiKeyPlaceholder', '留空则使用上方聊天 Key');
+  }
+  onOnboardingEmbeddingModeChange();
+  const embedModel = c.embeddingModel || '';
+  refreshOnboardingEmbeddingModels(embedModel);
+}
+
+function maybeDismissOnboardingWizard() {
+  if (configured && els.onboardingModal && !els.onboardingModal.hidden) {
+    closeOnboardingWizard();
+  }
+}
+
 function openOnboardingWizard() {
-  if (!els.onboardingModal) return;
+  if (!els.onboardingModal || configured) return;
   const sel = els.onboardingProvider;
   if (sel && providers.length) {
     sel.innerHTML = providers.map((p) => `<option value="${escapeHtml(p)}">${escapeHtml(providerLabels[p] || p)}</option>`).join('');
-    const cur = els.providerSelect?.value || providers[0];
-    if (providers.includes(cur)) sel.value = cur;
   }
-  const p = sel?.value || 'opencode-zen';
-  const defaultModel = defaults[p] || modelCatalog[p]?.[0] || 'deepseek-v4-flash';
-  onboardingModelCombo?.setValue(defaultModel, { silent: true });
-  if (els.onboardingEmbeddingMode) els.onboardingEmbeddingMode.value = 'same';
-  renderOnboardingEmbeddingProviders();
-  onOnboardingEmbeddingModeChange();
+  syncOnboardingFromSavedConfig();
   refreshOnboardingModels().catch(() => {
-    refreshOnboardingEmbeddingModels();
+    refreshOnboardingEmbeddingModels(savedConfig?.embeddingModel || '');
   });
   if (els.onboardingResult) {
     els.onboardingResult.textContent = '';
@@ -5626,7 +6145,14 @@ async function saveOnboardingWizard() {
   const provider = els.onboardingProvider?.value || 'opencode-zen';
   const apiKey = els.onboardingApiKey?.value?.trim() || '';
   const model = onboardingModelCombo?.getValue()?.trim() || '';
-  if (!apiKey || !model) {
+  if (!model) {
+    if (els.onboardingResult) {
+      els.onboardingResult.textContent = t('onboardingMissingModel', '请选择聊天模型');
+      els.onboardingResult.className = 'connection-result warning';
+    }
+    return;
+  }
+  if (!apiKey && !onboardingHasStoredApiKey()) {
     if (els.onboardingResult) {
       els.onboardingResult.textContent = t('onboardingMissing', '请填写 API Key 和模型');
       els.onboardingResult.className = 'connection-result warning';
@@ -5638,17 +6164,19 @@ async function saveOnboardingWizard() {
     const embeddingModel = onboardingEmbeddingModelCombo?.getValue()?.trim() || '';
     const embeddingProvider = els.onboardingEmbeddingProvider?.value || 'siliconflow';
     const embeddingApiKey = els.onboardingEmbeddingApiKey?.value?.trim() || '';
-    if (!embeddingModel) {
-      if (els.onboardingResult) {
-        els.onboardingResult.textContent = t('onboardingEmbeddingMissing', '请选择 Embedding 模型');
-        els.onboardingResult.className = 'connection-result warning';
-      }
-      return;
-    }
+    const modelHub = typeof ModelHub !== 'undefined'
+      ? ModelHub.buildSingleProviderHub({
+        provider,
+        apiKey,
+        model,
+        models: onboardingFetchedModels,
+      })
+      : undefined;
     const payload = {
       provider,
       apiKey,
       model,
+      modelHub,
       embeddingMode,
       embeddingProvider,
       embeddingModel,
@@ -5680,12 +6208,167 @@ async function saveOnboardingWizard() {
     showToast(t('onboardingDone', '配置已保存，可以开始对话'));
     await loadConfig();
     refreshEmbeddingModels();
-    openOnboardingKnowledgeSetup();
+    if (embeddingModel || savedConfig?.embeddingConfigured) {
+      openOnboardingKnowledgeSetup();
+    }
   };
   if (typeof UiBusy !== 'undefined') {
     await UiBusy.withButtonBusy(els.onboardingSaveBtn, run, { busyLabel: t('uiSaving', '保存中…') });
   } else {
     await run();
+  }
+}
+
+function formatDevCacheBytes(n) {
+  const bytes = Number(n) || 0;
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+}
+
+function getDevCacheFilterParams() {
+  return {
+    days: Number(els.devCacheDays?.value || 3),
+    mode: els.devCacheMode?.value || 'within',
+  };
+}
+
+function devCacheFilterHintText() {
+  const modeLabel = els.devCacheMode?.selectedOptions?.[0]?.textContent || '';
+  const daysLabel = els.devCacheDays?.selectedOptions?.[0]?.textContent || '';
+  return t(
+    'devCacheFilterHint',
+    '下方列表按「{mode} · {days}」筛选显示；可逐项清理或一键清理全部。'
+  ).replace('{mode}', modeLabel).replace('{days}', daysLabel);
+}
+
+function updateDevCacheFilterHint() {
+  const el = document.getElementById('devCacheFilterHint');
+  if (el) el.textContent = devCacheFilterHintText();
+}
+
+function renderDevCacheStatus(data) {
+  if (!data?.ok) {
+    return `<p class="dev-empty">${escapeHtml(data?.error || t('devCacheLoadFail', '无法加载缓存信息'))}</p>`;
+  }
+  const groups = data.groups || [];
+  if (!groups.length) {
+    return `<p class="dev-empty">${t('devCacheEmpty', '暂无本地缓存')}</p>`;
+  }
+  return `<ul class="dev-cache-list">${groups.map((g) => {
+    const disabled = !(g.files > 0);
+    return `
+    <li class="dev-cache-item${disabled ? ' is-empty' : ''}" data-group-id="${escapeHtml(g.id)}">
+      <div class="dev-cache-item-main">
+        <span class="dev-cache-label">${escapeHtml(g.label || g.id)}</span>
+        <span class="dev-cache-meta">${g.files || 0} ${t('devCacheFiles', '个文件')} · ${formatDevCacheBytes(g.bytes)}</span>
+      </div>
+      <button type="button" class="btn small ghost danger dev-cache-clear-one" data-group-id="${escapeHtml(g.id)}" data-group-label="${escapeHtml(g.label || g.id)}" ${disabled ? 'disabled' : ''}>${escapeHtml(t('devCacheClearOne', '清理'))}</button>
+    </li>`;
+  }).join('')}</ul>`;
+}
+
+async function loadDevCacheStatus() {
+  if (!els.devCacheStatusBox) return;
+  updateDevCacheFilterHint();
+  const { days, mode } = getDevCacheFilterParams();
+  const qs = `?days=${encodeURIComponent(days)}&mode=${encodeURIComponent(mode)}`;
+  try {
+    const { status, data } = await api('GET', `/api/ai/dev-cache${qs}`);
+    if (status === 404 || (data?.error && String(data.error).includes('404'))) {
+      els.devCacheStatusBox.innerHTML = `<p class="dev-empty">${escapeHtml(t('devCacheApiMissing', '缓存 API 未就绪，请重启 op助手 服务后刷新。'))}</p>`;
+      if (els.devCacheTotalBadge) els.devCacheTotalBadge.textContent = '—';
+      return;
+    }
+    if (!data?.ok) throw new Error(data?.error || t('devCacheLoadFail', '无法加载缓存信息'));
+    els.devCacheStatusBox.innerHTML = renderDevCacheStatus(data);
+    if (els.devCacheTotalBadge) {
+      const total = Number(data.total_bytes) || 0;
+      els.devCacheTotalBadge.textContent = total > 0 ? formatDevCacheBytes(total) : '—';
+      els.devCacheTotalBadge.title = total > 0
+        ? `${data.total_files || 0} ${t('devCacheFiles', '个文件')}`
+        : '';
+    }
+  } catch (e) {
+    els.devCacheStatusBox.innerHTML = `<p class="dev-empty">${escapeHtml(e.message || t('devCacheLoadFail', '无法加载缓存信息'))}</p>`;
+    if (els.devCacheTotalBadge) els.devCacheTotalBadge.textContent = '—';
+  }
+}
+
+function bindDevCacheControls() {
+  if (els.devCacheDays && els.devCacheDays.dataset.bound !== '1') {
+    els.devCacheDays.dataset.bound = '1';
+    els.devCacheDays.addEventListener('change', () => loadDevCacheStatus().catch(() => {}));
+  }
+  if (els.devCacheMode && els.devCacheMode.dataset.bound !== '1') {
+    els.devCacheMode.dataset.bound = '1';
+    els.devCacheMode.addEventListener('change', () => loadDevCacheStatus().catch(() => {}));
+  }
+  if (els.devCacheStatusBox && els.devCacheStatusBox.dataset.bound !== '1') {
+    els.devCacheStatusBox.dataset.bound = '1';
+    els.devCacheStatusBox.addEventListener('click', (e) => {
+      const btn = e.target.closest('.dev-cache-clear-one');
+      if (!btn || btn.disabled) return;
+      clearDevCacheGroup(btn.dataset.groupId, btn.dataset.groupLabel, btn);
+    });
+  }
+  if (!els.devCacheClearBtn || els.devCacheClearBtn.dataset.bound === '1') return;
+  els.devCacheClearBtn.dataset.bound = '1';
+  els.devCacheClearBtn.addEventListener('click', () => clearDevCacheAll());
+}
+
+async function clearDevCacheGroup(groupId, groupLabel, triggerBtn) {
+  if (!groupId) return;
+  const { days, mode } = getDevCacheFilterParams();
+  const modeLabel = els.devCacheMode?.selectedOptions?.[0]?.textContent || mode;
+  const daysLabel = els.devCacheDays?.selectedOptions?.[0]?.textContent || `${days}`;
+  const body = t(
+    'devCacheConfirmGroupBody',
+    '将按「{mode} · {days}」清理「{group}」。已安装的 SecOC 密钥不会删除。'
+  ).replace('{mode}', modeLabel).replace('{days}', daysLabel).replace('{group}', groupLabel || groupId);
+  if (!window.confirm(`${t('devCacheConfirmGroupTitle', '清理此项缓存？')}\n\n${body}`)) return;
+  const run = async () => {
+    const { data } = await api('POST', '/api/ai/dev-cache', { days, mode, groups: [groupId] });
+    if (!data.ok) throw new Error(data.error || t('devCacheClearFail', '清理失败'));
+    const freed = formatDevCacheBytes(data.freed_bytes);
+    const count = data.deleted_files || 0;
+    showToast(t('devCacheCleared', '已清理 {count} 个文件（{size}）')
+      .replace('{count}', String(count))
+      .replace('{size}', freed));
+    await loadDevCacheStatus();
+  };
+  if (typeof UiBusy !== 'undefined' && triggerBtn) {
+    await UiBusy.withButtonBusy(triggerBtn, run, { busyLabel: t('uiWorking', '处理中…') });
+  } else {
+    try { await run(); } catch (e) { showToast(e.message); }
+  }
+}
+
+async function clearDevCacheAll() {
+  const { days, mode } = getDevCacheFilterParams();
+  const modeLabel = els.devCacheMode?.selectedOptions?.[0]?.textContent || mode;
+  const daysLabel = els.devCacheDays?.selectedOptions?.[0]?.textContent || `${days}`;
+  const body = t(
+    'devCacheConfirmBody',
+    '将按「{mode} · {days}」清理路线回放、TSK 提取等缓存。已安装的 SecOC 密钥不会删除。'
+  ).replace('{mode}', modeLabel).replace('{days}', daysLabel);
+  if (!window.confirm(`${t('devCacheConfirmTitle', '清理本地缓存？')}\n\n${body}`)) return;
+  const run = async () => {
+    const { data } = await api('POST', '/api/ai/dev-cache', { days, mode });
+    if (!data.ok) throw new Error(data.error || t('devCacheClearFail', '清理失败'));
+    const freed = formatDevCacheBytes(data.freed_bytes);
+    const count = data.deleted_files || 0;
+    showToast(t('devCacheCleared', '已清理 {count} 个文件（{size}）')
+      .replace('{count}', String(count))
+      .replace('{size}', freed));
+    await loadDevCacheStatus();
+  };
+  if (typeof UiBusy !== 'undefined') {
+    await UiBusy.withButtonBusy(els.devCacheClearBtn, run, { busyLabel: t('uiWorking', '处理中…') });
+  } else {
+    els.devCacheClearBtn.disabled = true;
+    try { await run(); } catch (e) { showToast(e.message); } finally { els.devCacheClearBtn.disabled = false; }
   }
 }
 
@@ -5703,14 +6386,13 @@ async function loadDevPane() {
   if (!els.hostEnvBox) return;
   setDevPaneLoading(true);
   try {
-    const [{ data: boot }, { data: assets }, { data: pcs }, { data: passport }, { data: pkg }, { data: fork }, { data: rag }] = await Promise.all([
+    const [{ data: boot }, { data: assets }, { data: pcs }, { data: passport }, { data: pkg }, { data: fork }] = await Promise.all([
       api('GET', '/api/ai/bootstrap').catch(() => ({ data: {} })),
       api('GET', '/api/ai/dev-assets').catch(() => ({ data: {} })),
       api('GET', '/api/ai/pc-sessions').catch(() => ({ data: {} })),
       api('GET', '/api/ai/tune_passport?limit=15').catch(() => ({ data: {} })),
       api('GET', '/api/ai/package/version?fetch=1').catch(() => ({ data: {} })),
       api('GET', '/api/ai/fork/detect').catch(() => ({ data: {} })),
-      api('GET', '/api/ai/rag').catch(() => ({ data: {} })),
     ]);
     const env = boot.hostEnvironment || hostEnvironment;
     if (env) {
@@ -5723,32 +6405,22 @@ async function loadDevPane() {
     if (els.packageVersionBox) {
       els.packageVersionBox.innerHTML = renderPackageVersionCard(pkg);
     }
-    if (els.devPackageVersionBadge) {
-      els.devPackageVersionBadge.textContent = pkg?.version ? `v${pkg.version}` : '—';
-    }
-    if (els.devPackageUpdateBtn) {
-      els.devPackageUpdateBtn.hidden = !pkg?.update_available;
-      els.devPackageUpdateBtn.disabled = false;
-    }
+    collabState.pkg = pkg;
 
     if (els.forkDetectBox) {
-      els.forkDetectBox.innerHTML = renderForkDetectCard(fork);
+      els.forkDetectBox.innerHTML = renderForkDetectSummary(fork);
     }
-    const forkBadge = fork?.community_match?.id || fork?.fork_id || '—';
-    if (els.devForkBadge) {
-      els.devForkBadge.textContent = forkBadge;
+    if (els.forkDetailsBox) {
+      els.forkDetailsBox.innerHTML = renderForkDetectDetails(fork);
     }
-
-    if (els.ragStatusBox) {
-      els.ragStatusBox.innerHTML = renderRagStatusCard(rag, boot?.config || savedConfig);
-    }
-    if (els.devRagBadge) {
-      const chunks = Number(rag?.vector_chunks) || 0;
-      els.devRagBadge.textContent = chunks > 0 ? String(chunks) : '—';
-    }
+    collabState.fork = fork;
+    const forkDetailsWrap = $('#forkDetailsWrap');
+    if (forkDetailsWrap) forkDetailsWrap.classList.toggle('hidden', !fork?.ok);
 
     await loadPublishPane();
     await loadIssuePane();
+    await loadDevCacheStatus();
+    updateCollabStatusBar();
 
     const sessions = pcs?.sessions || [];
     const rows = [...(assets?.reports || []), ...(assets?.exports || [])];
@@ -5776,6 +6448,13 @@ async function loadDevPane() {
     }
     const passportCount = $('#tunePassportCount');
     if (passportCount) passportCount.textContent = String(passport?.count ?? entries.length);
+
+    updateRuntimeSummary({
+      env,
+      sessions,
+      passport,
+      assets: rows,
+    });
   } catch {
     if (els.hostEnvBox) {
       els.hostEnvBox.innerHTML = `<p class="dev-empty">${t('devEnvLoadFail', '无法加载环境信息')}</p>`;
@@ -5909,6 +6588,24 @@ function refreshUsageForCurrentModel() {
   }
 }
 
+function usageProviderDisplayName(providerId) {
+  if (typeof ModelHub !== 'undefined' && ModelHub.resolveProviderUsageLabel) {
+    return ModelHub.resolveProviderUsageLabel(providerId);
+  }
+  const hub = savedConfig?.modelHub;
+  const accounts = (hub?.accounts || []).filter((a) => a.provider === providerId);
+  if (accounts.length === 1) {
+    const acc = accounts[0];
+    const label = (acc.label || '').trim();
+    if (label) return label;
+  }
+  if (accounts.length > 1) {
+    const labels = accounts.map((a) => (a.label || '').trim()).filter(Boolean);
+    if (labels.length) return labels.join(' · ');
+  }
+  return providerDisplayName(providerId);
+}
+
 function renderUsageDetailTable(rows, columns) {
   if (!rows.length) {
     return `<p class="field-hint">${t('usageNoData', '暂无记录')}</p>`;
@@ -5919,6 +6616,42 @@ function renderUsageDetailTable(rows, columns) {
     return `<tr>${cells}</tr>`;
   }).join('');
   return `<table class="usage-detail-table"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
+}
+
+function syncUsageDetailTabUi() {
+  const chatView = usageDetailView.chat || 'provider';
+  const embView = usageDetailView.embedding || 'provider';
+  const providerTable = $('#usageByProviderTable');
+  const modelTable = $('#usageByModelTable');
+  const embProviderTable = $('#usageEmbeddingByProviderTable');
+  const embModelTable = $('#usageEmbeddingByModelTable');
+  providerTable?.classList.toggle('hidden', chatView !== 'provider');
+  modelTable?.classList.toggle('hidden', chatView !== 'model');
+  if (providerTable) providerTable.hidden = chatView !== 'provider';
+  if (modelTable) modelTable.hidden = chatView !== 'model';
+  embProviderTable?.classList.toggle('hidden', embView !== 'provider');
+  embModelTable?.classList.toggle('hidden', embView !== 'model');
+  if (embProviderTable) embProviderTable.hidden = embView !== 'provider';
+  if (embModelTable) embModelTable.hidden = embView !== 'model';
+  els.usageDetailModal?.querySelectorAll('.usage-detail-seg-btn').forEach((btn) => {
+    const section = btn.dataset.section;
+    const view = btn.dataset.view;
+    const active = (section === 'chat' && view === chatView) || (section === 'embedding' && view === embView);
+    btn.classList.toggle('is-active', active);
+    btn.setAttribute('aria-selected', active ? 'true' : 'false');
+  });
+}
+
+function bindUsageDetailTabs() {
+  els.usageDetailModal?.querySelectorAll('.usage-detail-seg-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const section = btn.dataset.section;
+      const view = btn.dataset.view;
+      if (!section || !view) return;
+      usageDetailView[section] = view;
+      syncUsageDetailTabUi();
+    });
+  });
 }
 
 function renderUsageDetailModal() {
@@ -5939,7 +6672,7 @@ function renderUsageDetailModal() {
   if (els.usageByProviderTable) {
     els.usageByProviderTable.innerHTML = renderUsageDetailTable(
       providers,
-      [{ label: t('usageProviderCol', '服务商'), render: (r) => r.provider || r.id }, ...statCols],
+      [{ label: t('usageProviderCol', '服务商'), render: (r) => usageProviderDisplayName(r.provider || r.id) }, ...statCols],
     );
   }
   const models = Object.entries(u.by_model || {})
@@ -5949,7 +6682,7 @@ function renderUsageDetailModal() {
     els.usageByModelTable.innerHTML = renderUsageDetailTable(
       models,
       [
-        { label: t('usageProviderCol', '服务商'), render: (r) => r.provider || String(r.id).split('::')[0] },
+        { label: t('usageProviderCol', '服务商'), render: (r) => usageProviderDisplayName(r.provider || String(r.id).split('::')[0]) },
         { label: t('usageModelCol', '模型'), render: (r) => r.model || String(r.id).split('::').slice(1).join('::') },
         ...statCols,
       ],
@@ -5961,7 +6694,7 @@ function renderUsageDetailModal() {
   if (els.usageEmbeddingByProviderTable) {
     els.usageEmbeddingByProviderTable.innerHTML = renderUsageDetailTable(
       embProviders,
-      [{ label: t('usageProviderCol', '服务商'), render: (r) => r.provider || r.id }, ...embStatCols],
+      [{ label: t('usageProviderCol', '服务商'), render: (r) => usageProviderDisplayName(r.provider || r.id) }, ...embStatCols],
     );
   }
   const embModels = Object.entries(emb.by_model || {})
@@ -5971,18 +6704,19 @@ function renderUsageDetailModal() {
     els.usageEmbeddingByModelTable.innerHTML = renderUsageDetailTable(
       embModels,
       [
-        { label: t('usageProviderCol', '服务商'), render: (r) => r.provider || String(r.id).split('::')[0] },
+        { label: t('usageProviderCol', '服务商'), render: (r) => usageProviderDisplayName(r.provider || String(r.id).split('::')[0]) },
         { label: t('usageModelCol', '模型'), render: (r) => r.model || String(r.id).split('::').slice(1).join('::') },
         ...embStatCols,
       ],
     );
   }
+  syncUsageDetailTabUi();
 }
 
-function openUsageDetailModal() {
+function openUsageDetailModal(opts = {}) {
   if (!usageData) {
     loadUsage().then(() => {
-      if (usageData) openUsageDetailModal();
+      if (usageData) openUsageDetailModal(opts);
     });
     return;
   }
@@ -5990,6 +6724,11 @@ function openUsageDetailModal() {
   setOverlayVisible(els.usageDetailModal, true);
   renderUsageDetailModal();
   syncBodyScrollLock();
+  if (opts.focus === 'embedding') {
+    requestAnimationFrame(() => {
+      document.getElementById('usageDetailEmbeddingSection')?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    });
+  }
 }
 
 function closeUsageDetailModal() {
@@ -6004,7 +6743,6 @@ function closeUsageDetailModal() {
 
 function onOverlayKeydown(e) {
   if (e.key !== 'Escape') return;
-  if (els.pinModal && !els.pinModal.hidden) return;
   if (els.writeConfirmModal && !els.writeConfirmModal.hidden) return;
   if (knowledgeOpen) { closeKnowledgeModal(); return; }
   if (usageDetailOpen) { closeUsageDetailModal(); return; }
@@ -6023,11 +6761,11 @@ function onOverlayKeydown(e) {
 
 function autoResize() {
   const mobile = window.matchMedia('(max-width: 767px)').matches;
-  const maxH = mobile ? 88 : 120;
+  const maxH = mobile ? 120 : 120;
   if (!els.chatInput) return;
   els.chatInput.style.height = 'auto';
   const next = Math.min(els.chatInput.scrollHeight, maxH);
-  els.chatInput.style.height = `${Math.max(mobile ? 36 : 44, next)}px`;
+  els.chatInput.style.height = `${Math.max(44, next)}px`;
 }
 
 function onChatKeydown(e) {
@@ -6173,7 +6911,32 @@ function onThemeToggle() {
 // Init
 // ---------------------------------------------------------------------------
 
+function bindMessageCopy() {
+  els.messages?.addEventListener('click', (e) => {
+    const btn = e.target.closest('.msg-copy-btn');
+    if (!btn) return;
+    e.preventDefault();
+    const wrapper = btn.closest('.assistant-wrapper, .message.user');
+    const content = wrapper?.querySelector('.message.assistant, .message-text');
+    const text = content?.innerText?.trim() || '';
+    if (!text) return;
+    const done = () => {
+      btn.classList.add('copied');
+      const prev = btn.textContent;
+      btn.textContent = '✓';
+      setTimeout(() => {
+        btn.classList.remove('copied');
+        btn.textContent = prev;
+      }, 1400);
+    };
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(text).then(done).catch(() => {});
+    }
+  });
+}
+
 function bindUiEvents() {
+  bindMessageCopy();
   els.cabanaBtn?.addEventListener('click', toggleCabanaModal);
   els.cabanaClose?.addEventListener('click', closeCabanaModal);
   els.cabanaBackdrop?.addEventListener('click', closeCabanaModal);
@@ -6183,7 +6946,8 @@ function bindUiEvents() {
   els.notificationsMarkReadBtn?.addEventListener('click', () => {
     markAllNotificationsRead().catch(console.error);
   });
-  els.usageDetailBtn?.addEventListener('click', openUsageDetailModal);
+  els.usageDetailBtn?.addEventListener('click', () => openUsageDetailModal());
+  els.embeddingUsageDetailBtn?.addEventListener('click', () => openUsageDetailModal({ focus: 'embedding' }));
   els.usageDetailClose?.addEventListener('click', closeUsageDetailModal);
   els.usageDetailBackdrop?.addEventListener('click', closeUsageDetailModal);
   els.knowledgeBtn?.addEventListener('click', toggleKnowledgeModal);
@@ -6195,6 +6959,10 @@ function bindUiEvents() {
   els.chatInput?.addEventListener('keydown', onChatKeydown);
   els.chatInput?.addEventListener('paste', onChatPaste);
   els.chatInput?.addEventListener('input', autoResize);
+  window.matchMedia('(max-width: 767px)').addEventListener('change', () => {
+    applyChatPlaceholder();
+    autoResize();
+  });
   els.composer?.addEventListener('dragover', (e) => {
     if (e.dataTransfer?.types?.includes('Files')) {
       e.preventDefault();
@@ -6216,7 +6984,11 @@ function bindUiEvents() {
   });
   els.themeBtn?.addEventListener('click', onThemeToggle);
   els.devRefreshBtn?.addEventListener('click', () => renderDevPane());
-  els.devPublishRefreshBtn?.addEventListener('click', () => loadPublishPane());
+  bindCollabTabControls();
+  bindCollabCredentialsControls();
+  bindDevCacheControls();
+  bindDevPaneSectionControls();
+  bindRuntimeTabControls();
   els.devPublishSaveBtn?.addEventListener('click', async () => {
     const run = async () => { await savePublishSettings(); };
     if (typeof UiBusy !== 'undefined') {
@@ -6226,7 +6998,6 @@ function bindUiEvents() {
       try { await run(); } catch (e) { showToast(e.message); } finally { els.devPublishSaveBtn.disabled = false; }
     }
   });
-  els.devIssueRefreshBtn?.addEventListener('click', () => loadIssuePane());
   els.devIssueSubmitBtn?.addEventListener('click', async () => {
     const run = async () => {
       await saveIssueSettings().catch(() => {});
@@ -6331,6 +7102,7 @@ function bindUiEvents() {
   els.langSelect?.addEventListener('change', onLangChange);
   els.chatInput?.addEventListener('input', onComposerInput);
   els.saveBtn?.addEventListener('click', () => saveConfig({ silent: false }));
+  els.personaSaveBtn?.addEventListener('click', () => savePersonaConfig().catch(console.error));
   bindConfigPersistence();
   if (savedConfig && Object.keys(savedConfig).length) {
     configSaveState = reconcileConfigDraft(savedConfig) ? 'dirty' : 'saved';
@@ -6351,12 +7123,10 @@ function bindUiEvents() {
   els.ragSyncWikiBtn?.addEventListener('click', syncWikiRag);
   els.embeddingModeSelect?.addEventListener('change', () => {
     onEmbeddingModeChange();
-    persistConfigDraft();
     refreshEmbeddingUsageForCurrentModel();
   });
   els.embeddingProviderSelect?.addEventListener('change', () => {
     onEmbeddingProviderChange();
-    persistConfigDraft();
     refreshEmbeddingUsageForCurrentModel();
   });
   document.addEventListener('keydown', onOverlayKeydown);
@@ -6402,20 +7172,6 @@ function waitForSyncHello(timeoutMs = 6000) {
 
 async function init() {
   SessionStore.init();
-  if (typeof WebApi !== 'undefined') {
-    WebApi.configure({
-      pinRequired,
-      els: {
-        pinModal: els.pinModal,
-        pinModalInput: els.pinModalInput,
-        pinModalOk: els.pinModalOk,
-      },
-      onPinSuccess: () => {
-        reconnectSyncWebSocket();
-        refreshSessionViewFromRemote().catch(() => {});
-      },
-    });
-  }
   initChatJobs();
   if (typeof PlatformPanel !== 'undefined') {
     PlatformPanel.init({ api, showToast });
@@ -6449,6 +7205,7 @@ async function init() {
   }
   bindSettingsTabs();
   bindUiEvents();
+  bindUsageDetailTabs();
   if (typeof TskPanel !== 'undefined') TskPanel.bind();
   if (typeof TerminalPanel !== 'undefined') {
     if (typeof TerminalAi !== 'undefined') {

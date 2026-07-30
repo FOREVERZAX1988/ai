@@ -60,14 +60,12 @@ class CommandQueueTests(unittest.TestCase):
 
 
 class DeviceTrustTests(unittest.TestCase):
-  def test_pair_requires_pin_when_enabled(self):
+  def test_pair_without_pin(self):
     from ai.device_trust import pair_device
 
     params = MagicMock()
-    with patch("ai.device_trust.is_pin_enabled", return_value=True):
-      with patch("ai.device_trust.read_param", return_value=b"1234"):
-        r = pair_device(params, device_id="d1", pin="wrong")
-    self.assertFalse(r["ok"])
+    r = pair_device(params, device_id="d1", label="Browser")
+    self.assertTrue(r["ok"])
 
 
 class CanvasStoreTests(unittest.TestCase):

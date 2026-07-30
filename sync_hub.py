@@ -24,11 +24,7 @@ from ai.device_trust import check_device_trust, touch_device
 
 
 def _mask_key(key: str) -> str:
-  if not key:
-    return ""
-  if len(key) <= 8:
-    return "•" * len(key)
-  return "•" * (len(key) - 4) + key[-4:]
+  return key or ""
 
 
 def _read_param_str(params: Params, key: str, default: str = "") -> str:
@@ -52,7 +48,6 @@ def config_snapshot(params: Params) -> dict[str, Any]:
     "maxTokens": config.max_tokens,
     "thinkingEnabled": config.thinking_enabled,
     "thinkingKeep": config.thinking_keep,
-    "webPin": _mask_key(_read_param_str(params, "ai_web_pin")),
     "timezone": read_ai_timezone_name(params),
     "configured": config.is_configured,
     "configureError": config.configuration_error,

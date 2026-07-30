@@ -1798,7 +1798,7 @@ function renderFrame() {
     const speed = vs.vEgoKph ?? (vs.v_ego != null ? Math.round(vs.v_ego * 3.6) : null);
     const op = vs.active ? 'OP 已激活' : (vs.engageable ? '可 Engage' : (vs.enabled ? '待机' : ''));
     const bits = [speed != null ? `${speed} km/h` : '', op, alert].filter(Boolean);
-    overlay.innerHTML = `<strong>行驶中 · 专员动画已暂停</strong><span>${bits.join(' · ') || '车道流光联动中'}</span>`;
+    overlay.innerHTML = `<strong>🚗 行驶中</strong><span>${bits.join(' · ') || '可观赏场景 · 专员动画已暂停'}</span>`;
   } else {
     overlay?.remove();
   }

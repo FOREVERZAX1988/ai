@@ -141,22 +141,35 @@
 
 .office-driving-overlay {
   position: absolute;
-  inset: 0;
+  top: 8px;
+  left: 8px;
+  right: auto;
+  bottom: auto;
+  max-width: min(280px, calc(100% - 16px));
   display: flex;
   flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  background: rgba(8, 12, 20, 0.55);
+  align-items: flex-start;
+  gap: 2px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(251, 191, 36, 0.35);
+  background: rgba(8, 12, 20, 0.72);
   color: #fbbf24;
-  font-size: 0.9rem;
+  font-size: 0.78rem;
+  line-height: 1.35;
   pointer-events: none;
   z-index: 2;
+  backdrop-filter: blur(4px);
+}
+
+.office-driving-overlay strong {
+  font-size: 0.82rem;
+  font-weight: 600;
 }
 
 .office-driving-overlay span {
-  color: rgba(148, 163, 184, 0.9);
-  font-size: 0.78rem;
+  color: rgba(148, 163, 184, 0.92);
+  font-size: 0.72rem;
 }
 
 .office-roster {

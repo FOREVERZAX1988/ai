@@ -14,14 +14,6 @@ from ai.common.storage import read_param, write_param
 FALLBACKS_PARAM = "ai_model_fallbacks"
 
 
-def _mask_key(key: str) -> str:
-  if not key:
-    return ""
-  if len(key) <= 8:
-    return "•" * len(key)
-  return "•" * (len(key) - 4) + key[-4:]
-
-
 def load_fallback_entries(params: Params | None = None) -> list[dict[str, Any]]:
   """Load raw fallback entries from Params (for settings UI)."""
   params = params or Params()
@@ -81,14 +73,14 @@ def save_fallback_entries(params: Params, entries: list[dict[str, Any]]) -> list
 
 
 def fallbacks_for_api(params: Params, base: AIConfig | None = None) -> list[dict[str, Any]]:
-  """Fallback list for GET config — mask secrets, fill provider from primary."""
+  """Fallback list for GET config."""
   base = base or AIConfig(provider="opencode-zen", model="", api_key="")
   out = []
   for item in load_fallback_entries(params):
     out.append({
       "provider": item.get("provider") or base.provider,
       "model": item.get("model", ""),
-      "apiKey": _mask_key(item.get("apiKey", "")),
+      "apiKey": str(item.get("apiKey") or item.get("api_key") or ""),
       "baseUrl": item.get("baseUrl", ""),
       "label": item.get("label", ""),
     })
@@ -143,9 +135,10 @@ def resolve_chat_config_chain(
   user_text: str = "",
   body: dict[str, Any] | None = None,
 ) -> list[AIConfig]:
-  """Primary config followed by fallback profiles from ai_model_fallbacks."""
+  """Primary config followed by fallback profiles from model hub."""
   del workflow_id, user_text, body
-  return [base, *_parse_fallbacks(params, base)]
+  from ai.model_accounts import resolve_chat_chain
+  return resolve_chat_chain(params, base)
 
 
 async def chat_completion_with_failover(

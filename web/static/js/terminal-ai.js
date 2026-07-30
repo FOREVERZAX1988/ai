@@ -571,7 +571,7 @@ const TerminalAi = (() => {
   }
 
   function printHelp(term, { aiOnly = false } = {}) {
-    writeln(term, '\x1b[33mOP 终端\x1b[0m（Hermes 风格）：');
+    writeln(term, '\x1b[33mOP 终端\x1b[0m：');
     writeln(term, '  \x1b[36mop status|tune|doctor|adapt|chat "…"\x1b[0m — Shell 中直接敲');
     writeln(term, '  自然语言 / \x1b[36m?\x1b[0m / \x1b[36m/ai\x1b[0m — 等价 \x1b[36mop chat\x1b[0m');
     writeln(term, '  \x1b[36m!\x1b[0m 前缀 — 强制 Shell；改参时会提示 y/n 确认');

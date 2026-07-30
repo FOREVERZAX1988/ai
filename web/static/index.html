@@ -5,10 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>OP 助手</title>
   <link rel="icon" type="image/svg+xml" href="/static/img/favicon.svg">
-  <link rel="stylesheet" href="/static/css/ai.css?v=20260730d">
-  <link rel="stylesheet" href="/static/css/office-panel.css?v=20260728f">
+  <link rel="stylesheet" href="/static/vendor/markdown-it/highlight-github-dark.min.css">
+  <link rel="stylesheet" href="/static/css/ai.css?v=20260731r">
+  <link rel="stylesheet" href="/static/css/office-panel.css?v=20260730s">
   <link rel="stylesheet" href="/static/css/canvas-panel.css?v=20260723e">
-  <link rel="stylesheet" href="/static/css/cabana-panel.css?v=20260730d">
+  <link rel="stylesheet" href="/static/css/cabana-panel.css?v=20260730k">
   <link rel="stylesheet" href="/static/vendor/uplot/uPlot.min.css">
   <link rel="stylesheet" href="/static/vendor/xterm/xterm.css?v=20260722i">
 </head>
@@ -100,7 +101,7 @@
               <div class="composer-slash-list" id="composerSlashList"></div>
             </div>
             <form class="composer-card" id="composer">
-              <textarea id="chatInput" rows="1" placeholder="描述问题，可粘贴日志或图片…"></textarea>
+              <textarea id="chatInput" rows="1" placeholder="描述问题…"></textarea>
               <div class="composer-actions">
                 <div class="composer-hint-wrap">
                   <button type="button" id="composerHintBtn" class="btn icon composer-hint-btn" aria-describedby="composerHintTooltip">
@@ -313,49 +314,21 @@
       <div class="settings-body">
         <!-- 模型 -->
         <div class="settings-pane active" id="paneModel" role="tabpanel">
-          <p class="settings-pane-lead" id="modelPaneDesc">连接服务商、选择对话模型并查看用量。</p>
+          <p class="settings-pane-lead" id="modelPaneDesc">配置模型列表与服务商账户；修改后自动保存。</p>
 
-          <section class="settings-card">
+          <section class="settings-card" id="modelHubSection">
             <header class="settings-card-head">
-              <h3 class="settings-card-title" id="modelConnectionTitle">模型连接</h3>
+              <h3 class="settings-card-title" id="modelHubTitle">模型中心</h3>
             </header>
-            <div class="settings-card-body">
-              <label class="field"><span class="field-label" id="providerLabel">服务商</span><select id="providerSelect"></select></label>
-              <label class="field">
-                <span class="field-label" id="modelLabel">模型</span>
-                <div class="model-field">
-                  <div id="mainModelCombobox" class="model-combobox-host"></div>
-                </div>
-              </label>
-              <label class="field"><span class="field-label" id="apiKeyLabel">API Key</span>
-                <div class="password-field">
-                  <input type="password" id="apiKeyInput" placeholder="sk-..." autocomplete="off">
-                  <button type="button" class="password-reveal" data-password-for="apiKeyInput" aria-pressed="false" tabindex="-1">
-                    <svg class="icon-svg eye-open" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
-                    <svg class="icon-svg eye-closed hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true"><path d="M3 3l18 18"/><path d="M10.6 10.6a2 2 0 0 0 2.8 2.8"/><path d="M6.7 6.7C4.1 8.5 2.5 12 2.5 12s3.5 7 9.5 7c1.8 0 3.4-.5 4.8-1.3"/><path d="M9.9 5.1A10.8 10.8 0 0 1 12 5c6 0 9.5 7 9.5 7a16.2 16.2 0 0 1-3.6 4.5"/><path d="M14.1 14.1a2 2 0 0 1-2.8-2.8"/></svg>
-                  </button>
-                </div>
-              </label>
-              <label class="field"><span class="field-label" id="webPinLabel" data-i18n="webPinLabel">Web 访问 PIN</span>
-                <div class="password-field">
-                  <input type="password" id="webPinInput" data-i18n-placeholder="webPinPlaceholder" placeholder="留空=不启用 LAN 鉴权" autocomplete="off">
-                  <button type="button" class="password-reveal" data-password-for="webPinInput" aria-pressed="false" tabindex="-1">
-                    <svg class="icon-svg eye-open" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
-                    <svg class="icon-svg eye-closed hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true"><path d="M3 3l18 18"/><path d="M10.6 10.6a2 2 0 0 0 2.8 2.8"/><path d="M6.7 6.7C4.1 8.5 2.5 12 2.5 12s3.5 7 9.5 7c1.8 0 3.4-.5 4.8-1.3"/><path d="M9.9 5.1A10.8 10.8 0 0 1 12 5c6 0 9.5 7 9.5 7a16.2 16.2 0 0 1-3.6 4.5"/><path d="M14.1 14.1a2 2 0 0 1-2.8-2.8"/></svg>
-                  </button>
-                </div>
-                <div class="field-hint" id="webPinHint" data-i18n="webPinHint">设置后访问 API 需带 PIN（存于车机）</div>
-              </label>
-              <label class="field hidden" id="baseUrlField"><span class="field-label" id="baseUrlLabel">Base URL</span><input type="text" id="baseUrlInput"></label>
-            </div>
+            <div class="settings-card-body" id="modelHubRoot"></div>
           </section>
 
-          <section class="settings-card" id="fallbackModelsSection">
-            <header class="settings-card-head">
-              <h3 class="settings-card-title">备用模型（Failover）</h3>
-            </header>
-            <div class="settings-card-body" id="fallbackModelsRoot"></div>
-          </section>
+          <div class="hidden" id="legacyModelFields" aria-hidden="true">
+            <label class="field"><span class="field-label" id="providerLabel">服务商</span><select id="providerSelect"></select></label>
+            <div id="mainModelCombobox" class="model-combobox-host"></div>
+            <input type="text" id="apiKeyInput" autocomplete="off" spellcheck="false">
+            <label class="field hidden" id="baseUrlField"><input type="text" id="baseUrlInput"></label>
+          </div>
 
           <section class="settings-card settings-card-compact" id="usageSection">
             <header class="settings-card-head settings-card-head-row">
@@ -363,7 +336,7 @@
                 <h3 class="settings-card-title" id="usageTitle">用量</h3>
                 <p class="settings-card-sub" id="usageModelHint"></p>
               </div>
-              <button type="button" id="usageDetailBtn" class="btn small ghost">详情</button>
+              <button type="button" id="usageDetailBtn" class="btn small ghost" data-i18n="usageDetail">用量详细</button>
             </header>
             <div class="settings-card-body usage-grid-wrap">
               <div class="usage-grid" id="usageGrid"></div>
@@ -371,18 +344,14 @@
           </section>
 
           <details class="settings-accordion">
-            <summary class="settings-accordion-summary" id="personaSectionTitle">人设与生成参数</summary>
+            <summary class="settings-accordion-summary" id="personaSectionTitle">系统人设</summary>
             <div class="settings-accordion-body">
               <label class="field"><span class="field-label" id="systemPromptLabel" data-i18n="systemPrompt">系统提示词（人设）</span><textarea id="systemPromptInput" rows="4" data-i18n-placeholder="systemPromptPlaceholder" placeholder="留空将使用默认 op助手 人设"></textarea></label>
-              <div class="field-row">
-                <label class="field"><span class="field-label" id="temperatureLabel">Temperature</span><input type="number" id="temperatureInput" min="0" max="2" step="0.1" value="0.7"></label>
-                <label class="field"><span class="field-label" id="topPLabel">Top P</span><input type="number" id="topPInput" min="0" max="1" step="0.05" value="1"></label>
-              </div>
-              <label class="field"><span class="field-label" id="maxTokensLabel">Max Tokens</span><input type="number" id="maxTokensInput" min="256" max="128000" step="256" value="4096"></label>
+              <p class="field-hint" id="personaGenHint">Temperature、Max Tokens 等生成参数请在上方模型列表的配置弹窗里按模型设置。</p>
               <details class="settings-sub-accordion" id="contextSettingsBlock">
                 <summary class="settings-sub-summary" id="contextSettingsTitle">上下文与压缩</summary>
                 <div class="settings-sub-body">
-                  <label class="field"><span class="field-label" id="contextWindowLabel">上下文窗口 (tokens)</span><input type="number" id="contextWindowInput" min="0" max="2000000" step="1024" value="0" placeholder="0=按模型自动"></label>
+                  <label class="field"><span class="field-label" id="contextWindowLabel">默认上下文窗口 (tokens)</span><input type="number" id="contextWindowInput" min="0" max="2000000" step="1024" value="0" placeholder="0=按模型自动"></label>
                   <label class="field switch-row"><span id="compactionEnabledLabel">自动压缩会话</span><label class="switch"><input type="checkbox" id="compactionEnabledToggle" checked><span class="slider"></span></label></label>
                   <div class="field-row">
                     <label class="field"><span class="field-label" id="compactAfterTurnsLabel">压缩阈值 (轮)</span><input type="number" id="compactAfterTurnsInput" min="4" max="200" step="1" value="24"></label>
@@ -390,18 +359,18 @@
                   </div>
                   <label class="field"><span class="field-label" id="reserveTokensLabel">预留 tokens</span><input type="number" id="reserveTokensInput" min="0" max="500000" step="512" value="8000"></label>
                   <label class="field switch-row"><span id="compactionTokenTriggerLabel">按 token 数触发压缩</span><label class="switch"><input type="checkbox" id="compactionTokenTriggerToggle" checked><span class="slider"></span></label></label>
-                  <p class="field-hint" id="contextSettingsHint">长对话自动摘要写入记忆；手动压缩请用聊天命令 /compact</p>
+                  <p class="field-hint" id="contextSettingsHint">各模型可在「模型中心」路由里单独设置上下文窗口；此处为全局默认值。长对话自动摘要写入记忆；手动压缩请用 /compact</p>
                 </div>
               </details>
               <details class="settings-sub-accordion" id="evolutionSettingsBlock">
-                <summary class="settings-sub-summary" id="evolutionSettingsTitle">Hermes 进化闭环</summary>
+                <summary class="settings-sub-summary" id="evolutionSettingsTitle">助手学习与进化</summary>
                 <div class="settings-sub-body">
                   <label class="field switch-row"><span id="evolutionEnabledLabel">启用进化管线</span><label class="switch"><input type="checkbox" id="evolutionEnabledToggle" checked><span class="slider"></span></label></label>
                   <label class="field switch-row"><span id="evolutionAutoWorkspaceLabel">对话后自动补工作区模板</span><label class="switch"><input type="checkbox" id="evolutionAutoWorkspaceToggle" checked><span class="slider"></span></label></label>
                   <label class="field switch-row"><span id="evolutionAutoMemoryLabel">对话后自动提炼记忆（每日日志 + MEMORY）</span><label class="switch"><input type="checkbox" id="evolutionAutoMemoryToggle" checked><span class="slider"></span></label></label>
                   <label class="field switch-row"><span id="evolutionLlmReflectLabel">LLM 反思诊断 (GEPA)</span><label class="switch"><input type="checkbox" id="evolutionLlmReflectToggle" checked><span class="slider"></span></label></label>
                   <label class="field switch-row"><span id="evolutionAutoProposeLabel">自动提案技能（需批准）</span><label class="switch"><input type="checkbox" id="evolutionAutoProposeToggle"><span class="slider"></span></label></label>
-                  <label class="field switch-row"><span id="evolutionGepaEnabledLabel">内置 GEPA 技能进化（Hermes）</span><label class="switch"><input type="checkbox" id="evolutionGepaEnabledToggle" checked><span class="slider"></span></label></label>
+                  <label class="field switch-row"><span id="evolutionGepaEnabledLabel">内置 GEPA 技能进化</span><label class="switch"><input type="checkbox" id="evolutionGepaEnabledToggle" checked><span class="slider"></span></label></label>
                   <label class="field switch-row"><span id="evolutionUseDspyLabel">使用 DSPy 后端（需 pip install dspy，PC）</span><label class="switch"><input type="checkbox" id="evolutionUseDspyToggle"><span class="slider"></span></label></label>
                   <div class="field-row">
                     <label class="field"><span class="field-label" id="skillsDisclosureMaxLabel">按需加载技能数</span><input type="number" id="skillsDisclosureMaxInput" min="3" max="30" step="1" value="10"></label>
@@ -411,6 +380,9 @@
                 </div>
               </details>
               <label class="field switch-row"><span id="thinkingLabel">思考模式</span><label class="switch"><input type="checkbox" id="thinkingToggle" checked><span class="slider"></span></label></label>
+              <div class="persona-save-row">
+                <button type="button" id="personaSaveBtn" class="btn primary">保存人设</button>
+              </div>
             </div>
           </details>
 
@@ -436,13 +408,7 @@
               <div id="embeddingSeparateFields" class="hidden">
                 <label class="field"><span class="field-label" id="embeddingProviderLabel" data-i18n="embeddingProviderLabel">Embedding 服务商</span><select id="embeddingProviderSelect"></select></label>
                 <label class="field"><span class="field-label" id="embeddingApiKeyLabel" data-i18n="embeddingApiKeyLabel">Embedding API Key</span>
-                  <div class="password-field">
-                    <input type="password" id="embeddingApiKeyInput" data-i18n-placeholder="embeddingApiKeyPlaceholder" placeholder="硅基流动等专用 Key" autocomplete="off">
-                    <button type="button" class="password-reveal" data-password-for="embeddingApiKeyInput" aria-pressed="false" tabindex="-1">
-                      <svg class="icon-svg eye-open" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
-                      <svg class="icon-svg eye-closed hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true"><path d="M3 3l18 18"/><path d="M10.6 10.6a2 2 0 0 0 2.8 2.8"/><path d="M6.7 6.7C4.1 8.5 2.5 12 2.5 12s3.5 7 9.5 7c1.8 0 3.4-.5 4.8-1.3"/><path d="M9.9 5.1A10.8 10.8 0 0 1 12 5c6 0 9.5 7 9.5 7a16.2 16.2 0 0 1-3.6 4.5"/><path d="M14.1 14.1a2 2 0 0 1-2.8-2.8"/></svg>
-                    </button>
-                  </div>
+                  <input type="text" id="embeddingApiKeyInput" data-i18n-placeholder="embeddingApiKeyPlaceholder" placeholder="硅基流动等专用 Key" autocomplete="off" spellcheck="false">
                 </label>
                 <label class="field hidden" id="embeddingBaseUrlField"><span class="field-label" id="embeddingBaseUrlLabel" data-i18n="embeddingBaseUrlLabel">Embedding Base URL</span><input type="text" id="embeddingBaseUrlInput" data-i18n-placeholder="embeddingBaseUrlPlaceholder" placeholder="custom 时填写"></label>
               </div>
@@ -454,12 +420,22 @@
               </label>
             </div>
           </section>
+          <section class="settings-card settings-card-compact" id="knowledgeIndexSection">
+            <header class="settings-card-head settings-card-head-row">
+              <h3 class="settings-card-title" id="knowledgeIndexTitle">索引与检索</h3>
+              <span class="dev-count-badge" id="knowledgeRagBadge">—</span>
+            </header>
+            <div class="settings-card-body" id="ragStatusBox">
+              <div class="dev-skeleton dev-skeleton-line"></div>
+            </div>
+          </section>
           <section class="settings-card settings-card-compact" id="embeddingUsageSection">
-            <header class="settings-card-head">
+            <header class="settings-card-head settings-card-head-row">
               <div>
                 <h3 class="settings-card-title" id="embeddingUsageTitle">Embedding 用量</h3>
                 <p class="settings-card-sub" id="embeddingUsageHint"></p>
               </div>
+              <button type="button" id="embeddingUsageDetailBtn" class="btn small ghost" data-i18n="usageDetail">用量详细</button>
             </header>
             <div class="settings-card-body usage-grid-wrap">
               <div class="usage-grid" id="embeddingUsageGrid"></div>
@@ -695,172 +671,222 @@
         <!-- 开发 -->
         <div class="settings-pane" id="paneDev" role="tabpanel">
           <div class="dev-pane-toolbar">
-            <p class="settings-pane-lead dev-pane-desc" id="devPaneDesc">运行环境、PC 工具会话与报告文件</p>
+            <p class="settings-pane-lead dev-pane-desc" id="devPaneDesc">代码协作与本机运行环境</p>
             <button type="button" id="devRefreshBtn" class="btn small ghost dev-refresh-btn" aria-label="刷新">
               <svg class="icon-svg dev-refresh-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>
               <span id="devRefreshLabel">刷新</span>
             </button>
           </div>
 
-          <section class="dev-card" aria-labelledby="devPackageTitle">
-            <div class="dev-card-head">
-              <h3 class="dev-card-title" id="devPackageTitle">op助手 版本</h3>
-              <span class="dev-count-badge" id="devPackageVersionBadge">—</span>
-            </div>
-            <div class="dev-env-body" id="packageVersionBox">
-              <div class="dev-skeleton dev-skeleton-line"></div>
-            </div>
-            <div class="dev-package-actions">
-              <button type="button" id="devPackageCheckBtn" class="btn small ghost">检查更新</button>
-              <button type="button" id="devPackageUpdateBtn" class="btn small primary" hidden>立即更新</button>
-            </div>
-          </section>
+          <div class="dev-pane-segments" role="tablist" aria-label="开发">
+            <button type="button" class="dev-pane-seg-btn is-active" data-dev-pane="collab" role="tab" aria-selected="true" id="devPaneTabCollab">代码协作</button>
+            <button type="button" class="dev-pane-seg-btn" data-dev-pane="cache" role="tab" aria-selected="false" id="devPaneTabCache">本地缓存</button>
+            <button type="button" class="dev-pane-seg-btn" data-dev-pane="runtime" role="tab" aria-selected="false" id="devPaneTabRuntime">运行环境</button>
+          </div>
 
-          <section class="dev-card" aria-labelledby="devForkTitle">
+          <section class="dev-card dev-collab-card dev-pane-section" data-dev-section="collab" id="devCollabCard" aria-labelledby="devCollabTitle">
             <div class="dev-card-head">
-              <h3 class="dev-card-title" id="devForkTitle">Fork 分析</h3>
-              <span class="dev-count-badge" id="devForkBadge">—</span>
+              <h3 class="dev-card-title" id="devCollabTitle">代码协作</h3>
+              <span class="dev-count-badge" id="devCollabDirtyBadge" title="">—</span>
             </div>
-            <div class="dev-env-body" id="forkDetectBox">
-              <div class="dev-skeleton dev-skeleton-line"></div>
-            </div>
-            <div class="fork-progress hidden" id="forkProgressBox" aria-live="polite" aria-busy="false">
-              <div class="fork-progress-head">
-                <span class="fork-progress-spinner" id="forkProgressSpinner" aria-hidden="true"></span>
-                <span class="fork-progress-status" id="forkProgressStatus"></span>
+
+            <div class="dev-collab-status" id="collabStatusBar">
+              <div class="dev-collab-status-main">
+                <div class="dev-collab-line" id="collabVersionLine">—</div>
+                <div class="dev-collab-line" id="collabRepoLine">—</div>
+                <div class="dev-collab-chips" id="collabAuthLine"></div>
               </div>
-              <ul class="fork-progress-phases" id="forkProgressPhases"></ul>
-              <div class="fork-progress-log" id="forkProgressLog" hidden></div>
-              <details class="fork-progress-details" id="forkProgressThinkingWrap" hidden>
-                <summary id="forkProgressThinkingSummary">思考过程</summary>
-                <pre class="fork-progress-pre" id="forkProgressThinking"></pre>
+              <div class="dev-collab-status-actions">
+                <button type="button" id="devPackageCheckBtn" class="btn small ghost">检查更新</button>
+                <button type="button" id="devPackageUpdateBtn" class="btn small primary" hidden>立即更新</button>
+              </div>
+            </div>
+
+            <div class="collab-credentials-wrap" id="collabCredentialsWrap">
+              <h4 class="dev-collab-section-title collab-credentials-title" id="devCollabCredentialsTitle">凭据</h4>
+              <div class="dev-env-body" id="collabCredentialsBox">
+                <div class="dev-skeleton dev-skeleton-line"></div>
+              </div>
+            </div>
+
+            <div class="dev-collab-segments" role="tablist" aria-label="代码协作">
+              <button type="button" class="dev-collab-seg-btn is-active" data-collab-tab="repo" role="tab" aria-selected="true" id="collabTabRepo">仓库</button>
+              <button type="button" class="dev-collab-seg-btn" data-collab-tab="publish" role="tab" aria-selected="false" id="collabTabPublish">发布</button>
+              <button type="button" class="dev-collab-seg-btn" data-collab-tab="issue" role="tab" aria-selected="false" id="collabTabIssue">反馈</button>
+            </div>
+
+            <div class="dev-collab-panel" data-collab-panel="repo" role="tabpanel">
+              <div class="dev-env-body dev-collab-repo-summary" id="forkDetectBox">
+                <div class="dev-skeleton dev-skeleton-line"></div>
+              </div>
+              <details class="dev-collab-details" id="forkDetailsWrap">
+                <summary id="forkDetailsSummary">技术详情</summary>
+                <div class="dev-env-body" id="forkDetailsBox"></div>
               </details>
-              <details class="fork-progress-details" id="forkProgressContentWrap" hidden>
-                <summary id="forkProgressContentSummary">模型输出</summary>
-                <pre class="fork-progress-pre" id="forkProgressContent"></pre>
+              <details class="dev-collab-details" id="packageDetailsWrap">
+                <summary id="packageDetailsSummary">版本详情</summary>
+                <div class="dev-env-body" id="packageVersionBox">
+                  <div class="dev-skeleton dev-skeleton-line"></div>
+                </div>
               </details>
+              <div class="fork-progress hidden" id="forkProgressBox" aria-live="polite" aria-busy="false">
+                <div class="fork-progress-head">
+                  <span class="fork-progress-spinner" id="forkProgressSpinner" aria-hidden="true"></span>
+                  <span class="fork-progress-status" id="forkProgressStatus"></span>
+                </div>
+                <ul class="fork-progress-phases" id="forkProgressPhases"></ul>
+                <div class="fork-progress-log" id="forkProgressLog" hidden></div>
+                <details class="fork-progress-details" id="forkProgressThinkingWrap" hidden>
+                  <summary id="forkProgressThinkingSummary">思考过程</summary>
+                  <pre class="fork-progress-pre" id="forkProgressThinking"></pre>
+                </details>
+                <details class="fork-progress-details" id="forkProgressContentWrap" hidden>
+                  <summary id="forkProgressContentSummary">模型输出</summary>
+                  <pre class="fork-progress-pre" id="forkProgressContent"></pre>
+                </details>
+              </div>
+              <div class="dev-package-actions">
+                <button type="button" id="devForkRefreshBtn" class="btn small ghost">扫描仓库</button>
+                <button type="button" id="devForkSyncBtn" class="btn small primary">AI 分析并生成草稿</button>
+              </div>
             </div>
-            <div class="dev-package-actions">
-              <button type="button" id="devForkRefreshBtn" class="btn small ghost">扫描仓库</button>
-              <button type="button" id="devForkSyncBtn" class="btn small primary">AI 分析并生成草稿</button>
+
+            <div class="dev-collab-panel hidden" data-collab-panel="publish" role="tabpanel">
+              <div class="dev-collab-section-head">
+                <h4 class="dev-collab-section-title" id="collabPublishConfigTitle">发布策略</h4>
+              </div>
+              <div class="dev-env-body" id="publishSettingsBox">
+                <div class="dev-skeleton dev-skeleton-line short"></div>
+              </div>
+              <div class="dev-collab-section-head">
+                <h4 class="dev-collab-section-title" id="collabPublishUnitsTitle">发布单元</h4>
+              </div>
+              <div class="dev-env-body publish-units-wrap" id="publishUnitsBox">
+                <div class="dev-skeleton dev-skeleton-line short"></div>
+              </div>
+              <div class="dev-package-actions">
+                <button type="button" id="devPublishSaveBtn" class="btn small primary">保存配置</button>
+              </div>
+            </div>
+
+            <div class="dev-collab-panel hidden" data-collab-panel="issue" role="tabpanel">
+              <p class="dev-collab-crosslink">
+                <button type="button" class="btn-link" id="collabGoPublishPrTab">已改代码？去发布 PR</button>
+              </p>
+              <div class="dev-env-body" id="issueSettingsBox">
+                <div class="dev-skeleton dev-skeleton-line"></div>
+              </div>
+              <div class="dev-env-body issue-form-wrap" id="issueFormBox">
+                <div class="dev-skeleton dev-skeleton-line short"></div>
+              </div>
+              <div class="dev-package-actions">
+                <button type="button" id="devIssueSubmitBtn" class="btn small primary">提交 Issue</button>
+              </div>
             </div>
           </section>
 
-          <section class="dev-card" aria-labelledby="devPublishTitle">
+          <section class="dev-card dev-cache-card dev-pane-section hidden" data-dev-section="cache" id="devCacheCard" aria-labelledby="devCacheTitle">
             <div class="dev-card-head">
-              <h3 class="dev-card-title" id="devPublishTitle">代码发布</h3>
-              <span class="dev-count-badge" id="devPublishBadge">—</span>
+              <h3 class="dev-card-title" id="devCacheTitle">本地缓存</h3>
+              <span class="dev-count-badge" id="devCacheTotalBadge">—</span>
             </div>
-            <div class="dev-env-body" id="publishSettingsBox">
-              <div class="dev-skeleton dev-skeleton-line"></div>
+            <p class="settings-pane-desc dev-cache-desc" id="devCacheDesc">清理路线回放、TSK 提取等本地缓存，不影响已安装 SecOC 密钥。</p>
+            <div class="dev-cache-controls">
+              <label class="field dev-cache-field">
+                <span class="field-label" id="devCacheDaysLabel">时间范围</span>
+                <select id="devCacheDays">
+                  <option value="1">最近 1 天</option>
+                  <option value="3" selected>最近 3 天</option>
+                  <option value="7">最近 7 天</option>
+                  <option value="30">最近 30 天</option>
+                </select>
+              </label>
+              <label class="field dev-cache-field">
+                <span class="field-label" id="devCacheModeLabel">清理策略</span>
+                <select id="devCacheMode">
+                  <option value="within" selected>仅清理该时间段内</option>
+                  <option value="older">清理早于该时间段</option>
+                  <option value="all">全部清理</option>
+                </select>
+              </label>
+              <button type="button" class="btn small danger" id="devCacheClearBtn">清理全部</button>
             </div>
-            <div class="dev-env-body publish-units-wrap" id="publishUnitsBox">
+            <p class="field-hint dev-cache-filter-hint" id="devCacheFilterHint"></p>
+            <div class="dev-env-body" id="devCacheStatusBox">
               <div class="dev-skeleton dev-skeleton-line short"></div>
             </div>
-            <div class="dev-package-actions">
-              <button type="button" id="devPublishRefreshBtn" class="btn small ghost">刷新</button>
-              <button type="button" id="devPublishSaveBtn" class="btn small primary">保存配置</button>
-            </div>
           </section>
 
-          <section class="dev-card" aria-labelledby="devIssueTitle">
+          <section class="dev-card dev-runtime-card dev-pane-section hidden" data-dev-section="runtime" id="devRuntimeCard" aria-labelledby="devRuntimeTitle">
             <div class="dev-card-head">
-              <h3 class="dev-card-title" id="devIssueTitle">反馈提交</h3>
+              <h3 class="dev-card-title" id="devRuntimeTitle">运行环境与输出</h3>
             </div>
-            <div class="dev-env-body" id="issueSettingsBox">
-              <div class="dev-skeleton dev-skeleton-line"></div>
+            <div class="dev-collab-status dev-runtime-summary-wrap" id="devRuntimeSummary">—</div>
+            <div class="dev-collab-segments" role="tablist" aria-label="运行环境">
+              <button type="button" class="dev-collab-seg-btn is-active" data-runtime-tab="env" role="tab" aria-selected="true" id="runtimeTabEnv">环境</button>
+              <button type="button" class="dev-collab-seg-btn" data-runtime-tab="tools" role="tab" aria-selected="false" id="runtimeTabTools">工具</button>
+              <button type="button" class="dev-collab-seg-btn" data-runtime-tab="output" role="tab" aria-selected="false" id="runtimeTabOutput">输出</button>
             </div>
-            <div class="dev-env-body issue-form-wrap" id="issueFormBox">
-              <div class="dev-skeleton dev-skeleton-line short"></div>
-            </div>
-            <div class="dev-package-actions">
-              <button type="button" id="devIssueRefreshBtn" class="btn small ghost">刷新</button>
-              <button type="button" id="devIssueSubmitBtn" class="btn small primary">提交 Issue</button>
-            </div>
-          </section>
 
-          <section class="dev-card" aria-labelledby="devRagTitle">
-            <div class="dev-card-head">
-              <h3 class="dev-card-title" id="devRagTitle">知识库</h3>
-              <span class="dev-count-badge" id="devRagBadge">—</span>
+            <div class="dev-collab-panel" data-runtime-panel="env" role="tabpanel">
+              <div class="dev-env-body" id="hostEnvBox">
+                <div class="dev-skeleton dev-skeleton-block"></div>
+                <div class="dev-skeleton dev-skeleton-line"></div>
+                <div class="dev-skeleton dev-skeleton-line short"></div>
+              </div>
             </div>
-            <div class="dev-env-body" id="ragStatusBox">
-              <div class="dev-skeleton dev-skeleton-line"></div>
-            </div>
-          </section>
 
-          <section class="dev-card" aria-labelledby="devEnvTitle">
-            <h3 class="dev-card-title" id="devEnvTitle">运行环境</h3>
-            <div class="dev-env-body" id="hostEnvBox">
-              <div class="dev-skeleton dev-skeleton-block"></div>
-              <div class="dev-skeleton dev-skeleton-line"></div>
-              <div class="dev-skeleton dev-skeleton-line short"></div>
+            <div class="dev-collab-panel hidden" data-runtime-panel="tools" role="tabpanel">
+              <div class="dev-runtime-subsection">
+                <div class="dev-runtime-subhead">
+                  <h4 class="dev-runtime-subtitle" id="devSessionsTitle">PC 工具会话</h4>
+                  <span class="dev-count-badge" id="pcSessionsCount">0</span>
+                </div>
+                <ul class="dev-item-list" id="pcSessionsList"></ul>
+              </div>
+              <div class="dev-runtime-subsection">
+                <div class="dev-runtime-subhead">
+                  <h4 class="dev-runtime-subtitle" id="devPassportTitle">调参护照</h4>
+                  <span class="dev-count-badge" id="tunePassportCount">0</span>
+                </div>
+                <ul class="dev-item-list" id="tunePassportList"></ul>
+              </div>
             </div>
-          </section>
 
-          <section class="dev-card" aria-labelledby="devSessionsTitle">
-            <div class="dev-card-head">
-              <h3 class="dev-card-title" id="devSessionsTitle">PC 工具会话</h3>
-              <span class="dev-count-badge" id="pcSessionsCount">0</span>
+            <div class="dev-collab-panel hidden" data-runtime-panel="output" role="tabpanel">
+              <div class="dev-runtime-subsection">
+                <div class="dev-runtime-subhead">
+                  <h4 class="dev-runtime-subtitle" id="devCanvasTitle">可视化输出</h4>
+                  <span class="dev-count-badge" id="devCanvasCount">0</span>
+                </div>
+                <p class="settings-pane-desc dev-canvas-desc" id="devCanvasDesc">调参报告、图表与结构化结果（随当前会话）</p>
+                <label class="canvas-filter-wrap dev-canvas-filter">
+                  <span id="devCanvasFilterLabel">筛选</span>
+                  <select id="canvasFilter">
+                    <option value="all">全部</option>
+                    <option value="report">报告</option>
+                    <option value="chart">图表</option>
+                    <option value="tune">调参</option>
+                    <option value="markdown">Markdown</option>
+                    <option value="html">HTML</option>
+                  </select>
+                </label>
+                <div class="canvas-list canvas-list-embedded" id="canvasList"></div>
+              </div>
+              <div class="dev-runtime-subsection">
+                <div class="dev-runtime-subhead">
+                  <h4 class="dev-runtime-subtitle" id="devAssetsTitle">报告与导出</h4>
+                  <span class="dev-count-badge" id="devAssetsCount">0</span>
+                </div>
+                <ul class="dev-item-list" id="devAssetsList"></ul>
+              </div>
             </div>
-            <ul class="dev-item-list" id="pcSessionsList"></ul>
-          </section>
-
-          <section class="dev-card" aria-labelledby="devPassportTitle">
-            <div class="dev-card-head">
-              <h3 class="dev-card-title" id="devPassportTitle">调参护照</h3>
-              <span class="dev-count-badge" id="tunePassportCount">0</span>
-            </div>
-            <ul class="dev-item-list" id="tunePassportList"></ul>
-          </section>
-
-          <section class="dev-card" aria-labelledby="devCanvasTitle">
-            <div class="dev-card-head">
-              <h3 class="dev-card-title" id="devCanvasTitle">可视化输出</h3>
-              <span class="dev-count-badge" id="devCanvasCount">0</span>
-            </div>
-            <p class="settings-pane-desc dev-canvas-desc">调参报告、图表与结构化结果（随当前会话）</p>
-            <label class="canvas-filter-wrap dev-canvas-filter">
-              <span>筛选</span>
-              <select id="canvasFilter">
-                <option value="all">全部</option>
-                <option value="report">报告</option>
-                <option value="chart">图表</option>
-                <option value="tune">调参</option>
-                <option value="markdown">Markdown</option>
-                <option value="html">HTML</option>
-              </select>
-            </label>
-            <div class="canvas-list canvas-list-embedded" id="canvasList"></div>
-          </section>
-
-          <section class="dev-card" aria-labelledby="devAssetsTitle">
-            <div class="dev-card-head">
-              <h3 class="dev-card-title" id="devAssetsTitle">报告与导出</h3>
-              <span class="dev-count-badge" id="devAssetsCount">0</span>
-            </div>
-            <ul class="dev-item-list" id="devAssetsList"></ul>
           </section>
         </div>
       </div>
 
-      <div class="settings-attribution" id="settingsAttribution" aria-label="Attribution">
-        <p class="settings-attribution-line">
-          <span id="attrTskLabel">TSK Web</span>
-          <a href="https://github.com/optskug/openpilot" target="_blank" rel="noopener noreferrer">optskug/openpilot</a>
-        </p>
-        <p class="settings-attribution-line">
-          <span id="attrAiLabel">op助手</span>
-          <a href="https://github.com/mouxangithub/ai" target="_blank" rel="noopener noreferrer">mouxangithub/ai</a>
-        </p>
-      </div>
-
-      <div class="settings-save-bar" id="settingsSaveBar">
-        <div class="hint-box config-save-hint" id="changesHint"></div>
-        <div class="settings-save-actions">
-          <button type="button" id="saveBtn" class="btn primary block">保存</button>
-        </div>
-        <div id="connectionResult" class="connection-result"></div>
+      <div class="settings-save-bar" id="settingsSaveBar" hidden>
+        <button type="button" id="saveBtn" class="btn primary block">保存</button>
       </div>
     </aside>
 
@@ -885,18 +911,33 @@
         </button>
       </div>
       <div class="modal-body usage-detail-body">
-        <p class="settings-pane-desc" id="usageDetailDesc">按服务商与模型统计的全部用量</p>
-        <div class="usage-detail-totals" id="usageDetailTotals"></div>
-        <h3 class="usage-detail-subtitle" id="usageByProviderTitle">按服务商</h3>
-        <div class="usage-detail-table-wrap" id="usageByProviderTable"></div>
-        <h3 class="usage-detail-subtitle" id="usageByModelTitle">按模型</h3>
-        <div class="usage-detail-table-wrap" id="usageByModelTable"></div>
-        <h3 class="usage-detail-subtitle" id="usageEmbeddingSectionTitle">Embedding 用量</h3>
-        <div class="usage-detail-totals" id="usageEmbeddingTotals"></div>
-        <h3 class="usage-detail-subtitle" id="usageEmbeddingByProviderTitle">Embedding · 按服务商</h3>
-        <div class="usage-detail-table-wrap" id="usageEmbeddingByProviderTable"></div>
-        <h3 class="usage-detail-subtitle" id="usageEmbeddingByModelTitle">Embedding · 按模型</h3>
-        <div class="usage-detail-table-wrap" id="usageEmbeddingByModelTable"></div>
+        <section class="usage-detail-section" id="usageDetailChatSection">
+          <header class="usage-detail-section-head">
+            <h3 class="usage-detail-section-title" id="usageChatSectionTitle">对话模型</h3>
+            <p class="usage-detail-section-desc" id="usageDetailDesc">按服务商与模型统计</p>
+          </header>
+          <div class="usage-detail-totals" id="usageDetailTotals"></div>
+          <div class="usage-detail-seg" role="tablist" aria-label="Chat usage breakdown">
+            <button type="button" class="usage-detail-seg-btn is-active" data-section="chat" data-view="provider" id="usageChatTabProvider" role="tab" aria-selected="true">按服务商</button>
+            <button type="button" class="usage-detail-seg-btn" data-section="chat" data-view="model" id="usageChatTabModel" role="tab" aria-selected="false">按模型</button>
+          </div>
+          <div class="usage-detail-table-wrap" id="usageByProviderTable" role="tabpanel"></div>
+          <div class="usage-detail-table-wrap hidden" id="usageByModelTable" role="tabpanel" hidden></div>
+        </section>
+
+        <section class="usage-detail-section" id="usageDetailEmbeddingSection">
+          <header class="usage-detail-section-head">
+            <h3 class="usage-detail-section-title" id="usageEmbeddingSectionTitle">Embedding</h3>
+            <p class="usage-detail-section-desc" id="usageEmbeddingSectionDesc">知识库向量检索用量</p>
+          </header>
+          <div class="usage-detail-totals" id="usageEmbeddingTotals"></div>
+          <div class="usage-detail-seg" role="tablist" aria-label="Embedding usage breakdown">
+            <button type="button" class="usage-detail-seg-btn is-active" data-section="embedding" data-view="provider" id="usageEmbTabProvider" role="tab" aria-selected="true">按服务商</button>
+            <button type="button" class="usage-detail-seg-btn" data-section="embedding" data-view="model" id="usageEmbTabModel" role="tab" aria-selected="false">按模型</button>
+          </div>
+          <div class="usage-detail-table-wrap" id="usageEmbeddingByProviderTable" role="tabpanel"></div>
+          <div class="usage-detail-table-wrap hidden" id="usageEmbeddingByModelTable" role="tabpanel" hidden></div>
+        </section>
       </div>
     </div>
   </div>
@@ -1157,129 +1198,122 @@
         <h2 id="onboardingTitle">欢迎使用 op助手</h2>
       </div>
       <div class="modal-body">
-        <p class="settings-pane-desc" id="onboardingDesc">首次使用请配置模型 API，完成后即可开始对话。</p>
-        <label class="field">
-          <span class="field-label" id="onboardingProviderLabel">服务商</span>
-          <select id="onboardingProvider"></select>
-        </label>
-        <label class="field">
-          <span class="field-label" id="onboardingApiKeyLabel">API Key</span>
-          <input type="password" id="onboardingApiKey" autocomplete="off">
-        </label>
-        <label class="field">
-          <span class="field-label" id="onboardingModelLabel">模型</span>
-          <div id="onboardingModelCombobox" class="model-combobox-host"></div>
-        </label>
-        <div class="onboarding-section">
-          <h3 class="onboarding-section-title" id="onboardingEmbeddingTitle">Embedding（知识库向量）</h3>
-          <p class="field-hint" id="onboardingEmbeddingDesc">用于知识库检索，默认与聊天共用 API Key。</p>
+        <p class="onboarding-lead" id="onboardingDesc">配置一个聊天模型即可开始；更多服务商与备用模型可在设置中添加。</p>
+        <div class="onboarding-form">
+          <section class="onboarding-section onboarding-model-section" aria-labelledby="onboardingModelTitle">
+            <h3 class="onboarding-section-title" id="onboardingModelTitle">聊天模型</h3>
+            <p class="field-hint onboarding-section-hint" id="onboardingModelHint">选择一个服务商，填写 API Key 并选择模型。</p>
           <label class="field">
-            <span class="field-label" id="onboardingEmbeddingModeLabel">Embedding 模式</span>
-            <select id="onboardingEmbeddingMode">
-              <option value="same">与聊天同一服务商 Key</option>
-              <option value="separate">单独 Embedding 服务商</option>
-            </select>
+            <span class="field-label" id="onboardingProviderLabel">服务商</span>
+            <select id="onboardingProvider"></select>
           </label>
-          <div id="onboardingEmbeddingSeparateFields" class="hidden">
+          <label class="field">
+            <span class="field-label" id="onboardingApiKeyLabel">API Key</span>
+            <input type="text" id="onboardingApiKey" autocomplete="off" spellcheck="false">
+          </label>
+          <label class="field">
+            <span class="field-label" id="onboardingModelLabel">模型</span>
+            <div id="onboardingModelCombobox" class="model-combobox-host"></div>
+          </label>
+          </section>
+          <details class="onboarding-section onboarding-embed-details">
+          <summary class="onboarding-section-title" id="onboardingEmbeddingTitle">Embedding（知识库，可选）</summary>
+          <div class="onboarding-embed-body">
+            <p class="field-hint onboarding-section-hint" id="onboardingEmbeddingDesc">用于知识库检索，默认与聊天共用 API Key。</p>
             <label class="field">
-              <span class="field-label" id="onboardingEmbeddingProviderLabel">Embedding 服务商</span>
-              <select id="onboardingEmbeddingProvider"></select>
+              <span class="field-label" id="onboardingEmbeddingModeLabel">Embedding 模式</span>
+              <select id="onboardingEmbeddingMode">
+                <option value="same">与聊天同一服务商 Key</option>
+                <option value="separate">单独 Embedding 服务商</option>
+              </select>
             </label>
+            <div id="onboardingEmbeddingSeparateFields" class="hidden onboarding-embed-separate">
+              <label class="field">
+                <span class="field-label" id="onboardingEmbeddingProviderLabel">Embedding 服务商</span>
+                <select id="onboardingEmbeddingProvider"></select>
+              </label>
+              <label class="field">
+                <span class="field-label" id="onboardingEmbeddingApiKeyLabel">Embedding API Key</span>
+                <input type="text" id="onboardingEmbeddingApiKey" autocomplete="off" spellcheck="false" placeholder="留空则使用上方聊天 Key">
+              </label>
+            </div>
             <label class="field">
-              <span class="field-label" id="onboardingEmbeddingApiKeyLabel">Embedding API Key</span>
-              <input type="password" id="onboardingEmbeddingApiKey" autocomplete="off" placeholder="留空则使用上方聊天 Key">
+              <span class="field-label" id="onboardingEmbeddingModelLabel">Embedding 模型</span>
+              <div id="onboardingEmbeddingModelCombobox" class="model-combobox-host"></div>
             </label>
           </div>
-          <label class="field">
-            <span class="field-label" id="onboardingEmbeddingModelLabel">Embedding 模型</span>
-            <div id="onboardingEmbeddingModelCombobox" class="model-combobox-host"></div>
-          </label>
+          </details>
+          <div class="field-row onboarding-optional">
+            <label class="field">
+              <span class="field-label" id="onboardingCarLabel">车型（可选）</span>
+              <input type="text" id="onboardingCar" autocomplete="off" placeholder="例如 RAV4 2023">
+            </label>
+            <label class="field">
+              <span class="field-label" id="onboardingBrandLabel">品牌（可选）</span>
+              <select id="onboardingBrand">
+                <option value="">—</option>
+                <option value="toyota">Toyota / Lexus</option>
+                <option value="honda">Honda / Acura</option>
+                <option value="hyundai">Hyundai / Kia</option>
+                <option value="volkswagen">VAG</option>
+                <option value="gm">GM</option>
+                <option value="ford">Ford</option>
+                <option value="tesla">Tesla</option>
+                <option value="other">其他</option>
+              </select>
+            </label>
+          </div>
+          <fieldset class="onboarding-goals">
+            <legend class="field-label" id="onboardingGoalsLabel">你最需要哪类帮助？</legend>
+            <label class="onboarding-goal-item"><input type="checkbox" name="onboardingGoal" value="tuning"> <span id="onboardingGoalTuning">调参优化</span></label>
+            <label class="onboarding-goal-item"><input type="checkbox" name="onboardingGoal" value="engage"> <span id="onboardingGoalEngage">无法接合</span></label>
+            <label class="onboarding-goal-item"><input type="checkbox" name="onboardingGoal" value="adaptation"> <span id="onboardingGoalAdapt">新车适配</span></label>
+            <label class="onboarding-goal-item"><input type="checkbox" name="onboardingGoal" value="routes"> <span id="onboardingGoalRoutes">路线复盘</span></label>
+          </fieldset>
+          <details class="onboarding-restore-block">
+            <summary class="field-label" id="onboardingRestoreSummary">已有备份？快速恢复</summary>
+            <p class="field-hint" id="onboardingRestoreDesc">选择之前导出的 <code>.opbak</code> 文件，可恢复模型配置、记忆、会话等（换机请用含 Token 的备份）。</p>
+            <div class="file-picker">
+              <input type="file" id="onboardingBackupFile" accept=".opbak,application/gzip" class="file-picker-input" hidden>
+              <button type="button" id="onboardingBackupPick" class="btn small file-picker-btn">选择 .opbak 文件</button>
+              <span id="onboardingBackupFileName" class="file-picker-name">未选择文件</span>
+            </div>
+            <button type="button" id="onboardingRestoreBtn" class="btn small">恢复备份</button>
+            <p class="field-hint" id="onboardingRestoreStatus"></p>
+          </details>
+          <p class="field-hint onboarding-result" id="onboardingResult"></p>
         </div>
-        <label class="field">
-          <span class="field-label" id="onboardingCarLabel">车型（可选）</span>
-          <input type="text" id="onboardingCar" autocomplete="off" placeholder="例如 RAV4 2023">
-        </label>
-        <label class="field">
-          <span class="field-label" id="onboardingBrandLabel">品牌（可选）</span>
-          <select id="onboardingBrand">
-            <option value="">—</option>
-            <option value="toyota">Toyota / Lexus</option>
-            <option value="honda">Honda / Acura</option>
-            <option value="hyundai">Hyundai / Kia</option>
-            <option value="volkswagen">VAG</option>
-            <option value="gm">GM</option>
-            <option value="ford">Ford</option>
-            <option value="tesla">Tesla</option>
-            <option value="other">其他</option>
-          </select>
-        </label>
-        <fieldset class="onboarding-goals">
-          <legend class="field-label" id="onboardingGoalsLabel">你最需要哪类帮助？</legend>
-          <label><input type="checkbox" name="onboardingGoal" value="tuning"> <span id="onboardingGoalTuning">调参优化</span></label>
-          <label><input type="checkbox" name="onboardingGoal" value="engage"> <span id="onboardingGoalEngage">无法接合</span></label>
-          <label><input type="checkbox" name="onboardingGoal" value="adaptation"> <span id="onboardingGoalAdapt">新车适配</span></label>
-          <label><input type="checkbox" name="onboardingGoal" value="routes"> <span id="onboardingGoalRoutes">路线复盘</span></label>
-        </fieldset>
-        <details class="onboarding-restore-block">
-          <summary class="field-label" id="onboardingRestoreSummary">已有备份？快速恢复</summary>
-          <p class="field-hint" id="onboardingRestoreDesc">选择之前导出的 <code>.opbak</code> 文件，可恢复模型配置、记忆、会话等（换机请用含 Token 的备份）。</p>
-          <div class="file-picker">
-            <input type="file" id="onboardingBackupFile" accept=".opbak,application/gzip" class="file-picker-input" hidden>
-            <button type="button" id="onboardingBackupPick" class="btn small file-picker-btn">选择 .opbak 文件</button>
-            <span id="onboardingBackupFileName" class="file-picker-name">未选择文件</span>
-          </div>
-          <button type="button" id="onboardingRestoreBtn" class="btn small">恢复备份</button>
-          <p class="field-hint" id="onboardingRestoreStatus"></p>
-        </details>
-        <p class="field-hint" id="onboardingResult"></p>
       </div>
-      <div class="modal-footer actions">
+      <div class="modal-footer">
         <button type="button" id="onboardingTestBtn" class="btn ghost">测试连接</button>
         <button type="button" id="onboardingSaveBtn" class="btn primary">保存并开始</button>
       </div>
     </div>
   </div>
 
-  <div id="pinModal" class="modal" hidden>
-    <div class="modal-backdrop"></div>
-    <div class="modal-content">
-      <div class="modal-header"><h2 id="pinModalTitle" data-i18n="pinModalTitle">输入 PIN</h2></div>
-      <div class="modal-body">
-        <label class="field"><span class="field-label" id="pinModalFieldLabel" data-i18n="webPinLabel">Web PIN</span>
-          <div class="password-field">
-            <input type="password" id="pinModalInput" autocomplete="off">
-            <button type="button" class="password-reveal" data-password-for="pinModalInput" aria-pressed="false" tabindex="-1">
-              <svg class="icon-svg eye-open" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
-              <svg class="icon-svg eye-closed hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true"><path d="M3 3l18 18"/><path d="M10.6 10.6a2 2 0 0 0 2.8 2.8"/><path d="M6.7 6.7C4.1 8.5 2.5 12 2.5 12s3.5 7 9.5 7c1.8 0 3.4-.5 4.8-1.3"/><path d="M9.9 5.1A10.8 10.8 0 0 1 12 5c6 0 9.5 7 9.5 7a16.2 16.2 0 0 1-3.6 4.5"/><path d="M14.1 14.1a2 2 0 0 1-2.8-2.8"/></svg>
-            </button>
-          </div>
-        </label>
-      </div>
-      <div class="modal-footer actions">
-        <button type="button" id="pinModalOk" class="btn primary">确定</button>
-      </div>
-    </div>
-  </div>
-
-  <script src="/static/js/i18n.js?v=20260729b"></script>
+  <script src="/static/js/i18n.js?v=20260731p"></script>
   <script src="/static/js/theme.js?v=20260715h"></script>
-  <script src="/static/js/markdown.js?v=20260730d"></script>
+  <script src="/static/vendor/markdown-it/markdown-it-tasklists.bundle.js"></script>
+  <script src="/static/vendor/markdown-it/purify.min.js"></script>
+  <script src="/static/vendor/markdown-it/highlight.min.js"></script>
+  <script src="/static/js/markdown.js?v=20260730q"></script>
   <script src="/static/js/sessions.js?v=20260722k"></script>
   <script src="/static/vendor/xterm/xterm.js?v=20260722i"></script>
   <script src="/static/vendor/xterm/addon-fit.js?v=20260722i"></script>
   <script src="/static/js/session-sync.js?v=20260722k"></script>
   <script src="/static/js/model-combobox.js?v=20260722j"></script>
-  <script src="/static/js/local-prefs.js?v=20260722k"></script>
+  <script src="/static/js/local-prefs.js?v=20260731j"></script>
   <script src="/static/js/quick-actions.js?v=20260715h"></script>
   <script src="/static/js/tsk-panel.js?v=20260728j"></script>
-  <script src="/static/js/web-chat-jobs.js?v=20260729n"></script>
-  <script src="/static/js/web-api.js?v=20260722h"></script>
+  <script src="/static/js/web-chat-jobs.js?v=20260730i"></script>
+  <script src="/static/js/web-api.js?v=20260730t"></script>
   <script src="/static/js/ui-busy.js?v=20260728a"></script>
   <script src="/static/js/web-config.js?v=20260722h"></script>
-  <script src="/static/js/fallback-models.js?v=20260722h"></script>
+  <script src="/static/js/model-hub.js?v=20260731r"></script>
+  <script src="/static/js/fallback-models.js?v=20260731f"></script>
   <script src="/static/js/web-sync-ws.js?v=20260722h"></script>
   <script src="/static/js/terminal-sidecar.js?v=20260723b"></script>
-  <script src="/static/js/terminal-ai.js?v=20260728s"></script>
+  <script src="/static/js/terminal-ai.js?v=20260730z"></script>
   <script src="/static/js/agents-panel.js?v=20260723f"></script>
   <script type="importmap">
   {
@@ -1289,14 +1323,14 @@
     }
   }
   </script>
-  <script type="module" src="/static/js/office-scene-3d.mjs?v=20260724c"></script>
+  <script type="module" src="/static/js/office-scene-3d.mjs?v=20260730s"></script>
   <script src="/static/js/platform-panel.js?v=20260729t"></script>
-  <script src="/static/js/office-panel.js?v=20260724c"></script>
+  <script src="/static/js/office-panel.js?v=20260730s"></script>
   <script src="/static/js/command-queue.js?v=20260723k"></script>
   <script src="/static/js/canvas-panel.js?v=20260723a"></script>
   <script src="/static/js/terminal-panel.js?v=20260723e"></script>
-  <script src="/static/js/ai.js?v=20260730e"></script>
+  <script src="/static/js/ai.js?v=20260731r"></script>
   <script src="/static/vendor/uplot/uPlot.iife.min.js"></script>
-  <script src="/static/js/cabana-panel.js?v=20260730d"></script>
+  <script src="/static/js/cabana-panel.js?v=20260730k"></script>
 </body>
 </html>

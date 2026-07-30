@@ -87,9 +87,20 @@ const LocalPrefs = (() => {
     for (const [k, v] of Object.entries(draft)) {
       if (k.startsWith('_') || k === 'cachedAt' || k === 'draftAt') continue;
       if (v === undefined || v === null) continue;
-      if (k === 'apiKey' || k === 'embeddingApiKey' || k === 'webPin') {
-        if (v && !String(v).startsWith('•')) base[k] = v;
+      if (k === 'apiKey' || k === 'embeddingApiKey') {
+        if (v) base[k] = v;
         continue;
+      }
+      if (k === 'modelHub') {
+        const draftAccounts = Array.isArray(v?.accounts) ? v.accounts.length : 0;
+        const serverAccounts = Array.isArray(base.modelHub?.accounts) ? base.modelHub.accounts.length : 0;
+        if (draftAccounts === 0 && serverAccounts > 0) continue;
+        const draftFb = Array.isArray(v?.fallbacks) ? v.fallbacks.length : 0;
+        const serverFb = Array.isArray(base.modelHub?.fallbacks) ? base.modelHub.fallbacks.length : 0;
+        if (draftAccounts > 0 && draftFb === 0 && serverFb > 0) {
+          base.modelHub = { ...v, fallbacks: base.modelHub.fallbacks };
+          continue;
+        }
       }
       base[k] = v;
     }
