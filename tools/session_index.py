@@ -16,6 +16,8 @@ from ai.tools.session_store import SESSIONS_KEY, get_sessions
 
 _LOCK = threading.Lock()
 _DB: sqlite3.Connection | None = None
+_debounce_timer: threading.Timer | None = None
+_pending_sessions: list[dict[str, Any]] = []
 
 SESSIONS_DB = Path(__file__).resolve().parent.parent / "data" / "session_index.db"
 
@@ -91,6 +93,27 @@ def index_session(session: dict[str, Any]) -> int:
 
 def _rebuild_fts(conn: sqlite3.Connection) -> None:
   conn.execute("INSERT INTO messages_fts(messages_fts) VALUES('rebuild')")
+
+
+def _flush_index_batch() -> None:
+  sessions = list(_pending_sessions)
+  for session in sessions:
+    try:
+      index_session(session)
+    except Exception:
+      pass
+
+
+def schedule_index_sessions(sessions: list[dict[str, Any]], debounce_sec: float = 2.0) -> None:
+  """Debounce FTS indexing off the HTTP request path."""
+  global _debounce_timer, _pending_sessions
+  _pending_sessions = sessions
+  with _LOCK:
+    if _debounce_timer is not None:
+      _debounce_timer.cancel()
+    _debounce_timer = threading.Timer(debounce_sec, _flush_index_batch)
+    _debounce_timer.daemon = True
+    _debounce_timer.start()
 
 
 def rebuild_from_params(params: Params | None = None) -> dict[str, Any]:

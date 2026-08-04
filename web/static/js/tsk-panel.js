@@ -147,13 +147,23 @@ const TskPanel = (() => {
     }
   }
 
+  async function fetchWithTimeout(url, options = {}, timeoutMs = 15000) {
+    const ac = new AbortController();
+    const timer = setTimeout(() => ac.abort(), timeoutMs);
+    try {
+      return await fetch(url, { ...options, signal: ac.signal });
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
   async function fetchJson(url) {
-    const res = await fetch(url, { cache: 'no-store' });
+    const res = await fetchWithTimeout(url, { cache: 'no-store' });
     return readJsonResponse(res);
   }
 
   async function postJson(url, payload = {}) {
-    const res = await fetch(url, {
+    const res = await fetchWithTimeout(url, {
       method: 'POST',
       cache: 'no-store',
       headers: { 'Content-Type': 'application/json' },

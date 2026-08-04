@@ -306,10 +306,12 @@ async def search_documents(
 
 
 async def reindex_all(params: Params, embed_config: Any) -> dict[str, Any]:
+  import asyncio
+
   docs = _load_docs(params)
   ok_n = 0
   errors: list[str] = []
-  for doc in docs:
+  for i, doc in enumerate(docs):
     res = await index_document_vectors(
       params,
       doc.get("id", ""),
@@ -323,6 +325,8 @@ async def reindex_all(params: Params, embed_config: Any) -> dict[str, Any]:
       doc["chunk_count"] = res.get("chunks", 0)
     else:
       errors.append(f"{doc.get('id')}: {res.get('error', '?')}")
+    if i % 3 == 2:
+      await asyncio.sleep(0)
   _save_docs(params, docs)
   return {"ok": True, "indexed": ok_n, "total": len(docs), "errors": errors[:5]}
 

@@ -89,9 +89,20 @@ class AiConfigStore:
     except (OSError, json.JSONDecodeError, TypeError, ValueError):
       return {}
 
+  def _cleanup_stale_temp_files(self) -> None:
+    parent = self._path.parent
+    if not parent.is_dir():
+      return
+    for path in parent.glob(".ai_config_*"):
+      try:
+        path.unlink()
+      except OSError:
+        pass
+
   def _save_disk(self, data: dict[str, str]) -> None:
     self._path.parent.mkdir(parents=True, exist_ok=True)
-    payload = json.dumps(data, ensure_ascii=False, indent=2, sort_keys=True)
+    self._cleanup_stale_temp_files()
+    payload = json.dumps(data, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
     fd, tmp = tempfile.mkstemp(prefix=".ai_config_", dir=str(self._path.parent))
     try:
       with os.fdopen(fd, "w", encoding="utf-8") as f:

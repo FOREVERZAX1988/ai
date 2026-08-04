@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import errno
 from typing import Any
 
 from openpilot.common.params import Params
@@ -9,6 +10,15 @@ from openpilot.common.params import Params
 from ai.common.config_store import get_config_store, is_ai_param
 from ai.common.sp_param_aliases import resolve_sp_param_key
 from ai.tools.param_write import put_op_param
+
+
+def format_persist_error(exc: BaseException) -> str:
+  if isinstance(exc, OSError) and exc.errno in (errno.ENOSPC, 28):
+    return (
+      "设备存储空间已满，无法保存配置。请清理 /data 分区（删除旧行车片段、大体积日志或 Git 缓存），"
+      "SSH 执行 df -h /data 查看剩余空间后重试。"
+    )
+  return str(exc)
 
 
 def read_param(params: Params | None, key: str, default: Any = None, *, block: bool = False) -> Any:

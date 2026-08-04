@@ -944,8 +944,21 @@ async function applyRemoteSessionsData(data) {
   }
 }
 
+async function loadSessionDetail(sessionId) {
+  if (!sessionId) return false;
+  const { data } = await api(
+    'GET',
+    `/api/ai/sessions?session_id=${encodeURIComponent(sessionId)}`,
+    null,
+    { timeoutMs: 20000 },
+  );
+  if (!data?.ok || !data.session) return false;
+  SessionStore.patchSession(sessionId, data.session);
+  return true;
+}
+
 async function loadSessionsFromDevice() {
-  const { data } = await api('GET', '/api/ai/sessions');
+  const { data } = await api('GET', '/api/ai/sessions?compact=1', null, { timeoutMs: 20000 });
   return applyRemoteSessionsData(data);
 }
 
@@ -1176,15 +1189,39 @@ function normalizeStoredMessage(msg) {
 }
 
 function prepareMessagesForApi(messages) {
-  return messages.map((m) => {
+  const MAX_API_MESSAGES = 64;
+  const MAX_TOOL_RESULT_CHARS = 12000;
+  const trimToolResult = (value) => {
+    if (value == null) return value;
+    let text;
+    try {
+      text = typeof value === 'string' ? value : JSON.stringify(value);
+    } catch {
+      text = String(value);
+    }
+    if (text.length <= MAX_TOOL_RESULT_CHARS) return value;
+    const clipped = `${text.slice(0, MAX_TOOL_RESULT_CHARS)}\n…[truncated]`;
+    return typeof value === 'string' ? clipped : { ok: true, truncated: true, preview: clipped };
+  };
+  const recent = messages.slice(-MAX_API_MESSAGES);
+  return recent.map((m) => {
     if (m.role === 'user') return { role: 'user', content: m.content };
     if (m.role !== 'assistant') return { ...m };
     const out = { role: 'assistant' };
     if (m.content) out.content = m.content;
-    if (m.reasoning_content) out.reasoning_content = m.reasoning_content;
+    if (m.reasoning_content != null && m.reasoning_content !== '') {
+      out.reasoning_content = m.reasoning_content;
+    } else if (m.tool_calls?.length) {
+      out.reasoning_content = m.reasoning_content || '';
+    }
     if (m.tool_calls?.length) {
       out.tool_calls = m.tool_calls;
-      out.tool_results = m.tool_results || {};
+      const raw = m.tool_results || {};
+      const trimmed = {};
+      Object.keys(raw).forEach((id) => {
+        trimmed[id] = trimToolResult(raw[id]);
+      });
+      out.tool_results = trimmed;
     }
     return out;
   });
@@ -1257,20 +1294,27 @@ async function runOnboardingRagSetup() {
   const run = async () => {
     if (doWiki) {
       setStatus(t('onboardingRagWikiRunning', '正在拉取社区 Wiki…'));
-      const { data } = await api('POST', '/api/ai/rag', {
-        operation: 'wiki_ingest',
-        all_registered: true,
-        max_files_per_repo: 80,
-        force: true,
-      });
-      if (!data.ok) throw new Error(data.error || t('ragWikiSyncFailed', 'Wiki 同步失败'));
-      setStatus(tf('ragWikiSyncResult', { indexed: Number(data.indexed) || 0 }));
-    }
-    if (doReindex || doWiki) {
+      const job = await startRagBackgroundJob(
+        {
+          operation: 'wiki_ingest',
+          all_registered: true,
+          max_files_per_repo: 35,
+          force: false,
+          chain_reindex: doReindex,
+        },
+        {
+          onPhase: (phase) => setStatus(ragJobPhaseLabel(phase)),
+        },
+      );
+      const wiki = job?.result?.wiki || job?.result || {};
+      if (wiki.ok === false) throw new Error(wiki.error || t('ragWikiSyncFailed', 'Wiki 同步失败'));
+      setStatus(tf('ragWikiSyncResult', { indexed: Number(wiki.indexed) || 0 }));
+    } else if (doReindex) {
       setStatus(t('onboardingRagIndexRunning', '正在建立向量索引…'));
-      const { data } = await api('POST', '/api/ai/rag', { operation: 'reindex' });
-      if (!data.ok) throw new Error(data.error || t('ragReindexFailed', '索引失败'));
-      setStatus(tf('onboardingRagDone', { indexed: data.indexed, total: data.total }));
+      const job = await startRagBackgroundJob({ operation: 'reindex' });
+      const res = job?.result?.reindex || job?.result || job;
+      if (res?.ok === false) throw new Error(res.error || t('ragReindexFailed', '索引失败'));
+      setStatus(tf('onboardingRagDone', { indexed: res.indexed, total: res.total }));
     }
     showToast(t('onboardingRagComplete', '知识库设置完成'), 'success');
     loadUsage();
@@ -1683,11 +1727,22 @@ function markLiveStreamUi(ui) {
 function switchSession(id) {
   abortActiveChat();
   SessionStore.setActive(id);
-  loadSessionMode();
-  renderStoredMessages();
+  const session = SessionStore.getActive();
+  const needsDetail = session?.hasContent && !(session.messages || []).length;
+  if (needsDetail) {
+    loadSessionDetail(id).then(() => {
+      loadSessionMode();
+      renderStoredMessages();
+      renderSessionList();
+      syncActiveSessionStreaming().catch(() => {});
+    }).catch(() => {});
+  } else {
+    loadSessionMode();
+    renderStoredMessages();
+  }
   renderSessionList();
   scheduleSessionSync();
-  syncActiveSessionStreaming().catch(() => {});
+  if (!needsDetail) syncActiveSessionStreaming().catch(() => {});
   if (typeof CanvasPanel !== 'undefined') CanvasPanel.loadSession(id).catch(() => {});
   closeSessionsDrawer();
 }
@@ -2056,6 +2111,41 @@ function setRagActionsBusy(busy, busyLabel) {
   });
 }
 
+const RAG_JOB_POLL_MS = 2000;
+const RAG_JOB_TIMEOUT_MS = 20 * 60 * 1000;
+
+function ragJobPhaseLabel(phase) {
+  if (phase === 'wiki_ingest') return t('ragWikiSyncing', '正在同步社区 Wiki…');
+  if (phase === 'reindex') return t('ragReindexing', '正在重建向量索引…');
+  if (phase === 'wiki_done') return t('ragWikiReindexing', '正在重建向量索引…');
+  return t('uiWorking', '处理中…');
+}
+
+async function pollRagJob({ onPhase } = {}) {
+  const started = Date.now();
+  while (Date.now() - started < RAG_JOB_TIMEOUT_MS) {
+    const { data } = await api('GET', '/api/ai/rag?job=1', null, { timeoutMs: 12000 });
+    if (!data?.ok) throw new Error(data?.error || t('ragJobFailed', '知识库任务失败'));
+    if (typeof onPhase === 'function' && data.phase) onPhase(data.phase);
+    if (!data.running) {
+      if (data.status === 'error') throw new Error(data.error || t('ragJobFailed', '知识库任务失败'));
+      return data;
+    }
+    await new Promise((r) => setTimeout(r, RAG_JOB_POLL_MS));
+  }
+  throw new Error(t('ragJobTimeout', '知识库任务超时，请稍后在设置中查看状态'));
+}
+
+async function startRagBackgroundJob(body, { onPhase } = {}) {
+  const { data } = await api('POST', '/api/ai/rag', { background: true, ...body }, { timeoutMs: 15000 });
+  if (!data?.ok) {
+    if (data?.job?.running) throw new Error(t('ragJobBusy', '已有知识库任务进行中'));
+    throw new Error(data?.error || t('ragJobFailed', '知识库任务失败'));
+  }
+  if (data.started) return pollRagJob({ onPhase });
+  return data;
+}
+
 async function reindexRag({ silent = false } = {}) {
   if (!els.ragReindexBtn) return false;
   if (els.ragReindexBtn.classList.contains('is-loading')) return false;
@@ -2064,22 +2154,41 @@ async function reindexRag({ silent = false } = {}) {
   } else {
     els.ragReindexBtn.disabled = true;
   }
-  const { data } = await api('POST', '/api/ai/rag', { operation: 'reindex' });
-  if (typeof UiBusy !== 'undefined') {
-    UiBusy.setButtonBusy(els.ragReindexBtn, false);
-  } else {
-    els.ragReindexBtn.disabled = false;
-  }
-  if (data.ok) {
-    if (!silent) {
-      showToast(tf('ragReindexResult', { indexed: data.indexed, total: data.total }), data.errors?.length ? 'warning' : 'success');
+  try {
+    const job = await startRagBackgroundJob(
+      { operation: 'reindex' },
+      {
+        onPhase: (phase) => {
+          if (typeof UiBusy !== 'undefined' && phase === 'reindex') {
+            UiBusy.setButtonBusy(els.ragReindexBtn, true, { busyLabel: t('ragReindexing', '索引中…') });
+          }
+        },
+      },
+    );
+    const res = job?.result?.reindex || job?.result || job;
+    if (res?.ok !== false) {
+      if (!silent) {
+        showToast(
+          tf('ragReindexResult', { indexed: res.indexed, total: res.total }),
+          res.errors?.length ? 'warning' : 'success',
+        );
+      }
+      loadRagPanel();
+      loadUsage();
+      return true;
     }
-    loadRagPanel();
-    loadUsage();
-    return true;
+    if (!silent) showToast(res.error || t('ragReindexFailed'), 'error');
+    return false;
+  } catch (e) {
+    if (!silent) showToast(String(e?.message || e), 'error');
+    return false;
+  } finally {
+    if (typeof UiBusy !== 'undefined') {
+      UiBusy.setButtonBusy(els.ragReindexBtn, false);
+    } else {
+      els.ragReindexBtn.disabled = false;
+    }
   }
-  if (!silent) showToast(data.error || t('ragReindexFailed'), 'error');
-  return false;
 }
 
 async function syncWikiRag() {
@@ -2089,31 +2198,43 @@ async function syncWikiRag() {
   } else {
     els.ragSyncWikiBtn.disabled = true;
   }
-  setRagActionsBusy(true);
-  const { data } = await api('POST', '/api/ai/rag', {
-    operation: 'wiki_ingest',
-    all_registered: true,
-    max_files_per_repo: 80,
-    force: true,
-  });
-  if (!data.ok) {
-    if (typeof UiBusy !== 'undefined') UiBusy.setButtonBusy(els.ragSyncWikiBtn, false);
-    else els.ragSyncWikiBtn.disabled = false;
-    setRagActionsBusy(false);
-    showToast(data.error || t('ragWikiSyncFailed', 'Wiki 同步失败'), 'error');
-    return;
+  try {
+    const job = await startRagBackgroundJob(
+      {
+        operation: 'wiki_ingest',
+        all_registered: true,
+        max_files_per_repo: 35,
+        force: false,
+        chain_reindex: true,
+      },
+      {
+        onPhase: (phase) => {
+          if (typeof UiBusy !== 'undefined') {
+            UiBusy.setButtonBusy(els.ragSyncWikiBtn, true, {
+              busyLabel: ragJobPhaseLabel(phase),
+            });
+          }
+        },
+      },
+    );
+    const wiki = job?.result?.wiki || job?.result || {};
+    const indexed = Number(wiki.indexed) || 0;
+    showToast(tf('ragWikiSyncResult', { indexed }), 'success');
+    await loadRagPanel();
+    const reindex = job?.result?.reindex;
+    if (reindex?.ok) {
+      showToast(t('ragWikiSyncDone', 'Wiki 已同步并完成索引'), 'success');
+    }
+    loadUsage();
+  } catch (e) {
+    showToast(String(e?.message || e), 'error');
+  } finally {
+    if (typeof UiBusy !== 'undefined') {
+      UiBusy.setButtonBusy(els.ragSyncWikiBtn, false);
+    } else {
+      els.ragSyncWikiBtn.disabled = false;
+    }
   }
-  const indexed = Number(data.indexed) || 0;
-  showToast(tf('ragWikiSyncResult', { indexed }), 'success');
-  await loadRagPanel();
-  if (indexed > 0) {
-    await reindexRag({ silent: true });
-    showToast(t('ragWikiSyncDone', 'Wiki 已同步并完成索引'), 'success');
-  }
-  if (typeof UiBusy !== 'undefined') UiBusy.setButtonBusy(els.ragSyncWikiBtn, false);
-  else els.ragSyncWikiBtn.disabled = false;
-  setRagActionsBusy(false);
-  loadUsage();
 }
 
 async function saveRagDoc() {
@@ -3925,6 +4046,7 @@ function initModelCombos() {
       onLegacySync: syncLegacyFromModelHub,
       onSaveHub: saveModelHubToServer,
       initial: savedConfig?.modelHub,
+      defaultThinkingEnabled: savedConfig?.thinkingEnabled !== false,
     });
   } else if (typeof FallbackModels !== 'undefined') {
     FallbackModels.mount('#fallbackModelsRoot', {
@@ -4457,7 +4579,7 @@ function applyConfigToForm(c) {
 }
 
 async function loadBootstrap() {
-  const { data } = await api('GET', '/api/ai/bootstrap');
+  const { data } = await api('GET', '/api/ai/bootstrap?lite=1', null, { timeoutMs: 20000 });
   if (!data.ok) {
     ensureProviderOptions();
     const cache = LocalPrefs.getConfigCache();
@@ -6473,7 +6595,7 @@ function renderDevPane() {
 }
 
 async function loadStatus() {
-  const { data } = await api('GET', '/api/ai/status');
+  const { data } = await api('GET', '/api/ai/status', null, { timeoutMs: 10000 });
   if (!data.ok) return;
   applyStatusFromPayload(data);
 }

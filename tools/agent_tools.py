@@ -60,6 +60,7 @@ TOOL_META: dict[str, dict[str, Any]] = {
   "search_knowledge_base": {"label": "知识库检索", "group": "read", "default_enabled": True, "driving": True},
   "get_full_vehicle_state": {"label": "完整状态 JSON", "group": "read", "default_enabled": True, "driving": True},
   "list_drive_routes": {"label": "行车路线列表", "group": "read", "default_enabled": True, "driving": True},
+  "cabana_list_routes": {"label": "Cabana 路线列表", "group": "read", "default_enabled": True, "driving": True},
   "analyze_route_summary": {"label": "路线摘要", "group": "read", "default_enabled": True, "driving": True},
   "read_qlog_segment": {"label": "路线日志片段", "group": "read", "default_enabled": True, "driving": True},
   "trip_review": {"label": "行程复盘", "group": "read", "default_enabled": True, "driving": True},
@@ -199,6 +200,7 @@ def tool_meta_for_host() -> dict[str, dict[str, Any]]:
 _RESTARTABLE_SERVICES = frozenset({"aid", "ui", "manager", "selfdrive/ui"})
 
 from ai.tools.op_run import ROUTES_DIR as _ROUTES_DIR  # noqa: E402
+from ai.tools.cabana_route_tools import list_cabana_routes  # noqa: E402
 
 
 def build_tool_schemas() -> list[dict[str, Any]]:
@@ -238,7 +240,8 @@ def build_tool_schemas() -> list[dict[str, Any]]:
     {"type": "function", "function": {"name": "update_agent_memory", "description": "Append a note and/or update vehicle profile fields.", "parameters": {"type": "object", "properties": {"note": {"type": "string"}, "tags": {"type": "array", "items": {"type": "string"}}, "vehicle_profile": {"type": "object"}}, "required": []}}},
     {"type": "function", "function": {"name": "list_scheduled_tasks", "description": "List scheduled agent tasks.", "parameters": {"type": "object", "properties": {}, "required": []}}},
     {"type": "function", "function": {"name": "manage_scheduled_task", "description": "Create/update/remove a scheduled task.", "parameters": {"type": "object", "properties": {"operation": {"type": "string", "enum": ["upsert", "remove"]}, "task_id": {"type": "string"}, "name": {"type": "string"}, "action": {"type": "string"}, "trigger": {"type": "string", "enum": ["interval", "on_offroad", "on_ignition", "on_wifi", "daily_at"]}, "interval_minutes": {"type": "integer"}, "enabled": {"type": "boolean"}, "payload": {"type": "object", "description": "For daily_at: {hour, minute}"}}, "required": ["operation"]}}},
-    {"type": "function", "function": {"name": "list_drive_routes", "description": "List recent drive log route folders under /data/media/0/realdata.", "parameters": {"type": "object", "properties": {"limit": {"type": "integer"}}, "required": []}}},
+    {"type": "function", "function": {"name": "list_drive_routes", "description": "List recent drive routes (same as Cabana /api/cabana/routes). Only routes with qlog/rlog. Prefer over shell ls.", "parameters": {"type": "object", "properties": {"limit": {"type": "integer"}}, "required": []}}},
+    {"type": "function", "function": {"name": "cabana_list_routes", "description": "Alias of list_drive_routes — lists routes for Cabana replay and CAN analysis.", "parameters": {"type": "object", "properties": {"limit": {"type": "integer"}}, "required": []}}},
     {"type": "function", "function": {"name": "analyze_route_summary", "description": "Summarize a drive route (date, qlog/rlog segments, file counts).", "parameters": {"type": "object", "properties": {"route_name": {"type": "string"}}, "required": ["route_name"]}}},
     {"type": "function", "function": {"name": "read_qlog_segment", "description": "Read CAN frames and car/controls state from a route time window (qlog or rlog). Use after Cabana or analyze_route_summary.", "parameters": {"type": "object", "properties": {"route_name": {"type": "string"}, "start_sec": {"type": "number", "description": "Seconds from route start"}, "end_sec": {"type": "number"}, "topics": {"type": "array", "items": {"type": "string"}, "description": "can, carState, controlsState, selfdriveState, onroadEvents"}, "max_messages": {"type": "integer"}}, "required": ["route_name"]}}},
     {"type": "function", "function": {"name": "trip_review", "description": "Structured trip/engage review: events, SecOC hints, tune snapshot, route, log matches, recommendations.", "parameters": {"type": "object", "properties": {"route_name": {"type": "string", "description": "Optional route folder name; latest route if omitted."}}, "required": []}}},
@@ -807,22 +810,10 @@ def make_handlers(
     return {"ok": False, "error": "operation must be upsert or remove"}
 
   def h_list_drive_routes(args):
-    limit = int(args.get("limit", 15))
-    base = _ROUTES_DIR
-    if not os.path.isdir(base):
-      return {"ok": True, "routes": [], "hint": "Routes directory not found on this host."}
-    entries = []
-    for name in os.listdir(base):
-      full = os.path.join(base, name)
-      if not os.path.isdir(full):
-        continue
-      try:
-        mtime = os.path.getmtime(full)
-        entries.append({"name": name, "mtime": datetime.fromtimestamp(mtime).isoformat(timespec="seconds")})
-      except OSError:
-        continue
-    entries.sort(key=lambda x: x["mtime"], reverse=True)
-    return {"ok": True, "routes": entries[:limit]}
+    return list_cabana_routes(limit=int(args.get("limit", 15) or 15), params=p)
+
+  def h_cabana_list_routes(args):
+    return list_cabana_routes(limit=int(args.get("limit", 15) or 15), params=p)
 
   def h_analyze_route_summary(args):
     return analyze_route_summary(str(args.get("route_name", "")))
@@ -1587,6 +1578,7 @@ def make_handlers(
     "list_scheduled_tasks": h_list_scheduled_tasks,
     "manage_scheduled_task": h_manage_scheduled_task,
     "list_drive_routes": h_list_drive_routes,
+    "cabana_list_routes": h_cabana_list_routes,
     "analyze_route_summary": h_analyze_route_summary,
     "read_qlog_segment": h_read_qlog_segment,
     "trip_review": h_trip_review,

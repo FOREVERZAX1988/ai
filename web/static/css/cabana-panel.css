@@ -1072,8 +1072,10 @@
     max-height: min(28vh, 200px);
   }
 
-  .cabana-table-wrap th:nth-child(1),
-  .cabana-table-wrap td:nth-child(1) {
+  .cabana-table-wrap th:nth-child(2),
+  .cabana-table-wrap td:nth-child(2),
+  .cabana-table-wrap th:nth-child(5),
+  .cabana-table-wrap td:nth-child(5) {
     display: none;
   }
 

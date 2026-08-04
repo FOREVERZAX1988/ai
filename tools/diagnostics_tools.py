@@ -10,10 +10,11 @@ from typing import Any
 from openpilot.common.params import Params
 
 from ai.tools.sp_settings import list_sp_settings
-from ai.tools.op_run import ROUTES_DIR
 from ai.tools.params_policy import load_catalog
 
-_ROUTES_DIR = ROUTES_DIR
+def _routes_dir() -> str:
+  from ai.system.paths import routes_dir
+  return routes_dir()
 
 _TUNE_KEY_PREFIXES = ("dp_lat_", "dp_lon_", "dp_ui_", "dp_toyota_", "dp_honda_", "dp_vag_")
 _SP_TUNE_PREFIXES = (
@@ -163,12 +164,13 @@ def diff_params(params: Params, proposed: dict[str, Any]) -> dict[str, Any]:
 
 
 def _latest_route_name(limit: int = 20) -> str | None:
-  if not os.path.isdir(_ROUTES_DIR):
+  base = _routes_dir()
+  if not os.path.isdir(base):
     return None
   entries: list[tuple[float, str]] = []
   try:
-    for name in os.listdir(_ROUTES_DIR):
-      path = os.path.join(_ROUTES_DIR, name)
+    for name in os.listdir(base):
+      path = os.path.join(base, name)
       if os.path.isdir(path):
         try:
           entries.append((os.path.getmtime(path), name))
@@ -738,7 +740,7 @@ def read_qlog_segment(
 def analyze_route_summary(route_name: str) -> dict[str, Any]:
   if not route_name or ".." in route_name or "/" in route_name or "\\" in route_name:
     return {"ok": False, "error": "Invalid route name"}
-  base = os.path.join(_ROUTES_DIR, route_name)
+  base = os.path.join(_routes_dir(), route_name)
   if not os.path.isdir(base):
     return {"ok": False, "error": f"Route not found: {route_name}"}
   try:

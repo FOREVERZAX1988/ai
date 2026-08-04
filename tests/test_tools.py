@@ -259,6 +259,21 @@ class TestSystemInfo(unittest.TestCase):
 
 
 class TestRouteAnalysis(unittest.TestCase):
+  def test_list_cabana_routes_shape(self):
+    try:
+      from ai.tools.cabana_route_tools import list_cabana_routes
+    except ModuleNotFoundError:
+      self.skipTest("openpilot runtime not available")
+    res = list_cabana_routes(limit=5)
+    self.assertIn("ok", res)
+    self.assertIn("routes", res)
+    self.assertIn("routes_dir", res)
+    self.assertIn("count", res)
+    if res.get("ok"):
+      self.assertIsInstance(res["routes"], list)
+      for r in res["routes"][:1]:
+        self.assertIn("name", r)
+
   def test_route_can_stats_invalid(self):
     from ai.tools.route_analysis_tools import route_can_stats, compare_route_signals
 

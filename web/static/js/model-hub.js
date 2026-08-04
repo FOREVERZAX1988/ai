@@ -16,6 +16,10 @@ const ModelHub = (() => {
   let saveHubTimer = null;
   let saveHubChain = Promise.resolve();
 
+  let accountModal = null;
+  let accountModalState = { index: -1, isNew: false };
+  let accountModalDraft = null;
+
   function getRoutes() {
     const routes = [];
     const p = hub.primary;
@@ -124,25 +128,26 @@ const ModelHub = (() => {
     return text;
   }
 
-  function removeModelFromPool(acc, modelId) {
+  function removeModelFromPool(acc, modelId, { renderList = true } = {}) {
     if (!acc || !modelId) return;
     acc.models = (acc.models || []).filter((m) => m !== modelId);
     const routes = getRoutes().filter((r) => !(r.accountId === acc.id && r.model === modelId));
     setRoutes(routes);
-    renderAccounts();
-    renderRouting();
-    return commitHubSave();
+    if (renderList) {
+      renderAccounts();
+      renderRouting();
+    }
   }
 
-  function renderModelPoolTags(acc, idx) {
+  function renderModelPoolTags(acc, { inModal = false } = {}) {
     const models = acc.models || [];
     if (!models.length) {
-      return `<span class="model-hub-tag muted">${escapeHtml(t('modelHubPoolEmpty', '点击「拉取」'))}</span>`;
+      return `<span class="model-hub-tag muted">${escapeHtml(t('modelHubPoolEmpty', '未拉取，点击「拉取模型」'))}</span>`;
     }
     return models.map((m) => `
-      <span class="model-hub-tag removable" title="${escapeAttr(m)}">
+      <span class="model-hub-tag${inModal ? ' removable' : ''}" title="${escapeAttr(m)}">
         <span class="model-hub-tag-text">${escapeHtml(m)}</span>
-        <button type="button" class="model-hub-tag-remove" data-model="${escapeAttr(m)}" data-idx="${idx}" aria-label="${escapeAttr(t('modelHubRemoveModel', '移除模型'))}">×</button>
+        ${inModal ? `<button type="button" class="model-hub-tag-remove" data-model="${escapeAttr(m)}" aria-label="${escapeAttr(t('modelHubRemoveModel', '移除模型'))}">×</button>` : ''}
       </span>
     `).join('');
   }
@@ -169,6 +174,11 @@ const ModelHub = (() => {
     if (row.contextWindow > 0) badges.push(`${row.contextWindow} ctx`);
     if (row.maxTokens > 0) badges.push(`max ${row.maxTokens}`);
     if (row.label) badges.push(row.label);
+    if (isThinkingModel(row.model)) {
+      badges.push(row.thinkingEnabled === false
+        ? t('modelHubThinkingOff', '直出')
+        : t('modelHubThinkingOn', '思考'));
+    }
     return {
       model: row.model,
       provider: accountDisplayName(acc),
@@ -242,6 +252,17 @@ const ModelHub = (() => {
   let routeModal = null;
   let routeModalCombo = null;
   let routeModalState = { index: -1 };
+  let defaultThinkingEnabled = true;
+
+  const THINKING_MODEL_HINTS = [
+    'kimi-k2', 'deepseek-reasoner', 'deepseek-r1', 'deepseek-v4-pro',
+    'minimax-m2', 'minimax-m3', 'mimo-v2', 'glm-5', 'glm-4.5', 'o1', 'o3', 'qwq',
+  ];
+
+  function isThinkingModel(modelId) {
+    const m = String(modelId || '').toLowerCase();
+    return THINKING_MODEL_HINTS.some((hint) => m.includes(hint));
+  }
 
   function ensureRouteModal() {
     if (routeModal) return routeModal;
@@ -288,6 +309,14 @@ const ModelHub = (() => {
               <input type="number" id="modelHubRouteTopP" min="0" max="1" step="0.05" placeholder="${escapeAttr(t('modelHubUseDefault', '默认'))}">
             </label>
           </div>
+          <label class="field switch-row model-hub-route-thinking-row" id="modelHubRouteThinkingRow">
+            <span class="field-label">${escapeHtml(t('thinking', '思考模式'))}</span>
+            <label class="switch">
+              <input type="checkbox" id="modelHubRouteThinking" checked>
+              <span class="slider"></span>
+            </label>
+          </label>
+          <p class="field-hint model-hub-route-thinking-hint" id="modelHubRouteThinkingHint">${escapeHtml(t('modelHubThinkingHint', '思考模型可开启深度推理；非思考模型可忽略此项。'))}</p>
           <p class="field-hint">${escapeHtml(t('modelHubRouteModalHint', '留空或 0 表示使用内置默认值。'))}</p>
         </div>
         <footer class="modal-footer">
@@ -307,9 +336,25 @@ const ModelHub = (() => {
         routeModalCombo.setOptions(modelsForAccount(accountId));
         routeModalCombo.setValue(defaultModelForAccount(accountId), { silent: true });
       }
+      syncRouteModalThinkingVisibility();
     });
+    routeModal.querySelector('#modelHubRouteThinking')?.addEventListener('change', syncRouteModalThinkingVisibility);
     routeModal = el;
     return el;
+  }
+
+  function syncRouteModalThinkingVisibility() {
+    if (!routeModal) return;
+    const model = routeModalCombo?.getValue?.() || '';
+    const row = routeModal.querySelector('#modelHubRouteThinkingRow');
+    const hint = routeModal.querySelector('#modelHubRouteThinkingHint');
+    const thinking = isThinkingModel(model);
+    row?.classList.toggle('is-thinking-model', thinking);
+    if (hint) {
+      hint.textContent = thinking
+        ? t('modelHubThinkingHintOn', '该模型支持思考模式，关闭后将直出回答。')
+        : t('modelHubThinkingHint', '思考模型可开启深度推理；非思考模型可忽略此项。');
+    }
   }
 
   function openRouteModal(opts = {}) {
@@ -336,7 +381,11 @@ const ModelHub = (() => {
     const host = routeModal.querySelector('#modelHubRouteModelHost');
     host.innerHTML = '';
     if (typeof ModelCombobox !== 'undefined') {
-      routeModalCombo = ModelCombobox.mount(host, { placeholder: 'model-id' });
+      routeModalCombo = ModelCombobox.mount(host, {
+        placeholder: 'model-id',
+        onChange: () => syncRouteModalThinkingVisibility(),
+        onInput: () => syncRouteModalThinkingVisibility(),
+      });
       routeModalCombo.setOptions(modelsForAccount(row.accountId));
       routeModalCombo.setValue(row.model || '', { silent: true });
     }
@@ -346,9 +395,16 @@ const ModelHub = (() => {
     routeModal.querySelector('#modelHubRouteMaxTokens').value = row.maxTokens > 0 ? row.maxTokens : '';
     routeModal.querySelector('#modelHubRouteTemp').value = row.temperature ?? '';
     routeModal.querySelector('#modelHubRouteTopP').value = row.topP ?? '';
+    const thinkEl = routeModal.querySelector('#modelHubRouteThinking');
+    if (thinkEl) {
+      thinkEl.checked = row.thinkingEnabled !== undefined
+        ? row.thinkingEnabled !== false
+        : (isThinkingModel(row.model) ? true : defaultThinkingEnabled);
+    }
 
     routeModal.hidden = false;
     routeModal.classList.add('is-open');
+    syncRouteModalThinkingVisibility();
   }
 
   function closeRouteModal() {
@@ -371,6 +427,7 @@ const ModelHub = (() => {
     if (tempRaw !== '' && tempRaw != null) row.temperature = parseFloat(tempRaw);
     const topPRaw = routeModal.querySelector('#modelHubRouteTopP')?.value;
     if (topPRaw !== '' && topPRaw != null) row.topP = parseFloat(topPRaw);
+    row.thinkingEnabled = !!routeModal.querySelector('#modelHubRouteThinking')?.checked;
     return row;
   }
 
@@ -398,6 +455,266 @@ const ModelHub = (() => {
     }
   }
 
+  function ensureAccountModal() {
+    if (accountModal) return accountModal;
+    const el = document.createElement('div');
+    el.className = 'modal model-hub-account-modal';
+    el.hidden = true;
+    el.innerHTML = `
+      <div class="modal-backdrop" data-close="1"></div>
+      <div class="modal-content" role="dialog" aria-modal="true">
+        <header class="modal-header">
+          <h2 id="modelHubAccountModalTitle">${escapeHtml(t('modelHubAccountModalTitle', '服务商配置'))}</h2>
+          <button type="button" class="modal-close" data-close="1" aria-label="${escapeAttr(t('close', '关闭'))}">×</button>
+        </header>
+        <div class="modal-body">
+          <label class="field switch-row model-hub-account-enabled-row">
+            <span class="field-label">${escapeHtml(t('modelHubEnabled', '启用'))}</span>
+            <label class="switch">
+              <input type="checkbox" id="modelHubAccountEnabled">
+              <span class="slider"></span>
+            </label>
+          </label>
+          <label class="field">
+            <span class="field-label">${escapeHtml(t('modelHubLabelPh', '备注名'))}</span>
+            <input type="text" id="modelHubAccountLabel" placeholder="${escapeAttr(t('modelHubLabelPlaceholder', '可选，如：公司账号'))}">
+          </label>
+          <label class="field">
+            <span class="field-label">${escapeHtml(t('provider', '服务商'))}</span>
+            <select id="modelHubAccountProvider"></select>
+          </label>
+          <label class="field">
+            <span class="field-label">${escapeHtml(t('apiKey', 'API Key'))}</span>
+            <input type="text" id="modelHubAccountApiKey" autocomplete="off" spellcheck="false" placeholder="sk-...">
+          </label>
+          <div class="model-hub-url-primary hidden" id="modelHubAccountUrlPrimary">
+            <label class="field">
+              <span class="field-label">${escapeHtml(t('baseUrl', 'Base URL'))}</span>
+              <input type="text" id="modelHubAccountBaseUrl" placeholder="https://api.example.com/v1">
+            </label>
+          </div>
+          <details class="model-hub-advanced hidden" id="modelHubAccountUrlAdvanced">
+            <summary>${escapeHtml(t('modelHubAdvanced', '高级（Base URL）'))}</summary>
+            <label class="field">
+              <span class="field-label">${escapeHtml(t('baseUrl', 'Base URL'))}</span>
+              <input type="text" id="modelHubAccountBaseUrlAdv" placeholder="${escapeAttr(t('fallbackUrlOptionalPh', '留空=默认'))}">
+            </label>
+          </details>
+          <div class="model-hub-pool model-hub-account-pool">
+            <div class="model-hub-pool-head">
+              <span class="field-label">${escapeHtml(t('modelHubPool', '模型池'))}</span>
+              <div class="model-hub-account-tool-actions">
+                <button type="button" class="btn small ghost" id="modelHubAccountTest">${escapeHtml(t('testConnection', '测试'))}</button>
+                <button type="button" class="btn small ghost" id="modelHubAccountFetch">${escapeHtml(t('fetchModels', '拉取模型'))}</button>
+              </div>
+            </div>
+            <div class="model-hub-tags" id="modelHubAccountPoolTags"></div>
+          </div>
+          <p class="model-hub-status hidden" id="modelHubAccountStatus"></p>
+        </div>
+        <footer class="modal-footer">
+          <button type="button" class="btn ghost" data-close="1">${escapeHtml(t('cancel', '取消'))}</button>
+          <button type="button" class="btn primary" id="modelHubAccountSave">${escapeHtml(t('save', '保存'))}</button>
+        </footer>
+      </div>
+    `;
+    document.body.appendChild(el);
+    el.querySelectorAll('[data-close]').forEach((node) => {
+      node.addEventListener('click', () => closeAccountModal());
+    });
+    el.querySelector('#modelHubAccountSave')?.addEventListener('click', () => saveAccountModal());
+    el.querySelector('#modelHubAccountProvider')?.addEventListener('change', () => {
+      syncAccountModalDraftFromForm();
+      updateAccountModalUrlFields();
+    });
+    el.querySelector('#modelHubAccountTest')?.addEventListener('click', () => testAccountFromModal());
+    el.querySelector('#modelHubAccountFetch')?.addEventListener('click', () => fetchAccountModelsFromModal());
+    accountModal = el;
+    return el;
+  }
+
+  function updateAccountModalUrlFields() {
+    if (!accountModal || !accountModalDraft) return;
+    const provider = accountModalDraft.provider || '';
+    accountModal.querySelector('#modelHubAccountUrlPrimary')?.classList.toggle('hidden', !needsBaseUrlPrimary(provider));
+    accountModal.querySelector('#modelHubAccountUrlAdvanced')?.classList.toggle('hidden', !needsBaseUrlAdvanced(provider));
+  }
+
+  function showAccountModalStatus(message, kind) {
+    const status = accountModal?.querySelector('#modelHubAccountStatus');
+    if (!status) return;
+    status.classList.remove('hidden', 'ok', 'err');
+    if (kind) status.classList.add(kind);
+    status.textContent = message || '';
+  }
+
+  function renderAccountModalPool() {
+    const host = accountModal?.querySelector('#modelHubAccountPoolTags');
+    if (!host || !accountModalDraft) return;
+    host.innerHTML = renderModelPoolTags(accountModalDraft, { inModal: true });
+    host.querySelectorAll('.model-hub-tag-remove').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        const modelId = btn.dataset.model;
+        if (!modelId) return;
+        removeModelFromPool(accountModalDraft, modelId, { renderList: false });
+        renderAccountModalPool();
+      });
+    });
+  }
+
+  function syncAccountModalDraftFromForm() {
+    if (!accountModal || !accountModalDraft) return;
+    accountModalDraft.label = accountModal.querySelector('#modelHubAccountLabel')?.value || '';
+    accountModalDraft.provider = accountModal.querySelector('#modelHubAccountProvider')?.value || '';
+    accountModalDraft.apiKey = accountModal.querySelector('#modelHubAccountApiKey')?.value || '';
+    accountModalDraft.baseUrl = (
+      accountModal.querySelector('#modelHubAccountBaseUrl')?.value
+      || accountModal.querySelector('#modelHubAccountBaseUrlAdv')?.value
+      || ''
+    ).trim();
+    accountModalDraft.enabled = !!accountModal.querySelector('#modelHubAccountEnabled')?.checked;
+  }
+
+  function openAccountModal(opts = {}) {
+    ensureAccountModal();
+    const accounts = hub.accounts || [];
+    const idx = opts.index ?? (opts.accountId ? accounts.findIndex((a) => a.id === opts.accountId) : -1);
+    accountModalState = { index: idx, isNew: opts.isNew === true || idx < 0 };
+    const source = accountModalState.isNew
+      ? {
+        id: newAccountId(),
+        provider: providers[0] || 'opencode-zen',
+        label: '',
+        apiKey: '',
+        baseUrl: '',
+        enabled: true,
+        models: [],
+      }
+      : { ...accounts[idx] };
+    accountModalDraft = cloneHub({ accounts: [source] }).accounts[0];
+
+    accountModal.querySelector('#modelHubAccountModalTitle').textContent = accountModalState.isNew
+      ? t('modelHubAddAccountModal', '添加服务商')
+      : t('modelHubAccountModalTitle', '服务商配置');
+
+    accountModal.querySelector('#modelHubAccountProvider').innerHTML = providerOptions(accountModalDraft.provider);
+    accountModal.querySelector('#modelHubAccountLabel').value = accountModalDraft.label || '';
+    accountModal.querySelector('#modelHubAccountApiKey').value = accountModalDraft.apiKey || '';
+    accountModal.querySelector('#modelHubAccountBaseUrl').value = accountModalDraft.baseUrl || '';
+    accountModal.querySelector('#modelHubAccountBaseUrlAdv').value = accountModalDraft.baseUrl || '';
+    accountModal.querySelector('#modelHubAccountEnabled').checked = accountModalDraft.enabled !== false;
+    updateAccountModalUrlFields();
+    renderAccountModalPool();
+    showAccountModalStatus('', null);
+
+    accountModal.hidden = false;
+    accountModal.classList.add('is-open');
+    accountModal.querySelector('#modelHubAccountLabel')?.focus();
+  }
+
+  function closeAccountModal() {
+    if (!accountModal) return;
+    accountModal.hidden = true;
+    accountModal.classList.remove('is-open');
+    accountModalDraft = null;
+  }
+
+  function accountRequestPayload(acc, { omitAccountId = false } = {}) {
+    const payload = {
+      provider: acc.provider,
+      apiKey: acc.apiKey || '',
+      baseUrl: acc.baseUrl || '',
+    };
+    if (!omitAccountId && acc.id) payload.accountId = acc.id;
+    return payload;
+  }
+
+  async function testAccountFromModal() {
+    syncAccountModalDraftFromForm();
+    if (!accountModalDraft) return;
+    const btn = accountModal.querySelector('#modelHubAccountTest');
+    if (btn) btn.disabled = true;
+    showAccountModalStatus(t('testing', '测试中…'), null);
+    let data;
+    try {
+      ({ data } = await apiFn('POST', '/api/ai/test', accountRequestPayload(accountModalDraft, { omitAccountId: accountModalState.isNew })));
+    } catch (e) {
+      showAccountModalStatus(e?.message || t('testFailed', '连接失败'), 'err');
+      if (btn) btn.disabled = false;
+      return;
+    }
+    if (btn) btn.disabled = false;
+    if (data?.ok) {
+      showAccountModalStatus(t('testOk', '连接成功'), 'ok');
+    } else {
+      showAccountModalStatus(data?.error || t('testFailed', '连接失败'), 'err');
+    }
+  }
+
+  async function fetchAccountModelsFromModal() {
+    syncAccountModalDraftFromForm();
+    if (!accountModalDraft) return;
+    const btn = accountModal.querySelector('#modelHubAccountFetch');
+    if (btn) btn.disabled = true;
+    showAccountModalStatus(t('loadingModels', '加载中…'), null);
+    let httpStatus = 0;
+    let data;
+    try {
+      ({ status: httpStatus, data } = await apiFn('POST', '/api/ai/models', accountRequestPayload(accountModalDraft, { omitAccountId: accountModalState.isNew })));
+    } catch (e) {
+      if (btn) btn.disabled = false;
+      showAccountModalStatus(e?.message || t('modelHubFetchFail', '拉取失败'), 'err');
+      return;
+    }
+    if (btn) btn.disabled = false;
+    if (httpStatus === 404) {
+      showAccountModalStatus(t('modelHubApiMissing', '模型 API 未就绪，请重启 op助手 后重试'), 'err');
+      return;
+    }
+    if (data?.modelHub) {
+      const remote = (data.modelHub.accounts || []).find((a) => a.id === accountModalDraft.id);
+      if (remote?.models) accountModalDraft.models = [...remote.models];
+    } else if (data?.ok && Array.isArray(data.models)) {
+      accountModalDraft.models = data.models.map((m) => (typeof m === 'string' ? m : m.id)).filter(Boolean);
+    }
+    renderAccountModalPool();
+    if (data?.ok) {
+      showAccountModalStatus(t('modelHubFetchOkPending', '已更新模型池（保存后生效）'), 'ok');
+    } else {
+      showAccountModalStatus(data?.error || t('modelHubFetchFail', '拉取失败'), 'err');
+    }
+  }
+
+  async function saveAccountModal() {
+    syncAccountModalDraftFromForm();
+    if (!accountModalDraft) return;
+    const draft = { ...accountModalDraft };
+    if (!draft.provider) return;
+
+    const accounts = [...(hub.accounts || [])];
+    if (accountModalState.isNew) {
+      accounts.push(draft);
+    } else if (accountModalState.index >= 0) {
+      accounts[accountModalState.index] = draft;
+    } else {
+      return;
+    }
+    hub.accounts = accounts;
+
+    const btn = accountModal?.querySelector('#modelHubAccountSave');
+    if (btn) btn.disabled = true;
+    try {
+      await commitHubSave();
+      closeAccountModal();
+      render();
+    } catch (e) {
+      showAccountModalStatus(e?.message || t('saveFailed', '保存失败'), 'err');
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  }
+
   let persistTimer = null;
 
   async function commitHubSave(opts = {}) {
@@ -414,24 +731,13 @@ const ModelHub = (() => {
       return;
     }
     const payload = prepareForSave();
-    saveHubChain = saveHubChain.then(() => saveHubFn(payload, opts)).catch(() => {});
-    return saveHubChain;
+    const run = saveHubChain.then(() => saveHubFn(payload, opts));
+    saveHubChain = run.catch(() => {});
+    return run;
   }
 
   function persistChange(opts = {}) {
     return commitHubSave(opts);
-  }
-
-  function bindTextPersist(input, onValue, onBlurExtra) {
-    if (!input) return;
-    input.addEventListener('input', (e) => {
-      onValue(e.target.value);
-      commitHubSave({ debounce: 600, silent: true });
-    });
-    input.addEventListener('blur', () => {
-      onBlurExtra?.();
-      commitHubSave({ silent: true });
-    });
   }
 
   function mount(container, opts = {}) {
@@ -444,6 +750,7 @@ const ModelHub = (() => {
     apiFn = opts.api || apiFn;
     onLegacySync = opts.onLegacySync || onLegacySync;
     saveHubFn = opts.onSaveHub || null;
+    defaultThinkingEnabled = opts.defaultThinkingEnabled !== false;
 
     root.innerHTML = `
       <div class="model-hub">
@@ -462,9 +769,9 @@ const ModelHub = (() => {
           <div class="model-hub-section-head">
             <div>
               <h4 class="model-hub-section-title">${escapeHtml(t('modelHubAccountsTitle', '服务商账户'))}</h4>
-              <p class="field-hint">${escapeHtml(t('modelHubAccountsHintShort', '配置 Key 并拉取模型；可添加多个服务商。'))}</p>
+              <p class="field-hint">${escapeHtml(t('modelHubAccountsHintShort', '点击「配置」编辑账户；保存后拉取模型。'))}</p>
             </div>
-            <button type="button" class="btn small ghost" id="modelHubAddAccount">${escapeHtml(t('modelHubAddAccount', '+ 添加'))}</button>
+            <button type="button" class="btn small ghost" id="modelHubAddAccount">${escapeHtml(t('modelHubAddAccount', '添加'))}</button>
           </div>
           <div class="model-hub-accounts" id="modelHubAccounts"></div>
           <p class="model-hub-empty hidden" id="modelHubAccountsEmpty">${escapeHtml(t('modelHubAccountsEmpty', '暂无账户'))}</p>
@@ -472,20 +779,8 @@ const ModelHub = (() => {
       </div>
     `;
 
-    root.querySelector('#modelHubAddAccount')?.addEventListener('click', async () => {
-      const pid = providers[0] || 'opencode-zen';
-      const acc = {
-        id: newAccountId(),
-        provider: pid,
-        label: '',
-        apiKey: '',
-        baseUrl: '',
-        enabled: true,
-        models: [],
-      };
-      hub.accounts = [...(hub.accounts || []), acc];
-      render();
-      await commitHubSave({ silent: true });
+    root.querySelector('#modelHubAddAccount')?.addEventListener('click', () => {
+      openAccountModal({ isNew: true });
     });
 
     root.querySelector('#modelHubAddRoute')?.addEventListener('click', () => {
@@ -506,119 +801,34 @@ const ModelHub = (() => {
     const list = root?.querySelector('#modelHubAccounts');
     const empty = root?.querySelector('#modelHubAccountsEmpty');
     if (!list) return;
-    const openIds = new Set(
-      [...list.querySelectorAll('.mh-account[open]')].map((node) => node.dataset.accountId).filter(Boolean),
-    );
     const accounts = hub.accounts || [];
     empty?.classList.toggle('hidden', accounts.length > 0);
     list.innerHTML = '';
     accounts.forEach((acc, idx) => {
-      const el = document.createElement('details');
-      el.className = 'mh-account';
+      const el = document.createElement('div');
+      el.className = `mh-account-item${acc.enabled === false ? ' is-disabled' : ''}`;
       el.dataset.accountId = acc.id;
-      if (acc.enabled === false) el.classList.add('is-disabled');
-      const showUrlPrimary = needsBaseUrlPrimary(acc.provider);
-      const showUrlAdv = needsBaseUrlAdvanced(acc.provider);
       const modelCount = (acc.models || []).length;
       const hasKey = !!(acc.apiKey || '').trim();
       const preview = modelPreviewText(acc.models, 3);
       el.innerHTML = `
-        <summary class="mh-account-summary">
-          <span class="mh-account-dot${hasKey ? ' ok' : ''}" title="${escapeAttr(hasKey ? t('modelHubKeySet', '已配置 Key') : t('modelHubKeyMissing', '未配置 Key'))}"></span>
-          <span class="mh-account-name">${escapeHtml(accountDisplayName(acc))}</span>
-          <span class="mh-account-meta">${modelCount ? t('modelHubModelCount', '{n} 个模型', { n: modelCount }) : escapeHtml(t('modelHubPoolEmptyShort', '未拉取'))}</span>
-          ${preview ? `<span class="mh-account-preview" title="${escapeAttr((acc.models || []).join(', '))}">${escapeHtml(preview)}</span>` : ''}
-        </summary>
+        <span class="mh-account-dot${hasKey ? ' ok' : ''}" title="${escapeAttr(hasKey ? t('modelHubKeySet', '已配置 Key') : t('modelHubKeyMissing', '未配置 Key'))}"></span>
         <div class="mh-account-body">
-          <div class="mh-account-toolbar">
-            <label class="switch model-hub-enable-switch" title="${escapeAttr(t('modelHubEnabled', '启用'))}">
-              <input type="checkbox" class="model-hub-enabled" data-idx="${idx}" ${acc.enabled !== false ? 'checked' : ''}>
-              <span class="slider"></span>
-            </label>
-            <div class="model-hub-account-actions">
-              <button type="button" class="btn small ghost model-hub-test" data-idx="${idx}">${escapeHtml(t('testConnection', '测试'))}</button>
-              <button type="button" class="btn small ghost model-hub-fetch" data-idx="${idx}">${escapeHtml(t('fetchModels', '拉取'))}</button>
-              <button type="button" class="btn small ghost danger model-hub-remove" data-idx="${idx}">${escapeHtml(t('remove', '删除'))}</button>
-            </div>
-          </div>
-          <label class="field model-hub-label-field">
-            <span class="field-label">${escapeHtml(t('modelHubLabelPh', '备注名'))}</span>
-            <input type="text" class="model-hub-label" data-idx="${idx}" value="${escapeAttr(acc.label || '')}" placeholder="${escapeAttr(t('modelHubLabelPlaceholder', '可选，如：公司账号'))}">
-          </label>
-          <label class="field">
-            <span class="field-label">${escapeHtml(t('provider', '服务商'))}</span>
-            <select class="model-hub-provider" data-idx="${idx}">${providerOptions(acc.provider)}</select>
-          </label>
-          <label class="field">
-            <span class="field-label">${escapeHtml(t('apiKey', 'API Key'))}</span>
-            <input type="text" class="model-hub-apikey" data-idx="${idx}" value="${escapeAttr(acc.apiKey || '')}" autocomplete="off" spellcheck="false" placeholder="sk-...">
-          </label>
-          <div class="model-hub-url-primary ${showUrlPrimary ? '' : 'hidden'}">
-            <label class="field">
-              <span class="field-label">${escapeHtml(t('baseUrl', 'Base URL'))}</span>
-              <input type="text" class="model-hub-baseurl" data-idx="${idx}" value="${escapeAttr(acc.baseUrl || '')}" placeholder="https://api.example.com/v1">
-            </label>
-          </div>
-          <details class="model-hub-advanced ${showUrlAdv ? '' : 'hidden'}">
-            <summary>${escapeHtml(t('modelHubAdvanced', '高级（Base URL）'))}</summary>
-            <label class="field">
-              <span class="field-label">${escapeHtml(t('baseUrl', 'Base URL'))}</span>
-              <input type="text" class="model-hub-baseurl-adv" data-idx="${idx}" value="${escapeAttr(acc.baseUrl || '')}" placeholder="${escapeAttr(t('fallbackUrlOptionalPh', '留空=默认'))}">
-            </label>
-          </details>
-          <div class="model-hub-pool">
-            <span class="field-label">${escapeHtml(t('modelHubPool', '模型池'))}</span>
-            <div class="model-hub-tags">${renderModelPoolTags(acc, idx)}</div>
-          </div>
-          <p class="model-hub-status hidden" data-idx="${idx}"></p>
+          <div class="mh-account-name">${escapeHtml(accountDisplayName(acc))}</div>
+          <div class="mh-account-meta">${modelCount ? t('modelHubModelCount', '{n} 个模型', { n: modelCount }) : escapeHtml(t('modelHubPoolEmptyShort', '未拉取'))}${acc.enabled === false ? ` · ${escapeHtml(t('modelHubDisabled', '已禁用'))}` : ''}</div>
+          ${preview ? `<div class="mh-account-preview" title="${escapeAttr((acc.models || []).join(', '))}">${escapeHtml(preview)}</div>` : ''}
+        </div>
+        <div class="mh-account-actions">
+          <button type="button" class="btn small ghost mh-account-edit" data-idx="${idx}">${escapeHtml(t('modelHubConfigure', '配置'))}</button>
+          <button type="button" class="btn small ghost danger mh-account-remove" data-idx="${idx}">${escapeHtml(t('remove', '删除'))}</button>
         </div>
       `;
       list.appendChild(el);
-      if (openIds.has(acc.id)) el.open = true;
 
-      el.querySelectorAll('.model-hub-tag-remove').forEach((btn) => {
-        btn.addEventListener('click', (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          const modelId = btn.dataset.model;
-          if (!modelId) return;
-          removeModelFromPool(acc, modelId);
-        });
+      el.querySelector('.mh-account-edit')?.addEventListener('click', () => {
+        openAccountModal({ index: idx });
       });
-      el.querySelector('.model-hub-enabled')?.addEventListener('change', (e) => {
-        acc.enabled = e.target.checked;
-        el.classList.toggle('is-disabled', !acc.enabled);
-        commitHubSave({ silent: true });
-      });
-      bindTextPersist(el.querySelector('.model-hub-label'), (v) => {
-        acc.label = v;
-      });
-      el.querySelector('.model-hub-label')?.addEventListener('blur', () => {
-        const nameEl = el.querySelector('.mh-account-name');
-        if (nameEl) nameEl.textContent = accountDisplayName(acc);
-        renderRouting();
-        commitHubSave({ silent: true });
-      });
-      el.querySelector('.model-hub-provider')?.addEventListener('change', (e) => {
-        acc.provider = e.target.value;
-        renderAccounts();
-        renderRouting();
-        commitHubSave({ silent: true });
-      });
-      bindTextPersist(el.querySelector('.model-hub-apikey'), (v) => {
-        acc.apiKey = v;
-      });
-      el.querySelector('.model-hub-apikey')?.addEventListener('blur', () => {
-        const dot = el.querySelector('.mh-account-dot');
-        if (dot) dot.classList.toggle('ok', !!(acc.apiKey || '').trim());
-      });
-      bindTextPersist(el.querySelector('.model-hub-baseurl'), (v) => {
-        acc.baseUrl = v;
-      });
-      bindTextPersist(el.querySelector('.model-hub-baseurl-adv'), (v) => {
-        acc.baseUrl = v;
-      });
-      el.querySelector('.model-hub-remove')?.addEventListener('click', async () => {
+      el.querySelector('.mh-account-remove')?.addEventListener('click', async () => {
         const removedId = acc.id;
         hub.accounts = accounts.filter((_, i) => i !== idx);
         const routes = getRoutes().filter((r) => r.accountId !== removedId);
@@ -626,85 +836,16 @@ const ModelHub = (() => {
         render();
         await commitHubSave();
       });
-      el.querySelector('.model-hub-test')?.addEventListener('click', () => testAccount(acc, el));
-      el.querySelector('.model-hub-fetch')?.addEventListener('click', () => fetchAccountModels(acc, el));
     });
   }
 
-  function accountRequestPayload(acc) {
-    return {
-      accountId: acc.id,
-      provider: acc.provider,
-      apiKey: acc.apiKey || '',
-      baseUrl: acc.baseUrl || '',
-    };
-  }
-
-  async function testAccount(acc, el) {
-    const status = el.querySelector('.model-hub-status');
-    if (status) {
-      status.classList.remove('hidden', 'ok', 'err');
-      status.textContent = t('testing', '测试中…');
-    }
-    const { data } = await apiFn('POST', '/api/ai/test', accountRequestPayload(acc));
-    if (status) {
-      status.classList.remove('hidden');
-      if (data?.ok) {
-        status.classList.add('ok');
-        status.textContent = t('testOk', '连接成功');
-      } else {
-        status.classList.add('err');
-        status.textContent = data?.error || t('testFailed', '连接失败');
-      }
-    }
-  }
-
-  async function fetchAccountModels(acc, el) {
-    const status = el.querySelector('.model-hub-status');
-    const btn = el.querySelector('.model-hub-fetch');
-    if (btn) btn.disabled = true;
-    if (status) {
-      status.classList.remove('hidden', 'ok', 'err');
-      status.textContent = t('loadingModels', '加载中…');
-    }
-    try {
-      await commitHubSave({ silent: true });
-    } catch {
-      if (btn) btn.disabled = false;
-      if (status) {
-        status.classList.remove('hidden');
-        status.classList.add('err');
-        status.textContent = t('saveFailed', '保存失败');
-      }
-      return;
-    }
-    const { status: httpStatus, data } = await apiFn('POST', '/api/ai/models', accountRequestPayload(acc));
-    if (btn) btn.disabled = false;
-    if (httpStatus === 404) {
-      if (status) {
-        status.classList.remove('hidden');
-        status.classList.add('err');
-        status.textContent = t('modelHubApiMissing', '模型 API 未就绪，请重启 op助手 后重试');
-      }
-      return;
-    }
-    if (data?.modelHub) {
-      setHub(data.modelHub, { silent: true });
-    } else if (data?.ok && Array.isArray(data.models)) {
-      acc.models = data.models.map((m) => (typeof m === 'string' ? m : m.id)).filter(Boolean);
-      await commitHubSave({ silent: true });
-    }
-    renderAccounts();
-    renderRouting();
-    if (status) {
-      status.classList.remove('hidden');
-      if (data?.ok) {
-        status.classList.add('ok');
-        status.textContent = t('modelHubFetchOk', '已更新模型池');
-      } else {
-        status.classList.add('err');
-        status.textContent = data?.error || t('modelHubFetchFail', '拉取失败');
-      }
+  function setHub(data, opts = {}) {
+    hub = cloneHub(data);
+    if (!Array.isArray(hub.accounts)) hub.accounts = [];
+    if (!Array.isArray(hub.fallbacks)) hub.fallbacks = [];
+    render();
+    if (!opts.silent) {
+      onLegacySync(hub);
     }
   }
 
@@ -757,16 +898,6 @@ const ModelHub = (() => {
         await commitHubSave({ silent: true });
       });
     });
-  }
-
-  function setHub(data, opts = {}) {
-    hub = cloneHub(data);
-    if (!Array.isArray(hub.accounts)) hub.accounts = [];
-    if (!Array.isArray(hub.fallbacks)) hub.fallbacks = [];
-    render();
-    if (!opts.silent) {
-      onLegacySync(hub);
-    }
   }
 
   function syncHubFromUi() {

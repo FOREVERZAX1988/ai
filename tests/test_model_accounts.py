@@ -98,6 +98,38 @@ class TestModelAccounts(unittest.TestCase):
     cfg = resolve_primary_config(p)
     self.assertEqual(cfg.max_tokens, 8192)
     self.assertAlmostEqual(cfg.temperature, 0.5)
+    self.assertTrue(cfg.thinking_enabled)
+
+  def test_route_thinking_enabled(self):
+    from ai.model_accounts import resolve_primary_config, resolve_fallback_configs, save_model_hub
+
+    p = self._params()
+    save_model_hub(p, {
+      "version": 1,
+      "accounts": [{
+        "id": "acc_test",
+        "provider": "kimi",
+        "label": "Kimi",
+        "apiKey": "sk-test",
+        "baseUrl": "",
+        "enabled": True,
+        "models": ["kimi-k2.5"],
+      }],
+      "primary": {
+        "accountId": "acc_test",
+        "model": "kimi-k2.5",
+        "thinkingEnabled": False,
+      },
+      "fallbacks": [{
+        "accountId": "acc_test",
+        "model": "kimi-k2.5",
+        "thinkingEnabled": True,
+      }],
+    })
+    primary = resolve_primary_config(p)
+    self.assertFalse(primary.thinking_enabled)
+    fallbacks = resolve_fallback_configs(p, primary)
+    self.assertTrue(fallbacks[0].thinking_enabled)
 
   def test_fallback_chain(self):
     from ai.model_accounts import resolve_chat_chain, save_model_hub
@@ -117,6 +149,15 @@ class TestModelAccounts(unittest.TestCase):
     self.assertEqual(chain[0].model, "m1")
     self.assertEqual(chain[1].model, "m2")
 
+  def test_trim_account_models_caps_pool(self):
+    from ai.model_accounts import MAX_MODELS_PER_ACCOUNT, _trim_account_models
+
+    models = [f"m{i}" for i in range(500)]
+    trimmed = _trim_account_models(models, prefer={"m499", "m0"})
+    self.assertEqual(len(trimmed), MAX_MODELS_PER_ACCOUNT)
+    self.assertEqual(trimmed[0], "m499")
+    self.assertEqual(trimmed[1], "m0")
+
   def test_migrates_legacy_on_first_load(self):
     from ai.common.config_store import get_config_store
     from ai.model_accounts import HUB_PARAM, load_model_hub
@@ -131,8 +172,7 @@ class TestModelAccounts(unittest.TestCase):
     self.assertEqual(hub["primary"]["model"], "deepseek-v3-flash-free")
     raw = store.get(HUB_PARAM)
     self.assertTrue(raw)
-    from ai.common.config_store import get_config_store
-    from ai.model_accounts import HUB_PARAM, save_model_hub
+    from ai.model_accounts import save_model_hub
 
     p = self._params()
     raw = {

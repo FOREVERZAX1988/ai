@@ -18,7 +18,8 @@ class KeyFileManager:
   DATA_PARAMS_D_SECOCKEY_PATH = "/data/params/d/SecOCKey"
   CACHE_PARAMS_SECOCKEY_PATH = "/cache/params/SecOCKey"
   HOME_SECOCKEY_PATH = os.path.expanduser("~/SecOCKey")
-  STATUS_UPDATE_INTERVAL = 1
+  STATUS_UPDATE_INTERVAL = 10
+  _write_failures: set[str] = set()
 
   _instance = None
 
@@ -71,7 +72,7 @@ class KeyFileManager:
       return None  # Return None on any error
 
   @staticmethod
-  def _read_key_from_files() -> str | None:
+  def _read_key_from_files(*, sync_paths: bool = True) -> str | None:
     """Reads the key from the appropriate file(s) based on the AGNOS environment."""
     if not is_agnos():
       return KeyFileManager._read_key_from_file(KeyFileManager.HOME_SECOCKEY_PATH)
@@ -84,28 +85,36 @@ class KeyFileManager:
     if not existing_key:
       return None
 
-    # Write the existing key to missing files
-    if data_params_d_secockey != existing_key:
-      KeyFileManager._write_key_to_file(KeyFileManager.DATA_PARAMS_D_SECOCKEY_PATH, existing_key)
-    if cache_params_secockey != existing_key:
-      KeyFileManager._write_key_to_file(KeyFileManager.CACHE_PARAMS_SECOCKEY_PATH, existing_key)
+    if sync_paths:
+      if data_params_d_secockey != existing_key:
+        KeyFileManager._write_key_to_file(KeyFileManager.DATA_PARAMS_D_SECOCKEY_PATH, existing_key)
+      if cache_params_secockey != existing_key:
+        KeyFileManager._write_key_to_file(KeyFileManager.CACHE_PARAMS_SECOCKEY_PATH, existing_key)
 
     return existing_key
 
   @staticmethod
   def _write_key_to_file(file_path: str, key: str) -> None:
     """Writes the key to the specified file path."""
-    print(f"Writing key to file: {key} {file_path}")
+    if file_path in KeyFileManager._write_failures:
+      return
+    parent = os.path.dirname(file_path)
+    if parent and not os.path.isdir(parent):
+      try:
+        os.makedirs(parent, exist_ok=True)
+      except OSError:
+        KeyFileManager._write_failures.add(file_path)
+        return
     try:
       with open(file_path, "w") as f:
         f.write(key)
-    except Exception as e:
-      print(f"Error writing key to file {file_path}: {e}")
+    except OSError:
+      KeyFileManager._write_failures.add(file_path)
 
   def _update_key_status_loop(self) -> None:
-    """Periodically updates the key status."""
+    """Periodically updates the key status (read-only; no path sync on poll)."""
     while True:
-      self.installed_key = KeyFileManager._read_key_from_files()
+      self.installed_key = KeyFileManager._read_key_from_files(sync_paths=False)
       time.sleep(self.STATUS_UPDATE_INTERVAL)
 
   def install_key(self, key: str) -> None:

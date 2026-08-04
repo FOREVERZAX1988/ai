@@ -260,11 +260,11 @@ class StateReader:
     self._healthy = False
     self._services: list[str] = []
     if messaging is None:
-      cloudlog.error("aid: cereal.messaging not available")
+      cloudlog.warning("aid: cereal.messaging not available (state reader disabled)")
       return
     try:
       self._sm = messaging.SubMaster(self._SERVICES)
-      self._sm.update(1000)
+      self._sm.update(0)
       self._services = list(self._sm.sock.keys())
       self._healthy = True
     except Exception as e:

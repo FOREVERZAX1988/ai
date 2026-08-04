@@ -543,10 +543,19 @@ class LiveCanBroadcaster:
       try:
         self._sm.update(100)
         if self._sm.updated["can"]:
-          mono = time.monotonic()
-          for cf in self._sm["can"]:
+          try:
+            base_mono = float(self._sm.logMonoTime["can"]) / 1e9
+          except (KeyError, TypeError, AttributeError):
+            base_mono = 0.0
+          if base_mono <= 0:
+            base_mono = time.monotonic()
+          for idx, cf in enumerate(self._sm["can"]):
             key = (int(cf.src), int(cf.address))
-            self._latest[key] = _can_frame_to_dict(cf, mono)
+            frame_mono = base_mono + idx * 1e-6
+            self._latest[key] = _can_frame_to_dict(cf, frame_mono)
+          if len(self._latest) > 400:
+            for k in list(self._latest.keys())[: len(self._latest) - 400]:
+              del self._latest[k]
 
         now = time.monotonic()
         if self._latest and now - self._last_send >= self._send_interval:
@@ -1091,8 +1100,19 @@ def _route_date_label(route_path: Path, *, display_tz: Any) -> str:
     return ""
 
 
+_ROUTES_LIST_CACHE: tuple[float, list[dict[str, Any]]] | None = None
+_ROUTES_LIST_CACHE_TTL = 45.0
+
+
 def _list_routes(params: Params | None = None) -> list[dict[str, Any]]:
+  global _ROUTES_LIST_CACHE
   from ai.timezone_util import get_route_timezone, read_ai_timezone_name
+
+  now = time.monotonic()
+  if _ROUTES_LIST_CACHE is not None:
+    cached_at, cached_routes = _ROUTES_LIST_CACHE
+    if now - cached_at < _ROUTES_LIST_CACHE_TTL:
+      return list(cached_routes)
 
   p = params or Params()
   display_tz = get_route_timezone(p)
@@ -1117,6 +1137,7 @@ def _list_routes(params: Params | None = None) -> list[dict[str, Any]]:
       "qlogs": [str(p) for p in qlog[:5]],
       "rlogs": [str(p) for p in rlog[:3]],
     })
+  _ROUTES_LIST_CACHE = (time.monotonic(), list(routes))
   return routes
 
 
@@ -1245,9 +1266,11 @@ async def api_routes(request: web.Request) -> web.Response:
 
   params = Params()
   tz_name = read_ai_timezone_name(params)
+  loop = asyncio.get_running_loop()
+  routes = await loop.run_in_executor(None, lambda: _list_routes(params))
   return _json_response({
     "ok": True,
-    "routes": _list_routes(params),
+    "routes": routes,
     "route_timezone": tz_name,
   })
 
@@ -1551,19 +1574,32 @@ async def ws_offline(request: web.Request) -> web.WebSocketResponse:
     latest: dict[tuple[int, int], dict[str, Any]] = {}
     prev_sig: dict[tuple[int, int], tuple[float, str]] = {}
     frame_i = 0
-    n = len(all_frames)
     interval = REPLAY_SNAPSHOT_INTERVAL
     next_emit = first_time + max(0.0, start_time)
     playback_start = time.monotonic()
     base_progress = max(0.0, start_time)
     sent_any = False
 
+    def _refresh_bounds() -> tuple[int, float]:
+      n_local = len(all_frames)
+      if n_local:
+        return n_local, float(all_frames[-1]["time"])
+      return 0, last_time
+
+    n, last_time = _refresh_bounds()
     while frame_i < n and float(all_frames[frame_i]["time"]) <= next_emit + 1e-6:
       f = all_frames[frame_i]
       latest[(int(f["bus"]), int(f["address"]))] = f
       frame_i += 1
 
-    while next_emit <= last_time + interval or frame_i < n:
+    while True:
+      n, last_time = _refresh_bounds()
+      if n == 0:
+        if load_complete.is_set():
+          break
+        await asyncio.sleep(0.05)
+        continue
+
       if seek_time_rel is not None:
         st_rel = seek_time_rel
         seek_time_rel = None
@@ -1572,6 +1608,7 @@ async def ws_offline(request: web.Request) -> web.WebSocketResponse:
         frame_i = 0
         latest.clear()
         prev_sig.clear()
+        n, _ = _refresh_bounds()
         while frame_i < n and float(all_frames[frame_i]["time"]) <= next_emit + 1e-6:
           f = all_frames[frame_i]
           latest[(int(f["bus"]), int(f["address"]))] = f
@@ -1588,6 +1625,12 @@ async def ws_offline(request: web.Request) -> web.WebSocketResponse:
           })
         continue
 
+      if frame_i >= n and next_emit > last_time + interval:
+        if streaming_load and not load_complete.is_set():
+          await asyncio.sleep(0.02)
+          continue
+        break
+
       progress = max(0.0, next_emit - first_time)
       rel = (progress - base_progress) / max(speed, 0.01)
       target = playback_start + rel
@@ -1601,6 +1644,7 @@ async def ws_offline(request: web.Request) -> web.WebSocketResponse:
         base_progress = progress
 
       delta: list[dict[str, Any]] = []
+      n, _ = _refresh_bounds()
       while frame_i < n and float(all_frames[frame_i]["time"]) <= next_emit + 1e-6:
         f = all_frames[frame_i]
         k = (int(f["bus"]), int(f["address"]))
@@ -1626,8 +1670,6 @@ async def ws_offline(request: web.Request) -> web.WebSocketResponse:
         break
 
       next_emit += interval
-      if frame_i >= n and next_emit > last_time + interval:
-        break
       await asyncio.sleep(0)
 
     await ws_send({"type": "done"})

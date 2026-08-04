@@ -40,7 +40,7 @@ TOOLSETS: dict[str, dict[str, Any]] = {
     "label": "PC 联调",
     "description": "Replay、Cabana、PlotJuggler",
     "prefixes": ("pc_", "plotjuggler_", "cabana_", "openpilotci_"),
-    "extra": frozenset({"list_drive_routes", "analyze_route_summary", "route_time_series"}),
+    "extra": frozenset({"list_drive_routes", "cabana_list_routes", "analyze_route_summary", "route_time_series"}),
   },
 }
 

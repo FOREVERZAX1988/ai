@@ -4218,13 +4218,71 @@ html, body {
   gap: 0.45rem;
 }
 
-/* Account cards (collapsible) */
+/* Account rows (compact list) */
 .model-hub-accounts {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: 0.45rem;
 }
 
+.mh-account-item {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 0.6rem 0.75rem;
+  align-items: center;
+  padding: 0.7rem 0.8rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.mh-account-item.is-disabled {
+  opacity: 0.65;
+}
+
+.mh-account-item .mh-account-body {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  border: none;
+  padding: 0;
+}
+
+.mh-account-item .mh-account-preview {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mh-account-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  justify-content: flex-end;
+}
+
+.model-hub-account-pool .model-hub-pool-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.45rem;
+}
+
+.model-hub-account-tool-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.model-hub-account-enabled-row {
+  margin-bottom: 0.25rem;
+}
+
+/* Legacy collapsible account cards (unused) */
 .mh-account {
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -4450,8 +4508,17 @@ html, body {
   color: var(--text-secondary);
 }
 
-.model-hub-route-modal .modal-content {
-  max-width: 520px;
+.model-hub-route-modal .model-hub-route-thinking-row.is-thinking-model .field-label {
+  color: var(--accent);
+}
+
+.model-hub-account-modal .modal-content {
+  max-width: 560px;
+}
+
+.model-hub-account-modal .model-hub-tags {
+  max-height: 12rem;
+  overflow-y: auto;
 }
 
 .model-hub-route-label-field.hidden {

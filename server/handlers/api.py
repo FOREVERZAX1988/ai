@@ -37,6 +37,7 @@ from ai.server.deps import (
   sse,
 )
 from ai.client import AIConfig, merge_config_from_body, test_connection, list_models
+from ai.common.storage import format_persist_error
 from ai.common.params import (
   AI_DEFAULT_MODELS,
   AI_EMBEDDING_MODEL_CATALOG,
@@ -382,96 +383,18 @@ def _sse(data: dict[str, Any]) -> bytes:
 async def api_bootstrap(request: web.Request) -> web.Response:
   """Single round-trip bootstrap: status + config + providers (faster page load)."""
   try:
-    ensure_default_persona(_PARAMS)
+    lite = request.query.get("lite", "1") in ("1", "true", "yes")
     reader = _get_state_reader()
     state = reader.update(timeout=0)
-    sync_vehicle_profile_from_state(
-      _PARAMS,
-      brand=state.brand or "",
-      car_fingerprint=state.car_fingerprint or "",
+    from ai.server.bootstrap_payload import build_bootstrap_payload
+    from ai.server.thread_pools import io_executor
+
+    loop = asyncio.get_running_loop()
+    payload = await loop.run_in_executor(
+      io_executor(),
+      lambda: build_bootstrap_payload(_PARAMS, state=state, lite=lite),
     )
-    config = _read_ai_config()
-    embed_cfg = load_embedding_config(_PARAMS, config)
-    skills_on = load_enabled_skill_ids(_PARAMS)
-    from ai.timezone_util import read_ai_timezone_name
-    tz_name = read_ai_timezone_name(_PARAMS)
-    first_run_done = _read_param_bool("ai_first_run_done")
-    try:
-      from ai.fork.detect_fork import detect_fork
-      fork_detected = detect_fork(openpilot_root())
-    except Exception:
-      fork_detected = {"ok": False}
-
-    bootstrap_models: list[dict[str, Any]] = [
-      {"id": mid} for mid in (AI_PROVIDER_MODEL_CATALOG.get(config.provider) or []) if mid
-    ]
-    models_source = "catalog"
-    if config.is_configured and config.model:
-      known = {m.get("id") for m in bootstrap_models}
-      if config.model not in known:
-        bootstrap_models.insert(0, {"id": config.model})
-
-    return _json_response({
-    "ok": True,
-    "driving": state.is_driving,
-    "state": state.to_dict(),
-    "ai": {
-      "configured": config.is_configured,
-      "provider": config.provider,
-      "model": config.model,
-      "configureError": config.configuration_error,
-    },
-    "providers": AI_PROVIDERS,
-    "providerLabels": AI_PROVIDER_LABELS,
-    "defaults": AI_DEFAULT_MODELS,
-    "modelCatalog": AI_PROVIDER_MODEL_CATALOG,
-    "models": bootstrap_models,
-    "modelsSource": models_source,
-    "config": {
-      "provider": config.provider,
-      "model": config.model,
-      "apiKey": _mask_key(config.api_key),
-      "baseUrl": config.base_url,
-      "systemPrompt": config.system_prompt,
-      "temperature": config.temperature,
-      "topP": config.top_p,
-      "maxTokens": config.max_tokens,
-      "thinkingEnabled": config.thinking_enabled,
-      "thinkingKeep": config.thinking_keep,
-      "timezone": tz_name,
-      "configured": config.is_configured,
-      "configureError": config.configuration_error,
-      "embeddingMode": embed_cfg.mode,
-      "embeddingProvider": embed_cfg.provider,
-      "embeddingModel": embed_cfg.model,
-      "embeddingApiKey": _mask_key(_read_param_str("ai_embedding_api_key")) if embed_cfg.mode == "separate" else "",
-      "embeddingBaseUrl": embed_cfg.base_url,
-      "embeddingConfigured": embed_cfg.is_configured,
-      "modelHub": hub_for_api(_PARAMS),
-      "modelFallbacks": fallbacks_for_api(_PARAMS, config),
-    },
-    "embeddingDefaults": DEFAULT_EMBEDDING_MODELS,
-    "embeddingProviders": AI_EMBEDDING_PROVIDERS,
-    "embeddingProviderLabels": AI_EMBEDDING_PROVIDER_LABELS,
-    "embeddingModelCatalog": AI_EMBEDDING_MODEL_CATALOG,
-    "embeddingSameModeCatalog": AI_SAME_MODE_EMBEDDING_MODELS,
-    "tools": tool_meta_for_host(),
-    "hostEnvironment": get_host_environment(),
-    "skills": list_skills(),
-    "skillsEnabled": sorted(skills_on) if skills_on is not None else None,
-    "adminMode": is_admin_mode(_PARAMS),
-    "onboarding": {
-      "firstRunDone": first_run_done,
-      "showWizard": not config.is_configured,
-    },
-    "fork": fork_detected if fork_detected.get("ok") else None,
-    "workflows": list_workflows(),
-    "consumer": consumer_bootstrap_payload(),
-    "agents": list_agents(include_orchestrator=True),
-    "agentsConfig": agents_enabled_payload(_PARAMS),
-    "office": get_office_snapshot(),
-    "notifications": list_notifications(unread_only=True).get("notifications", [])[:5],
-    })
+    return _json_response(payload)
   except Exception as e:
     cloudlog.error(f"aid: api_bootstrap error: {e}")
     return _json_response({"ok": False, "error": str(e)}, status=500)
@@ -653,10 +576,12 @@ async def api_post_config(request: web.Request) -> web.Response:
       save_fallback_entries(_PARAMS, merged)
   except Exception as e:
     cloudlog.error(f"aid: api_post_config failed: {e}")
-    return _json_response({"ok": False, "error": str(e)}, status=500)
+    return _json_response({"ok": False, "error": format_persist_error(e)}, status=500)
 
   config = _read_ai_config()
   try:
+    from ai.server.bootstrap_payload import invalidate_bootstrap_cache
+    invalidate_bootstrap_cache()
     await broadcast_config(_PARAMS)
   except Exception as e:
     cloudlog.warning(f"aid: broadcast_config failed: {e}")
@@ -867,6 +792,10 @@ async def api_rag(request: web.Request) -> web.Response:
   config = _read_ai_config()
   embed_cfg = load_embedding_config(_PARAMS, config)
   if request.method == "GET":
+    if request.query.get("job") or request.query.get("operation") == "job_status":
+      from ai.tools.rag_jobs import job_status
+
+      return _json_response(job_status())
     q = request.query.get("q", "")
     if q:
       return _json_response(await search_documents(_PARAMS, q, embed_config=embed_cfg))
@@ -878,21 +807,31 @@ async def api_rag(request: web.Request) -> web.Response:
   op = body.get("operation", "upsert")
   if op == "remove":
     return _json_response(remove_document(_PARAMS, str(body.get("doc_id", ""))))
-  if op == "reindex":
-    return _json_response(await reindex_all(_PARAMS, embed_cfg))
-  if op == "wiki_ingest":
-    from ai.fork.wiki_ingest import ingest_wikis_for_current_fork
+  if op in ("reindex", "wiki_ingest"):
+    from ai.tools.rag_jobs import job_status, start_rag_job
 
-    force = bool(body.get("force"))
-    include_all = bool(body.get("all_registered"))
-    max_files = int(body.get("max_files_per_repo", 45) or 45)
-    return _json_response(
-      ingest_wikis_for_current_fork(
-        _PARAMS,
-        max_files_per_repo=max_files,
-        force=force,
-        include_all_registered=include_all,
+    if body.get("background", True):
+      if op == "wiki_ingest":
+        return _json_response(
+          await start_rag_job(
+            _PARAMS,
+            embed_cfg,
+            operation="wiki_ingest",
+            wiki_options={
+              "force": bool(body.get("force")),
+              "all_registered": bool(body.get("all_registered")),
+              "max_files_per_repo": int(body.get("max_files_per_repo", 35) or 35),
+            },
+            chain_reindex=bool(body.get("chain_reindex", True)),
+          )
+        )
+      return _json_response(
+        await start_rag_job(_PARAMS, embed_cfg, operation="reindex")
       )
+
+    return _json_response(
+      {"ok": False, "error": "请使用后台任务模式（background: true）", "job": job_status()},
+      status=409,
     )
   return _json_response(await upsert_document(
     _PARAMS,
@@ -907,7 +846,18 @@ async def api_rag(request: web.Request) -> web.Response:
 
 async def api_sessions(request: web.Request) -> web.Response:
   if request.method == "GET":
-    return _json_response(get_sessions(_PARAMS))
+    session_id = (request.query.get("session_id") or request.query.get("session") or "").strip()
+    compact = request.query.get("compact", "1") in ("1", "true", "yes")
+    loop = asyncio.get_running_loop()
+    from ai.server.thread_pools import io_executor
+    from ai.tools.session_store import get_session_by_id, get_sessions
+
+    pool = io_executor()
+    if session_id:
+      result = await loop.run_in_executor(pool, lambda: get_session_by_id(_PARAMS, session_id))
+      return _json_response(result)
+    result = await loop.run_in_executor(pool, lambda: get_sessions(_PARAMS, compact=compact))
+    return _json_response(result)
   try:
     body = await request.json()
   except json.JSONDecodeError:
@@ -1047,7 +997,8 @@ async def api_shell(request: web.Request) -> web.Response:
       return _json_response({"ok": False, "error": "Invalid JSON body."}, status=400)
 
     command_name = body.get("command", "")
-    result = run_command(command_name)
+    loop = asyncio.get_running_loop()
+    result = await loop.run_in_executor(None, run_command, command_name)
     return _json_response(result)
   except Exception as e:
     cloudlog.error(f"aid: api_shell error: {e}")
@@ -1125,13 +1076,15 @@ async def api_fork_detect(request: web.Request) -> web.Response:
     from ai.fork.detect_fork import detect_fork
 
     root = openpilot_root()
+    loop = asyncio.get_running_loop()
     do_analyze = request.query.get("analyze", "0") in ("1", "true", "yes")
     if do_analyze:
       result = await analyze_fork_with_ai(_PARAMS, root, force=request.query.get("force") in ("1", "true"))
       if result.get("ok"):
-        result["detect"] = detect_fork(root)
+        result["detect"] = await loop.run_in_executor(None, detect_fork, root)
       return _json_response(result, status=200 if result.get("ok") else 500)
-    return _json_response(detect_fork(root))
+    detected = await loop.run_in_executor(None, detect_fork, root)
+    return _json_response(detected)
   except Exception as e:
     cloudlog.error(f"aid: api_fork_detect error: {e}")
     return _json_response({"ok": False, "error": str(e)}, status=500)

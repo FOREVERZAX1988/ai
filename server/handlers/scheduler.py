@@ -68,18 +68,30 @@ async def scheduler_execute_action(action: str, _payload: dict[str, Any]) -> str
     return summary or "trip_review ok"
   if action == "reindex_rag_wifi":
     from ai.embedding import load_embedding_config
-    from ai.tools.rag_store import reindex_all
+    from ai.tools.rag_jobs import is_running, start_rag_job
     config = read_ai_config()
     embed_cfg = load_embedding_config(_PARAMS, config)
     if not embed_cfg.is_configured:
       return "embedding not configured"
-    res = await reindex_all(_PARAMS, embed_cfg)
-    return f"indexed={res.get('indexed')}/{res.get('total')}"
+    if is_running():
+      return "rag job already running"
+    await start_rag_job(_PARAMS, embed_cfg, operation="reindex")
+    return "rag reindex started in background"
   if action == "ingest_community_wiki_wifi":
-    from ai.fork.wiki_ingest import ingest_wikis_for_current_fork
-
-    res = ingest_wikis_for_current_fork(_PARAMS, max_files_per_repo=40, force=False)
-    return f"wiki indexed={res.get('indexed')} mode={res.get('mode', '?')}"
+    from ai.embedding import load_embedding_config
+    from ai.tools.rag_jobs import is_running, start_rag_job
+    config = read_ai_config()
+    embed_cfg = load_embedding_config(_PARAMS, config)
+    if is_running():
+      return "rag job already running"
+    await start_rag_job(
+      _PARAMS,
+      embed_cfg,
+      operation="wiki_ingest",
+      wiki_options={"max_files_per_repo": 35, "force": False, "all_registered": False},
+      chain_reindex=False,
+    )
+    return "wiki ingest started in background"
   if action == "check_critical_events":
     from ai.tools.diagnostics_tools import read_onroad_events
     ev = read_onroad_events(get_state_reader)

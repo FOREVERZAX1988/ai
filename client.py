@@ -168,6 +168,15 @@ class ChatChunk:
   error: str = ""
 
 
+_MAX_TOOL_RESULT_CHARS = 12_000
+
+
+def _truncate_tool_content(content: str, *, max_chars: int = _MAX_TOOL_RESULT_CHARS) -> str:
+  if len(content) <= max_chars:
+    return content
+  return content[:max_chars] + f"\n…[truncated, {len(content) - max_chars} chars omitted]"
+
+
 def expand_messages_for_api(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
   """Expand UI chat history into OpenAI-compatible tool message chains.
 
@@ -192,8 +201,11 @@ def expand_messages_for_api(messages: list[dict[str, Any]]) -> list[dict[str, An
       assistant["content"] = None
     else:
       assistant["content"] = ""
-    if m.get("reasoning_content"):
-      assistant["reasoning_content"] = m["reasoning_content"]
+    if m.get("reasoning_content") is not None:
+      assistant["reasoning_content"] = m.get("reasoning_content") or ""
+    elif tool_calls:
+      # Thinking models require reasoning_content on assistant tool-call turns.
+      assistant["reasoning_content"] = ""
 
     normalized_tcs: list[dict[str, Any]] = []
     for i, tc in enumerate(tool_calls):
@@ -222,19 +234,38 @@ def expand_messages_for_api(messages: list[dict[str, Any]]) -> list[dict[str, An
       else:
         payload = result if result is not None else {"ok": False, "error": "Tool result missing"}
         content_str = json.dumps(payload, ensure_ascii=False, default=str)
+      content_str = _truncate_tool_content(content_str)
       out.append({"role": "tool", "tool_call_id": tid, "content": content_str})
   return out
 
 
+def _should_keep_reasoning_content(config: AIConfig) -> bool:
+  return config.provider in REASONING_CONTENT_PROVIDERS or config.is_thinking_model()
+
+
+def _ensure_reasoning_fields(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+  out: list[dict[str, Any]] = []
+  for m in messages:
+    cm = dict(m)
+    if cm.get("role") == "assistant" and "reasoning_content" not in cm:
+      cm["reasoning_content"] = ""
+    out.append(cm)
+  return out
+
+
+def _strip_reasoning_fields(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+  return [{k: v for k, v in m.items() if k != "reasoning_content"} for m in messages]
+
+
 def _sanitize_messages(config: AIConfig, messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
   """Remove provider-specific fields that would cause errors on other providers."""
+  keep_reasoning = _should_keep_reasoning_content(config)
   out = []
   for m in messages:
     cm = dict(m)
     if "tool_results" in cm:
       del cm["tool_results"]
-    # Only some providers accept reasoning_content in multi-turn history.
-    if config.provider not in REASONING_CONTENT_PROVIDERS and "reasoning_content" in cm:
+    if not keep_reasoning and "reasoning_content" in cm:
       del cm["reasoning_content"]
     out.append(cm)
   return out
@@ -281,9 +312,12 @@ def _build_payload(
   thinking_mode: ThinkingMode = "user",
 ) -> dict[str, Any]:
   """Build the request payload, handling thinking-model restrictions."""
+  msgs = messages
+  if config.is_thinking_model():
+    msgs = _ensure_reasoning_fields(msgs)
   payload: dict[str, Any] = {
     "model": config.model,
-    "messages": _sanitize_messages(config, messages),
+    "messages": _sanitize_messages(config, msgs),
     "stream": True,
   }
 
@@ -339,17 +373,17 @@ def _extract_delta(data: dict[str, Any]) -> ChatChunk:
   return chunk
 
 
-async def chat_completion(
+async def _stream_chat_completion(
   config: AIConfig,
   messages: list[dict[str, Any]],
-  tools: list[dict[str, Any]] | None = None,
-  temperature: float | None = None,
-  max_tokens: int | None = None,
+  tools: list[dict[str, Any]] | None,
+  temperature: float | None,
+  max_tokens: int | None,
   *,
-  thinking_mode: ThinkingMode = "user",
-  timeout_total: float = 120,
+  thinking_mode: ThinkingMode,
+  timeout_total: float,
 ) -> AsyncIterator[ChatChunk]:
-  """Stream chat completion chunks from the configured provider."""
+  """Single attempt; yields error chunk on HTTP failure."""
   if not config.is_configured:
     yield ChatChunk(
       error=config.configuration_error or "AI is not configured. Please set provider, model, and API key on the AI settings page."
@@ -398,10 +432,56 @@ async def chat_completion(
     yield ChatChunk(error=f"Unexpected error: {e}")
 
 
+async def chat_completion(
+  config: AIConfig,
+  messages: list[dict[str, Any]],
+  tools: list[dict[str, Any]] | None = None,
+  temperature: float | None = None,
+  max_tokens: int | None = None,
+  *,
+  thinking_mode: ThinkingMode = "user",
+  timeout_total: float = 120,
+) -> AsyncIterator[ChatChunk]:
+  """Stream chat completion chunks from the configured provider."""
+  modes: list[ThinkingMode] = [thinking_mode]
+  if thinking_mode == "user" and config.is_thinking_model():
+    modes = ["user", "disabled"]
+  elif thinking_mode == "user":
+    modes = ["user", "omit"]
+
+  last_error = ""
+  for i, mode in enumerate(modes):
+    attempt_messages = messages
+    if mode in ("disabled", "omit"):
+      attempt_messages = _strip_reasoning_fields(messages)
+    emitted = False
+    async for chunk in _stream_chat_completion(
+      config,
+      attempt_messages,
+      tools,
+      temperature,
+      max_tokens,
+      thinking_mode=mode,
+      timeout_total=timeout_total,
+    ):
+      if chunk.error:
+        if is_thinking_request_error(chunk.error) and i + 1 < len(modes):
+          last_error = chunk.error
+          break
+        yield chunk
+        return
+      emitted = True
+      yield chunk
+    if emitted:
+      return
+  if last_error:
+    yield ChatChunk(error=last_error)
+
+
 def is_thinking_request_error(error: str) -> bool:
   """True when the provider rejected our thinking payload (retry with another mode)."""
   text = (error or "").lower()
-  return "api error 400" in text and "thinking" in text
+  return "api error 400" in text and ("thinking" in text or "reasoning_content" in text)
 
 
 async def chat_completion_collect(

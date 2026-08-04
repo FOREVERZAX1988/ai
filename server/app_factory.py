@@ -23,6 +23,7 @@ _PARAMS = params()
 
 async def _startup_rag_seed_and_reindex() -> None:
   """Seed built-in RAG off the event loop, then optionally reindex vectors."""
+  await asyncio.sleep(45)
   loop = asyncio.get_event_loop()
   try:
     from ai.tools.rag_sync_tools import sync_knowledge_from_docs
@@ -63,7 +64,7 @@ async def _startup_rag_seed_and_reindex() -> None:
     embed_cfg = load_embedding_config(_PARAMS, config)
     if not embed_cfg.is_configured:
       return
-    res = await loop.run_in_executor(None, lambda: asyncio.run(reindex_all(_PARAMS, embed_cfg)))
+    res = await reindex_all(_PARAMS, embed_cfg)
     cloudlog.info(f"aid: RAG auto-reindex indexed={res.get('indexed')}/{res.get('total')}")
   except Exception as e:
     cloudlog.warning(f"aid: RAG auto-reindex skipped: {e}")
@@ -72,7 +73,8 @@ async def _startup_rag_seed_and_reindex() -> None:
 async def _startup_session_index() -> None:
   try:
     from ai.tools.session_index import rebuild_from_params
-    res = rebuild_from_params(_PARAMS)
+    loop = asyncio.get_running_loop()
+    res = await loop.run_in_executor(None, rebuild_from_params, _PARAMS)
     cloudlog.info(
       f"aid: session FTS index sessions={res.get('sessions')} messages={res.get('messagesIndexed')}"
     )
@@ -114,17 +116,32 @@ async def index(request: web.Request) -> web.Response:
 async def error_middleware(request: web.Request, handler):
   try:
     return await handler(request)
+  except web.HTTPRequestEntityTooLarge:
+    return json_response({
+      "ok": False,
+      "error": "请求体过大（对话历史或工具结果过长）。请新建会话，或在设置中开启会话压缩后重试。",
+    }, status=413)
   except web.HTTPException:
     raise
   except Exception as e:
     cloudlog.error(f"aid: unhandled {request.method} {request.path}: {e}")
+    msg = str(e)
+    if "Request Entity Too Large" in msg or "entity too large" in msg.lower():
+      return json_response({
+        "ok": False,
+        "error": "请求体过大（对话历史或工具结果过长）。请新建会话，或在设置中开启会话压缩后重试。",
+      }, status=413)
     return json_response({"ok": False, "error": str(e)}, status=500)
 
 
 def create_app() -> web.Application:
   from ai.server.deps import get_state_reader
 
-  app = web.Application(middlewares=[error_middleware, ai_auth_middleware])
+  # Chat jobs send full message history + tool_results; default 1MB is too small.
+  app = web.Application(
+    middlewares=[error_middleware, ai_auth_middleware],
+    client_max_size=32 * 1024 * 1024,
+  )
   app["params"] = _PARAMS
 
   async def _on_startup(application: web.Application) -> None:
@@ -148,7 +165,8 @@ def create_app() -> web.Application:
       from ai.chat_jobs import ensure_stuck_watchdog
       from ai.hooks.builtin import register_builtin_hooks
       register_builtin_hooks()
-      n = warm_skills_snapshot(_PARAMS)
+      loop = asyncio.get_running_loop()
+      n = await loop.run_in_executor(None, warm_skills_snapshot, _PARAMS)
       cloudlog.info(f"aid: skills snapshot warmed entries={n}")
       ensure_stuck_watchdog()
     except Exception as e:

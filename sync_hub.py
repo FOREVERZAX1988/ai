@@ -99,7 +99,7 @@ HUB = SyncHub()
 
 
 async def broadcast_sessions(params: Params) -> None:
-  data = get_sessions(params)
+  data = get_sessions(params, compact=True)
   await HUB.broadcast({"type": "sessions", **data})
 
 
@@ -212,7 +212,7 @@ def _hello_payload(request: web.Request, params: Params) -> dict[str, Any]:
   config = load_config_from_params(params)
   payload: dict[str, Any] = {
     "type": "hello",
-    **get_sessions(params),
+    **get_sessions(params, compact=True),
     "stateVersion": session_state_version(),
     "protocolVersion": WS_PROTOCOL_VERSION,
     "config": config_snapshot(params),

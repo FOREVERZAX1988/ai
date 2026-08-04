@@ -38,6 +38,9 @@ const SessionStore = (() => {
 
   function sessionHasContent(session) {
     if (!session) return false;
+    if (session.hasContent || (Number(session.messageCount) > 0 && !(session.messages || []).length)) {
+      return true;
+    }
     const msgs = session.messages || [];
     return msgs.some(messageHasVisibleContent);
   }
@@ -222,6 +225,13 @@ const SessionStore = (() => {
     return out;
   }
 
+  function patchSession(id, patch) {
+    const s = sessions.find((x) => x.id === id);
+    if (!s || !patch) return false;
+    Object.assign(s, patch);
+    return true;
+  }
+
   function importMerged(nextSessions, nextActiveId) {
     const cleaned = (Array.isArray(nextSessions) ? nextSessions : [])
       .filter(sessionHasContent)
@@ -259,6 +269,7 @@ const SessionStore = (() => {
     getActiveJobId,
     clearActiveJobId,
     importMerged,
+    patchSession,
     sessionHasContent,
     get activeId() { return activeId; },
   };

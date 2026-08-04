@@ -15,6 +15,44 @@ from ai.model_router import FALLBACKS_PARAM, load_fallback_entries, save_fallbac
 
 HUB_PARAM = "ai_model_hub"
 OPTIONAL_BASE_URL_PROVIDERS = frozenset({"qwen", "minimax", "mimo", "bigmodel"})
+MAX_MODELS_PER_ACCOUNT = 256
+
+
+def _trim_account_models(models: list[str], *, prefer: set[str] | None = None) -> list[str]:
+  """Cap model pool size to limit config.json growth (OpenRouter can return thousands)."""
+  prefer = {str(m).strip() for m in (prefer or set()) if str(m).strip()}
+  ordered: list[str] = []
+  seen: set[str] = set()
+  for mid in models:
+    if mid in prefer and mid not in seen:
+      ordered.append(mid)
+      seen.add(mid)
+  for mid in models:
+    if mid in seen:
+      continue
+    if len(ordered) >= MAX_MODELS_PER_ACCOUNT:
+      break
+    ordered.append(mid)
+    seen.add(mid)
+  return ordered
+
+
+def _preferred_models_for_account(hub: dict[str, Any], account_id: str) -> set[str]:
+  prefer: set[str] = set()
+  primary = hub.get("primary") if isinstance(hub.get("primary"), dict) else None
+  if primary and str(primary.get("accountId") or "") == account_id:
+    model = str(primary.get("model") or "").strip()
+    if model:
+      prefer.add(model)
+  for item in hub.get("fallbacks") or []:
+    if not isinstance(item, dict):
+      continue
+    if str(item.get("accountId") or "") != account_id:
+      continue
+    model = str(item.get("model") or "").strip()
+    if model:
+      prefer.add(model)
+  return prefer
 
 
 def _new_account_id() -> str:
@@ -243,7 +281,7 @@ def load_model_hub(params: Params | None = None) -> dict[str, Any]:
   return hub
 
 
-def hub_for_api(params: Params | None = None, *, mask_keys: bool = True) -> dict[str, Any]:
+def hub_for_api(params: Params | None = None, *, mask_keys: bool = False) -> dict[str, Any]:
   hub = load_model_hub(params)
   accounts = []
   for acc in hub.get("accounts") or []:
@@ -286,6 +324,9 @@ def route_to_config(
       setattr(cfg, attr, float(raw))
     except (TypeError, ValueError):
       pass
+  if "thinkingEnabled" in route or "thinking_enabled" in route:
+    raw_think = route.get("thinkingEnabled", route.get("thinking_enabled"))
+    cfg.thinking_enabled = raw_think is not False and str(raw_think).lower() not in ("0", "false", "no", "off")
   return cfg
 
 
@@ -321,6 +362,12 @@ def _sanitize_route(item: dict[str, Any], existing: dict[str, Any] | None = None
         row[key] = float(raw)
       except (TypeError, ValueError):
         pass
+  if "thinkingEnabled" in item or "thinking_enabled" in item:
+    raw_think = item.get("thinkingEnabled", item.get("thinking_enabled"))
+    row["thinkingEnabled"] = raw_think is not False and str(raw_think).lower() not in ("0", "false", "no", "off")
+  elif "thinkingEnabled" in prev or "thinking_enabled" in prev:
+    raw_think = prev.get("thinkingEnabled", prev.get("thinking_enabled"))
+    row["thinkingEnabled"] = raw_think is not False and str(raw_think).lower() not in ("0", "false", "no", "off")
   return row
 
 
@@ -492,6 +539,12 @@ def save_model_hub(params: Params, incoming: dict[str, Any]) -> dict[str, Any]:
     "primary": primary,
     "fallbacks": fallbacks,
   }
+  for acc in hub["accounts"]:
+    acc_id = str(acc.get("id") or "")
+    acc["models"] = _trim_account_models(
+      list(acc.get("models") or []),
+      prefer=_preferred_models_for_account(hub, acc_id),
+    )
   write_param(params, HUB_PARAM, json.dumps(hub, ensure_ascii=False))
   _sync_legacy_params(params, hub)
   return hub_for_api(params, mask_keys=False)
@@ -507,10 +560,14 @@ def update_account_models(
   acc = amap.get(account_id)
   if not acc:
     raise ValueError("account not found")
-  acc["models"] = [str(m).strip() for m in models if str(m).strip()]
+  prefer = _preferred_models_for_account(hub, account_id)
+  acc["models"] = _trim_account_models(
+    [str(m).strip() for m in models if str(m).strip()],
+    prefer=prefer,
+  )
   acc["modelsFetchedAt"] = int(time.time())
   write_param(params, HUB_PARAM, json.dumps(hub, ensure_ascii=False))
-  return hub_for_api(params, mask_keys=True)
+  return hub_for_api(params, mask_keys=False)
 
 
 def account_config_by_id(params: Params, account_id: str) -> AIConfig | None:

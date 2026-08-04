@@ -15,6 +15,7 @@ from ai.agents.orchestrator import run_chat_with_agents
 _MAX_JOBS = 20
 _JOB_TTL_SEC = 3600
 _STUCK_WARN_SEC = 120
+_MAX_EVENTS_PER_JOB = 500
 _watchdog_task: asyncio.Task | None = None
 
 
@@ -138,6 +139,8 @@ async def start_chat_job(
       j["eventSeq"] += 1
       event = {**event, "_seq": j["eventSeq"]}
       j["events"].append(event)
+      if len(j["events"]) > _MAX_EVENTS_PER_JOB:
+        j["events"] = j["events"][-_MAX_EVENTS_PER_JOB:]
       j["updatedAt"] = int(time.time())
       j["lastEventAt"] = int(time.time())
       _apply_event_to_assistant(j["assistant"], event)

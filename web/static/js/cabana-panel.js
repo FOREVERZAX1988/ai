@@ -28,7 +28,7 @@ const CabanaPanel = (() => {
   let maxRows = 300;
   let bulkExplainTimer = null;
   let bulkExplainToken = 0;
-  const BULK_EXPLAIN_MAX = 500;
+  const BULK_EXPLAIN_MAX = 150;
   const EXPLAIN_CHUNK = 25;
   const VIRTUAL_ROW_H = 34;
   const FILTER_CHIP_IDS = ['all', 'labeled', 'unlabeled', '巡航', '转向', '刹车', '油门', '车速', '雷达'];
@@ -45,9 +45,14 @@ const CabanaPanel = (() => {
   let sortCol = 'name';
   let sortAsc = true;
   let filterChip = 'all';
-  let autoLabelEnabled = true;
+  let autoLabelEnabled = false;
   let aiAnalyzeRunning = false;
   let virtualRenderScheduled = false;
+  let sortedKeysCache = null;
+  let sortedKeysCacheSig = '';
+  let plotRenderScheduled = false;
+  let dbcSearchTimer = null;
+  let localLabelStoreCache = null;
   let bulkExplainRunning = false;
   let els = {};
   let labeledCount = 0;
@@ -133,6 +138,10 @@ const CabanaPanel = (() => {
     }
     try {
       const res = await fetch(path, opts);
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        return { ok: false, error: body.error || `HTTP ${res.status}`, status: res.status };
+      }
       return await res.json().catch(() => ({ ok: false, error: 'bad response' }));
     } catch (e) {
       if (e?.name === 'AbortError') return { ok: false, error: 'request timeout' };
@@ -424,6 +433,15 @@ const CabanaPanel = (() => {
     renderPlotChart();
   }
 
+  function schedulePlotRender() {
+    if (plotRenderScheduled) return;
+    plotRenderScheduled = true;
+    requestAnimationFrame(() => {
+      plotRenderScheduled = false;
+      renderPlotChart();
+    });
+  }
+
   function appendPlotPoint(frame) {
     if (!plotSeriesList.length) return;
     const key = frameKey(frame);
@@ -446,7 +464,7 @@ const CabanaPanel = (() => {
         series.values.shift();
       }
     }
-    renderPlotChart();
+    schedulePlotRender();
   }
 
   function clearSelection() {
@@ -475,8 +493,8 @@ const CabanaPanel = (() => {
     }
     const bitSet = new Set();
     if (highlightSig) {
-      const start = Number(highlightSig.start) || 0;
-      const len = Number(highlightSig.length || highlightSig.size) || 0;
+      const start = Number(highlightSig.start_bit ?? highlightSig.start) || 0;
+      const len = Number(highlightSig.size ?? highlightSig.length) || 0;
       for (let b = start; b < start + len && b < 64; b++) bitSet.add(b);
     }
     const rows = [];
@@ -738,6 +756,7 @@ const CabanaPanel = (() => {
     }
     tableRows.set(key, rec);
     if (rec.label) explainCache.set(key, rec.label);
+    if (panelMode === 'live' && tableRows.size > maxRows) pruneTableRows();
     if (selectedKey === key) {
       appendPlotPoint(frame);
       renderDetailPanel();
@@ -749,7 +768,48 @@ const CabanaPanel = (() => {
     if (rec.pending && shouldAutoLabel()) scheduleBulkExplainAll();
   }
 
+  function pruneTableRows() {
+    if (tableRows.size <= maxRows) return;
+    const scored = Array.from(tableRows.keys()).map((k) => ({
+      k,
+      count: msgStats.get(k)?.count || 0,
+      time: Number(tableRows.get(k)?.frame?.time) || 0,
+    }));
+    scored.sort((a, b) => a.count - b.count || a.time - b.time);
+    const removeCount = tableRows.size - maxRows;
+    for (let i = 0; i < removeCount; i++) {
+      const k = scored[i].k;
+      tableRows.delete(k);
+      latestFrames.delete(k);
+      frameHistory.delete(k);
+      msgStats.delete(k);
+      explainCache.delete(k);
+      prevPayloadByKey.delete(k);
+    }
+    if (selectedKey && !tableRows.has(selectedKey)) clearSelection();
+    invalidateSortCache();
+  }
+
+  function sortCacheSignature() {
+    return [
+      sortCol,
+      sortAsc,
+      filterChip,
+      hideUnchanged,
+      els.filter?.value || '',
+      signalFilterQuery,
+      tableRows.size,
+    ].join('|');
+  }
+
+  function invalidateSortCache() {
+    sortedKeysCache = null;
+    sortedKeysCacheSig = '';
+  }
+
   function getFilteredSortedKeys() {
+    const sig = sortCacheSignature();
+    if (sortedKeysCache && sortedKeysCacheSig === sig) return sortedKeysCache;
     const q = (els.filter?.value || '').toLowerCase().trim();
     let keys = Array.from(tableRows.keys());
     keys = keys.filter((k) => {
@@ -796,6 +856,8 @@ const CabanaPanel = (() => {
       if (va > vb) return sortAsc ? 1 : -1;
       return a.localeCompare(b);
     });
+    sortedKeysCache = keys;
+    sortedKeysCacheSig = sig;
     return keys;
   }
 
@@ -945,6 +1007,7 @@ const CabanaPanel = (() => {
       btn.addEventListener('click', () => {
         filterChip = id;
         renderFilterChips();
+        invalidateSortCache();
         scheduleVirtualRender();
       });
       els.filterChips.appendChild(btn);
@@ -1093,7 +1156,7 @@ const CabanaPanel = (() => {
   let replayWsBuffer = [];
   let replayWsFlushTimer = null;
   let replayIndexWatchdog = null;
-  const REPLAY_INDEX_TIMEOUT_MS = 30000;
+  const REPLAY_INDEX_TIMEOUT_MS = 120000;
   let replayLoadingUiCoalesceAt = 0;
   let dbcLoadSerial = 0;
   let loadCarToken = 0;
@@ -2345,8 +2408,12 @@ const CabanaPanel = (() => {
   }
 
   function onDbcSearchInput() {
-    renderDbcList(filterDbcNames(els.dbcSearch?.value || ''));
-    openDbcPicker();
+    if (dbcSearchTimer) clearTimeout(dbcSearchTimer);
+    dbcSearchTimer = setTimeout(() => {
+      dbcSearchTimer = null;
+      renderDbcList(filterDbcNames(els.dbcSearch?.value || ''));
+      openDbcPicker();
+    }, 200);
   }
 
   async function onDbcSearchKeydown(e) {
@@ -2730,10 +2797,10 @@ const CabanaPanel = (() => {
       }
       if (msg.type === 'done') {
         replayPaused = true;
-        replayIndexReady = false;
+        replayIndexReady = true;
         if (els.replayPlayBtn) els.replayPlayBtn.disabled = false;
         if (els.replayPauseBtn) els.replayPauseBtn.disabled = true;
-        els.hint.textContent = t('cabanaReplayDone', '回放结束');
+        els.hint.textContent = t('cabanaReplayDone', '回放结束 · 可再次播放');
         if (shouldAutoLabel()) scheduleBulkExplainAll();
         return;
       }
@@ -3064,6 +3131,7 @@ const CabanaPanel = (() => {
         th.classList.add(sortAsc ? 'sorted-asc' : 'sorted-desc');
       }
     });
+    invalidateSortCache();
     scheduleVirtualRender();
   }
 
@@ -3247,13 +3315,18 @@ const CabanaPanel = (() => {
       if (!tr?.dataset.key) return;
       selectRow(tr.dataset.key);
     });
-    els.filter?.addEventListener('input', () => scheduleVirtualRender());
+    els.filter?.addEventListener('input', () => {
+      invalidateSortCache();
+      scheduleVirtualRender();
+    });
     els.signalFilter?.addEventListener('input', () => {
       signalFilterQuery = els.signalFilter?.value || '';
+      invalidateSortCache();
       scheduleVirtualRender();
     });
     els.hideUnchanged?.addEventListener('change', () => {
       hideUnchanged = !!els.hideUnchanged?.checked;
+      invalidateSortCache();
       scheduleVirtualRender();
     });
     els.exportCsvBtn?.addEventListener('click', exportTableCsv);
