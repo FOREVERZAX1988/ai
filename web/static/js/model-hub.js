@@ -338,7 +338,7 @@ const ModelHub = (() => {
       }
       syncRouteModalThinkingVisibility();
     });
-    routeModal.querySelector('#modelHubRouteThinking')?.addEventListener('change', syncRouteModalThinkingVisibility);
+    el.querySelector('#modelHubRouteThinking')?.addEventListener('change', syncRouteModalThinkingVisibility);
     routeModal = el;
     return el;
   }
