@@ -45,8 +45,12 @@ def _is_tune_key(key: str) -> bool:
 
 def _read_device_log(params: Params, *, lines: int = 80) -> tuple[str, str]:
   """Return (text, source). Tries dp_dev_last_log then /data/log/latest.log."""
-  raw = params.get("dp_dev_last_log")
-  text = raw.decode(errors="replace") if isinstance(raw, bytes) else str(raw or "")
+  text = ""
+  try:
+    raw = params.get("dp_dev_last_log")
+    text = raw.decode(errors="replace") if isinstance(raw, bytes) else str(raw or "")
+  except Exception:
+    text = ""
   if text.strip():
     return text, "dp_dev_last_log"
   from ai.system.shell import run_command

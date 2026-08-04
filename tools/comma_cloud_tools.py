@@ -74,3 +74,29 @@ def list_comma_routes(
   else:
     routes = []
   return {"ok": True, "dongle_id": did, "count": len(routes), "routes": routes[:lim]}
+
+
+def comma_auth_status() -> dict[str, Any]:
+  """Check comma API auth token status."""
+  try:
+    from openpilot.tools.lib.auth_config import get_token
+  except Exception as e:
+    return {"ok": False, "error": f"auth_config import failed: {e}"}
+  try:
+    token = get_token()
+  except Exception as e:
+    return {"ok": False, "error": f"get_token failed: {e}", "hint": "Run comma auth on device or PC."}
+  if not token:
+    return {"ok": False, "authenticated": False, "hint": "No auth token. Run comma auth on device or PC."}
+  try:
+    from openpilot.tools.lib.api import CommaApi, APIError
+    me = CommaApi(token).get("v1/me")
+    email = (me or {}).get("email") if isinstance(me, dict) else None
+    return {"ok": True, "authenticated": True, "email": email or "unknown"}
+  except APIError as e:
+    code = getattr(e, "status_code", 0)
+    if code == 401:
+      return {"ok": False, "authenticated": False, "error": "token rejected (401)", "hint": "Re-run comma auth."}
+    return {"ok": False, "authenticated": False, "error": str(e)}
+  except Exception as e:
+    return {"ok": False, "authenticated": False, "error": str(e)}

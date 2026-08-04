@@ -690,6 +690,15 @@ def _replay_log_paths(qlogs: list[Path], rlogs: list[Path], *, full: bool) -> tu
   return rlogs, "rlog"
 
 
+def _pick_can_log_paths(qlogs: list[Path], rlogs: list[Path]) -> tuple[list[Path], str]:
+  """Pick CAN log paths for frame analysis: prefer qlogs (smaller), fall back to rlogs."""
+  if qlogs:
+    return qlogs, "qlog"
+  if rlogs:
+    return rlogs, "rlog"
+  return [], "empty"
+
+
 def _load_route_cache(route_path: Path, *, want_full: bool) -> list[dict[str, Any]] | None:
   path = _route_cache_file(route_path)
   if not path.is_file():

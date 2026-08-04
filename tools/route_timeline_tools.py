@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from ai.tools.op_run import resolve_route_ref, validate_route_ref
+from ai.tools.op_run import expand_local_route_files, resolve_route_ref, validate_route_ref
 
 
 def _import_logreader():
@@ -30,6 +30,9 @@ def route_event_timeline(
   if err:
     return {"ok": False, "error": err}
   route_arg = resolve_route_ref(route)
+  local_files = expand_local_route_files(route)
+  if local_files:
+    route_arg = local_files
 
   try:
     LogReader, ReadMode = _import_logreader()
