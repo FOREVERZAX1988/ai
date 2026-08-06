@@ -131,31 +131,88 @@ def _distinctive_top_dirs(root: Path) -> list[str]:
   return out[:30]
 
 
-def _parse_remote_identity(remotes: list[str]) -> dict[str, Any]:
+def _slug_from_github_url(url: str) -> dict[str, Any] | None:
+  m = re.search(r"github\.com[:/]([^/]+)/([^/\s]+?)(?:\.git)?$", url, re.I)
+  if not m:
+    return None
+  owner, repo = m.group(1).lower(), m.group(2).lower()
+  return {
+    "owner": owner,
+    "repo": repo,
+    "slug": f"{owner}/{repo}",
+    "url": url,
+  }
+
+
+def _git_named_remotes(root: Path) -> list[tuple[str, str]]:
+  """Return unique (remote_name, url) pairs in git declaration order."""
+  raw = _run_git(["remote", "-v"], cwd=root) or ""
+  seen: dict[str, str] = {}
+  for line in raw.splitlines():
+    parts = line.split()
+    if len(parts) >= 2 and parts[0] not in seen:
+      seen[parts[0]] = parts[1]
+  return list(seen.items())
+
+
+def _parse_remote_identity(remotes: list[str], *, root: Path | None = None) -> dict[str, Any]:
   slugs: list[dict[str, Any]] = []
   seen: set[str] = set()
   for remote in remotes:
-    m = re.search(r"github\.com[:/]([^/]+)/([^/\s]+?)(?:\.git)?$", remote, re.I)
-    if not m:
+    item = _slug_from_github_url(remote)
+    if not item or item["slug"] in seen:
       continue
-    owner, repo = m.group(1).lower(), m.group(2).lower()
-    slug = f"{owner}/{repo}"
-    if slug in seen:
-      continue
-    seen.add(slug)
-    slugs.append({
-      "owner": owner,
-      "repo": repo,
-      "slug": slug,
-      "url": remote,
-    })
+    seen.add(item["slug"])
+    slugs.append(item)
   if not slugs:
     return {}
-  # Prefer fork remotes over upstream commaai when multiple URLs are configured.
-  for item in slugs:
-    if item["slug"] != "commaai/openpilot":
-      return item
-  return slugs[0]
+
+  by_slug = {s["slug"]: s for s in slugs}
+
+  def pick(slug: str) -> dict[str, Any] | None:
+    return by_slug.get(slug)
+
+  def first_non_commaai() -> dict[str, Any]:
+    for item in slugs:
+      if item["slug"] != "commaai/openpilot":
+        return item
+    return slugs[0]
+
+  if root is None:
+    return first_non_commaai()
+
+  root = root.resolve()
+  name_to_item: dict[str, dict[str, Any]] = {}
+  for name, url in _git_named_remotes(root):
+    item = _slug_from_github_url(url)
+    if item:
+      name_to_item[name] = item
+
+  # Exclusive fork trees — directory is authoritative.
+  if (root / "bluepilot").is_dir():
+    return pick("bluepilotdev/bluepilot") or name_to_item.get("bp") or first_non_commaai()
+  if (root / "frogpilot").is_dir():
+    return pick("frogai/frogpilot") or first_non_commaai()
+  if (root / "dragonpilot").is_dir() or (root / "d2").is_file():
+    return pick("dragonpilot/dragonpilot") or first_non_commaai()
+
+  has_sunnypilot = (root / "sunnypilot").is_dir()
+  if has_sunnypilot:
+    # Prefer origin (developer fork) over auxiliary remotes like bp → BluePilot upstream.
+    origin = name_to_item.get("origin")
+    if origin and origin["slug"] != "commaai/openpilot":
+      return origin
+    if "sunnypilot" in name_to_item:
+      return name_to_item["sunnypilot"]
+    sp = pick("sunnypilot/sunnypilot")
+    if sp:
+      return sp
+
+  origin = name_to_item.get("origin")
+  if origin and origin["slug"] != "commaai/openpilot":
+    return origin
+
+  return first_non_commaai()
 
 
 def scan_openpilot_repo(root: Path) -> dict[str, Any]:
@@ -216,7 +273,7 @@ def scan_openpilot_repo(root: Path) -> dict[str, Any]:
     "git_branch": _run_git(["rev-parse", "--abbrev-ref", "HEAD"], cwd=root),
     "git_commit": _run_git(["rev-parse", "--short", "HEAD"], cwd=root),
     "git_remotes": remotes[:8],
-    "remote_identity": _parse_remote_identity(remotes),
+    "remote_identity": _parse_remote_identity(remotes, root=root),
     "readme_path": readme_path,
     "readme_title": title,
     "readme_excerpt": readme_excerpt,
