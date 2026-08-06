@@ -326,7 +326,13 @@
           <div class="hidden" id="legacyModelFields" aria-hidden="true">
             <label class="field"><span class="field-label" id="providerLabel">服务商</span><select id="providerSelect"></select></label>
             <div id="mainModelCombobox" class="model-combobox-host"></div>
-            <input type="text" id="apiKeyInput" autocomplete="off" spellcheck="false">
+            <div class="password-field">
+              <input type="password" id="apiKeyInput" autocomplete="off" spellcheck="false">
+              <button type="button" class="password-reveal" data-password-for="apiKeyInput" aria-label="显示" title="显示">
+                <svg class="icon-svg eye-closed" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+                <svg class="icon-svg eye-open hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+              </button>
+            </div>
             <label class="field hidden" id="baseUrlField"><input type="text" id="baseUrlInput"></label>
           </div>
 
@@ -408,7 +414,13 @@
               <div id="embeddingSeparateFields" class="hidden">
                 <label class="field"><span class="field-label" id="embeddingProviderLabel" data-i18n="embeddingProviderLabel">Embedding 服务商</span><select id="embeddingProviderSelect"></select></label>
                 <label class="field"><span class="field-label" id="embeddingApiKeyLabel" data-i18n="embeddingApiKeyLabel">Embedding API Key</span>
-                  <input type="text" id="embeddingApiKeyInput" data-i18n-placeholder="embeddingApiKeyPlaceholder" placeholder="硅基流动等专用 Key" autocomplete="off" spellcheck="false">
+                  <div class="password-field">
+                    <input type="password" id="embeddingApiKeyInput" data-i18n-placeholder="embeddingApiKeyPlaceholder" placeholder="硅基流动等专用 Key" autocomplete="off" spellcheck="false">
+                    <button type="button" class="password-reveal" data-password-for="embeddingApiKeyInput" aria-label="显示" title="显示">
+                      <svg class="icon-svg eye-closed" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+                      <svg class="icon-svg eye-open hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+                    </button>
+                  </div>
                 </label>
                 <label class="field hidden" id="embeddingBaseUrlField"><span class="field-label" id="embeddingBaseUrlLabel" data-i18n="embeddingBaseUrlLabel">Embedding Base URL</span><input type="text" id="embeddingBaseUrlInput" data-i18n-placeholder="embeddingBaseUrlPlaceholder" placeholder="custom 时填写"></label>
               </div>
@@ -1209,7 +1221,13 @@
           </label>
           <label class="field">
             <span class="field-label" id="onboardingApiKeyLabel">API Key</span>
-            <input type="text" id="onboardingApiKey" autocomplete="off" spellcheck="false">
+            <div class="password-field">
+              <input type="password" id="onboardingApiKey" autocomplete="off" spellcheck="false">
+              <button type="button" class="password-reveal" data-password-for="onboardingApiKey" aria-label="显示" title="显示">
+                <svg class="icon-svg eye-closed" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+                <svg class="icon-svg eye-open hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+              </button>
+            </div>
           </label>
           <label class="field">
             <span class="field-label" id="onboardingModelLabel">模型</span>
@@ -1234,7 +1252,13 @@
               </label>
               <label class="field">
                 <span class="field-label" id="onboardingEmbeddingApiKeyLabel">Embedding API Key</span>
-                <input type="text" id="onboardingEmbeddingApiKey" autocomplete="off" spellcheck="false" placeholder="留空则使用上方聊天 Key">
+                <div class="password-field">
+                  <input type="password" id="onboardingEmbeddingApiKey" autocomplete="off" spellcheck="false" placeholder="留空则使用上方聊天 Key">
+                  <button type="button" class="password-reveal" data-password-for="onboardingEmbeddingApiKey" aria-label="显示" title="显示">
+                    <svg class="icon-svg eye-closed" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+                    <svg class="icon-svg eye-open hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+                  </button>
+                </div>
               </label>
             </div>
             <label class="field">
@@ -1309,8 +1333,9 @@
   <script src="/static/js/web-api.js?v=20260730t"></script>
   <script src="/static/js/ui-busy.js?v=20260728a"></script>
   <script src="/static/js/web-config.js?v=20260722h"></script>
-  <script src="/static/js/model-hub.js?v=20260804d"></script>
-  <script src="/static/js/fallback-models.js?v=20260731f"></script>
+  <script src="/static/js/password-field.js?v=20260727c"></script>
+  <script src="/static/js/model-hub.js?v=20260727c"></script>
+  <script src="/static/js/fallback-models.js?v=20260727c"></script>
   <script src="/static/js/web-sync-ws.js?v=20260722h"></script>
   <script src="/static/js/terminal-sidecar.js?v=20260723b"></script>
   <script src="/static/js/terminal-ai.js?v=20260730z"></script>
@@ -1324,12 +1349,12 @@
   }
   </script>
   <script type="module" src="/static/js/office-scene-3d.mjs?v=20260730s"></script>
-  <script src="/static/js/platform-panel.js?v=20260729t"></script>
+  <script src="/static/js/platform-panel.js?v=20260727a"></script>
   <script src="/static/js/office-panel.js?v=20260730s"></script>
   <script src="/static/js/command-queue.js?v=20260723k"></script>
   <script src="/static/js/canvas-panel.js?v=20260723a"></script>
   <script src="/static/js/terminal-panel.js?v=20260723e"></script>
-  <script src="/static/js/ai.js?v=20260804g"></script>
+  <script src="/static/js/ai.js?v=20260727c"></script>
   <script src="/static/vendor/uplot/uPlot.iife.min.js"></script>
   <script src="/static/js/cabana-panel.js?v=20260804a"></script>
 </body>

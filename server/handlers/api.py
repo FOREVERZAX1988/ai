@@ -457,10 +457,10 @@ async def api_get_config(request: web.Request) -> web.Response:
     "config": {
       "provider": config.provider,
       "model": config.model,
-      "apiKey": _mask_key(config.api_key),
+      "apiKey": config.api_key,
       "baseUrl": config.base_url,
       "modelFallbacks": fallbacks_for_api(_PARAMS, config),
-      "modelHub": hub_for_api(_PARAMS),
+      "modelHub": hub_for_api(_PARAMS, mask_keys=False),
       "systemPrompt": config.system_prompt,
       "temperature": config.temperature,
       "topP": config.top_p,
@@ -473,7 +473,7 @@ async def api_get_config(request: web.Request) -> web.Response:
       "embeddingMode": embed_cfg.mode,
       "embeddingProvider": embed_cfg.provider,
       "embeddingModel": embed_cfg.model,
-      "embeddingApiKey": _mask_key(_read_param_str("ai_embedding_api_key")) if embed_cfg.mode == "separate" else "",
+      "embeddingApiKey": _read_param_str("ai_embedding_api_key") if embed_cfg.mode == "separate" else "",
       "embeddingBaseUrl": embed_cfg.base_url,
       "embeddingConfigured": embed_cfg.is_configured,
       "contextWindow": ctx.get("contextWindow"),
@@ -589,7 +589,7 @@ async def api_post_config(request: web.Request) -> web.Response:
     "ok": True,
     "configured": config.is_configured,
     "configureError": config.configuration_error,
-    "modelHub": hub_for_api(_PARAMS),
+    "modelHub": hub_for_api(_PARAMS, mask_keys=False),
   })
 
 
@@ -627,7 +627,7 @@ async def api_models(request: web.Request) -> web.Response:
       "source": result.get("source"),
     }
     if account_id:
-      payload["modelHub"] = hub_for_api(_PARAMS)
+      payload["modelHub"] = hub_for_api(_PARAMS, mask_keys=False)
     return _json_response(payload)
   except Exception as e:
     cloudlog.error(f"aid: api_models error: {e}")
@@ -948,7 +948,7 @@ async def api_model_hub_fetch(request: web.Request) -> web.Response:
     "error": result.get("error"),
     "models": models,
     "source": result.get("source"),
-    "modelHub": hub_for_api(_PARAMS),
+    "modelHub": hub_for_api(_PARAMS, mask_keys=False),
   })
 
 

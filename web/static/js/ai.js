@@ -520,26 +520,10 @@ function renderTimezoneSelect(preferred) {
   els.timezoneSelect.value = ids.includes(current) ? current : 'Asia/Shanghai';
 }
 
-function bindPasswordReveals() {
-  document.querySelectorAll('.password-reveal[data-password-for]').forEach((btn) => {
-    if (btn.dataset.bound === '1') return;
-    btn.dataset.bound = '1';
-    const inputId = btn.getAttribute('data-password-for');
-    const input = document.getElementById(inputId);
-    if (!input) return;
-    const eyeOpen = btn.querySelector('.eye-open');
-    const eyeClosed = btn.querySelector('.eye-closed');
-    const sync = (visible) => {
-      input.type = visible ? 'text' : 'password';
-      btn.setAttribute('aria-pressed', visible ? 'true' : 'false');
-      btn.title = visible ? t('hidePassword', 'Hide') : t('showPassword', 'Show');
-      btn.setAttribute('aria-label', btn.title);
-      eyeOpen?.classList.toggle('hidden', visible);
-      eyeClosed?.classList.toggle('hidden', !visible);
-    };
-    sync(false);
-    btn.addEventListener('click', () => sync(input.type === 'password'));
-  });
+function bindPasswordReveals(root) {
+  if (typeof PasswordField !== 'undefined') {
+    PasswordField.bind(root);
+  }
 }
 
 function applySecocPaneI18n() {
@@ -6158,7 +6142,7 @@ function syncOnboardingFromSavedConfig() {
   }
   if (els.onboardingApiKey) {
     const key = acc?.apiKey || c.apiKey || '';
-    els.onboardingApiKey.value = key.startsWith('•') ? '' : key;
+    els.onboardingApiKey.value = key || '';
     els.onboardingApiKey.placeholder = t('apiKey', 'API Key');
   }
   const model = primary?.model || c.model || defaults[provider] || modelCatalog[provider]?.[0] || '';
@@ -6680,6 +6664,15 @@ function emptyUsageBucket() {
 }
 
 function getCurrentModelKey() {
+  const hub = effectiveModelHub(savedConfig);
+  const primary = hub?.primary;
+  const acc = primary?.accountId
+    ? (hub.accounts || []).find((a) => a.id === primary.accountId)
+    : (hub.accounts || [])[0];
+  const hubModel = primary?.model || acc?.models?.[0] || '';
+  if (acc?.provider && hubModel) {
+    return `${acc.provider}::${hubModel}`;
+  }
   const provider = els.providerSelect?.value?.trim();
   const model = getMainModelValue();
   if (!provider || !model) return '';

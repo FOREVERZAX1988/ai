@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 import json
+import re
 import tarfile
 import time
 from pathlib import Path
@@ -54,6 +55,80 @@ def _redact(value: str) -> str:
   return value[:4] + "…" + value[-4:]
 
 
+def _parse_model_hub_blob(raw: Any) -> dict[str, Any]:
+  if isinstance(raw, dict):
+    return raw
+  if not raw:
+    return {}
+  try:
+    if isinstance(raw, bytes):
+      raw = raw.decode("utf-8", errors="replace")
+    data = json.loads(str(raw))
+    return data if isinstance(data, dict) else {}
+  except Exception:
+    return {}
+
+
+def _redact_model_hub_blob(hub: dict[str, Any]) -> dict[str, Any]:
+  out = json.loads(json.dumps(hub, ensure_ascii=False))
+  for acc in out.get("accounts") or []:
+    if not isinstance(acc, dict):
+      continue
+    key = str(acc.get("apiKey") or acc.get("api_key") or "").strip()
+    if key:
+      acc["apiKey"] = _redact(key)
+      acc.pop("api_key", None)
+  return out
+
+
+def _hub_manifest_from_config(ai_cfg: dict[str, Any]) -> dict[str, Any]:
+  hub = _parse_model_hub_blob(ai_cfg.get("ai_model_hub"))
+  accounts = [a for a in (hub.get("accounts") or []) if isinstance(a, dict)]
+  routes = 0
+  primary = hub.get("primary") if isinstance(hub.get("primary"), dict) else None
+  if primary and primary.get("accountId") and primary.get("model"):
+    routes += 1
+  for item in hub.get("fallbacks") or []:
+    if isinstance(item, dict) and item.get("accountId") and item.get("model"):
+      routes += 1
+  primary_provider = ""
+  primary_model = ""
+  if primary:
+    primary_model = str(primary.get("model") or "").strip()
+    acc = next((a for a in accounts if str(a.get("id")) == str(primary.get("accountId"))), None)
+    if acc:
+      primary_provider = str(acc.get("provider") or "").strip()
+  return {
+    "accounts": len(accounts),
+    "routes": routes,
+    "fallbacks": max(0, routes - 1) if routes else 0,
+    "primaryProvider": primary_provider,
+    "primaryModel": primary_model,
+    "configured": bool(accounts and routes),
+  }
+
+
+def _model_configured(ai_cfg: dict[str, Any]) -> bool:
+  hub_info = _hub_manifest_from_config(ai_cfg)
+  if hub_info.get("configured"):
+    if hub_info.get("primaryProvider") and hub_info.get("primaryModel"):
+      return True
+    return bool(hub_info.get("accounts"))
+  provider = str(ai_cfg.get("ai_provider") or "").strip().lower()
+  model = str(ai_cfg.get("ai_model") or "").strip()
+  if provider in ("opencode-zen", "opencode-go"):
+    return bool(model)
+  if str(ai_cfg.get("ai_api_key") or "").strip() and not ai_cfg.get("ai_api_key__redacted"):
+    return bool(model)
+  if ai_cfg.get("ai_api_key__redacted"):
+    return bool(model)
+  try:
+    from ai.common.config_store import get_config_store
+    return bool(str(get_config_store().read_all().get("ai_api_key") or "").strip()) and bool(model)
+  except Exception:
+    return False
+
+
 def _export_ai_config(*, include_secrets: bool) -> dict[str, Any]:
   """Full ai_* config from config store (model, embedding, evolution, etc.)."""
   try:
@@ -64,6 +139,14 @@ def _export_ai_config(*, include_secrets: bool) -> dict[str, Any]:
   out: dict[str, Any] = {}
   for key, value in raw.items():
     text = "" if value is None else str(value)
+    if key == "ai_model_hub" and text:
+      hub = _parse_model_hub_blob(text)
+      if hub and not include_secrets:
+        out[key] = json.dumps(_redact_model_hub_blob(hub), ensure_ascii=False)
+        out[f"{key}__redacted"] = True
+      else:
+        out[key] = text
+      continue
     if key in _SECRET_KEYS and text and not include_secrets:
       out[key] = _redact(text)
       out[f"{key}__redacted"] = True
@@ -149,6 +232,19 @@ def _restore_enabled_skills(params: Params, skills: list[str]) -> None:
     pass
 
 
+def _export_model_hub_section(params: Params, *, include_secrets: bool) -> dict[str, Any]:
+  """Explicit model hub snapshot for backup manifest / cross-version restore."""
+  try:
+    from ai.model_accounts import hub_for_api, load_model_hub
+
+    hub = load_model_hub(params)
+    if include_secrets:
+      return hub
+    return hub_for_api(params, mask_keys=True)
+  except Exception:
+    return {}
+
+
 def build_platform_bundle(params: Params | None = None, *, include_secrets: bool = False) -> dict[str, Any]:
   """Assemble a portable bundle of platform state."""
   params = params or Params()
@@ -161,6 +257,7 @@ def build_platform_bundle(params: Params | None = None, *, include_secrets: bool
       "exportedAt": int(time.time()),
       "includeSecrets": include_secrets,
       "ai_config": _export_ai_config(include_secrets=include_secrets),
+      "model_hub": _export_model_hub_section(params, include_secrets=include_secrets),
       "enabled_skills": _enabled_skills(params),
       "memory": {
         "notes": mem.get("notes") or [],
@@ -181,35 +278,23 @@ def build_platform_bundle(params: Params | None = None, *, include_secrets: bool
   }
 
 
-def _model_configured(ai_cfg: dict[str, Any]) -> bool:
-  model = str(ai_cfg.get("ai_model") or "").strip()
-  if not model:
-    return False
-  provider = str(ai_cfg.get("ai_provider") or "").strip().lower()
-  if provider in ("local", "ollama", "lmstudio"):
-    return True
-  if str(ai_cfg.get("ai_api_key") or "").strip() and not ai_cfg.get("ai_api_key__redacted"):
-    return True
-  if ai_cfg.get("ai_api_key__redacted"):
-    return True
-  try:
-    from ai.common.config_store import get_config_store
-    return bool(str(get_config_store().read_all().get("ai_api_key") or "").strip())
-  except Exception:
-    return True
-
-
 def backup_manifest(params: Params | None = None) -> dict[str, Any]:
   params = params or Params()
   mem = get_memory(params)
   ws = list_workspace_files()
   ai_cfg = _export_ai_config(include_secrets=False)
+  hub_info = _hub_manifest_from_config(ai_cfg)
   configured = _model_configured(ai_cfg)
+  provider = hub_info.get("primaryProvider") or ai_cfg.get("ai_provider") or ""
+  model = hub_info.get("primaryModel") or ai_cfg.get("ai_model") or ""
   return {
     "version": BUNDLE_VERSION,
     "modelConfigured": configured,
-    "provider": ai_cfg.get("ai_provider") or "",
-    "model": ai_cfg.get("ai_model") or "",
+    "provider": provider,
+    "model": model,
+    "modelHubAccounts": hub_info.get("accounts", 0),
+    "modelHubRoutes": hub_info.get("routes", 0),
+    "modelHubFallbacks": hub_info.get("fallbacks", 0),
     "embeddingModel": ai_cfg.get("ai_embedding_model") or "",
     "memoryNotes": len(mem.get("notes") or []),
     "sessions": len((get_sessions(params).get("sessions") or [])),
@@ -305,12 +390,17 @@ def restore_platform_bundle(
         "version": inner.get("version"),
         "exportedAt": inner.get("exportedAt"),
         "sections": sections or [
-          "ai_config", "enabled_skills", "memory", "sessions",
+          "ai_config", "model_hub", "enabled_skills", "memory", "sessions",
           "learned_skills", "mcp_servers", "workspace", "params",
         ],
         "manifest": {
           "provider": (inner.get("ai_config") or {}).get("ai_provider"),
           "model": (inner.get("ai_config") or {}).get("ai_model"),
+          "modelHubAccounts": len((inner.get("model_hub") or {}).get("accounts") or []),
+          "modelHubRoutes": (
+            (1 if (inner.get("model_hub") or {}).get("primary") else 0)
+            + len((inner.get("model_hub") or {}).get("fallbacks") or [])
+          ),
           "embeddingModel": (inner.get("ai_config") or {}).get("ai_embedding_model"),
           "memoryNotes": len((inner.get("memory") or {}).get("notes") or []),
           "sessions": len((inner.get("sessions") or {}).get("sessions") or []),
@@ -331,7 +421,7 @@ def restore_platform_bundle(
     return {"ok": False, "error": f"unsupported bundle version (expected 1 or {BUNDLE_VERSION})"}
 
   allowed = set(sections or [
-    "ai_config", "enabled_skills", "memory", "sessions",
+    "ai_config", "model_hub", "enabled_skills", "memory", "sessions",
     "learned_skills", "mcp_servers", "workspace", "params",
   ])
   applied: list[str] = []
@@ -340,6 +430,15 @@ def restore_platform_bundle(
     if mode == "replace" or data.get("ai_config"):
       _restore_ai_config(data["ai_config"])
       applied.append("ai_config")
+
+  if "model_hub" in allowed and isinstance(data.get("model_hub"), dict) and data.get("model_hub"):
+    try:
+      from ai.model_accounts import save_model_hub
+
+      save_model_hub(params, data["model_hub"])
+      applied.append("model_hub")
+    except Exception:
+      pass
 
   if "enabled_skills" in allowed and isinstance(data.get("enabled_skills"), list):
     if mode == "replace":

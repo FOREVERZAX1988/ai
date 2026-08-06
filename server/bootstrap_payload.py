@@ -138,7 +138,7 @@ def build_bootstrap_payload(
     "config": {
       "provider": config.provider,
       "model": config.model,
-      "apiKey": mask_key(config.api_key),
+      "apiKey": config.api_key,
       "baseUrl": config.base_url,
       "systemPrompt": config.system_prompt,
       "temperature": config.temperature,
@@ -152,12 +152,12 @@ def build_bootstrap_payload(
       "embeddingMode": embed_cfg.mode,
       "embeddingProvider": embed_cfg.provider,
       "embeddingModel": embed_cfg.model,
-      "embeddingApiKey": mask_key(read_param_str("ai_embedding_api_key"))
+      "embeddingApiKey": read_param_str("ai_embedding_api_key")
       if embed_cfg.mode == "separate"
       else "",
       "embeddingBaseUrl": embed_cfg.base_url,
       "embeddingConfigured": embed_cfg.is_configured,
-      "modelHub": hub_for_api(params),
+      "modelHub": hub_for_api(params, mask_keys=False),
       "modelFallbacks": fallbacks_for_api(params, config),
     },
     "embeddingDefaults": DEFAULT_EMBEDDING_MODELS,

@@ -1612,10 +1612,14 @@ html, body {
   background: var(--accent-soft);
 }
 
-.password-reveal .icon-svg {
-  width: 1.05rem;
-  height: 1.05rem;
+.model-hub-account-modal .password-field {
+  width: 100%;
 }
+
+.model-hub-account-modal .password-field input {
+  width: 100%;
+}
+
 
 .composer-hint {
   display: none;

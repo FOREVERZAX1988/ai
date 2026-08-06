@@ -164,7 +164,7 @@ const FallbackModels = (() => {
           </details>
           <label class="field fallback-field fallback-apikey-field hidden">
             <span class="field-label">${escapeHtml(t('apiKey', 'API Key'))}</span>
-            <input type="text" class="fallback-apikey" data-idx="${idx}" value="${escapeAttr(row.apiKey || '')}" autocomplete="off" spellcheck="false">
+            <input type="password" class="fallback-apikey" data-idx="${idx}" value="${escapeAttr(row.apiKey || '')}" autocomplete="off" spellcheck="false">
           </label>
           <label class="field fallback-field fallback-baseurl-field hidden">
             <span class="field-label">${escapeHtml(t('baseUrl', 'Base URL'))}</span>
@@ -185,6 +185,10 @@ const FallbackModels = (() => {
         row._combo.setValue(row.model || '', { silent: true });
       }
       syncRowCredLayout(el, row);
+      const apiKeyInput = el.querySelector('.fallback-apikey');
+      if (apiKeyInput && typeof PasswordField !== 'undefined') {
+        PasswordField.enhanceInput(apiKeyInput);
+      }
       el.querySelector('.fallback-remove')?.addEventListener('click', () => {
         rows.splice(idx, 1);
         render();

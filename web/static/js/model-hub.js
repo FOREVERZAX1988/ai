@@ -338,7 +338,7 @@ const ModelHub = (() => {
       }
       syncRouteModalThinkingVisibility();
     });
-    routeModal.querySelector('#modelHubRouteThinking')?.addEventListener('change', syncRouteModalThinkingVisibility);
+    el.querySelector('#modelHubRouteThinking')?.addEventListener('change', syncRouteModalThinkingVisibility);
     routeModal = el;
     return el;
   }
@@ -485,7 +485,7 @@ const ModelHub = (() => {
           </label>
           <label class="field">
             <span class="field-label">${escapeHtml(t('apiKey', 'API Key'))}</span>
-            <input type="text" id="modelHubAccountApiKey" autocomplete="off" spellcheck="false" placeholder="sk-...">
+            ${PasswordField.wrapInput('modelHubAccountApiKey', 'placeholder="sk-..."')}
           </label>
           <div class="model-hub-url-primary hidden" id="modelHubAccountUrlPrimary">
             <label class="field">
@@ -529,6 +529,7 @@ const ModelHub = (() => {
     });
     el.querySelector('#modelHubAccountTest')?.addEventListener('click', () => testAccountFromModal());
     el.querySelector('#modelHubAccountFetch')?.addEventListener('click', () => fetchAccountModelsFromModal());
+    PasswordField.bind(el);
     accountModal = el;
     return el;
   }
@@ -601,6 +602,7 @@ const ModelHub = (() => {
     accountModal.querySelector('#modelHubAccountProvider').innerHTML = providerOptions(accountModalDraft.provider);
     accountModal.querySelector('#modelHubAccountLabel').value = accountModalDraft.label || '';
     accountModal.querySelector('#modelHubAccountApiKey').value = accountModalDraft.apiKey || '';
+    PasswordField.bind(accountModal);
     accountModal.querySelector('#modelHubAccountBaseUrl').value = accountModalDraft.baseUrl || '';
     accountModal.querySelector('#modelHubAccountBaseUrlAdv').value = accountModalDraft.baseUrl || '';
     accountModal.querySelector('#modelHubAccountEnabled').checked = accountModalDraft.enabled !== false;
