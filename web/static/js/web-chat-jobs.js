@@ -213,7 +213,6 @@ const ChatJobs = (() => {
         }
         if (clean) scheduleMarkdownRender(ui, clean, ctx);
         else if (ui.content) ui.content.textContent = '';
-        deps.scrollToBottom?.();
       }
     }
 
@@ -282,7 +281,7 @@ const ChatJobs = (() => {
         deps.hideAssistantLoading?.(ui);
         deps.syncThinkingBlock?.(ui, assistantMessage);
         flushMarkdownRender(ui, assistantMessage.content, ctx);
-        if (data.resolvedModel) deps.setMessageModelTag?.(ui.wrapper?.querySelector('.message-meta'), data.resolvedModel);
+        if (data.resolvedModel) deps.setMessageModelTag?.(ui.actionsBar, data.resolvedModel);
       }
       if (data.resolvedModel && visible) deps.updateModelBadge?.(data.resolvedModel);
     }

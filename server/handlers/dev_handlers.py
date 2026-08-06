@@ -80,3 +80,64 @@ async def api_state(request: web.Request) -> web.Response:
   except Exception as e:
     cloudlog.error(f"aid: api_state error: {e}")
     return _json_response({"ok": False, "error": f"Internal error: {e}"}, status=500)
+
+
+async def api_files_search(request: web.Request) -> web.Response:
+  from ai.tools.file_search import search_repo_files
+
+  query = str(request.query.get("q") or request.query.get("query") or "")
+  try:
+    limit = int(request.query.get("limit", "25"))
+  except (TypeError, ValueError):
+    limit = 25
+  return _json_response(search_repo_files(query, limit=limit))
+
+
+async def api_files_content(request: web.Request) -> web.Response:
+  from ai.tools.file_search import read_repo_file_snippet
+
+  path = str(request.query.get("path") or "")
+  try:
+    max_chars = int(request.query.get("max_chars", "48000"))
+  except (TypeError, ValueError):
+    max_chars = 48000
+  if not path.strip():
+    return _json_response({"ok": False, "error": "path is required"}, status=400)
+  return _json_response(read_repo_file_snippet(path, max_chars=max_chars))
+
+
+async def api_context_url(request: web.Request) -> web.Response:
+  from ai.tools.context_resolve import fetch_url_context
+
+  url = str(request.query.get("url") or request.query.get("q") or "")
+  try:
+    max_chars = int(request.query.get("max_chars", "48000"))
+  except (TypeError, ValueError):
+    max_chars = 48000
+  if not url.strip():
+    return _json_response({"ok": False, "error": "url is required"}, status=400)
+  return _json_response(fetch_url_context(url, max_chars=max_chars))
+
+
+async def api_context_branch(request: web.Request) -> web.Response:
+  from ai.tools.context_resolve import fetch_branch_context
+
+  branch = str(request.query.get("branch") or "")
+  try:
+    max_chars = int(request.query.get("max_chars", "48000"))
+  except (TypeError, ValueError):
+    max_chars = 48000
+  return _json_response(fetch_branch_context(branch=branch, max_chars=max_chars))
+
+
+async def api_context_session(request: web.Request) -> web.Response:
+  from ai.tools.context_resolve import fetch_session_context
+
+  session_id = str(request.query.get("session_id") or request.query.get("sessionId") or "")
+  try:
+    max_chars = int(request.query.get("max_chars", "48000"))
+  except (TypeError, ValueError):
+    max_chars = 48000
+  if not session_id.strip():
+    return _json_response({"ok": False, "error": "session_id is required"}, status=400)
+  return _json_response(fetch_session_context(session_id, max_chars=max_chars))

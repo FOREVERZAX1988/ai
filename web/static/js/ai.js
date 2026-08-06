@@ -2,6 +2,9 @@ let hostEnvironment = null;
 /* $, $$, els, APP_SPLASH_* provided by app/dom.js */
 
 let toolsMeta = {};
+let skillsRegistry = [];
+let mcpConnectors = [];
+let ragStatsCache = { count: 0, vector_chunks: 0, totalChars: 0, embeddedDocs: 0 };
 let embeddingDefaults = {};
 let configSaveState = 'idle';
 let configSaveInFlight = false;
@@ -219,10 +222,12 @@ function updateComposerSendBtn() {
   const sessionId = SessionStore.activeId;
   const streaming = isSessionJobRunning(sessionId);
   if (!els.sendBtn) return;
-  const label = streaming ? t('stop', 'Stop') : t('send', 'Send');
-  els.sendBtn.textContent = label;
+  let label = t('send', 'Send');
+  if (streaming) label = t('stop', 'Stop');
+  else if (editingUserMsgIdx !== null) label = t('resendEdited', 'Resend');
   els.sendBtn.title = label;
   els.sendBtn.setAttribute('aria-label', label);
+  els.sendBtn.classList.toggle('is-stop', streaming);
 }
 
 function applyBuiltinAgents(data) {
@@ -246,6 +251,8 @@ const MAX_IMAGE_DIMENSION = 1280;
 const JPEG_QUALITY = 0.82;
 
 let pendingImages = [];
+let pendingFileRefs = [];
+let editingUserMsgIdx = null;
 let cabanaOpen = false;
 let secocOpen = false;
 let cabanaInited = false;
@@ -367,11 +374,37 @@ function applyTranslations() {
     els.composerHintBtn.title = t('composerHintAria', 'Input shortcuts');
     els.composerHintBtn.setAttribute('aria-label', els.composerHintBtn.title);
   }
+  if (els.jumpToBottomBtn) {
+    els.jumpToBottomBtn.title = t('jumpToBottomAria', 'Jump to latest messages');
+    els.jumpToBottomBtn.setAttribute('aria-label', els.jumpToBottomBtn.title);
+  }
+  const contextPanelTitle = document.getElementById('composerContextPanelTitle');
+  if (contextPanelTitle) contextPanelTitle.textContent = t('contextUsageTitle', 'Context usage');
+  const sessionSearchInput = document.getElementById('sessionSearchInput');
+  if (sessionSearchInput) sessionSearchInput.placeholder = t('sessionSearchPlaceholder', 'Search chats…');
+  const sessionSearchModalInput = document.getElementById('sessionSearchModalInput');
+  if (sessionSearchModalInput) sessionSearchModalInput.placeholder = t('sessionSearchPlaceholder', 'Search chats…');
+  const sessionSearchModalTitle = document.getElementById('sessionSearchModalTitle');
+  if (sessionSearchModalTitle) sessionSearchModalTitle.textContent = t('sessionSearchTitle', 'Search chats');
+  const sessionSearchMobileBtn = document.getElementById('sessionSearchMobileBtn');
+  if (sessionSearchMobileBtn) {
+    sessionSearchMobileBtn.title = t('sessionSearchPlaceholder', 'Search chats…');
+    sessionSearchMobileBtn.setAttribute('aria-label', sessionSearchMobileBtn.title);
+  }
+  const composerEditBannerText = document.getElementById('composerEditBannerText');
+  if (composerEditBannerText) composerEditBannerText.textContent = t('editingMessage', 'Editing message');
+  const composerEditCancel = document.getElementById('composerEditCancel');
+  if (composerEditCancel) {
+    const cancelLabel = t('cancelEdit', 'Cancel');
+    composerEditCancel.title = cancelLabel;
+    composerEditCancel.setAttribute('aria-label', cancelLabel);
+  }
+  updateComposerSendBtn();
+  refreshContextMeter();
   if (els.composerSlashLabel && !composerSlashOpen) {
     els.composerSlashLabel.textContent = t('slashMenuPickCommand', 'Slash commands');
   }
   els.imageBtn.title = t('attachImage', 'Add image');
-  els.sendBtn.title = t('send', 'Send');
   setI18nText('#settingsTitle', 'settings', 'Settings');
   setI18nText('#providerLabel', 'provider');
   setI18nText('#modelLabel', 'model');
@@ -1497,7 +1530,7 @@ function endChatStream(sessionId) {
       clearLiveStreamChrome(wrapperToAssistantUi(el));
       delete el.dataset.liveStream;
     });
-    if (els.sendBtn) els.sendBtn.textContent = t('send', 'Send');
+    if (els.sendBtn) updateComposerSendBtn();
   }
 }
 
@@ -1529,7 +1562,46 @@ function markLiveStreamUi(ui) {
   if (ui?.wrapper) ui.wrapper.dataset.liveStream = '1';
 }
 
+function scrollToMessageIndex(idx) {
+  const el = els.messages?.querySelector(`[data-msg-idx="${idx}"]`);
+  if (!el) return false;
+  chatScrollPinned = false;
+  updateJumpToBottomButton();
+  el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  el.classList.add('search-hit-flash');
+  setTimeout(() => el.classList.remove('search-hit-flash'), 2200);
+  return true;
+}
+
+async function navigateToSessionHit(hit) {
+  if (!hit?.sessionId) return;
+  const sessionId = hit.sessionId;
+  const needsSwitch = SessionStore.activeId !== sessionId;
+  if (needsSwitch) {
+    switchSession(sessionId);
+    const session = SessionStore.getById(sessionId);
+    if (session?.hasContent && !(session.messages || []).length) {
+      await loadSessionDetail(sessionId);
+      loadSessionMode();
+      renderStoredMessages();
+      renderSessionList();
+    }
+  }
+  let msgIdx = typeof hit.messageIndex === 'number' ? hit.messageIndex : -1;
+  if (msgIdx < 0 && typeof SessionSearch !== 'undefined') {
+    msgIdx = SessionSearch.findMessageIndex(sessionId, hit);
+  }
+  if (msgIdx >= 0) {
+    requestAnimationFrame(() => {
+      if (!scrollToMessageIndex(msgIdx)) {
+        setTimeout(() => scrollToMessageIndex(msgIdx), 120);
+      }
+    });
+  }
+}
+
 function switchSession(id) {
+  cancelEditUserMessage();
   SessionStore.setActive(id);
   const session = SessionStore.getActive();
   refreshModelBadgeForSession();
@@ -1555,6 +1627,7 @@ function switchSession(id) {
 }
 
 function createNewSession() {
+  cancelEditUserMessage();
   SessionStore.startDraft();
   refreshModelBadgeForSession();
   if (typeof SessionModelPicker !== 'undefined') SessionModelPicker.refresh();
@@ -1922,6 +1995,7 @@ async function loadRagPanel() {
   const { data } = await api('GET', '/api/ai/rag');
   if (typeof UiBusy !== 'undefined') UiBusy.clearPanelBusy(els.ragDocList);
   if (!data.ok || !els.ragDocList) return;
+  applyRagStatsFromApi(data);
   await loadKnowledgeRagStatus(data);
   const docs = data.documents || [];
   const chunks = data.vector_chunks ?? 0;
@@ -2355,6 +2429,61 @@ function buildUserContent(text, images) {
   return parts;
 }
 
+async function buildUserMessageContent(text, images, contextRefs = []) {
+  let finalText = (text || '').trim();
+  const refs = (contextRefs || []).slice();
+  if (refs.length) {
+    const blocks = [];
+    for (const ref of refs) {
+      const type = ref.type || (ref.kind === 'dir' ? 'dir' : 'file');
+      try {
+        if (type === 'browser') {
+          blocks.push(`\n\n---\n@${t('mentionBrowser', 'Browser')}\n${t('mentionBrowserPrompt', 'You may fetch live web pages and use browser tools when helpful.')}`);
+          continue;
+        }
+        if (type === 'branch') {
+          const q = ref.branch ? `branch=${encodeURIComponent(ref.branch)}` : '';
+          const { data } = await api('GET', `/api/ai/context/branch${q ? `?${q}` : ''}`);
+          if (data?.ok && data.content) {
+            const label = data.branch || ref.name || 'branch';
+            blocks.push(`\n\n---\n@Branch ${label}\n\`\`\`diff\n${data.content}\n\`\`\``);
+          }
+          continue;
+        }
+        if (type === 'session') {
+          const { data } = await api('GET', `/api/ai/context/session?session_id=${encodeURIComponent(ref.sessionId)}`);
+          if (data?.ok && data.content) {
+            const label = data.title || ref.name || ref.sessionId;
+            blocks.push(`\n\n---\n@Past chat: ${label}\n\`\`\`\n${data.content}\n\`\`\``);
+          }
+          continue;
+        }
+        if (type === 'url') {
+          const { data } = await api('GET', `/api/ai/context/url?url=${encodeURIComponent(ref.url)}`);
+          if (data?.ok && data.content) {
+            const label = data.title || ref.url;
+            blocks.push(`\n\n---\n@${label}\n${ref.url}\n\`\`\`\n${data.content}\n\`\`\``);
+          }
+          continue;
+        }
+        const { data } = await api('GET', `/api/ai/files/content?path=${encodeURIComponent(ref.path)}`);
+        if (data?.ok && data.content) {
+          const label = data.rel || ref.rel || ref.name;
+          const fence = data.kind === 'dir' ? '' : '';
+          blocks.push(`\n\n---\n@${label}\n\`\`\`${fence}\n${data.content}\n\`\`\``);
+        }
+      } catch {
+        const label = ref.rel || ref.name || ref.url || ref.sessionId || type;
+        blocks.push(`\n\n---\n@${label}\n(${t('mentionReadFailed', '无法读取上下文')})`);
+      }
+    }
+    if (blocks.length) {
+      finalText = (finalText || t('mentionDefaultPrompt', '请结合以下上下文回答：')) + blocks.join('');
+    }
+  }
+  return buildUserContent(finalText, images);
+}
+
 function loadImageElement(src) {
   return new Promise((resolve, reject) => {
     const img = new Image();
@@ -2419,13 +2548,43 @@ async function addImageFiles(files) {
 }
 
 function renderComposerAttachments() {
-  if (!pendingImages.length) {
+  const hasImages = pendingImages.length > 0;
+  const hasFiles = pendingFileRefs.length > 0;
+  if (!hasImages && !hasFiles) {
     els.composerAttachments.classList.add('hidden');
     els.composerAttachments.innerHTML = '';
     return;
   }
   els.composerAttachments.classList.remove('hidden');
   els.composerAttachments.innerHTML = '';
+
+  pendingFileRefs.forEach((ref, index) => {
+    const item = document.createElement('div');
+    item.className = 'composer-file-chip';
+    const icon = document.createElement('span');
+    icon.className = 'composer-file-chip-icon';
+    const type = ref.type || (ref.kind === 'dir' ? 'dir' : 'file');
+    const iconMap = { dir: '📁', file: '📄', url: '🔗', branch: '⎇', session: '💬', browser: '🌐' };
+    icon.textContent = iconMap[type] || '📄';
+    const label = document.createElement('span');
+    label.className = 'composer-file-chip-name';
+    label.textContent = ref.rel || ref.name || ref.title || ref.url || ref.sessionId || type;
+    label.title = ref.path || ref.url || ref.sessionId || ref.rel || ref.name || '';
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'composer-file-chip-remove';
+    remove.textContent = '×';
+    remove.title = t('mentionRemoveFile', 'Remove file');
+    remove.addEventListener('click', () => {
+      pendingFileRefs.splice(index, 1);
+      renderComposerAttachments();
+    });
+    item.appendChild(icon);
+    item.appendChild(label);
+    item.appendChild(remove);
+    els.composerAttachments.appendChild(item);
+  });
+
   pendingImages.forEach((img, index) => {
     const item = document.createElement('div');
     item.className = 'composer-attachment';
@@ -2449,6 +2608,7 @@ function renderComposerAttachments() {
 
 function clearComposerAttachments() {
   pendingImages = [];
+  pendingFileRefs = [];
   renderComposerAttachments();
 }
 
@@ -2684,25 +2844,239 @@ function createMessageElement(role) {
   return div;
 }
 
-function appendUserMessage(content) {
+const MSG_ACTION_ICONS = {
+  copy: '<svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>',
+  edit: '<svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>',
+  like: '<svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true"><path d="M7 10v12"/><path d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2a3.13 3.13 0 0 1 3 3.88Z"/></svg>',
+  dislike: '<svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true"><path d="M17 14V2"/><path d="M9 18.12 10 14H4.17a2 2 0 0 1-1.92-2.56l2.33-8A2 2 0 0 1 6.5 2H20a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2.76a2 2 0 0 0-1.79 1.11L12 22a3.13 3.13 0 0 1-3-3.88Z"/></svg>',
+  speak: '<svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true"><path d="M11 5 6 9H2v6h4l5 4V5Z"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>',
+  regenerate: '<svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>',
+};
+
+let activeTtsBtn = null;
+
+function createMessageActionBtn(action, label) {
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'msg-action-btn';
+  btn.dataset.action = action;
+  btn.title = label;
+  btn.setAttribute('aria-label', label);
+  btn.innerHTML = MSG_ACTION_ICONS[action] || '';
+  return btn;
+}
+
+function createMessageActionsBar(role) {
+  const bar = document.createElement('div');
+  bar.className = 'message-actions-bar';
+  bar.dataset.role = role;
+
+  const left = document.createElement('div');
+  left.className = 'message-actions-left';
+
+  if (role === 'user') {
+    left.appendChild(createMessageActionBtn('copy', t('copy', 'Copy')));
+    left.appendChild(createMessageActionBtn('edit', t('editMessage', 'Edit')));
+  } else {
+    left.appendChild(createMessageActionBtn('copy', t('copy', 'Copy')));
+    left.appendChild(createMessageActionBtn('like', t('feedbackUp', 'Good response')));
+    left.appendChild(createMessageActionBtn('dislike', t('feedbackDown', 'Bad response')));
+    left.appendChild(createMessageActionBtn('speak', t('speakMessage', 'Read aloud')));
+    left.appendChild(createMessageActionBtn('regenerate', t('regenerate', 'Regenerate')));
+
+    const right = document.createElement('div');
+    right.className = 'message-actions-right';
+    const tag = document.createElement('span');
+    tag.className = 'message-model-tag hidden';
+    right.appendChild(tag);
+    bar.appendChild(left);
+    bar.appendChild(right);
+    return bar;
+  }
+
+  bar.appendChild(left);
+  return bar;
+}
+
+function getMessageTurnContentEl(turn) {
+  return turn?.querySelector('.message.assistant.md-content, .message.assistant.chat-text, .message-text');
+}
+
+function stopMessageSpeech() {
+  if (typeof window !== 'undefined' && window.speechSynthesis) {
+    window.speechSynthesis.cancel();
+  }
+  if (activeTtsBtn) {
+    activeTtsBtn.classList.remove('is-speaking');
+    activeTtsBtn = null;
+  }
+}
+
+function pickSpeechVoice(langPrefix) {
+  if (typeof window === 'undefined' || !window.speechSynthesis) return null;
+  const voices = window.speechSynthesis.getVoices() || [];
+  return voices.find((v) => v.lang?.toLowerCase().startsWith(langPrefix)) || voices[0] || null;
+}
+
+function speakMessageFromTurn(turn, btn) {
+  if (typeof window === 'undefined' || !window.speechSynthesis) {
+    showToast(t('ttsUnsupported', 'Speech not supported in this browser'), 'warning');
+    return;
+  }
+  if (state.driving) {
+    showToast(t('ttsWhileDriving', 'Avoid speech playback while driving'), 'warning');
+    return;
+  }
+  const text = getMessageTurnContentEl(turn)?.innerText?.trim() || '';
+  if (!text) return;
+
+  if (btn?.classList.contains('is-speaking')) {
+    stopMessageSpeech();
+    return;
+  }
+  stopMessageSpeech();
+
+  const lang = (typeof i18n !== 'undefined' && i18n.getLang?.()?.startsWith('zh')) ? 'zh-CN' : 'en-US';
+  const utter = new SpeechSynthesisUtterance(text.slice(0, 4000));
+  utter.lang = lang;
+  const voice = pickSpeechVoice(lang.split('-')[0]);
+  if (voice) utter.voice = voice;
+  utter.rate = 1.02;
+  utter.onend = () => stopMessageSpeech();
+  utter.onerror = () => stopMessageSpeech();
+  if (btn) {
+    btn.classList.add('is-speaking');
+    activeTtsBtn = btn;
+  }
+  window.speechSynthesis.speak(utter);
+}
+
+async function regenerateAssistantMessage(assistantIdx) {
+  if (isChatUiLocked()) {
+    showToast(t('regenerateWhileStreaming', 'Wait for the reply to finish'), 'warning');
+    return;
+  }
+  const history = getCurrentMessages();
+  const msg = history[assistantIdx];
+  if (!msg || msg.role !== 'assistant') return;
+  const truncated = history.slice(0, assistantIdx);
+  if (!truncated.length || truncated[truncated.length - 1]?.role !== 'user') {
+    showToast(t('regenerateFailed', 'Cannot find the user message to retry'), 'warning');
+    return;
+  }
+  stopMessageSpeech();
+  saveCurrentMessages(truncated);
+  renderStoredMessages();
+  syncSessionsToDevice().catch(() => {});
+  await streamAssistantResponse(truncated);
+}
+
+function finalizeAssistantTurn(ui, msgIdx) {
+  if (!ui?.turn) return;
+  if (msgIdx != null) ui.turn.dataset.msgIdx = String(msgIdx);
+  ui.actionsBar?.classList.remove('is-pending');
+}
+
+function appendUserMessage(content, { scroll = true, msgIdx = null, fileRefs = [] } = {}) {
+  const turn = document.createElement('div');
+  turn.className = 'message-turn user-turn msg-in';
+  if (msgIdx != null) turn.dataset.msgIdx = String(msgIdx);
+
   const div = createMessageElement('user');
   const text = messageText(content);
   const images = messageImages(content);
   renderMessageImages(div, images);
+  const refs = fileRefs?.length ? fileRefs : [];
+  if (refs.length) {
+    const filesEl = document.createElement('div');
+    filesEl.className = 'message-file-refs';
+    for (const ref of refs) {
+      const chip = document.createElement('span');
+      chip.className = 'message-file-ref';
+      chip.textContent = `@${ref.rel || ref.name}`;
+      chip.title = ref.path || '';
+      filesEl.appendChild(chip);
+    }
+    div.appendChild(filesEl);
+  }
   if (text) {
     const textEl = document.createElement('div');
     textEl.className = 'message-text';
     textEl.textContent = text;
     div.appendChild(textEl);
   }
-  els.messages.appendChild(div);
-  scrollToBottom();
-  return div;
+
+  turn.appendChild(div);
+  turn.appendChild(createMessageActionsBar('user'));
+  els.messages.appendChild(turn);
+  if (scroll) scrollToBottom({ force: true });
+  return turn;
+}
+
+function dataUrlToPendingImage(url) {
+  const mimeMatch = /^data:([^;]+);/.exec(url || '');
+  return { dataUrl: url, mimeType: mimeMatch?.[1] || 'image/jpeg' };
+}
+
+function highlightEditingMessage(msgIdx) {
+  els.messages?.querySelectorAll('.message.user.is-editing').forEach((el) => {
+    el.classList.remove('is-editing');
+  });
+  if (msgIdx == null) return;
+  const el = els.messages?.querySelector(`.message-turn.user-turn[data-msg-idx="${msgIdx}"] .message.user`);
+  el?.classList.add('is-editing');
+}
+
+function updateComposerEditUi() {
+  const banner = document.getElementById('composerEditBanner');
+  const form = els.composer;
+  banner?.classList.toggle('hidden', editingUserMsgIdx === null);
+  form?.classList.toggle('is-editing', editingUserMsgIdx !== null);
+  updateComposerSendBtn();
+}
+
+function cancelEditUserMessage({ clearComposer = true } = {}) {
+  editingUserMsgIdx = null;
+  highlightEditingMessage(null);
+  if (clearComposer) {
+    if (els.chatInput) els.chatInput.value = '';
+    clearComposerAttachments();
+    autoResize();
+  }
+  updateComposerEditUi();
+}
+
+function startEditUserMessage(msgIdx) {
+  if (isChatUiLocked()) {
+    showToast(t('editWhileStreaming', 'Wait for the reply to finish before editing'), 'warning');
+    return;
+  }
+  const history = getCurrentMessages();
+  const msg = history[msgIdx];
+  if (!msg || msg.role !== 'user') return;
+
+  if (editingUserMsgIdx !== null) cancelEditUserMessage({ clearComposer: true });
+  editingUserMsgIdx = msgIdx;
+
+  if (els.chatInput) {
+    els.chatInput.value = messageText(msg.content);
+    autoResize();
+  }
+  pendingImages = messageImages(msg.content).map(dataUrlToPendingImage);
+  renderComposerAttachments();
+
+  highlightEditingMessage(msgIdx);
+  updateComposerEditUi();
+  els.chatInput?.focus();
+  scrollToMessageIndex(msgIdx);
 }
 
 function appendAssistantMessage({ withLoading = true } = {}) {
+  const turn = document.createElement('div');
+  turn.className = 'message-turn assistant-turn msg-in';
+
   const wrapper = document.createElement('div');
-  wrapper.className = 'message assistant-wrapper msg-in';
+  wrapper.className = 'message assistant-wrapper';
 
   let loading = null;
   if (withLoading) {
@@ -2742,18 +3116,21 @@ function appendAssistantMessage({ withLoading = true } = {}) {
 
   const toolsList = toolsBlock.querySelector('.tool-calls-list');
 
-  const meta = document.createElement('div');
-  meta.className = 'message-meta';
-  meta.innerHTML = `<span class="message-model-tag hidden" aria-hidden="true"></span><button type="button" class="msg-copy-btn" title="${t('copy', '复制')}" aria-label="${t('copy', '复制')}">⎘</button>`;
-
   wrapper.appendChild(thinking);
   wrapper.appendChild(agentCallsBlock);
   wrapper.appendChild(toolsBlock);
   wrapper.appendChild(content);
-  wrapper.appendChild(meta);
-  els.messages.appendChild(wrapper);
+
+  const actionsBar = createMessageActionsBar('assistant');
+  actionsBar.classList.add('is-pending');
+
+  turn.appendChild(wrapper);
+  turn.appendChild(actionsBar);
+  els.messages.appendChild(turn);
   scrollToBottom();
   return {
+    turn,
+    actionsBar,
     wrapper,
     loading,
     thinking,
@@ -2767,8 +3144,74 @@ function appendAssistantMessage({ withLoading = true } = {}) {
   };
 }
 
-function scrollToBottom() {
-  els.messages.scrollTop = els.messages.scrollHeight;
+const CHAT_SCROLL_PIN_THRESHOLD = 96;
+let chatScrollPinned = true;
+let _chatScrollPinRaf = null;
+
+function isChatNearBottom(el = els.messages) {
+  if (!el) return true;
+  const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
+  return distance <= CHAT_SCROLL_PIN_THRESHOLD;
+}
+
+function updateJumpToBottomButton() {
+  const btn = els.jumpToBottomBtn;
+  if (!btn || !els.messages) return;
+  const canScroll = els.messages.scrollHeight > els.messages.clientHeight + 8;
+  const show = canScroll && !chatScrollPinned;
+  btn.classList.toggle('visible', show);
+  btn.classList.toggle('hidden', !show);
+  btn.setAttribute('aria-hidden', show ? 'false' : 'true');
+}
+
+function onMessagesScroll() {
+  if (_chatScrollPinRaf) return;
+  _chatScrollPinRaf = requestAnimationFrame(() => {
+    _chatScrollPinRaf = null;
+    chatScrollPinned = isChatNearBottom();
+    updateJumpToBottomButton();
+  });
+}
+
+function refreshContextMeter() {
+  if (typeof ComposerContextMeter !== 'undefined') ComposerContextMeter.refresh();
+}
+
+function applyRagStatsFromApi(data) {
+  if (!data?.ok) return;
+  const docs = data.documents || [];
+  ragStatsCache = {
+    count: data.count ?? docs.length,
+    vector_chunks: data.vector_chunks ?? 0,
+    totalChars: docs.reduce((sum, d) => sum + (Number(d.chars) || 0), 0),
+    embeddedDocs: docs.filter((d) => d.embedded).length,
+  };
+  refreshContextMeter();
+}
+
+async function refreshRagStatsForMeter() {
+  try {
+    const { data } = await api('GET', '/api/ai/rag', null, { timeoutMs: 10000 });
+    applyRagStatsFromApi(data);
+  } catch {
+    /* ignore */
+  }
+}
+
+function scrollToBottom({ force = false } = {}) {
+  const el = els.messages;
+  if (!el) return;
+  if (!force && !chatScrollPinned) {
+    updateJumpToBottomButton();
+    return;
+  }
+  el.scrollTop = el.scrollHeight;
+  if (force) chatScrollPinned = true;
+  updateJumpToBottomButton();
+}
+
+function jumpToBottom() {
+  scrollToBottom({ force: true });
 }
 
 // ---------------------------------------------------------------------------
@@ -2869,6 +3312,7 @@ function hideComposerSlashMenu() {
 }
 
 function showComposerSlashMenu(state) {
+  if (typeof ComposerMention !== 'undefined') ComposerMention.hideMenu();
   composerSlashOpen = true;
   composerSlashMenuState = state;
   els.composerSlashMenu?.classList.remove('hidden');
@@ -3039,6 +3483,10 @@ function renderComposerSlashList(state) {
 }
 
 async function refreshComposerSlashMenu() {
+  if (typeof ComposerMention !== 'undefined' && ComposerMention.isOpen()) {
+    hideComposerSlashMenu();
+    return;
+  }
   const state = getSlashMenuState(els.chatInput?.value || '');
   if (!state) {
     hideComposerSlashMenu();
@@ -3449,6 +3897,7 @@ function onComposerSlashKeydown(e) {
 function onComposerInput() {
   autoResize();
   refreshComposerSlashMenu().catch(() => {});
+  if (typeof ComposerMention !== 'undefined') ComposerMention.refresh().catch(() => {});
 }
 
 // ---------------------------------------------------------------------------
@@ -3465,7 +3914,11 @@ async function sendChat(e) {
 
   let text = els.chatInput.value.trim();
   const images = pendingImages.slice();
-  if (!text && images.length === 0) return;
+  const fileRefs = pendingFileRefs.slice();
+  if (!text && images.length === 0 && fileRefs.length === 0) return;
+
+  const isResendEdit = editingUserMsgIdx !== null;
+  const editMsgIdx = editingUserMsgIdx;
 
   const slashResolved = await resolveSlashSend(text);
   if (slashResolved?.blockSend) {
@@ -3475,7 +3928,7 @@ async function sendChat(e) {
 
   let displayText = text;
   let historyContent = null;
-  let sessionPreview = text || t('imageMessage', '图片消息');
+  let sessionPreview = text || (fileRefs.length ? t('mentionSessionPreview', 'Attached files') : t('imageMessage', '图片消息'));
   let slashWorkflow = '';
   let slashAgentId = '';
   let slashCompact = false;
@@ -3493,28 +3946,59 @@ async function sendChat(e) {
   const workflowForSend = slashWorkflow || pendingWorkflow;
   pendingWorkflow = '';
 
-  SessionStore.ensureSessionOnSend(sessionPreview);
-  renderSessionList();
-
-  const content = buildUserContent(displayText, images);
-  clearWelcomePanel();
-  syncMessagesLayoutMode();
-  appendUserMessage(content);
-  els.chatInput.value = '';
-  clearComposerAttachments();
-  autoResize();
-
-  const history = getCurrentMessages();
+  const content = await buildUserMessageContent(displayText, images, fileRefs);
   let finalHistoryContent = historyContent || content;
-  if (historyContent && images.length) {
+  if (historyContent && (images.length || fileRefs.length)) {
     const msgText = typeof historyContent === 'string'
       ? historyContent
       : (Array.isArray(historyContent)
         ? (historyContent.find((p) => p?.type === 'text')?.text || '')
         : '');
-    finalHistoryContent = buildUserContent(msgText, images);
+    finalHistoryContent = await buildUserMessageContent(msgText, images, fileRefs);
   }
-  history.push({ role: 'user', content: finalHistoryContent });
+  const storedFileRefs = fileRefs.map((ref) => ({ ...ref }));
+
+  if (isResendEdit) {
+    cancelEditUserMessage({ clearComposer: false });
+    clearWelcomePanel();
+    syncMessagesLayoutMode();
+    chatScrollPinned = true;
+
+    const history = getCurrentMessages().slice(0, editMsgIdx);
+    history.push({ role: 'user', content: finalHistoryContent, file_refs: storedFileRefs });
+    saveCurrentMessages(history);
+
+    els.chatInput.value = '';
+    clearComposerAttachments();
+    autoResize();
+    renderStoredMessages();
+    syncSessionsToDevice().catch(() => {});
+
+    pendingWorkflow = workflowForSend;
+    pendingAgentId = slashAgentId || pendingAgentId;
+    pendingCompact = !!slashCompact;
+    if (slashResolved?.consumer) pendingConsumerMode = true;
+    await streamAssistantResponse(history);
+    pendingWorkflow = '';
+    pendingAgentId = '';
+    pendingCompact = false;
+    pendingConsumerMode = false;
+    return;
+  }
+
+  SessionStore.ensureSessionOnSend(sessionPreview);
+  renderSessionList();
+
+  clearWelcomePanel();
+  syncMessagesLayoutMode();
+  chatScrollPinned = true;
+  appendUserMessage(content, { fileRefs: storedFileRefs, msgIdx: getCurrentMessages().length });
+  els.chatInput.value = '';
+  clearComposerAttachments();
+  autoResize();
+
+  const history = getCurrentMessages();
+  history.push({ role: 'user', content: finalHistoryContent, file_refs: storedFileRefs });
   saveCurrentMessages(history);
   syncSessionsToDevice().catch(() => {});
 
@@ -3627,7 +4111,15 @@ function finishAssistant(ui, assistantMessage, sessionId) {
   }
   ui.wrapper?.querySelector('.assistant-trace')?.remove();
   if (ui?.wrapper) delete ui.wrapper.dataset.liveStream;
-  setMessageModelTag(ui.wrapper?.querySelector('.message-meta'), assistantMessage.resolvedModel);
+  setMessageModelTag(ui.actionsBar, assistantMessage.resolvedModel);
+  const history = getCurrentMessages();
+  const assistantIdx = history.length - 1;
+  if (history[assistantIdx]?.role === 'assistant') {
+    finalizeAssistantTurn(ui, assistantIdx);
+    MessageFeedback.updateButtons(ui.turn, history[assistantIdx]);
+  } else {
+    ui.actionsBar?.classList.remove('is-pending');
+  }
   syncSessionsToDevice().catch(() => {});
   updateComposerSendBtn();
   renderSessionList();
@@ -4174,6 +4666,7 @@ async function applyServerConfig(config, opts = {}) {
   updateConfigSaveHint();
   updateModelBadgeFromSaved();
   maybeDismissOnboardingWizard();
+  refreshContextMeter();
   if (prevTz && prevTz !== config.timezone) {
     invalidateComposerSlashRoutes();
     if (cabanaInited && typeof CabanaPanel.reloadRoutes === 'function') {
@@ -4545,6 +5038,7 @@ async function loadBootstrap() {
     toolsMeta = data.tools;
     LocalPrefs.setServerToolDefaults(data.tools);
   }
+  if (Array.isArray(data.skills)) skillsRegistry = data.skills;
   hostEnvironment = data.hostEnvironment || hostEnvironment;
   applyHeaderChrome();
   applyStatusPill(data);
@@ -4586,6 +5080,13 @@ async function loadBootstrap() {
     renderConsumerQuickActions(data.consumer.wizards);
   }
   loadUsage().catch(() => {});
+  refreshRagStatsForMeter();
+  api('GET', '/api/ai/mcp').then(({ data }) => {
+    if (Array.isArray(data?.servers)) {
+      mcpConnectors = data.servers;
+      refreshContextMeter();
+    }
+  }).catch(() => {});
 }
 
 async function loadConfig() {
@@ -6565,7 +7066,10 @@ async function loadUsage() {
   const { data } = await api('GET', '/api/ai/usage');
   if (!data.ok) return;
   if (data.usage) usageData = data.usage;
-  if (data.embeddingUsage) embeddingUsageData = data.embeddingUsage;
+  if (data.embeddingUsage) {
+    embeddingUsageData = data.embeddingUsage;
+    refreshContextMeter();
+  }
   refreshUsageForCurrentModel();
   refreshEmbeddingUsageForCurrentModel();
   if (usageDetailOpen) renderUsageDetailModal();
@@ -6856,6 +7360,7 @@ function autoResize() {
 }
 
 function onChatKeydown(e) {
+  if (typeof ComposerMention !== 'undefined' && ComposerMention.onKeydown(e)) return;
   if (onComposerSlashKeydown(e)) return;
   if (e.key !== 'Enter' || e.shiftKey || e.isComposing) return;
   e.preventDefault();
@@ -6902,8 +7407,9 @@ function renderAssistantFromHistory(msg) {
   } else if (!msg.tool_calls?.length) {
     ui.content.textContent = t('noResponse', 'No response');
   }
-  setMessageModelTag(ui.wrapper?.querySelector('.message-meta'), msg.resolvedModel);
-  return ui.wrapper;
+  ui.actionsBar?.classList.remove('is-pending');
+  setMessageModelTag(ui.actionsBar, msg.resolvedModel);
+  return ui.turn;
 }
 
 function renderWelcomePanel() {
@@ -6960,19 +7466,28 @@ function renderStoredMessages() {
   if (isChatUiLocked()) return;
   const history = getCurrentMessages();
   els.messages.innerHTML = '';
-  for (const msg of history) {
+  for (let i = 0; i < history.length; i += 1) {
+    const msg = history[i];
     if (msg.role === 'user') {
-      appendUserMessage(msg.content);
+      const turn = appendUserMessage(msg.content, { scroll: false, msgIdx: i, fileRefs: msg.file_refs || [] });
+      if (turn && editingUserMsgIdx === i) {
+        turn.querySelector('.message.user')?.classList.add('is-editing');
+      }
     } else if (msg.role === 'assistant') {
       if (!assistantMessageHasContent(msg)) continue;
-      renderAssistantFromHistory(msg);
+      const turn = renderAssistantFromHistory(msg);
+      if (turn) {
+        turn.dataset.msgIdx = String(i);
+        MessageFeedback.updateButtons(turn, msg);
+      }
     }
   }
   if (!hasVisibleChatHistory(history)) {
     renderWelcomePanel();
   }
   syncMessagesLayoutMode();
-  scrollToBottom();
+  scrollToBottom({ force: true });
+  refreshContextMeter();
 }
 
 function onLangChange() {
@@ -6988,6 +7503,8 @@ function onLangChange() {
   if (typeof CabanaPanel !== 'undefined') {
     CabanaPanel.refresh();
   }
+  if (typeof MessageFeedback !== 'undefined') MessageFeedback.refreshTranslations();
+  if (typeof ComposerMention !== 'undefined') ComposerMention.refreshTranslations();
 }
 
 function onThemeToggle() {
@@ -6999,32 +7516,113 @@ function onThemeToggle() {
 // Init
 // ---------------------------------------------------------------------------
 
-function bindMessageCopy() {
+function bindMessageActions() {
   els.messages?.addEventListener('click', (e) => {
-    const btn = e.target.closest('.msg-copy-btn');
+    const btn = e.target.closest('.msg-action-btn');
     if (!btn) return;
     e.preventDefault();
-    const wrapper = btn.closest('.assistant-wrapper, .message.user');
-    const content = wrapper?.querySelector('.message.assistant, .message-text');
-    const text = content?.innerText?.trim() || '';
-    if (!text) return;
-    const done = () => {
-      btn.classList.add('copied');
-      const prev = btn.textContent;
-      btn.textContent = '✓';
-      setTimeout(() => {
-        btn.classList.remove('copied');
-        btn.textContent = prev;
-      }, 1400);
-    };
-    if (navigator.clipboard?.writeText) {
-      navigator.clipboard.writeText(text).then(done).catch(() => {});
+    const turn = btn.closest('.message-turn');
+    if (!turn) return;
+    const action = btn.dataset.action;
+    const msgIdx = parseInt(turn.dataset.msgIdx, 10);
+
+    if (action === 'copy') {
+      const text = getMessageTurnContentEl(turn)?.innerText?.trim() || '';
+      if (!text) return;
+      const done = () => {
+        btn.classList.add('copied');
+        setTimeout(() => btn.classList.remove('copied'), 1400);
+      };
+      if (navigator.clipboard?.writeText) {
+        navigator.clipboard.writeText(text).then(done).catch(() => {});
+      }
+      return;
+    }
+
+    if (action === 'edit') {
+      if (!Number.isFinite(msgIdx) || msgIdx < 0) return;
+      startEditUserMessage(msgIdx);
+      return;
+    }
+
+    if (action === 'like' || action === 'dislike') {
+      if (!Number.isFinite(msgIdx) || msgIdx < 0) return;
+      if (action === 'like') MessageFeedback.handleLike(msgIdx);
+      else MessageFeedback.handleDislike(msgIdx);
+      return;
+    }
+
+    if (action === 'speak') {
+      speakMessageFromTurn(turn, btn);
+      return;
+    }
+
+    if (action === 'regenerate') {
+      if (!Number.isFinite(msgIdx) || msgIdx < 0) return;
+      regenerateAssistantMessage(msgIdx);
+    }
+  });
+
+  document.getElementById('composerEditCancel')?.addEventListener('click', () => {
+    cancelEditUserMessage();
+  });
+
+  if (typeof window !== 'undefined' && window.speechSynthesis) {
+    window.speechSynthesis.addEventListener('voiceschanged', () => {});
+  }
+}
+
+function bindHeaderMoreMenu() {
+  const btn = document.getElementById('headerMoreBtn');
+  const menu = document.getElementById('headerMoreMenu');
+  if (!btn || !menu) return;
+
+  const actionMap = {
+    notifications: () => toggleNotificationsPanel(),
+    terminal: () => {
+      if (typeof TerminalPanel === 'undefined') return;
+      TerminalPanel.setOpen(!TerminalPanel.isOpen());
+    },
+    secoc: () => {
+      if (secocOpen) closeSecocModal();
+      else openSecocModal();
+    },
+    office: () => {
+      if (typeof OfficePanel !== 'undefined') OfficePanel.toggle();
+    },
+    cabana: () => toggleCabanaModal(),
+  };
+
+  const setOpen = (open) => {
+    menu.classList.toggle('hidden', !open);
+    btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+  };
+
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    setOpen(menu.classList.contains('hidden'));
+  });
+
+  menu.querySelectorAll('[data-header-action]').forEach((item) => {
+    item.addEventListener('click', () => {
+      const action = item.getAttribute('data-header-action');
+      actionMap[action]?.();
+      setOpen(false);
+    });
+  });
+
+  document.addEventListener('click', (e) => {
+    if (!menu.classList.contains('hidden') && !btn.contains(e.target) && !menu.contains(e.target)) {
+      setOpen(false);
     }
   });
 }
 
 function bindUiEvents() {
-  bindMessageCopy();
+  bindMessageActions();
+  bindHeaderMoreMenu();
+  els.messages?.addEventListener('scroll', onMessagesScroll, { passive: true });
+  els.jumpToBottomBtn?.addEventListener('click', jumpToBottom);
   els.cabanaBtn?.addEventListener('click', toggleCabanaModal);
   els.cabanaClose?.addEventListener('click', closeCabanaModal);
   els.cabanaBackdrop?.addEventListener('click', closeCabanaModal);
@@ -7281,7 +7879,41 @@ async function init() {
       t,
       scheduleSessionSync,
       isSessionStreaming: isSessionJobRunning,
-      onRouteChange: () => refreshModelBadgeForSession(),
+      onRouteChange: () => {
+        refreshModelBadgeForSession();
+        refreshContextMeter();
+      },
+    });
+  }
+  if (typeof ComposerContextMeter !== 'undefined') {
+    ComposerContextMeter.mount('#composerContextMeter', {
+      getConfig: () => savedConfig,
+      getHub: () => effectiveModelHub(savedConfig),
+      getSession: () => SessionStore.getActive(),
+      getMessages: getCurrentMessages,
+      getToolsMeta: () => toolsMeta,
+      getSkillsRegistry: () => skillsRegistry,
+      getConnectors: () => mcpConnectors,
+      getRagStats: () => ragStatsCache,
+      getEmbeddingUsage: () => embeddingUsageData,
+      messageText,
+      getEffectiveRoute: typeof SessionModelPicker !== 'undefined'
+        ? (session, hub) => SessionModelPicker.getEffectiveRoute(session, hub)
+        : undefined,
+      fmtTokenNum,
+      t,
+      tf,
+    });
+  }
+  if (typeof SessionSearch !== 'undefined') {
+    SessionSearch.mount({
+      api,
+      t,
+      escapeHtml,
+      messageText,
+      listSessions: () => SessionStore.listWithContent(),
+      getSessionById: (id) => SessionStore.getById(id),
+      navigateToHit: navigateToSessionHit,
     });
   }
   if (typeof AgentsPanel !== 'undefined') {
@@ -7310,6 +7942,37 @@ async function init() {
     DeviceTrust.refreshTrust(api).catch(() => {});
   }
   bindSettingsTabs();
+  if (typeof ComposerMention !== 'undefined') {
+    ComposerMention.init({
+      api,
+      t,
+      showToast,
+      escapeHtml,
+      getInput: () => els.chatInput,
+      getPendingRefs: () => pendingFileRefs,
+      getPendingFiles: () => pendingFileRefs,
+      listSessions: () => SessionStore.listWithContent(),
+      getActiveSessionId: () => SessionStore.activeId,
+      getGitBranch: () => state?.fork?.git_branch || '',
+      onAttach: (ref) => {
+        pendingFileRefs.push(ref);
+        renderComposerAttachments();
+      },
+      autoResize,
+      hideSlashMenu: hideComposerSlashMenu,
+    });
+  }
+  if (typeof MessageFeedback !== 'undefined') {
+    MessageFeedback.init({
+      api,
+      t,
+      showToast,
+      SessionStore,
+      getCurrentMessages,
+      saveCurrentMessages,
+      setOverlayVisible,
+    });
+  }
   bindUiEvents();
   bindUsageDetailTabs();
   if (typeof TskPanel !== 'undefined') TskPanel.bind();

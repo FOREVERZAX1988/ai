@@ -14,6 +14,7 @@ const AppDom = (() => {
     messages: $('#messages'),
     opQuickActions: $('#opQuickActions'),
     composer: $('#composer'),
+    jumpToBottomBtn: $('#jumpToBottomBtn'),
     chatInput: $('#chatInput'),
     imageBtn: $('#imageBtn'),
     imageInput: $('#imageInput'),
