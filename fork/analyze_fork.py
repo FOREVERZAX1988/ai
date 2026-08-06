@@ -90,7 +90,7 @@ async def analyze_fork_with_ai(
   emit: EmitFn = None,
 ) -> dict[str, Any]:
   """Let configured model read scan + file excerpts and infer fork characteristics."""
-  from ai.client import load_config_from_params
+  from ai.server.deps import read_ai_config
 
   await emit_phase(emit, "scan", "active")
   scan = scan_openpilot_repo(root)
@@ -116,7 +116,7 @@ async def analyze_fork_with_ai(
       }
   await emit_phase(emit, "cache", "done", message="需要运行 AI 分析" if not force else "已强制重新分析")
 
-  config = load_config_from_params(params)
+  config = read_ai_config(params)
   if not config.is_configured:
     err = config.configuration_error or "请先配置模型 API（设置 → 模型）"
     await emit_event(emit, {"type": "error", "error": err})

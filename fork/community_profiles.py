@@ -75,7 +75,17 @@ def match_community_profile(scan: dict[str, Any]) -> dict[str, Any] | None:
     reasons: list[str] = []
 
     if _remote_matches(entry, remote):
-      if not (entry.get("id") == "commaai/openpilot" and has_sunnypilot_tree):
+      skip_remote = False
+      if entry.get("id") == "commaai/openpilot" and has_sunnypilot_tree:
+        skip_remote = True
+      # bp remote is often an upstream mirror; don't label sunnypilot trees as BluePilot.
+      if (
+        entry.get("id") == "BluePilotDev/bluepilot"
+        and has_sunnypilot_tree
+        and not (root_path / "bluepilot").is_dir()
+      ):
+        skip_remote = True
+      if not skip_remote:
         score += 100
         reasons.append(f"remote→{entry.get('id')}")
 

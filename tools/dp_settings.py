@@ -1,5 +1,3 @@
-"""Compatibility shim — use sp_settings for openpilot catalog."""
+"""Compatibility shim — use `ai.tools.domains.tune.dp_settings` instead."""
 
-from ai.tools.sp_settings import list_dp_settings, list_sp_settings
-
-__all__ = ["list_dp_settings", "list_sp_settings"]
+from ai.tools.domains.tune.dp_settings import *  # noqa: F403

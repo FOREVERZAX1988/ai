@@ -22,7 +22,7 @@
 | **对话后进化管线** | `evolution_pipeline.py` — 工作区/技能/工具描述 |
 | **USER.md / MEMORY.md / 每日日志** | `workspace/USER.md`、`MEMORY.md`、`memory/YYYY-MM-DD.md` 注入 prompt |
 | **Memory protocol 技能** | `skills/memory-protocol/SKILL.md` 固定加载 + 强制工具写入 |
-| **Memory nudge** | `chat_runner.py` system 提示 |
+| **Memory nudge** | `core/chat/runner.py` system 提示 |
 | **Heartbeat LLM 巡检** | `heartbeat.py` — 读 HEARTBEAT.md + LLM 判断，无事静默 |
 | **Cron NL + chat_notify** | `tools/scheduler.py` `parse_nl_task_spec` + `chat_notify` 动作 |
 | 斜杠命令补全 | `/compact` `/agent` `/verbose` `/trace` `/usage` `/memory` `/workspace` `/office` 等 |

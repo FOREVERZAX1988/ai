@@ -6,7 +6,7 @@
   <title>OP 助手</title>
   <link rel="icon" type="image/svg+xml" href="/static/img/favicon.svg">
   <link rel="stylesheet" href="/static/vendor/markdown-it/highlight-github-dark.min.css">
-  <link rel="stylesheet" href="/static/css/ai.css?v=20260804d">
+  <link rel="stylesheet" href="/static/css/ai.css?v=20260806p">
   <link rel="stylesheet" href="/static/css/office-panel.css?v=20260730s">
   <link rel="stylesheet" href="/static/css/canvas-panel.css?v=20260723e">
   <link rel="stylesheet" href="/static/css/cabana-panel.css?v=20260730k">
@@ -62,29 +62,69 @@
           </div>
         </div>
 
+        <div class="header-zone header-center" id="sessionSearchWrap">
+          <div class="session-search session-search--desktop">
+            <div class="session-search-field">
+              <svg class="session-search-icon icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+              <input type="search" id="sessionSearchInput" class="session-search-input" autocomplete="off" spellcheck="false" enterkeyhint="search" aria-label="Search chats">
+            </div>
+          </div>
+          <div class="session-search-dropdown hidden" id="sessionSearchDropdown" role="listbox"></div>
+        </div>
+
         <div class="header-zone header-right">
-          <button type="button" id="notificationsBtn" class="btn icon notifications-btn hidden" title="通知" aria-label="Notifications">
+          <button type="button" id="sessionSearchMobileBtn" class="btn icon session-search-mobile-btn" title="搜索" aria-label="Search chats">
+            <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+          </button>
+          <button type="button" id="notificationsBtn" class="btn icon notifications-btn header-tool-secondary hidden" title="通知" aria-label="Notifications">
             <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
             <span class="notifications-badge" id="notificationsBadge" hidden>0</span>
           </button>
-          <button type="button" id="themeBtn" class="btn icon" title="Theme" aria-label="Theme">
+          <button type="button" id="themeBtn" class="btn icon header-tool-primary" title="Theme" aria-label="Theme">
             <svg class="icon-svg theme-icon-dark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
           </button>
-          <button type="button" id="terminalToggleBtn" class="btn icon" title="Web 终端" aria-label="Terminal">
+          <button type="button" id="terminalToggleBtn" class="btn icon header-tool-secondary" title="Web 终端" aria-label="Terminal">
             <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M4 17 10 11 4 5"/><path d="M12 19h8"/></svg>
           </button>
-          <button type="button" id="secocBtn" class="btn icon" title="SecOC" aria-label="SecOC" data-i18n-title="tabSecoc">
+          <button type="button" id="secocBtn" class="btn icon header-tool-secondary" title="SecOC" aria-label="SecOC" data-i18n-title="tabSecoc">
             <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0 3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
           </button>
-          <button type="button" id="officeBtn" class="btn icon" title="OP 办公室" aria-label="OP Office">
+          <button type="button" id="officeBtn" class="btn icon header-tool-secondary" title="OP 办公室" aria-label="OP Office">
             <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
           </button>
-          <button type="button" id="cabanaBtn" class="btn icon" title="CAN 分析" aria-label="CAN analysis">
+          <button type="button" id="cabanaBtn" class="btn icon header-tool-secondary" title="CAN 分析" aria-label="CAN analysis">
             <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M5 12h2l2-5 4 10 2-5h4"/></svg>
           </button>
-          <button type="button" id="settingsBtn" class="btn icon" title="设置" aria-label="Settings">
+          <button type="button" id="settingsBtn" class="btn icon header-tool-primary" title="设置" aria-label="Settings">
             <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
           </button>
+          <div class="header-more-wrap">
+            <button type="button" id="headerMoreBtn" class="btn icon header-more-btn" title="更多" aria-label="More" aria-expanded="false" aria-haspopup="menu">
+              <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true"><circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/></svg>
+            </button>
+            <div class="header-more-menu hidden" id="headerMoreMenu" role="menu">
+              <button type="button" class="header-more-item" data-header-action="notifications" role="menuitem">
+                <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+                <span data-i18n="headerMoreNotifications">通知</span>
+              </button>
+              <button type="button" class="header-more-item" data-header-action="terminal" role="menuitem">
+                <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M4 17 10 11 4 5"/><path d="M12 19h8"/></svg>
+                <span data-i18n="headerMoreTerminal">终端</span>
+              </button>
+              <button type="button" class="header-more-item" data-header-action="secoc" role="menuitem">
+                <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0 3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
+                <span data-i18n="tabSecoc">SecOC</span>
+              </button>
+              <button type="button" class="header-more-item" data-header-action="office" role="menuitem">
+                <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+                <span data-i18n="headerMoreOffice">办公室</span>
+              </button>
+              <button type="button" class="header-more-item" data-header-action="cabana" role="menuitem">
+                <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M5 12h2l2-5 4 10 2-5h4"/></svg>
+                <span data-i18n="openCabana">CAN 分析</span>
+              </button>
+            </div>
+          </div>
           <span class="queue-mode-badge hidden" id="queueModeBadge" title="行驶队列模式">抢占</span>
           <div class="status-pill loading" id="statusPill" aria-live="polite"></div>
         </div>
@@ -100,9 +140,26 @@
               <p class="composer-slash-label" id="composerSlashLabel" data-i18n="slashMenuPickCommand">斜杠指令</p>
               <div class="composer-slash-list" id="composerSlashList"></div>
             </div>
+            <div class="composer-slash-menu composer-mention-menu hidden" id="composerMentionMenu" role="listbox" aria-label="Context search">
+              <p class="composer-slash-label" id="composerMentionLabel" data-i18n="mentionAddContext">添加上下文</p>
+              <div class="composer-slash-list" id="composerMentionList"></div>
+            </div>
+            <button type="button" id="jumpToBottomBtn" class="btn icon jump-to-bottom hidden" aria-hidden="true">
+              <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 5v14M5 12l7 7 7-7"/></svg>
+            </button>
             <form class="composer-card" id="composer">
+              <div class="composer-edit-banner hidden" id="composerEditBanner">
+                <span id="composerEditBannerText" data-i18n="editingMessage">正在编辑消息</span>
+                <button type="button" id="composerEditCancel" class="btn icon composer-edit-cancel" aria-label="取消" title="取消">
+                  <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
+                </button>
+              </div>
               <textarea id="chatInput" rows="1" placeholder="描述问题…"></textarea>
               <div class="composer-actions">
+                <div class="session-model-picker" id="sessionModelPicker">
+                  <button type="button" class="session-model-picker-btn unset" id="sessionModelPickerBtn" aria-haspopup="listbox" aria-expanded="false">—</button>
+                  <div class="session-model-picker-menu hidden" id="sessionModelPickerMenu" role="listbox"></div>
+                </div>
                 <div class="composer-hint-wrap">
                   <button type="button" id="composerHintBtn" class="btn icon composer-hint-btn" aria-describedby="composerHintTooltip">
                     <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 8h.01"/></svg>
@@ -114,8 +171,33 @@
                 </button>
                 <input type="file" id="imageInput" accept="image/*" multiple hidden>
                 <span class="composer-spacer"></span>
-                <button type="submit" class="btn primary composer-send" id="sendBtn" title="Send" aria-label="Send">
-                  <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+                <div class="composer-context-meter" id="composerContextMeter">
+                  <button type="button" class="composer-context-meter-btn" id="composerContextMeterBtn" aria-expanded="false" aria-haspopup="dialog">
+                    <svg class="composer-context-ring" viewBox="0 0 24 24" aria-hidden="true">
+                      <circle class="composer-context-ring-bg" cx="12" cy="12" r="9"></circle>
+                      <circle class="composer-context-ring-fg" cx="12" cy="12" r="9"></circle>
+                    </svg>
+                    <span class="composer-context-pct" id="composerContextPct">0%</span>
+                  </button>
+                  <div class="composer-context-panel" id="composerContextMeterPanel" role="dialog" aria-labelledby="composerContextPanelTitle">
+                    <div class="composer-context-panel-head">
+                      <span class="composer-context-panel-title" id="composerContextPanelTitle" data-i18n="contextUsageTitle">上下文用量</span>
+                      <button type="button" class="btn icon composer-context-panel-close" aria-label="Close">
+                        <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
+                      </button>
+                    </div>
+                    <div class="composer-context-panel-summary">
+                      <span class="composer-context-panel-pct" id="composerContextPanelPct">0%</span>
+                      <span class="composer-context-panel-used" id="composerContextPanelUsed">已使用 0 / 0</span>
+                    </div>
+                    <div class="composer-context-bar" id="composerContextBar"></div>
+                    <div class="composer-context-list" id="composerContextList"></div>
+                    <div class="composer-context-panel-footer hidden" id="composerContextPanelFooter"></div>
+                  </div>
+                </div>
+                <button type="submit" class="btn primary composer-send" id="sendBtn" title="发送" aria-label="发送">
+                  <svg class="icon-svg composer-send-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+                  <svg class="icon-svg composer-stop-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="1.5"/></svg>
                 </button>
               </div>
             </form>
@@ -326,7 +408,13 @@
           <div class="hidden" id="legacyModelFields" aria-hidden="true">
             <label class="field"><span class="field-label" id="providerLabel">服务商</span><select id="providerSelect"></select></label>
             <div id="mainModelCombobox" class="model-combobox-host"></div>
-            <input type="text" id="apiKeyInput" autocomplete="off" spellcheck="false">
+            <div class="password-field">
+              <input type="password" id="apiKeyInput" autocomplete="off" spellcheck="false">
+              <button type="button" class="password-reveal" data-password-for="apiKeyInput" aria-label="显示" title="显示">
+                <svg class="icon-svg eye-closed" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+                <svg class="icon-svg eye-open hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+              </button>
+            </div>
             <label class="field hidden" id="baseUrlField"><input type="text" id="baseUrlInput"></label>
           </div>
 
@@ -392,38 +480,21 @@
 
         <!-- 知识库 / Embedding -->
         <div class="settings-pane" id="paneKnowledge" role="tabpanel">
-          <p class="settings-pane-lead" id="embeddingPaneDesc">向量检索用（与聊天模型分开配置）</p>
+          <p class="settings-pane-lead" id="embeddingPaneDesc">向量检索与记忆语义搜索；Embedding 路由在「模型」页的模型中心配置。</p>
           <section class="settings-card">
             <header class="settings-card-head settings-card-head-row">
-              <h3 class="settings-card-title" id="embeddingSectionTitle">Embedding 配置</h3>
-              <button type="button" id="settingsKnowledgeBtn" class="btn ghost small">管理文档</button>
+              <h3 class="settings-card-title" id="embeddingSectionTitle">Embedding 路由</h3>
+              <button type="button" id="embeddingGoModelHubBtn" class="btn ghost small">前往模型中心</button>
             </header>
             <div class="settings-card-body">
-              <label class="field"><span class="field-label" id="embeddingModeLabel" data-i18n="embeddingModeLabel">Embedding 模式</span>
-                <select id="embeddingModeSelect">
-                  <option value="same" data-i18n="embeddingModeSame">与聊天同一服务商 Key</option>
-                  <option value="separate" data-i18n="embeddingModeSeparate">单独 Embedding 服务商</option>
-                </select>
-              </label>
-              <div id="embeddingSeparateFields" class="hidden">
-                <label class="field"><span class="field-label" id="embeddingProviderLabel" data-i18n="embeddingProviderLabel">Embedding 服务商</span><select id="embeddingProviderSelect"></select></label>
-                <label class="field"><span class="field-label" id="embeddingApiKeyLabel" data-i18n="embeddingApiKeyLabel">Embedding API Key</span>
-                  <input type="text" id="embeddingApiKeyInput" data-i18n-placeholder="embeddingApiKeyPlaceholder" placeholder="硅基流动等专用 Key" autocomplete="off" spellcheck="false">
-                </label>
-                <label class="field hidden" id="embeddingBaseUrlField"><span class="field-label" id="embeddingBaseUrlLabel" data-i18n="embeddingBaseUrlLabel">Embedding Base URL</span><input type="text" id="embeddingBaseUrlInput" data-i18n-placeholder="embeddingBaseUrlPlaceholder" placeholder="custom 时填写"></label>
-              </div>
-              <label class="field">
-                <span class="field-label" id="embeddingModelLabel" data-i18n="embeddingModelLabel">Embedding 模型</span>
-                <div class="model-field">
-                  <div id="embeddingModelCombobox" class="model-combobox-host"></div>
-                </div>
-              </label>
+              <p class="field-hint" id="embeddingRouteSummary">未配置 Embedding 模型</p>
+              <p class="field-hint muted" id="embeddingRouteHint">在模型中心添加 Embedding 路由与备用模型，保存后自动重建索引。</p>
             </div>
           </section>
           <section class="settings-card settings-card-compact" id="knowledgeIndexSection">
             <header class="settings-card-head settings-card-head-row">
               <h3 class="settings-card-title" id="knowledgeIndexTitle">索引与检索</h3>
-              <span class="dev-count-badge" id="knowledgeRagBadge">—</span>
+              <button type="button" id="settingsKnowledgeBtn" class="btn ghost small">管理文档</button>
             </header>
             <div class="settings-card-body" id="ragStatusBox">
               <div class="dev-skeleton dev-skeleton-line"></div>
@@ -990,6 +1061,23 @@
 
   <div id="sessionsBackdrop" class="sessions-backdrop" hidden></div>
 
+  <div id="sessionSearchModal" class="session-search-modal" aria-hidden="true">
+    <div class="session-search-modal-backdrop"></div>
+    <div class="session-search-modal-panel" role="dialog" aria-modal="true" aria-labelledby="sessionSearchModalTitle">
+      <div class="session-search-modal-head">
+        <h2 id="sessionSearchModalTitle" data-i18n="sessionSearchTitle">搜索会话</h2>
+        <button type="button" class="btn icon session-search-modal-close" aria-label="Close">
+          <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
+        </button>
+      </div>
+      <div class="session-search-modal-input-wrap">
+        <svg class="session-search-icon icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <input type="search" id="sessionSearchModalInput" class="session-search-input" autocomplete="off" spellcheck="false" enterkeyhint="search">
+      </div>
+      <div class="session-search-modal-results" id="sessionSearchModalResults" role="listbox"></div>
+    </div>
+  </div>
+
   <div id="officeModal" class="modal office-modal" hidden>
     <div class="modal-backdrop" id="officeBackdrop"></div>
     <div class="modal-content office-modal-content">
@@ -1173,6 +1261,26 @@
     </div>
   </div>
 
+  <div id="feedbackModal" class="modal feedback-modal" hidden>
+    <div class="modal-backdrop" id="feedbackBackdrop"></div>
+    <div class="modal-content feedback-modal-content">
+      <div class="modal-header">
+        <h2 data-i18n="feedbackTitle">请选择不满意的原因</h2>
+        <button type="button" class="modal-close" id="feedbackClose" aria-label="Close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div id="feedbackReasons" class="feedback-reason-grid" role="group" aria-label="Feedback reasons"></div>
+        <label class="field feedback-comment-field hidden" id="feedbackCommentWrap">
+          <span class="field-label" data-i18n="feedbackCommentLabel">补充说明</span>
+          <textarea id="feedbackComment" rows="3" maxlength="500" placeholder="请简要说明问题…"></textarea>
+        </label>
+      </div>
+      <footer class="modal-foot feedback-modal-foot">
+        <button type="button" id="feedbackSubmit" class="btn primary feedback-submit-btn" disabled data-i18n="feedbackSubmit">提交反馈</button>
+      </footer>
+    </div>
+  </div>
+
   <div id="writeConfirmModal" class="modal" hidden>
     <div class="modal-backdrop" id="writeConfirmBackdrop"></div>
     <div class="modal-content write-confirm-content">
@@ -1209,7 +1317,13 @@
           </label>
           <label class="field">
             <span class="field-label" id="onboardingApiKeyLabel">API Key</span>
-            <input type="text" id="onboardingApiKey" autocomplete="off" spellcheck="false">
+            <div class="password-field">
+              <input type="password" id="onboardingApiKey" autocomplete="off" spellcheck="false">
+              <button type="button" class="password-reveal" data-password-for="onboardingApiKey" aria-label="显示" title="显示">
+                <svg class="icon-svg eye-closed" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+                <svg class="icon-svg eye-open hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+              </button>
+            </div>
           </label>
           <label class="field">
             <span class="field-label" id="onboardingModelLabel">模型</span>
@@ -1219,13 +1333,13 @@
           <details class="onboarding-section onboarding-embed-details">
           <summary class="onboarding-section-title" id="onboardingEmbeddingTitle">Embedding（知识库，可选）</summary>
           <div class="onboarding-embed-body">
-            <p class="field-hint onboarding-section-hint" id="onboardingEmbeddingDesc">用于知识库检索，默认与聊天共用 API Key。</p>
-            <label class="field">
-              <span class="field-label" id="onboardingEmbeddingModeLabel">Embedding 模式</span>
-              <select id="onboardingEmbeddingMode">
-                <option value="same">与聊天同一服务商 Key</option>
-                <option value="separate">单独 Embedding 服务商</option>
-              </select>
+            <p class="field-hint onboarding-section-hint" id="onboardingEmbeddingDesc">用于知识库检索，默认使用聊天账户的 Embedding 模型。</p>
+            <label class="field switch-row">
+              <span class="field-label" id="onboardingEmbeddingSeparateLabel">使用独立 Embedding 服务商</span>
+              <label class="switch">
+                <input type="checkbox" id="onboardingEmbeddingSeparateToggle">
+                <span class="slider"></span>
+              </label>
             </label>
             <div id="onboardingEmbeddingSeparateFields" class="hidden onboarding-embed-separate">
               <label class="field">
@@ -1234,7 +1348,13 @@
               </label>
               <label class="field">
                 <span class="field-label" id="onboardingEmbeddingApiKeyLabel">Embedding API Key</span>
-                <input type="text" id="onboardingEmbeddingApiKey" autocomplete="off" spellcheck="false" placeholder="留空则使用上方聊天 Key">
+                <div class="password-field">
+                  <input type="password" id="onboardingEmbeddingApiKey" autocomplete="off" spellcheck="false" placeholder="留空则使用上方聊天 Key">
+                  <button type="button" class="password-reveal" data-password-for="onboardingEmbeddingApiKey" aria-label="显示" title="显示">
+                    <svg class="icon-svg eye-closed" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+                    <svg class="icon-svg eye-open hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+                  </button>
+                </div>
               </label>
             </div>
             <label class="field">
@@ -1291,7 +1411,7 @@
     </div>
   </div>
 
-  <script src="/static/js/i18n.js?v=20260804d"></script>
+  <script src="/static/js/i18n.js?v=20260806t"></script>
   <script src="/static/js/theme.js?v=20260715h"></script>
   <script src="/static/vendor/markdown-it/markdown-it-tasklists.bundle.js"></script>
   <script src="/static/vendor/markdown-it/purify.min.js"></script>
@@ -1302,15 +1422,29 @@
   <script src="/static/vendor/xterm/addon-fit.js?v=20260722i"></script>
   <script src="/static/js/session-sync.js?v=20260722k"></script>
   <script src="/static/js/model-combobox.js?v=20260722j"></script>
-  <script src="/static/js/local-prefs.js?v=20260731j"></script>
+  <script src="/static/js/local-prefs.js?v=20260806b"></script>
   <script src="/static/js/quick-actions.js?v=20260715h"></script>
   <script src="/static/js/tsk-panel.js?v=20260804a"></script>
-  <script src="/static/js/web-chat-jobs.js?v=20260730i"></script>
+  <script src="/static/js/session-model-picker.js?v=20260807b"></script>
+  <script src="/static/js/chat/model-tag.js?v=20260807b"></script>
+  <script src="/static/js/app/globals.js?v=20260807b"></script>
+  <script src="/static/js/app/dom.js?v=20260806c"></script>
+  <script src="/static/js/session-search.js?v=20260806j"></script>
+  <script src="/static/js/composer-context-meter.js?v=20260806i"></script>
+  <script src="/static/js/composer-mention.js?v=20260806t"></script>
+  <script src="/static/js/message-feedback.js?v=20260806q"></script>
+  <script src="/static/js/web-chat-jobs.js?v=20260806m"></script>
   <script src="/static/js/web-api.js?v=20260730t"></script>
   <script src="/static/js/ui-busy.js?v=20260728a"></script>
   <script src="/static/js/web-config.js?v=20260722h"></script>
+<<<<<<< HEAD
   <script src="/static/js/model-hub.js?v=20260804e"></script>
   <script src="/static/js/fallback-models.js?v=20260731f"></script>
+=======
+  <script src="/static/js/password-field.js?v=20260727c"></script>
+  <script src="/static/js/model-hub.js?v=20260806c"></script>
+  <script src="/static/js/fallback-models.js?v=20260727c"></script>
+>>>>>>> upstream/main
   <script src="/static/js/web-sync-ws.js?v=20260722h"></script>
   <script src="/static/js/terminal-sidecar.js?v=20260723b"></script>
   <script src="/static/js/terminal-ai.js?v=20260730z"></script>
@@ -1324,12 +1458,12 @@
   }
   </script>
   <script type="module" src="/static/js/office-scene-3d.mjs?v=20260730s"></script>
-  <script src="/static/js/platform-panel.js?v=20260729t"></script>
+  <script src="/static/js/platform-panel.js?v=20260727a"></script>
   <script src="/static/js/office-panel.js?v=20260730s"></script>
   <script src="/static/js/command-queue.js?v=20260723k"></script>
   <script src="/static/js/canvas-panel.js?v=20260723a"></script>
   <script src="/static/js/terminal-panel.js?v=20260723e"></script>
-  <script src="/static/js/ai.js?v=20260804g"></script>
+  <script src="/static/js/ai.js?v=20260806t"></script>
   <script src="/static/vendor/uplot/uPlot.iife.min.js"></script>
   <script src="/static/js/cabana-panel.js?v=20260804a"></script>
 </body>

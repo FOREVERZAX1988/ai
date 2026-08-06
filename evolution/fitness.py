@@ -7,7 +7,7 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
-from ai.client import chat_completion_collect
+from ai.core.llm.client import chat_completion_collect
 from ai.evolution.dataset import EvalExample
 
 _JUDGE_SYSTEM = """Score an agent draft against a rubric. JSON only:

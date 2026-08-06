@@ -12,7 +12,7 @@ from openpilot.common.swaglog import cloudlog
 
 from ai.server.deps import get_state_reader, params, read_ai_config
 from ai.server.handlers.scheduler import scheduler_execute_action, device_wifi_connected
-from ai.sync_hub import broadcast_status
+from ai.core.sync.hub import broadcast_status
 from ai.tools.scheduler import run_due_tasks
 
 _PARAMS = params()

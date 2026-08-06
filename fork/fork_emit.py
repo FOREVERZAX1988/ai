@@ -54,7 +54,7 @@ async def stream_llm_completion(
   timeout_total: float = 240,
 ) -> tuple[str, str, str | None]:
   """Stream chat completion; emit reasoning/content deltas. Returns (content, reasoning, error)."""
-  from ai.client import chat_completion
+  from ai.core.llm.client import chat_completion
 
   content_parts: list[str] = []
   reasoning_parts: list[str] = []

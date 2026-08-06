@@ -11,7 +11,7 @@ from aiohttp import web
 from openpilot.common.params import Params
 from openpilot.common.swaglog import cloudlog
 
-from ai.client import AIConfig, load_config_from_params
+from ai.core.llm.client import AIConfig, load_config_from_params
 from ai.common.storage import read_param, read_param_bool, write_param, write_param_bool
 from ai.selfdrive.state import StateReader
 from ai.system.admin import is_admin_mode
@@ -72,7 +72,7 @@ def mask_key(key: str) -> str:
 
 
 def read_ai_config() -> AIConfig:
-  from ai.model_accounts import resolve_primary_config
+  from ai.core.llm.model_accounts import resolve_primary_config
   base = load_config_from_params(_PARAMS)
   return resolve_primary_config(_PARAMS, base)
 

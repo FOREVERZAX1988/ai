@@ -71,7 +71,7 @@ class TestMemoryProtocol(unittest.TestCase):
     with tempfile.TemporaryDirectory() as tmp:
       root = Path(tmp)
       with mock.patch("ai.tools.daily_memory.workspace_dir", return_value=root):
-        with mock.patch("ai.workspace_store.workspace_dir", return_value=root):
+        with mock.patch("ai.core.workspace.store.workspace_dir", return_value=root):
           out = apply_memory_payload(None, {
             "skip": False,
             "daily_bullets": ["用户偏好跟车远"],

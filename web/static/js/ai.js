@@ -1,217 +1,10 @@
 let hostEnvironment = null;
-const $ = (sel) => document.querySelector(sel);
-const $$ = (sel) => document.querySelectorAll(sel);
-
-const APP_SPLASH_MIN_MS = 480;
-const appSplashStartedAt = (typeof performance !== 'undefined' ? performance.now() : Date.now());
-
-document.body.classList.add('app-booting');
-
-const els = {
-  messages: $('#messages'),
-  opQuickActions: $('#opQuickActions'),
-  composer: $('#composer'),
-  chatInput: $('#chatInput'),
-  imageBtn: $('#imageBtn'),
-  imageInput: $('#imageInput'),
-  composerAttachments: $('#composerAttachments'),
-  composerHintBtn: $('#composerHintBtn'),
-  composerHintTooltip: $('#composerHintTooltip'),
-  sendBtn: $('#sendBtn'),
-  knowledgeBtn: $('#knowledgeBtn'),
-  settingsKnowledgeBtn: $('#settingsKnowledgeBtn'),
-  knowledgeModal: $('#knowledgeModal'),
-  knowledgeBackdrop: $('#knowledgeBackdrop'),
-  knowledgeClose: $('#knowledgeClose'),
-  cabanaBtn: $('#cabanaBtn'),
-  cabanaModal: $('#cabanaModal'),
-  cabanaBackdrop: $('#cabanaBackdrop'),
-  cabanaClose: $('#cabanaClose'),
-  notificationsBtn: $('#notificationsBtn'),
-  notificationsBadge: $('#notificationsBadge'),
-  notificationsPanel: $('#notificationsPanel'),
-  notificationsBackdrop: $('#notificationsBackdrop'),
-  notificationsList: $('#notificationsList'),
-  notificationsMarkReadBtn: $('#notificationsMarkReadBtn'),
-  notificationsCloseBtn: $('#notificationsCloseBtn'),
-  notificationsTitle: $('#notificationsTitle'),
-  workspace: $('#workspace'),
-  statusPill: $('#statusPill'),
-  themeBtn: $('#themeBtn'),
-  settingsBtn: $('#settingsBtn'),
-  settingsSidebar: $('#settingsSidebar'),
-  settingsSidebarClose: $('#settingsSidebarClose'),
-  settingsBackdrop: $('#settingsBackdrop'),
-  appShell: $('#appShell'),
-  sessionsToggleBtn: $('#sessionsToggleBtn'),
-  sessionsCloseBtn: $('#sessionsCloseBtn'),
-  sessionsPanel: $('#sessionsPanel'),
-  sessionsBackdrop: $('#sessionsBackdrop'),
-  sessionList: $('#sessionList'),
-  newSessionBtn: $('#newSessionBtn'),
-  activeAgentBadge: $('#activeAgentBadge'),
-  modelBadge: $('#modelBadge'),
-  officeBtn: $('#officeBtn'),
-  secocBtn: $('#secocBtn'),
-  secocModal: $('#secocModal'),
-  secocBackdrop: $('#secocBackdrop'),
-  secocCloseBtn: $('#secocCloseBtn'),
-  providerSelect: $('#providerSelect'),
-  apiKeyInput: $('#apiKeyInput'),
-  baseUrlField: $('#baseUrlField'),
-  baseUrlInput: $('#baseUrlInput'),
-  systemPromptInput: $('#systemPromptInput'),
-  temperatureInput: $('#temperatureInput'),
-  topPInput: $('#topPInput'),
-  maxTokensInput: $('#maxTokensInput'),
-  contextWindowInput: $('#contextWindowInput'),
-  compactionEnabledToggle: $('#compactionEnabledToggle'),
-  compactAfterTurnsInput: $('#compactAfterTurnsInput'),
-  keepRecentTurnsInput: $('#keepRecentTurnsInput'),
-  reserveTokensInput: $('#reserveTokensInput'),
-  compactionTokenTriggerToggle: $('#compactionTokenTriggerToggle'),
-  evolutionEnabledToggle: $('#evolutionEnabledToggle'),
-  evolutionAutoWorkspaceToggle: $('#evolutionAutoWorkspaceToggle'),
-  evolutionAutoMemoryToggle: $('#evolutionAutoMemoryToggle'),
-  evolutionLlmReflectToggle: $('#evolutionLlmReflectToggle'),
-  evolutionAutoProposeToggle: $('#evolutionAutoProposeToggle'),
-  evolutionToolDescToggle: $('#evolutionToolDescToggle'),
-  evolutionGepaEnabledToggle: $('#evolutionGepaEnabledToggle'),
-  evolutionUseDspyToggle: $('#evolutionUseDspyToggle'),
-  skillsDisclosureMaxInput: $('#skillsDisclosureMaxInput'),
-  evolutionCandidatesInput: $('#evolutionCandidatesInput'),
-  thinkingToggle: $('#thinkingToggle'),
-  langSelect: $('#langSelect'),
-  timezoneSelect: $('#timezoneSelect'),
-  composerSlashMenu: $('#composerSlashMenu'),
-  composerSlashLabel: $('#composerSlashLabel'),
-  composerSlashList: $('#composerSlashList'),
-  saveBtn: $('#saveBtn'),
-  personaSaveBtn: $('#personaSaveBtn'),
-  usageSection: $('#usageSection'),
-  usageGrid: $('#usageGrid'),
-  usageModelHint: $('#usageModelHint'),
-  usageDetailBtn: $('#usageDetailBtn'),
-  embeddingUsageDetailBtn: $('#embeddingUsageDetailBtn'),
-  usageDetailModal: $('#usageDetailModal'),
-  usageDetailBackdrop: $('#usageDetailBackdrop'),
-  usageDetailClose: $('#usageDetailClose'),
-  usageDetailTotals: $('#usageDetailTotals'),
-  usageByProviderTable: $('#usageByProviderTable'),
-  usageByModelTable: $('#usageByModelTable'),
-  usageEmbeddingTotals: $('#usageEmbeddingTotals'),
-  usageEmbeddingByProviderTable: $('#usageEmbeddingByProviderTable'),
-  usageEmbeddingByModelTable: $('#usageEmbeddingByModelTable'),
-  embeddingUsageGrid: $('#embeddingUsageGrid'),
-  embeddingUsageHint: $('#embeddingUsageHint'),
-  toast: $('#toast'),
-  schedulerTaskList: $('#schedulerTaskList'),
-  schedName: $('#schedName'),
-  schedAction: $('#schedAction'),
-  schedActionCustom: $('#schedActionCustom'),
-  schedActionModeBtn: $('#schedActionModeBtn'),
-  schedInterval: $('#schedInterval'),
-  schedHour: $('#schedHour'),
-  schedMinute: $('#schedMinute'),
-  schedDailyFields: $('#schedDailyFields'),
-  schedAddBtn: $('#schedAddBtn'),
-  tunePassportList: $('#tunePassportList'),
-  hostEnvBox: $('#hostEnvBox'),
-  packageVersionBox: $('#packageVersionBox'),
-  devPackageCheckBtn: $('#devPackageCheckBtn'),
-  devPackageUpdateBtn: $('#devPackageUpdateBtn'),
-  collabVersionLine: $('#collabVersionLine'),
-  collabRepoLine: $('#collabRepoLine'),
-  collabAuthLine: $('#collabAuthLine'),
-  devCollabDirtyBadge: $('#devCollabDirtyBadge'),
-  forkDetectBox: $('#forkDetectBox'),
-  forkDetailsBox: $('#forkDetailsBox'),
-  forkProgressBox: $('#forkProgressBox'),
-  forkProgressStatus: $('#forkProgressStatus'),
-  forkProgressPhases: $('#forkProgressPhases'),
-  forkProgressLog: $('#forkProgressLog'),
-  forkProgressThinkingWrap: $('#forkProgressThinkingWrap'),
-  forkProgressThinking: $('#forkProgressThinking'),
-  forkProgressContentWrap: $('#forkProgressContentWrap'),
-  forkProgressContent: $('#forkProgressContent'),
-  devForkRefreshBtn: $('#devForkRefreshBtn'),
-  devForkSyncBtn: $('#devForkSyncBtn'),
-  ragStatusBox: $('#ragStatusBox'),
-  knowledgeRagBadge: $('#knowledgeRagBadge'),
-  devRuntimeSummary: $('#devRuntimeSummary'),
-  devCacheStatusBox: $('#devCacheStatusBox'),
-  devCacheTotalBadge: $('#devCacheTotalBadge'),
-  devCacheDays: $('#devCacheDays'),
-  devCacheMode: $('#devCacheMode'),
-  devCacheClearBtn: $('#devCacheClearBtn'),
-  collabCredentialsBox: $('#collabCredentialsBox'),
-  collabCredentialsWrap: $('#collabCredentialsWrap'),
-  publishSettingsBox: $('#publishSettingsBox'),
-  publishUnitsBox: $('#publishUnitsBox'),
-  devPublishSaveBtn: $('#devPublishSaveBtn'),
-  publishPromptModal: $('#publishPromptModal'),
-  publishPromptBackdrop: $('#publishPromptBackdrop'),
-  publishPromptClose: $('#publishPromptClose'),
-  publishPromptCancel: $('#publishPromptCancel'),
-  publishPromptOk: $('#publishPromptOk'),
-  publishPromptUnits: $('#publishPromptUnits'),
-  publishPromptTitleInput: $('#publishPromptTitleInput'),
-  publishPromptHint: $('#publishPromptHint'),
-  issueSettingsBox: $('#issueSettingsBox'),
-  issueFormBox: $('#issueFormBox'),
-  devIssueSubmitBtn: $('#devIssueSubmitBtn'),
-  collabGoPublishPrTab: $('#collabGoPublishPrTab'),
-  onboardingModal: $('#onboardingModal'),
-  onboardingBackdrop: $('#onboardingBackdrop'),
-  onboardingProvider: $('#onboardingProvider'),
-  onboardingApiKey: $('#onboardingApiKey'),
-  onboardingTestBtn: $('#onboardingTestBtn'),
-  onboardingSaveBtn: $('#onboardingSaveBtn'),
-  onboardingResult: $('#onboardingResult'),
-  onboardingCar: $('#onboardingCar'),
-  onboardingBrand: $('#onboardingBrand'),
-  onboardingEmbeddingMode: $('#onboardingEmbeddingMode'),
-  onboardingEmbeddingProvider: $('#onboardingEmbeddingProvider'),
-  onboardingEmbeddingApiKey: $('#onboardingEmbeddingApiKey'),
-  onboardingEmbeddingSeparateFields: $('#onboardingEmbeddingSeparateFields'),
-  onboardingRagSetup: $('#onboardingRagSetup'),
-  onboardingRagReindex: $('#onboardingRagReindex'),
-  onboardingRagWiki: $('#onboardingRagWiki'),
-  onboardingRagStatus: $('#onboardingRagStatus'),
-  onboardingRagStartBtn: $('#onboardingRagStartBtn'),
-  onboardingRagSkipBtn: $('#onboardingRagSkipBtn'),
-  onboardingBackupFile: $('#onboardingBackupFile'),
-  onboardingRestoreBtn: $('#onboardingRestoreBtn'),
-  onboardingRestoreStatus: $('#onboardingRestoreStatus'),
-  knowledgeMainContent: $('#knowledgeMainContent'),
-  pcSessionsList: $('#pcSessionsList'),
-  devAssetsList: $('#devAssetsList'),
-  devRefreshBtn: $('#devRefreshBtn'),
-  ragDocList: $('#ragDocList'),
-  ragTitle: $('#ragTitle'),
-  ragText: $('#ragText'),
-  ragSaveBtn: $('#ragSaveBtn'),
-  ragSyncWikiBtn: $('#ragSyncWikiBtn'),
-  ragReindexBtn: $('#ragReindexBtn'),
-  ragVectorStatus: $('#ragVectorStatus'),
-  embeddingModeSelect: $('#embeddingModeSelect'),
-  embeddingProviderSelect: $('#embeddingProviderSelect'),
-  embeddingApiKeyInput: $('#embeddingApiKeyInput'),
-  embeddingBaseUrlInput: $('#embeddingBaseUrlInput'),
-  embeddingSeparateFields: $('#embeddingSeparateFields'),
-  embeddingBaseUrlField: $('#embeddingBaseUrlField'),
-  writeConfirmModal: $('#writeConfirmModal'),
-  writeConfirmPreview: $('#writeConfirmPreview'),
-  writeConfirmConsumer: $('#writeConfirmConsumer'),
-  writeConfirmRollback: $('#writeConfirmRollback'),
-  writeConfirmOk: $('#writeConfirmOk'),
-  writeConfirmCancel: $('#writeConfirmCancel'),
-  writeConfirmClose: $('#writeConfirmClose'),
-  writeConfirmBackdrop: $('#writeConfirmBackdrop'),
-  schedTrigger: $('#schedTrigger'),
-};
+/* $, $$, els, APP_SPLASH_* provided by app/dom.js */
 
 let toolsMeta = {};
+let skillsRegistry = [];
+let mcpConnectors = [];
+let ragStatsCache = { count: 0, vector_chunks: 0, totalChars: 0, embeddedDocs: 0 };
 let embeddingDefaults = {};
 let configSaveState = 'idle';
 let configSaveInFlight = false;
@@ -369,6 +162,7 @@ function initChatJobs() {
     loadUsage,
     syncThinkingBlock,
     updateModelBadge,
+    setMessageModelTag,
     clearLiveStreamChrome,
     getLiveStreamUi,
     getLastAssistantUi,
@@ -378,6 +172,11 @@ function initChatJobs() {
     assistantMessageHasContent,
     isLocallyStreaming,
     isChatUiLocked,
+    isSessionJobRunning,
+    getSessionMessages,
+    renderSessionList,
+    updateComposerSendBtn,
+    scheduleSessionSync,
   });
 }
 
@@ -406,6 +205,31 @@ function abortActiveChat() {
   if (typeof ChatJobs !== 'undefined') ChatJobs.abortActive();
 }
 
+function abortSessionChat(sessionId) {
+  if (typeof ChatJobs !== 'undefined') ChatJobs.abortSession(sessionId);
+}
+
+function isSessionJobRunning(sessionId) {
+  return typeof ChatJobs !== 'undefined' && ChatJobs.isSessionRunning(sessionId);
+}
+
+function getSessionMessages(sessionId) {
+  const session = SessionStore.getById(sessionId);
+  return session?.messages || [];
+}
+
+function updateComposerSendBtn() {
+  const sessionId = SessionStore.activeId;
+  const streaming = isSessionJobRunning(sessionId);
+  if (!els.sendBtn) return;
+  let label = t('send', 'Send');
+  if (streaming) label = t('stop', 'Stop');
+  else if (editingUserMsgIdx !== null) label = t('resendEdited', 'Resend');
+  els.sendBtn.title = label;
+  els.sendBtn.setAttribute('aria-label', label);
+  els.sendBtn.classList.toggle('is-stop', streaming);
+}
+
 function applyBuiltinAgents(data) {
   if (typeof AgentsPanel !== 'undefined') AgentsPanel.applyBuiltinAgents(data);
 }
@@ -427,6 +251,8 @@ const MAX_IMAGE_DIMENSION = 1280;
 const JPEG_QUALITY = 0.82;
 
 let pendingImages = [];
+let pendingFileRefs = [];
+let editingUserMsgIdx = null;
 let cabanaOpen = false;
 let secocOpen = false;
 let cabanaInited = false;
@@ -483,9 +309,8 @@ function setI18nText(selector, key, fallback) {
 
 function applyCachedUiState() {
   const src = savedConfig?.model ? savedConfig : LocalPrefs.getConfigCache();
-  if (!src?.model) return;
-  if (savedConfig?.model) updateModelBadgeFromSaved();
-  else updateModelBadge(src.model);
+  if (!src?.model && !src?.modelHub) return;
+  updateModelBadgeFromSaved();
 }
 
 function hydrateFromLocalPrefs() {
@@ -520,26 +345,10 @@ function renderTimezoneSelect(preferred) {
   els.timezoneSelect.value = ids.includes(current) ? current : 'Asia/Shanghai';
 }
 
-function bindPasswordReveals() {
-  document.querySelectorAll('.password-reveal[data-password-for]').forEach((btn) => {
-    if (btn.dataset.bound === '1') return;
-    btn.dataset.bound = '1';
-    const inputId = btn.getAttribute('data-password-for');
-    const input = document.getElementById(inputId);
-    if (!input) return;
-    const eyeOpen = btn.querySelector('.eye-open');
-    const eyeClosed = btn.querySelector('.eye-closed');
-    const sync = (visible) => {
-      input.type = visible ? 'text' : 'password';
-      btn.setAttribute('aria-pressed', visible ? 'true' : 'false');
-      btn.title = visible ? t('hidePassword', 'Hide') : t('showPassword', 'Show');
-      btn.setAttribute('aria-label', btn.title);
-      eyeOpen?.classList.toggle('hidden', visible);
-      eyeClosed?.classList.toggle('hidden', !visible);
-    };
-    sync(false);
-    btn.addEventListener('click', () => sync(input.type === 'password'));
-  });
+function bindPasswordReveals(root) {
+  if (typeof PasswordField !== 'undefined') {
+    PasswordField.bind(root);
+  }
 }
 
 function applySecocPaneI18n() {
@@ -565,11 +374,37 @@ function applyTranslations() {
     els.composerHintBtn.title = t('composerHintAria', 'Input shortcuts');
     els.composerHintBtn.setAttribute('aria-label', els.composerHintBtn.title);
   }
+  if (els.jumpToBottomBtn) {
+    els.jumpToBottomBtn.title = t('jumpToBottomAria', 'Jump to latest messages');
+    els.jumpToBottomBtn.setAttribute('aria-label', els.jumpToBottomBtn.title);
+  }
+  const contextPanelTitle = document.getElementById('composerContextPanelTitle');
+  if (contextPanelTitle) contextPanelTitle.textContent = t('contextUsageTitle', 'Context usage');
+  const sessionSearchInput = document.getElementById('sessionSearchInput');
+  if (sessionSearchInput) sessionSearchInput.placeholder = t('sessionSearchPlaceholder', 'Search chats…');
+  const sessionSearchModalInput = document.getElementById('sessionSearchModalInput');
+  if (sessionSearchModalInput) sessionSearchModalInput.placeholder = t('sessionSearchPlaceholder', 'Search chats…');
+  const sessionSearchModalTitle = document.getElementById('sessionSearchModalTitle');
+  if (sessionSearchModalTitle) sessionSearchModalTitle.textContent = t('sessionSearchTitle', 'Search chats');
+  const sessionSearchMobileBtn = document.getElementById('sessionSearchMobileBtn');
+  if (sessionSearchMobileBtn) {
+    sessionSearchMobileBtn.title = t('sessionSearchPlaceholder', 'Search chats…');
+    sessionSearchMobileBtn.setAttribute('aria-label', sessionSearchMobileBtn.title);
+  }
+  const composerEditBannerText = document.getElementById('composerEditBannerText');
+  if (composerEditBannerText) composerEditBannerText.textContent = t('editingMessage', 'Editing message');
+  const composerEditCancel = document.getElementById('composerEditCancel');
+  if (composerEditCancel) {
+    const cancelLabel = t('cancelEdit', 'Cancel');
+    composerEditCancel.title = cancelLabel;
+    composerEditCancel.setAttribute('aria-label', cancelLabel);
+  }
+  updateComposerSendBtn();
+  refreshContextMeter();
   if (els.composerSlashLabel && !composerSlashOpen) {
     els.composerSlashLabel.textContent = t('slashMenuPickCommand', 'Slash commands');
   }
   els.imageBtn.title = t('attachImage', 'Add image');
-  els.sendBtn.title = t('send', 'Send');
   setI18nText('#settingsTitle', 'settings', 'Settings');
   setI18nText('#providerLabel', 'provider');
   setI18nText('#modelLabel', 'model');
@@ -718,8 +553,8 @@ function applyTranslations() {
   setI18nText('#onboardingApiKeyLabel', 'apiKey', 'API Key');
   setI18nText('#onboardingModelLabel', 'model', 'Model');
   setI18nText('#onboardingEmbeddingTitle', 'onboardingEmbeddingTitle', 'Embedding (RAG)');
-  setI18nText('#onboardingEmbeddingDesc', 'onboardingEmbeddingDesc', 'For knowledge search; shares chat API key by default.');
-  setI18nText('#onboardingEmbeddingModeLabel', 'embeddingModeLabel', 'Embedding mode');
+  setI18nText('#onboardingEmbeddingDesc', 'onboardingEmbeddingDesc', 'For knowledge search; uses chat account embedding by default.');
+  setI18nText('#onboardingEmbeddingSeparateLabel', 'onboardingEmbeddingSeparateLabel', 'Separate embedding provider');
   setI18nText('#onboardingEmbeddingProviderLabel', 'embeddingProviderLabel', 'Embedding provider');
   setI18nText('#onboardingEmbeddingApiKeyLabel', 'embeddingApiKeyLabel', 'Embedding API Key');
   setI18nText('#onboardingEmbeddingModelLabel', 'embeddingModelLabel', 'Embedding model');
@@ -738,12 +573,6 @@ function applyTranslations() {
   if (els.onboardingSaveBtn) els.onboardingSaveBtn.textContent = t('onboardingSaveBtn', 'Save and continue');
   if (els.onboardingRagSkipBtn) els.onboardingRagSkipBtn.textContent = t('onboardingRagSkip', 'Set up later');
   if (els.onboardingRagStartBtn) els.onboardingRagStartBtn.textContent = t('onboardingRagStart', 'Start setup');
-  if (els.onboardingEmbeddingMode) {
-    const same = els.onboardingEmbeddingMode.querySelector('option[value="same"]');
-    const sep = els.onboardingEmbeddingMode.querySelector('option[value="separate"]');
-    if (same) same.textContent = t('embeddingModeSame', 'Same provider as chat');
-    if (sep) sep.textContent = t('embeddingModeSeparate', 'Separate embedding provider');
-  }
   const writeTitle = $('#writeConfirmTitle');
   if (writeTitle) writeTitle.textContent = t('writeConfirmTitle');
   const writeHint = $('#writeConfirmHint');
@@ -887,9 +716,12 @@ async function applyRemoteSessionsData(data) {
   if (typeof SessionSync !== 'undefined' && SessionSync.shouldSkipRemoteMerge({
     data,
     isLocallyStreaming,
-    hasActiveChatJob: () => Boolean(
-      (typeof ChatJobs !== 'undefined' && ChatJobs.getActiveJobId() && abortController)
-    ),
+    hasActiveChatJob: () => {
+      for (const s of SessionStore.listWithContent()) {
+        if (isSessionJobRunning(s.id)) return true;
+      }
+      return false;
+    },
   })) {
     return false;
   }
@@ -908,7 +740,7 @@ async function applyRemoteSessionsData(data) {
   const remoteAuthoritative = typeof SessionSync !== 'undefined'
     && SessionSync.shouldTakeRemoteAuthoritative(data)
     && !isLocallyStreaming()
-    && !(typeof ChatJobs !== 'undefined' && ChatJobs.getActiveJobId() && abortController);
+    && !SessionStore.listWithContent().some((s) => isSessionJobRunning(s.id));
 
   let merged = [];
   if (remoteSessions.length || localSessions.length) {
@@ -981,7 +813,7 @@ async function refreshSessionViewFromRemote() {
   const sessionsChanged = await loadSessionsFromDevice();
   const configChanged = await pullConfigFromDevice();
   renderSessionList();
-  if ((typeof ChatJobs !== 'undefined' && ChatJobs.getActiveJobId()) && abortController) {
+  if (isSessionJobRunning(SessionStore.activeId)) {
     updateLiveAssistantFromSession();
     return;
   }
@@ -1063,9 +895,7 @@ function startSyncWebSocket() {
 
 async function handleSyncWsSessions(data) {
   if (typeof SessionSync !== 'undefined') SessionSync.setServerSyncMeta(data);
-  const locallyAttached = isLocallyStreaming() || Boolean(
-    (typeof ChatJobs !== 'undefined' && ChatJobs.getActiveJobId()) && abortController
-  );
+  const locallyAttached = SessionStore.listWithContent().some((s) => isSessionJobRunning(s.id));
   const changed = await applyRemoteSessionsData(data);
   renderSessionList();
   if (locallyAttached) {
@@ -1096,7 +926,11 @@ async function handleSyncWsHello(data) {
     DeviceTrust.ensureTrusted(api).catch(() => {});
   }
   if (Array.isArray(data.activeJobs) && data.activeJobs.length) {
-    await syncActiveSessionStreaming();
+    if (typeof ChatJobs !== 'undefined' && ChatJobs.resumeActiveJobs) {
+      await ChatJobs.resumeActiveJobs(data.activeJobs);
+    } else {
+      await syncActiveSessionStreaming();
+    }
   }
 }
 
@@ -1561,7 +1395,17 @@ function renderSessionList() {
   }
   for (const s of sessions) {
     const li = document.createElement('li');
-    li.className = `session-item${s.id === activeId ? ' active' : ''}`;
+    const streaming = isSessionJobRunning(s.id);
+    li.className = `session-item${s.id === activeId ? ' active' : ''}${streaming ? ' streaming' : ''}`;
+    if (streaming) {
+      li.setAttribute('aria-busy', 'true');
+      const status = document.createElement('span');
+      status.className = 'session-status-spinner';
+      status.setAttribute('role', 'status');
+      status.title = t('sessionRunning', 'Generating…');
+      status.setAttribute('aria-label', t('sessionRunning', 'Generating…'));
+      li.appendChild(status);
+    }
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'session-btn';
@@ -1584,19 +1428,12 @@ function renderSessionList() {
 }
 
 function isLocallyStreaming(sessionId = SessionStore.activeId) {
-  return Boolean(
-    sessionId
-    && streamSessionId === sessionId
-    && abortController
-    && !abortController.cancelled
-  );
+  if (!sessionId) return false;
+  return SessionStore.activeId === sessionId && isSessionJobRunning(sessionId);
 }
 
 function isChatUiLocked() {
-  return Boolean(
-    isLocallyStreaming()
-    || (abortController && !abortController.cancelled)
-  );
+  return isLocallyStreaming(SessionStore.activeId);
 }
 
 function getLiveStreamUi() {
@@ -1683,17 +1520,18 @@ function showAssistantLoading(ui) {
 }
 
 function endChatStream(sessionId) {
-  if (sessionId && streamSessionId === sessionId) streamSessionId = null;
-  abortController = null;
-  if (typeof ChatJobs !== 'undefined') {
-    ChatJobs.setActiveJobId(null);
-    ChatJobs.endPoll();
+  if (sessionId && streamSessionId === sessionId) {
+    streamSessionId = null;
+    abortController = null;
   }
-  els.messages?.querySelectorAll('.assistant-wrapper[data-live-stream="1"]').forEach((el) => {
-    clearLiveStreamChrome(wrapperToAssistantUi(el));
-    delete el.dataset.liveStream;
-  });
-  if (els.sendBtn) els.sendBtn.textContent = t('send', 'Send');
+  // Do not call ChatJobs.endPoll() — other sessions may still stream in background.
+  if (!sessionId || SessionStore.activeId === sessionId) {
+    els.messages?.querySelectorAll('.assistant-wrapper[data-live-stream="1"]').forEach((el) => {
+      clearLiveStreamChrome(wrapperToAssistantUi(el));
+      delete el.dataset.liveStream;
+    });
+    if (els.sendBtn) updateComposerSendBtn();
+  }
 }
 
 function wrapperToAssistantUi(wrapper) {
@@ -1724,10 +1562,51 @@ function markLiveStreamUi(ui) {
   if (ui?.wrapper) ui.wrapper.dataset.liveStream = '1';
 }
 
+function scrollToMessageIndex(idx) {
+  const el = els.messages?.querySelector(`[data-msg-idx="${idx}"]`);
+  if (!el) return false;
+  chatScrollPinned = false;
+  updateJumpToBottomButton();
+  el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  el.classList.add('search-hit-flash');
+  setTimeout(() => el.classList.remove('search-hit-flash'), 2200);
+  return true;
+}
+
+async function navigateToSessionHit(hit) {
+  if (!hit?.sessionId) return;
+  const sessionId = hit.sessionId;
+  const needsSwitch = SessionStore.activeId !== sessionId;
+  if (needsSwitch) {
+    switchSession(sessionId);
+    const session = SessionStore.getById(sessionId);
+    if (session?.hasContent && !(session.messages || []).length) {
+      await loadSessionDetail(sessionId);
+      loadSessionMode();
+      renderStoredMessages();
+      renderSessionList();
+    }
+  }
+  let msgIdx = typeof hit.messageIndex === 'number' ? hit.messageIndex : -1;
+  if (msgIdx < 0 && typeof SessionSearch !== 'undefined') {
+    msgIdx = SessionSearch.findMessageIndex(sessionId, hit);
+  }
+  if (msgIdx >= 0) {
+    requestAnimationFrame(() => {
+      if (!scrollToMessageIndex(msgIdx)) {
+        setTimeout(() => scrollToMessageIndex(msgIdx), 120);
+      }
+    });
+  }
+}
+
 function switchSession(id) {
-  abortActiveChat();
+  cancelEditUserMessage();
   SessionStore.setActive(id);
   const session = SessionStore.getActive();
+  refreshModelBadgeForSession();
+  if (typeof SessionModelPicker !== 'undefined') SessionModelPicker.refresh();
+  updateComposerSendBtn();
   const needsDetail = session?.hasContent && !(session.messages || []).length;
   if (needsDetail) {
     loadSessionDetail(id).then(() => {
@@ -1748,24 +1627,78 @@ function switchSession(id) {
 }
 
 function createNewSession() {
-  abortActiveChat();
+  cancelEditUserMessage();
   SessionStore.startDraft();
+  refreshModelBadgeForSession();
+  if (typeof SessionModelPicker !== 'undefined') SessionModelPicker.refresh();
+  updateComposerSendBtn();
   renderStoredMessages();
   renderSessionList();
   closeSessionsDrawer();
 }
 
-function updateModelBadge(model) {
+function formatResolvedModelLabel(model) {
+  if (typeof ChatModelTag !== 'undefined') return ChatModelTag.formatResolvedModelLabel(model);
+  const raw = String(model || '').trim();
+  if (!raw) return '';
+  return raw.length > 28 ? `${raw.slice(0, 26)}…` : raw;
+}
+
+function setMessageModelTag(metaEl, resolvedModel) {
+  if (typeof ChatModelTag !== 'undefined') {
+    ChatModelTag.setMessageModelTag(metaEl, resolvedModel);
+    return;
+  }
+  if (!metaEl) return;
+  const label = formatResolvedModelLabel(resolvedModel);
+  let tag = metaEl.querySelector('.message-model-tag');
+  if (!tag) {
+    tag = document.createElement('span');
+    tag.className = 'message-model-tag hidden';
+    metaEl.insertBefore(tag, metaEl.firstChild);
+  }
+  if (!label) {
+    tag.classList.add('hidden');
+    tag.textContent = '';
+    return;
+  }
+  tag.classList.remove('hidden');
+  tag.textContent = label;
+  tag.title = String(resolvedModel);
+}
+
+function hubPrimaryChatRoute() {
+  const hub = effectiveModelHub(savedConfig);
+  const primary = hub?.primary;
+  if (!primary?.accountId || !primary?.model) return null;
+  return { accountId: primary.accountId, model: primary.model };
+}
+
+function updateModelBadge(label, title) {
   if (!els.modelBadge) return;
-  const raw = String(model || savedConfig?.model || '').trim();
-  const label = raw || t('modelUnset', 'Not configured');
-  els.modelBadge.textContent = label;
-  els.modelBadge.title = raw || label;
+  const raw = String(label || '').trim();
+  const display = raw || t('modelUnset', 'Not configured');
+  els.modelBadge.textContent = display;
+  els.modelBadge.title = String(title || raw || display);
   els.modelBadge.classList.toggle('unset', !raw);
 }
 
-function updateModelBadgeFromSaved() {
+function refreshModelBadgeForSession() {
+  const hub = effectiveModelHub(savedConfig);
+  const session = SessionStore.getActive();
+  if (typeof SessionModelPicker !== 'undefined') {
+    const route = SessionModelPicker.getEffectiveRoute(session, hub);
+    updateModelBadge(
+      SessionModelPicker.formatRouteLabel(route, hub),
+      SessionModelPicker.formatRouteTitle(route, hub),
+    );
+    return;
+  }
   updateModelBadge(savedConfig?.model || '');
+}
+
+function updateModelBadgeFromSaved() {
+  refreshModelBadgeForSession();
 }
 
 function formatApiError(raw) {
@@ -1800,6 +1733,7 @@ function hasUnsavedConfigDraft() {
 function showUnsavedConfigWarning() {}
 
 function deleteSession(id) {
+  abortSessionChat(id);
   SessionStore.remove(id);
   if (!SessionStore.listWithContent().length) {
     SessionStore.startDraft();
@@ -2061,6 +1995,7 @@ async function loadRagPanel() {
   const { data } = await api('GET', '/api/ai/rag');
   if (typeof UiBusy !== 'undefined') UiBusy.clearPanelBusy(els.ragDocList);
   if (!data.ok || !els.ragDocList) return;
+  applyRagStatsFromApi(data);
   await loadKnowledgeRagStatus(data);
   const docs = data.documents || [];
   const chunks = data.vector_chunks ?? 0;
@@ -2494,6 +2429,61 @@ function buildUserContent(text, images) {
   return parts;
 }
 
+async function buildUserMessageContent(text, images, contextRefs = []) {
+  let finalText = (text || '').trim();
+  const refs = (contextRefs || []).slice();
+  if (refs.length) {
+    const blocks = [];
+    for (const ref of refs) {
+      const type = ref.type || (ref.kind === 'dir' ? 'dir' : 'file');
+      try {
+        if (type === 'browser') {
+          blocks.push(`\n\n---\n@${t('mentionBrowser', 'Browser')}\n${t('mentionBrowserPrompt', 'You may fetch live web pages and use browser tools when helpful.')}`);
+          continue;
+        }
+        if (type === 'branch') {
+          const q = ref.branch ? `branch=${encodeURIComponent(ref.branch)}` : '';
+          const { data } = await api('GET', `/api/ai/context/branch${q ? `?${q}` : ''}`);
+          if (data?.ok && data.content) {
+            const label = data.branch || ref.name || 'branch';
+            blocks.push(`\n\n---\n@Branch ${label}\n\`\`\`diff\n${data.content}\n\`\`\``);
+          }
+          continue;
+        }
+        if (type === 'session') {
+          const { data } = await api('GET', `/api/ai/context/session?session_id=${encodeURIComponent(ref.sessionId)}`);
+          if (data?.ok && data.content) {
+            const label = data.title || ref.name || ref.sessionId;
+            blocks.push(`\n\n---\n@Past chat: ${label}\n\`\`\`\n${data.content}\n\`\`\``);
+          }
+          continue;
+        }
+        if (type === 'url') {
+          const { data } = await api('GET', `/api/ai/context/url?url=${encodeURIComponent(ref.url)}`);
+          if (data?.ok && data.content) {
+            const label = data.title || ref.url;
+            blocks.push(`\n\n---\n@${label}\n${ref.url}\n\`\`\`\n${data.content}\n\`\`\``);
+          }
+          continue;
+        }
+        const { data } = await api('GET', `/api/ai/files/content?path=${encodeURIComponent(ref.path)}`);
+        if (data?.ok && data.content) {
+          const label = data.rel || ref.rel || ref.name;
+          const fence = data.kind === 'dir' ? '' : '';
+          blocks.push(`\n\n---\n@${label}\n\`\`\`${fence}\n${data.content}\n\`\`\``);
+        }
+      } catch {
+        const label = ref.rel || ref.name || ref.url || ref.sessionId || type;
+        blocks.push(`\n\n---\n@${label}\n(${t('mentionReadFailed', '无法读取上下文')})`);
+      }
+    }
+    if (blocks.length) {
+      finalText = (finalText || t('mentionDefaultPrompt', '请结合以下上下文回答：')) + blocks.join('');
+    }
+  }
+  return buildUserContent(finalText, images);
+}
+
 function loadImageElement(src) {
   return new Promise((resolve, reject) => {
     const img = new Image();
@@ -2558,13 +2548,43 @@ async function addImageFiles(files) {
 }
 
 function renderComposerAttachments() {
-  if (!pendingImages.length) {
+  const hasImages = pendingImages.length > 0;
+  const hasFiles = pendingFileRefs.length > 0;
+  if (!hasImages && !hasFiles) {
     els.composerAttachments.classList.add('hidden');
     els.composerAttachments.innerHTML = '';
     return;
   }
   els.composerAttachments.classList.remove('hidden');
   els.composerAttachments.innerHTML = '';
+
+  pendingFileRefs.forEach((ref, index) => {
+    const item = document.createElement('div');
+    item.className = 'composer-file-chip';
+    const icon = document.createElement('span');
+    icon.className = 'composer-file-chip-icon';
+    const type = ref.type || (ref.kind === 'dir' ? 'dir' : 'file');
+    const iconMap = { dir: '📁', file: '📄', url: '🔗', branch: '⎇', session: '💬', browser: '🌐' };
+    icon.textContent = iconMap[type] || '📄';
+    const label = document.createElement('span');
+    label.className = 'composer-file-chip-name';
+    label.textContent = ref.rel || ref.name || ref.title || ref.url || ref.sessionId || type;
+    label.title = ref.path || ref.url || ref.sessionId || ref.rel || ref.name || '';
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'composer-file-chip-remove';
+    remove.textContent = '×';
+    remove.title = t('mentionRemoveFile', 'Remove file');
+    remove.addEventListener('click', () => {
+      pendingFileRefs.splice(index, 1);
+      renderComposerAttachments();
+    });
+    item.appendChild(icon);
+    item.appendChild(label);
+    item.appendChild(remove);
+    els.composerAttachments.appendChild(item);
+  });
+
   pendingImages.forEach((img, index) => {
     const item = document.createElement('div');
     item.className = 'composer-attachment';
@@ -2588,6 +2608,7 @@ function renderComposerAttachments() {
 
 function clearComposerAttachments() {
   pendingImages = [];
+  pendingFileRefs = [];
   renderComposerAttachments();
 }
 
@@ -2823,25 +2844,239 @@ function createMessageElement(role) {
   return div;
 }
 
-function appendUserMessage(content) {
+const MSG_ACTION_ICONS = {
+  copy: '<svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>',
+  edit: '<svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>',
+  like: '<svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true"><path d="M7 10v12"/><path d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2a3.13 3.13 0 0 1 3 3.88Z"/></svg>',
+  dislike: '<svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true"><path d="M17 14V2"/><path d="M9 18.12 10 14H4.17a2 2 0 0 1-1.92-2.56l2.33-8A2 2 0 0 1 6.5 2H20a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2.76a2 2 0 0 0-1.79 1.11L12 22a3.13 3.13 0 0 1-3-3.88Z"/></svg>',
+  speak: '<svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true"><path d="M11 5 6 9H2v6h4l5 4V5Z"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>',
+  regenerate: '<svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>',
+};
+
+let activeTtsBtn = null;
+
+function createMessageActionBtn(action, label) {
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'msg-action-btn';
+  btn.dataset.action = action;
+  btn.title = label;
+  btn.setAttribute('aria-label', label);
+  btn.innerHTML = MSG_ACTION_ICONS[action] || '';
+  return btn;
+}
+
+function createMessageActionsBar(role) {
+  const bar = document.createElement('div');
+  bar.className = 'message-actions-bar';
+  bar.dataset.role = role;
+
+  const left = document.createElement('div');
+  left.className = 'message-actions-left';
+
+  if (role === 'user') {
+    left.appendChild(createMessageActionBtn('copy', t('copy', 'Copy')));
+    left.appendChild(createMessageActionBtn('edit', t('editMessage', 'Edit')));
+  } else {
+    left.appendChild(createMessageActionBtn('copy', t('copy', 'Copy')));
+    left.appendChild(createMessageActionBtn('like', t('feedbackUp', 'Good response')));
+    left.appendChild(createMessageActionBtn('dislike', t('feedbackDown', 'Bad response')));
+    left.appendChild(createMessageActionBtn('speak', t('speakMessage', 'Read aloud')));
+    left.appendChild(createMessageActionBtn('regenerate', t('regenerate', 'Regenerate')));
+
+    const right = document.createElement('div');
+    right.className = 'message-actions-right';
+    const tag = document.createElement('span');
+    tag.className = 'message-model-tag hidden';
+    right.appendChild(tag);
+    bar.appendChild(left);
+    bar.appendChild(right);
+    return bar;
+  }
+
+  bar.appendChild(left);
+  return bar;
+}
+
+function getMessageTurnContentEl(turn) {
+  return turn?.querySelector('.message.assistant.md-content, .message.assistant.chat-text, .message-text');
+}
+
+function stopMessageSpeech() {
+  if (typeof window !== 'undefined' && window.speechSynthesis) {
+    window.speechSynthesis.cancel();
+  }
+  if (activeTtsBtn) {
+    activeTtsBtn.classList.remove('is-speaking');
+    activeTtsBtn = null;
+  }
+}
+
+function pickSpeechVoice(langPrefix) {
+  if (typeof window === 'undefined' || !window.speechSynthesis) return null;
+  const voices = window.speechSynthesis.getVoices() || [];
+  return voices.find((v) => v.lang?.toLowerCase().startsWith(langPrefix)) || voices[0] || null;
+}
+
+function speakMessageFromTurn(turn, btn) {
+  if (typeof window === 'undefined' || !window.speechSynthesis) {
+    showToast(t('ttsUnsupported', 'Speech not supported in this browser'), 'warning');
+    return;
+  }
+  if (state.driving) {
+    showToast(t('ttsWhileDriving', 'Avoid speech playback while driving'), 'warning');
+    return;
+  }
+  const text = getMessageTurnContentEl(turn)?.innerText?.trim() || '';
+  if (!text) return;
+
+  if (btn?.classList.contains('is-speaking')) {
+    stopMessageSpeech();
+    return;
+  }
+  stopMessageSpeech();
+
+  const lang = (typeof i18n !== 'undefined' && i18n.getLang?.()?.startsWith('zh')) ? 'zh-CN' : 'en-US';
+  const utter = new SpeechSynthesisUtterance(text.slice(0, 4000));
+  utter.lang = lang;
+  const voice = pickSpeechVoice(lang.split('-')[0]);
+  if (voice) utter.voice = voice;
+  utter.rate = 1.02;
+  utter.onend = () => stopMessageSpeech();
+  utter.onerror = () => stopMessageSpeech();
+  if (btn) {
+    btn.classList.add('is-speaking');
+    activeTtsBtn = btn;
+  }
+  window.speechSynthesis.speak(utter);
+}
+
+async function regenerateAssistantMessage(assistantIdx) {
+  if (isChatUiLocked()) {
+    showToast(t('regenerateWhileStreaming', 'Wait for the reply to finish'), 'warning');
+    return;
+  }
+  const history = getCurrentMessages();
+  const msg = history[assistantIdx];
+  if (!msg || msg.role !== 'assistant') return;
+  const truncated = history.slice(0, assistantIdx);
+  if (!truncated.length || truncated[truncated.length - 1]?.role !== 'user') {
+    showToast(t('regenerateFailed', 'Cannot find the user message to retry'), 'warning');
+    return;
+  }
+  stopMessageSpeech();
+  saveCurrentMessages(truncated);
+  renderStoredMessages();
+  syncSessionsToDevice().catch(() => {});
+  await streamAssistantResponse(truncated);
+}
+
+function finalizeAssistantTurn(ui, msgIdx) {
+  if (!ui?.turn) return;
+  if (msgIdx != null) ui.turn.dataset.msgIdx = String(msgIdx);
+  ui.actionsBar?.classList.remove('is-pending');
+}
+
+function appendUserMessage(content, { scroll = true, msgIdx = null, fileRefs = [] } = {}) {
+  const turn = document.createElement('div');
+  turn.className = 'message-turn user-turn msg-in';
+  if (msgIdx != null) turn.dataset.msgIdx = String(msgIdx);
+
   const div = createMessageElement('user');
   const text = messageText(content);
   const images = messageImages(content);
   renderMessageImages(div, images);
+  const refs = fileRefs?.length ? fileRefs : [];
+  if (refs.length) {
+    const filesEl = document.createElement('div');
+    filesEl.className = 'message-file-refs';
+    for (const ref of refs) {
+      const chip = document.createElement('span');
+      chip.className = 'message-file-ref';
+      chip.textContent = `@${ref.rel || ref.name}`;
+      chip.title = ref.path || '';
+      filesEl.appendChild(chip);
+    }
+    div.appendChild(filesEl);
+  }
   if (text) {
     const textEl = document.createElement('div');
     textEl.className = 'message-text';
     textEl.textContent = text;
     div.appendChild(textEl);
   }
-  els.messages.appendChild(div);
-  scrollToBottom();
-  return div;
+
+  turn.appendChild(div);
+  turn.appendChild(createMessageActionsBar('user'));
+  els.messages.appendChild(turn);
+  if (scroll) scrollToBottom({ force: true });
+  return turn;
+}
+
+function dataUrlToPendingImage(url) {
+  const mimeMatch = /^data:([^;]+);/.exec(url || '');
+  return { dataUrl: url, mimeType: mimeMatch?.[1] || 'image/jpeg' };
+}
+
+function highlightEditingMessage(msgIdx) {
+  els.messages?.querySelectorAll('.message.user.is-editing').forEach((el) => {
+    el.classList.remove('is-editing');
+  });
+  if (msgIdx == null) return;
+  const el = els.messages?.querySelector(`.message-turn.user-turn[data-msg-idx="${msgIdx}"] .message.user`);
+  el?.classList.add('is-editing');
+}
+
+function updateComposerEditUi() {
+  const banner = document.getElementById('composerEditBanner');
+  const form = els.composer;
+  banner?.classList.toggle('hidden', editingUserMsgIdx === null);
+  form?.classList.toggle('is-editing', editingUserMsgIdx !== null);
+  updateComposerSendBtn();
+}
+
+function cancelEditUserMessage({ clearComposer = true } = {}) {
+  editingUserMsgIdx = null;
+  highlightEditingMessage(null);
+  if (clearComposer) {
+    if (els.chatInput) els.chatInput.value = '';
+    clearComposerAttachments();
+    autoResize();
+  }
+  updateComposerEditUi();
+}
+
+function startEditUserMessage(msgIdx) {
+  if (isChatUiLocked()) {
+    showToast(t('editWhileStreaming', 'Wait for the reply to finish before editing'), 'warning');
+    return;
+  }
+  const history = getCurrentMessages();
+  const msg = history[msgIdx];
+  if (!msg || msg.role !== 'user') return;
+
+  if (editingUserMsgIdx !== null) cancelEditUserMessage({ clearComposer: true });
+  editingUserMsgIdx = msgIdx;
+
+  if (els.chatInput) {
+    els.chatInput.value = messageText(msg.content);
+    autoResize();
+  }
+  pendingImages = messageImages(msg.content).map(dataUrlToPendingImage);
+  renderComposerAttachments();
+
+  highlightEditingMessage(msgIdx);
+  updateComposerEditUi();
+  els.chatInput?.focus();
+  scrollToMessageIndex(msgIdx);
 }
 
 function appendAssistantMessage({ withLoading = true } = {}) {
+  const turn = document.createElement('div');
+  turn.className = 'message-turn assistant-turn msg-in';
+
   const wrapper = document.createElement('div');
-  wrapper.className = 'message assistant-wrapper msg-in';
+  wrapper.className = 'message assistant-wrapper';
 
   let loading = null;
   if (withLoading) {
@@ -2881,18 +3116,21 @@ function appendAssistantMessage({ withLoading = true } = {}) {
 
   const toolsList = toolsBlock.querySelector('.tool-calls-list');
 
-  const meta = document.createElement('div');
-  meta.className = 'message-meta';
-  meta.innerHTML = `<button type="button" class="msg-copy-btn" title="${t('copy', '复制')}" aria-label="${t('copy', '复制')}">⎘</button>`;
-
   wrapper.appendChild(thinking);
   wrapper.appendChild(agentCallsBlock);
   wrapper.appendChild(toolsBlock);
   wrapper.appendChild(content);
-  wrapper.appendChild(meta);
-  els.messages.appendChild(wrapper);
+
+  const actionsBar = createMessageActionsBar('assistant');
+  actionsBar.classList.add('is-pending');
+
+  turn.appendChild(wrapper);
+  turn.appendChild(actionsBar);
+  els.messages.appendChild(turn);
   scrollToBottom();
   return {
+    turn,
+    actionsBar,
     wrapper,
     loading,
     thinking,
@@ -2906,8 +3144,74 @@ function appendAssistantMessage({ withLoading = true } = {}) {
   };
 }
 
-function scrollToBottom() {
-  els.messages.scrollTop = els.messages.scrollHeight;
+const CHAT_SCROLL_PIN_THRESHOLD = 96;
+let chatScrollPinned = true;
+let _chatScrollPinRaf = null;
+
+function isChatNearBottom(el = els.messages) {
+  if (!el) return true;
+  const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
+  return distance <= CHAT_SCROLL_PIN_THRESHOLD;
+}
+
+function updateJumpToBottomButton() {
+  const btn = els.jumpToBottomBtn;
+  if (!btn || !els.messages) return;
+  const canScroll = els.messages.scrollHeight > els.messages.clientHeight + 8;
+  const show = canScroll && !chatScrollPinned;
+  btn.classList.toggle('visible', show);
+  btn.classList.toggle('hidden', !show);
+  btn.setAttribute('aria-hidden', show ? 'false' : 'true');
+}
+
+function onMessagesScroll() {
+  if (_chatScrollPinRaf) return;
+  _chatScrollPinRaf = requestAnimationFrame(() => {
+    _chatScrollPinRaf = null;
+    chatScrollPinned = isChatNearBottom();
+    updateJumpToBottomButton();
+  });
+}
+
+function refreshContextMeter() {
+  if (typeof ComposerContextMeter !== 'undefined') ComposerContextMeter.refresh();
+}
+
+function applyRagStatsFromApi(data) {
+  if (!data?.ok) return;
+  const docs = data.documents || [];
+  ragStatsCache = {
+    count: data.count ?? docs.length,
+    vector_chunks: data.vector_chunks ?? 0,
+    totalChars: docs.reduce((sum, d) => sum + (Number(d.chars) || 0), 0),
+    embeddedDocs: docs.filter((d) => d.embedded).length,
+  };
+  refreshContextMeter();
+}
+
+async function refreshRagStatsForMeter() {
+  try {
+    const { data } = await api('GET', '/api/ai/rag', null, { timeoutMs: 10000 });
+    applyRagStatsFromApi(data);
+  } catch {
+    /* ignore */
+  }
+}
+
+function scrollToBottom({ force = false } = {}) {
+  const el = els.messages;
+  if (!el) return;
+  if (!force && !chatScrollPinned) {
+    updateJumpToBottomButton();
+    return;
+  }
+  el.scrollTop = el.scrollHeight;
+  if (force) chatScrollPinned = true;
+  updateJumpToBottomButton();
+}
+
+function jumpToBottom() {
+  scrollToBottom({ force: true });
 }
 
 // ---------------------------------------------------------------------------
@@ -3008,6 +3312,7 @@ function hideComposerSlashMenu() {
 }
 
 function showComposerSlashMenu(state) {
+  if (typeof ComposerMention !== 'undefined') ComposerMention.hideMenu();
   composerSlashOpen = true;
   composerSlashMenuState = state;
   els.composerSlashMenu?.classList.remove('hidden');
@@ -3178,6 +3483,10 @@ function renderComposerSlashList(state) {
 }
 
 async function refreshComposerSlashMenu() {
+  if (typeof ComposerMention !== 'undefined' && ComposerMention.isOpen()) {
+    hideComposerSlashMenu();
+    return;
+  }
   const state = getSlashMenuState(els.chatInput?.value || '');
   if (!state) {
     hideComposerSlashMenu();
@@ -3218,8 +3527,7 @@ function selectSlashCommand(def) {
     els.chatInput.value = '';
     return;
   } else if (def.action === 'new_session') {
-    SessionStore.createSession();
-    renderSessionList();
+    createNewSession();
     hideComposerSlashMenu();
     els.chatInput.value = '';
     autoResize();
@@ -3589,6 +3897,7 @@ function onComposerSlashKeydown(e) {
 function onComposerInput() {
   autoResize();
   refreshComposerSlashMenu().catch(() => {});
+  if (typeof ComposerMention !== 'undefined') ComposerMention.refresh().catch(() => {});
 }
 
 // ---------------------------------------------------------------------------
@@ -3597,16 +3906,19 @@ function onComposerInput() {
 
 async function sendChat(e) {
   e.preventDefault();
-  const jobActive = (typeof ChatJobs !== 'undefined' && ChatJobs.getActiveJobId())
-    || SessionStore.getActiveJobId(SessionStore.activeId);
-  if (abortController || jobActive) {
-    abortActiveChat();
+  const sessionId = SessionStore.activeId;
+  if (isSessionJobRunning(sessionId)) {
+    abortSessionChat(sessionId);
     return;
   }
 
   let text = els.chatInput.value.trim();
   const images = pendingImages.slice();
-  if (!text && images.length === 0) return;
+  const fileRefs = pendingFileRefs.slice();
+  if (!text && images.length === 0 && fileRefs.length === 0) return;
+
+  const isResendEdit = editingUserMsgIdx !== null;
+  const editMsgIdx = editingUserMsgIdx;
 
   const slashResolved = await resolveSlashSend(text);
   if (slashResolved?.blockSend) {
@@ -3616,7 +3928,7 @@ async function sendChat(e) {
 
   let displayText = text;
   let historyContent = null;
-  let sessionPreview = text || t('imageMessage', '图片消息');
+  let sessionPreview = text || (fileRefs.length ? t('mentionSessionPreview', 'Attached files') : t('imageMessage', '图片消息'));
   let slashWorkflow = '';
   let slashAgentId = '';
   let slashCompact = false;
@@ -3634,28 +3946,59 @@ async function sendChat(e) {
   const workflowForSend = slashWorkflow || pendingWorkflow;
   pendingWorkflow = '';
 
-  SessionStore.ensureSessionOnSend(sessionPreview);
-  renderSessionList();
-
-  const content = buildUserContent(displayText, images);
-  clearWelcomePanel();
-  syncMessagesLayoutMode();
-  appendUserMessage(content);
-  els.chatInput.value = '';
-  clearComposerAttachments();
-  autoResize();
-
-  const history = getCurrentMessages();
+  const content = await buildUserMessageContent(displayText, images, fileRefs);
   let finalHistoryContent = historyContent || content;
-  if (historyContent && images.length) {
+  if (historyContent && (images.length || fileRefs.length)) {
     const msgText = typeof historyContent === 'string'
       ? historyContent
       : (Array.isArray(historyContent)
         ? (historyContent.find((p) => p?.type === 'text')?.text || '')
         : '');
-    finalHistoryContent = buildUserContent(msgText, images);
+    finalHistoryContent = await buildUserMessageContent(msgText, images, fileRefs);
   }
-  history.push({ role: 'user', content: finalHistoryContent });
+  const storedFileRefs = fileRefs.map((ref) => ({ ...ref }));
+
+  if (isResendEdit) {
+    cancelEditUserMessage({ clearComposer: false });
+    clearWelcomePanel();
+    syncMessagesLayoutMode();
+    chatScrollPinned = true;
+
+    const history = getCurrentMessages().slice(0, editMsgIdx);
+    history.push({ role: 'user', content: finalHistoryContent, file_refs: storedFileRefs });
+    saveCurrentMessages(history);
+
+    els.chatInput.value = '';
+    clearComposerAttachments();
+    autoResize();
+    renderStoredMessages();
+    syncSessionsToDevice().catch(() => {});
+
+    pendingWorkflow = workflowForSend;
+    pendingAgentId = slashAgentId || pendingAgentId;
+    pendingCompact = !!slashCompact;
+    if (slashResolved?.consumer) pendingConsumerMode = true;
+    await streamAssistantResponse(history);
+    pendingWorkflow = '';
+    pendingAgentId = '';
+    pendingCompact = false;
+    pendingConsumerMode = false;
+    return;
+  }
+
+  SessionStore.ensureSessionOnSend(sessionPreview);
+  renderSessionList();
+
+  clearWelcomePanel();
+  syncMessagesLayoutMode();
+  chatScrollPinned = true;
+  appendUserMessage(content, { fileRefs: storedFileRefs, msgIdx: getCurrentMessages().length });
+  els.chatInput.value = '';
+  clearComposerAttachments();
+  autoResize();
+
+  const history = getCurrentMessages();
+  history.push({ role: 'user', content: finalHistoryContent, file_refs: storedFileRefs });
   saveCurrentMessages(history);
   syncSessionsToDevice().catch(() => {});
 
@@ -3671,9 +4014,8 @@ async function sendChat(e) {
 }
 
 function savePartialAssistant(sessionId, assistantMessage) {
-  if (SessionStore.activeId !== sessionId) return;
-  if (!assistantMessageHasContent(assistantMessage)) return;
-  const session = SessionStore.getActive();
+  if (!sessionId || !assistantMessageHasContent(assistantMessage)) return;
+  const session = SessionStore.getById(sessionId);
   if (!session) return;
   const msgs = (session.messages || []).map(normalizeStoredMessage);
   const partial = {
@@ -3684,6 +4026,7 @@ function savePartialAssistant(sessionId, assistantMessage) {
     tool_results: assistantMessage.tool_results || {},
     agent_events: assistantMessage.agent_events || [],
   };
+  if (assistantMessage.resolvedModel) partial.resolvedModel = assistantMessage.resolvedModel;
   if (msgs[msgs.length - 1]?.role === 'assistant') {
     msgs[msgs.length - 1] = partial;
   } else {
@@ -3692,6 +4035,7 @@ function savePartialAssistant(sessionId, assistantMessage) {
   SessionStore.updateMessages(sessionId, msgs.slice(-200));
   if (typeof SessionSync !== 'undefined') SessionSync.markLocalDirty();
   scheduleSessionSync();
+  if (SessionStore.activeId === sessionId) renderStoredMessages();
 }
 
 function hydrateAssistantUi(ui, assistantMessage) {
@@ -3725,19 +4069,33 @@ function hydrateAssistantUi(ui, assistantMessage) {
 }
 
 function commitAssistantMessage(sessionId, assistantMessage) {
-  if (sessionId && SessionStore.activeId !== sessionId) return;
-  const history = getCurrentMessages();
+  if (!sessionId) return;
+  const session = SessionStore.getById(sessionId);
+  if (!session) return;
+  const msgs = (session.messages || []).map(normalizeStoredMessage);
   const normalized = normalizeStoredMessage({ ...assistantMessage });
-  if (history[history.length - 1]?.role === 'assistant') {
-    history[history.length - 1] = normalized;
+  if (msgs[msgs.length - 1]?.role === 'assistant') {
+    msgs[msgs.length - 1] = normalized;
   } else {
-    history.push(normalized);
+    msgs.push(normalized);
   }
-  saveCurrentMessages(history);
+  SessionStore.updateMessages(sessionId, msgs.slice(-200));
+  if (typeof SessionSync !== 'undefined') SessionSync.markLocalDirty();
+  scheduleSessionSync();
+  if (SessionStore.activeId === sessionId) {
+    const history = getCurrentMessages();
+    if (history[history.length - 1]?.role === 'assistant') {
+      history[history.length - 1] = normalized;
+    } else {
+      history.push(normalized);
+    }
+  }
 }
 
 function finishAssistant(ui, assistantMessage, sessionId) {
-  if (sessionId && SessionStore.activeId !== sessionId) return;
+  if (!sessionId) return;
+  commitAssistantMessage(sessionId, assistantMessage);
+  if (SessionStore.activeId !== sessionId) return;
   clearLiveStreamChrome(ui);
   hideAssistantLoading(ui);
   syncThinkingBlock(ui, assistantMessage);
@@ -3753,8 +4111,18 @@ function finishAssistant(ui, assistantMessage, sessionId) {
   }
   ui.wrapper?.querySelector('.assistant-trace')?.remove();
   if (ui?.wrapper) delete ui.wrapper.dataset.liveStream;
-  commitAssistantMessage(sessionId, assistantMessage);
+  setMessageModelTag(ui.actionsBar, assistantMessage.resolvedModel);
+  const history = getCurrentMessages();
+  const assistantIdx = history.length - 1;
+  if (history[assistantIdx]?.role === 'assistant') {
+    finalizeAssistantTurn(ui, assistantIdx);
+    MessageFeedback.updateButtons(ui.turn, history[assistantIdx]);
+  } else {
+    ui.actionsBar?.classList.remove('is-pending');
+  }
   syncSessionsToDevice().catch(() => {});
+  updateComposerSendBtn();
+  renderSessionList();
 }
 
 function updateToolCallsSummary(toolsBlock) {
@@ -3949,6 +4317,7 @@ function effectiveModelHub(c) {
     baseUrl: c.baseUrl || '',
     enabled: true,
     models: model ? [model] : [],
+    embeddingModels: [],
   };
   const accounts = [account];
   const index = { [`${providerId}\0${c.apiKey || ''}\0${c.baseUrl || ''}`]: accId };
@@ -3971,6 +4340,7 @@ function effectiveModelHub(c) {
         baseUrl: fbUrl,
         enabled: true,
         models: [],
+        embeddingModels: [],
       });
       index[key] = aid;
     }
@@ -3980,11 +4350,51 @@ function effectiveModelHub(c) {
     if (fb.label) row.label = fb.label;
     fallbacks.push(row);
   }
+  let embeddingPrimary = hub?.embeddingPrimary || null;
+  let embeddingFallbacks = Array.isArray(hub?.embeddingFallbacks) ? hub.embeddingFallbacks : [];
+  if (!embeddingPrimary) {
+    const embModel = (c.embeddingModel || '').trim();
+    if (embModel) {
+      const embMode = c.embeddingMode || 'same';
+      const embProv = c.embeddingProvider === 'zhipu' ? 'bigmodel' : ((c.embeddingProvider || providerId).trim() || providerId);
+      const embKey = embMode === 'separate' ? (c.embeddingApiKey || '').trim() : (c.apiKey || '');
+      const embUrl = embMode === 'separate' ? (c.embeddingBaseUrl || '').trim() : (c.baseUrl || '');
+      const sameAccount = embProv === providerId && embKey === (c.apiKey || '') && embUrl === (c.baseUrl || '');
+      let embAccId = accId;
+      if (!sameAccount) {
+        const embKeyIndex = `${embProv}\0${embKey}\0${embUrl}`;
+        let aid = index[embKeyIndex];
+        if (!aid) {
+          aid = `acc_emb_${accounts.length}_${embProv}`;
+          accounts.push({
+            id: aid,
+            provider: embProv,
+            label: '',
+            apiKey: embKey,
+            baseUrl: embUrl,
+            enabled: true,
+            models: [],
+            embeddingModels: [embModel],
+          });
+          index[embKeyIndex] = aid;
+        } else {
+          const acc = accounts.find((a) => a.id === aid);
+          if (acc && !acc.embeddingModels.includes(embModel)) acc.embeddingModels.push(embModel);
+        }
+        embAccId = aid;
+      } else {
+        account.embeddingModels = [embModel];
+      }
+      embeddingPrimary = { accountId: embAccId, model: embModel };
+    }
+  }
   return {
-    version: 1,
+    version: 2,
     accounts,
     primary: model ? { accountId: accId, model } : null,
     fallbacks,
+    embeddingPrimary,
+    embeddingFallbacks,
   };
 }
 
@@ -3994,6 +4404,9 @@ function applyModelHubFromConfig(c) {
   ModelHub.setHub(hub, { silent: true });
   syncLegacyFromModelHub(hub);
   ModelHub.setProviders(providers, providerLabels);
+  refreshEmbeddingRouteSummary();
+  if (typeof SessionModelPicker !== 'undefined') SessionModelPicker.refresh();
+  refreshModelBadgeForSession();
 }
 
 function initModelCombos() {
@@ -4014,18 +4427,14 @@ function initModelCombos() {
       refreshUsageForCurrentModel();
     },
   });
-  embeddingModelCombo = ModelCombobox.mount('#embeddingModelCombobox', {
-    ...labels(),
-    placeholder: t('embeddingModelPlaceholder', 'BAAI/bge-m3'),
-    onChange: () => {
-      scheduleEmbeddingSave();
-      refreshEmbeddingUsageForCurrentModel();
-    },
-    onInput: () => {
-      scheduleEmbeddingSave();
-      refreshEmbeddingUsageForCurrentModel();
-    },
-  });
+  if (document.querySelector('#embeddingModelCombobox')) {
+    embeddingModelCombo = ModelCombobox.mount('#embeddingModelCombobox', {
+      ...labels(),
+      placeholder: t('embeddingModelPlaceholder', 'BAAI/bge-m3'),
+      onChange: () => refreshEmbeddingUsageForCurrentModel(),
+      onInput: () => refreshEmbeddingUsageForCurrentModel(),
+    });
+  }
   onboardingModelCombo = ModelCombobox.mount('#onboardingModelCombobox', {
     placeholder: 'deepseek-v4-flash',
     emptyLabel: t('noModels', 'No models loaded'),
@@ -4147,27 +4556,49 @@ async function savePersonaConfig() {
 
 let embeddingSaveTimer = null;
 function scheduleEmbeddingSave() {
-  clearTimeout(embeddingSaveTimer);
-  embeddingSaveTimer = setTimeout(() => saveEmbeddingConfig({ silent: true }), 600);
+  /* Embedding routes are saved via ModelHub */
 }
 
-async function saveEmbeddingConfig(opts = {}) {
-  const silent = !!opts.silent;
-  const body = {
-    embeddingMode: els.embeddingModeSelect?.value || 'same',
-    embeddingProvider: els.embeddingProviderSelect?.value || 'siliconflow',
-    embeddingModel: getEmbeddingModelValue(),
-    embeddingApiKey: els.embeddingApiKeyInput?.value?.trim() || '',
-    embeddingBaseUrl: els.embeddingBaseUrlInput?.value?.trim() || '',
-  };
-  if (body.embeddingApiKey?.startsWith('•')) delete body.embeddingApiKey;
-  const { data } = await api('POST', '/api/ai/config', body);
-  if (!data?.ok) {
-    if (!silent) showToast(data?.error || t('saveFailed', '保存失败'), 'error');
+async function saveEmbeddingConfig(_opts = {}) {
+  /* no-op: embedding configured in model hub */
+}
+
+function refreshEmbeddingRouteSummary() {
+  const el = document.getElementById('embeddingRouteSummary');
+  const hint = document.getElementById('embeddingRouteHint');
+  if (!el) return;
+  const hub = effectiveModelHub(savedConfig);
+  const routes = [];
+  if (hub?.embeddingPrimary?.accountId) routes.push(hub.embeddingPrimary);
+  for (const f of hub?.embeddingFallbacks || []) {
+    if (f?.accountId) routes.push(f);
+  }
+  if (!routes.length) {
+    const p = savedConfig?.embeddingProvider;
+    const m = savedConfig?.embeddingModel;
+    if (p && m) {
+      el.textContent = `${providerLabels[p] || p} · ${m}`;
+      if (hint) hint.textContent = t('embeddingRouteLegacyHint', '建议在模型中心配置 Embedding 路由与备用模型。');
+      return;
+    }
+    el.textContent = t('embeddingRouteEmpty', '未配置 Embedding 模型');
+    if (hint) hint.textContent = t('embeddingRouteHint', '在模型中心添加 Embedding 路由与备用模型，保存后自动重建索引。');
     return;
   }
-  savedConfig = { ...savedConfig, ...body };
-  if (!silent) showToast(t('saved', '已保存'), 'success');
+  const lines = routes.map((r, i) => {
+    const acc = (hub.accounts || []).find((a) => a.id === r.accountId);
+    const prov = providerLabels[acc?.provider] || acc?.provider || r.accountId;
+    const label = r.label ? `${r.label} · ` : '';
+    const prefix = i === 0 ? t('modelHubPrimary', '主模型') : `#${i + 1}`;
+    return `${prefix}: ${label}${prov} / ${r.model}`;
+  });
+  el.textContent = lines.join(' → ');
+  if (hint) {
+    const fb = Math.max(0, routes.length - 1);
+    hint.textContent = fb
+      ? t('embeddingRouteFallbackCount', '含 {n} 个备用模型', { n: fb })
+      : t('embeddingRouteHint', '在模型中心添加 Embedding 路由与备用模型，保存后自动重建索引。');
+  }
 }
 
 function getModelHubPayload() {
@@ -4209,11 +4640,6 @@ function getConfigPayload() {
     thinkingEnabled: els.thinkingToggle.checked,
     thinkingKeep: '',
     timezone: els.timezoneSelect?.value || 'Asia/Shanghai',
-    embeddingMode: els.embeddingModeSelect?.value || 'same',
-    embeddingProvider: els.embeddingProviderSelect?.value || 'siliconflow',
-    embeddingModel: getEmbeddingModelValue(),
-    embeddingApiKey: els.embeddingApiKeyInput?.value?.trim() || '',
-    embeddingBaseUrl: els.embeddingBaseUrlInput?.value?.trim() || '',
     modelHub: getModelHubPayload(),
     modelFallbacks: typeof FallbackModels !== 'undefined' ? FallbackModels.getRows() : [],
   };
@@ -4240,6 +4666,7 @@ async function applyServerConfig(config, opts = {}) {
   updateConfigSaveHint();
   updateModelBadgeFromSaved();
   maybeDismissOnboardingWizard();
+  refreshContextMeter();
   if (prevTz && prevTz !== config.timezone) {
     invalidateComposerSlashRoutes();
     if (cabanaInited && typeof CabanaPanel.reloadRoutes === 'function') {
@@ -4407,8 +4834,7 @@ async function ensureModelsLoaded(savedModel, opts = {}) {
   const target = savedModel || defaults[provider] || '';
   primeModelsFromCacheOrCatalog(provider);
   await applySavedModelSelection(target);
-  if (savedConfig?.model) updateModelBadgeFromSaved();
-  else updateModelBadge(getMainModelValue() || target);
+  updateModelBadgeFromSaved();
   if (refresh && canFetchModelsFromForm()) {
     fetchModels({ savedModel: target }).catch(() => {});
   }
@@ -4558,20 +4984,9 @@ function applyConfigToForm(c) {
   if (els.timezoneSelect) {
     renderTimezoneSelect(c.timezone || 'Asia/Shanghai');
   }
-  if (els.embeddingModeSelect) els.embeddingModeSelect.value = c.embeddingMode || 'same';
-  if (els.embeddingProviderSelect) {
-    const ep = c.embeddingProvider || 'siliconflow';
-    if (embeddingProviders.includes(ep)) els.embeddingProviderSelect.value = ep;
-    else els.embeddingProviderSelect.value = 'siliconflow';
-  }
-  if (els.embeddingApiKeyInput) els.embeddingApiKeyInput.value = c.embeddingApiKey || '';
-  if (els.embeddingBaseUrlInput) els.embeddingBaseUrlInput.value = c.embeddingBaseUrl || '';
-  onEmbeddingModeChange();
-  onProviderChange();
-  refreshEmbeddingModels();
   if (c.model) mainModelCombo?.setValue(c.model, { silent: true });
-  applyEmbeddingModelSelection(c.embeddingModel || embeddingDefaults[getActiveEmbeddingProvider()] || '');
   applyModelHubFromConfig(c);
+  refreshEmbeddingRouteSummary();
   if (typeof FallbackModels !== 'undefined' && !(effectiveModelHub(c)?.accounts?.length)) {
     FallbackModels.setRows(c.modelFallbacks || []);
     FallbackModels.setProviders(providers);
@@ -4623,6 +5038,7 @@ async function loadBootstrap() {
     toolsMeta = data.tools;
     LocalPrefs.setServerToolDefaults(data.tools);
   }
+  if (Array.isArray(data.skills)) skillsRegistry = data.skills;
   hostEnvironment = data.hostEnvironment || hostEnvironment;
   applyHeaderChrome();
   applyStatusPill(data);
@@ -4664,6 +5080,13 @@ async function loadBootstrap() {
     renderConsumerQuickActions(data.consumer.wizards);
   }
   loadUsage().catch(() => {});
+  refreshRagStatsForMeter();
+  api('GET', '/api/ai/mcp').then(({ data }) => {
+    if (Array.isArray(data?.servers)) {
+      mcpConnectors = data.servers;
+      refreshContextMeter();
+    }
+  }).catch(() => {});
 }
 
 async function loadConfig() {
@@ -6108,19 +6531,21 @@ function renderOnboardingEmbeddingProviders() {
 }
 
 function getOnboardingEmbeddingProvider() {
-  const mode = els.onboardingEmbeddingMode?.value || 'same';
-  if (mode === 'separate') {
+  const separate = !!els.onboardingEmbeddingSeparateToggle?.checked;
+  if (separate) {
     return els.onboardingEmbeddingProvider?.value || 'siliconflow';
   }
   return els.onboardingProvider?.value || 'opencode-zen';
 }
 
 function refreshOnboardingEmbeddingModels(preferredModel = '') {
-  const mode = els.onboardingEmbeddingMode?.value || 'same';
+  const separate = !!els.onboardingEmbeddingSeparateToggle?.checked;
   const provider = getOnboardingEmbeddingProvider();
-  const list = embeddingCatalogForProvider(provider, mode === 'same');
+  const list = embeddingCatalogForProvider(provider, !separate);
   onboardingEmbeddingModelCombo?.setOptions(list);
-  const current = (preferredModel || onboardingEmbeddingModelCombo?.getValue() || savedConfig?.embeddingModel || '').trim();
+  const hub = effectiveModelHub(savedConfig);
+  const hubModel = hub?.embeddingPrimary?.model || '';
+  const current = (preferredModel || onboardingEmbeddingModelCombo?.getValue() || hubModel || savedConfig?.embeddingModel || '').trim();
   if (current) {
     onboardingEmbeddingModelCombo?.setValue(current, { silent: true });
     return;
@@ -6133,8 +6558,8 @@ function refreshOnboardingEmbeddingModels(preferredModel = '') {
   }
 }
 
-function onOnboardingEmbeddingModeChange() {
-  const separate = els.onboardingEmbeddingMode?.value === 'separate';
+function onOnboardingEmbeddingSeparateToggle() {
+  const separate = !!els.onboardingEmbeddingSeparateToggle?.checked;
   els.onboardingEmbeddingSeparateFields?.classList.toggle('hidden', !separate);
   refreshOnboardingEmbeddingModels();
 }
@@ -6158,27 +6583,46 @@ function syncOnboardingFromSavedConfig() {
   }
   if (els.onboardingApiKey) {
     const key = acc?.apiKey || c.apiKey || '';
-    els.onboardingApiKey.value = key.startsWith('•') ? '' : key;
+    els.onboardingApiKey.value = key || '';
     els.onboardingApiKey.placeholder = t('apiKey', 'API Key');
   }
   const model = primary?.model || c.model || defaults[provider] || modelCatalog[provider]?.[0] || '';
   if (model) onboardingModelCombo?.setValue(model, { silent: true });
   if (acc?.models?.length) onboardingFetchedModels = acc.models.slice();
-  if (els.onboardingEmbeddingMode) {
-    els.onboardingEmbeddingMode.value = c.embeddingMode || 'same';
-  }
   renderOnboardingEmbeddingProviders();
-  if (c.embeddingProvider && els.onboardingEmbeddingProvider) {
-    if (embeddingProviders.includes(c.embeddingProvider)) {
+  let separate = false;
+  let embedModel = c.embeddingModel || '';
+  const ep = hub?.embeddingPrimary;
+  const chatAccId = primary?.accountId || hub?.accounts?.[0]?.id;
+  if (ep?.accountId && ep?.model) {
+    embedModel = ep.model;
+    separate = ep.accountId !== chatAccId;
+    if (separate) {
+      const embAcc = (hub.accounts || []).find((a) => a.id === ep.accountId);
+      if (embAcc?.provider && els.onboardingEmbeddingProvider && embeddingProviders.includes(embAcc.provider)) {
+        els.onboardingEmbeddingProvider.value = embAcc.provider;
+      } else if (c.embeddingProvider && els.onboardingEmbeddingProvider && embeddingProviders.includes(c.embeddingProvider)) {
+        els.onboardingEmbeddingProvider.value = c.embeddingProvider;
+      }
+      if (els.onboardingEmbeddingApiKey) {
+        els.onboardingEmbeddingApiKey.value = (hub.accounts || []).find((a) => a.id === ep.accountId)?.apiKey || c.embeddingApiKey || '';
+        els.onboardingEmbeddingApiKey.placeholder = t('embeddingApiKeyPlaceholder', '留空则使用上方聊天 Key');
+      }
+    }
+  } else if (c.embeddingMode === 'separate') {
+    separate = true;
+    if (c.embeddingProvider && els.onboardingEmbeddingProvider && embeddingProviders.includes(c.embeddingProvider)) {
       els.onboardingEmbeddingProvider.value = c.embeddingProvider;
     }
+    if (els.onboardingEmbeddingApiKey) {
+      els.onboardingEmbeddingApiKey.value = c.embeddingApiKey || '';
+      els.onboardingEmbeddingApiKey.placeholder = t('embeddingApiKeyPlaceholder', '留空则使用上方聊天 Key');
+    }
   }
-  if (els.onboardingEmbeddingApiKey) {
-    els.onboardingEmbeddingApiKey.value = c.embeddingApiKey || '';
-    els.onboardingEmbeddingApiKey.placeholder = t('embeddingApiKeyPlaceholder', '留空则使用上方聊天 Key');
+  if (els.onboardingEmbeddingSeparateToggle) {
+    els.onboardingEmbeddingSeparateToggle.checked = separate;
   }
-  onOnboardingEmbeddingModeChange();
-  const embedModel = c.embeddingModel || '';
+  onOnboardingEmbeddingSeparateToggle();
   refreshOnboardingEmbeddingModels(embedModel);
 }
 
@@ -6282,16 +6726,24 @@ async function saveOnboardingWizard() {
     return;
   }
   const run = async () => {
-    const embeddingMode = els.onboardingEmbeddingMode?.value || 'same';
+    const embeddingSeparate = !!els.onboardingEmbeddingSeparateToggle?.checked;
     const embeddingModel = onboardingEmbeddingModelCombo?.getValue()?.trim() || '';
     const embeddingProvider = els.onboardingEmbeddingProvider?.value || 'siliconflow';
     const embeddingApiKey = els.onboardingEmbeddingApiKey?.value?.trim() || '';
-    const modelHub = typeof ModelHub !== 'undefined'
-      ? ModelHub.buildSingleProviderHub({
+    const buildHub = typeof ModelHub !== 'undefined'
+      ? (ModelHub.buildOnboardingHub || ModelHub.buildSingleProviderHub)
+      : null;
+    const modelHub = buildHub
+      ? buildHub({
         provider,
         apiKey,
         model,
         models: onboardingFetchedModels,
+        embeddingSeparate,
+        embeddingProvider,
+        embeddingApiKey,
+        embeddingModel,
+        embeddingDefaults,
       })
       : undefined;
     const payload = {
@@ -6299,10 +6751,6 @@ async function saveOnboardingWizard() {
       apiKey,
       model,
       modelHub,
-      embeddingMode,
-      embeddingProvider,
-      embeddingModel,
-      embeddingApiKey,
     };
     const { data } = await api('POST', '/api/ai/config', payload);
     if (!data.ok) {
@@ -6329,8 +6777,9 @@ async function saveOnboardingWizard() {
     closeOnboardingWizard();
     showToast(t('onboardingDone', '配置已保存，可以开始对话'));
     await loadConfig();
-    refreshEmbeddingModels();
-    if (embeddingModel || savedConfig?.embeddingConfigured) {
+    refreshEmbeddingRouteSummary();
+    const hasEmbedding = !!(modelHub?.embeddingPrimary?.model || data.embeddingConfigured);
+    if (hasEmbedding) {
       openOnboardingKnowledgeSetup();
     }
   };
@@ -6617,15 +7066,26 @@ async function loadUsage() {
   const { data } = await api('GET', '/api/ai/usage');
   if (!data.ok) return;
   if (data.usage) usageData = data.usage;
-  if (data.embeddingUsage) embeddingUsageData = data.embeddingUsage;
+  if (data.embeddingUsage) {
+    embeddingUsageData = data.embeddingUsage;
+    refreshContextMeter();
+  }
   refreshUsageForCurrentModel();
   refreshEmbeddingUsageForCurrentModel();
   if (usageDetailOpen) renderUsageDetailModal();
 }
 
 function getCurrentEmbeddingModelKey() {
-  const provider = getActiveEmbeddingProvider();
-  const model = getEmbeddingModelValue();
+  const hub = effectiveModelHub(savedConfig);
+  const ep = hub?.embeddingPrimary;
+  if (ep?.accountId && ep?.model) {
+    const acc = (hub.accounts || []).find((a) => a.id === ep.accountId);
+    const provider = acc?.provider || savedConfig?.embeddingProvider || '';
+    if (provider) return `${provider}::${ep.model}`;
+    return ep.model;
+  }
+  const provider = savedConfig?.embeddingProvider || getActiveEmbeddingProvider?.() || '';
+  const model = savedConfig?.embeddingModel || getEmbeddingModelValue?.() || '';
   if (!provider || !model) return '';
   return `${provider}::${model}`;
 }
@@ -6680,6 +7140,15 @@ function emptyUsageBucket() {
 }
 
 function getCurrentModelKey() {
+  const hub = effectiveModelHub(savedConfig);
+  const primary = hub?.primary;
+  const acc = primary?.accountId
+    ? (hub.accounts || []).find((a) => a.id === primary.accountId)
+    : (hub.accounts || [])[0];
+  const hubModel = primary?.model || acc?.models?.[0] || '';
+  if (acc?.provider && hubModel) {
+    return `${acc.provider}::${hubModel}`;
+  }
   const provider = els.providerSelect?.value?.trim();
   const model = getMainModelValue();
   if (!provider || !model) return '';
@@ -6891,6 +7360,7 @@ function autoResize() {
 }
 
 function onChatKeydown(e) {
+  if (typeof ComposerMention !== 'undefined' && ComposerMention.onKeydown(e)) return;
   if (onComposerSlashKeydown(e)) return;
   if (e.key !== 'Enter' || e.shiftKey || e.isComposing) return;
   e.preventDefault();
@@ -6937,7 +7407,9 @@ function renderAssistantFromHistory(msg) {
   } else if (!msg.tool_calls?.length) {
     ui.content.textContent = t('noResponse', 'No response');
   }
-  return ui.wrapper;
+  ui.actionsBar?.classList.remove('is-pending');
+  setMessageModelTag(ui.actionsBar, msg.resolvedModel);
+  return ui.turn;
 }
 
 function renderWelcomePanel() {
@@ -6994,19 +7466,28 @@ function renderStoredMessages() {
   if (isChatUiLocked()) return;
   const history = getCurrentMessages();
   els.messages.innerHTML = '';
-  for (const msg of history) {
+  for (let i = 0; i < history.length; i += 1) {
+    const msg = history[i];
     if (msg.role === 'user') {
-      appendUserMessage(msg.content);
+      const turn = appendUserMessage(msg.content, { scroll: false, msgIdx: i, fileRefs: msg.file_refs || [] });
+      if (turn && editingUserMsgIdx === i) {
+        turn.querySelector('.message.user')?.classList.add('is-editing');
+      }
     } else if (msg.role === 'assistant') {
       if (!assistantMessageHasContent(msg)) continue;
-      renderAssistantFromHistory(msg);
+      const turn = renderAssistantFromHistory(msg);
+      if (turn) {
+        turn.dataset.msgIdx = String(i);
+        MessageFeedback.updateButtons(turn, msg);
+      }
     }
   }
   if (!hasVisibleChatHistory(history)) {
     renderWelcomePanel();
   }
   syncMessagesLayoutMode();
-  scrollToBottom();
+  scrollToBottom({ force: true });
+  refreshContextMeter();
 }
 
 function onLangChange() {
@@ -7022,6 +7503,8 @@ function onLangChange() {
   if (typeof CabanaPanel !== 'undefined') {
     CabanaPanel.refresh();
   }
+  if (typeof MessageFeedback !== 'undefined') MessageFeedback.refreshTranslations();
+  if (typeof ComposerMention !== 'undefined') ComposerMention.refreshTranslations();
 }
 
 function onThemeToggle() {
@@ -7033,32 +7516,113 @@ function onThemeToggle() {
 // Init
 // ---------------------------------------------------------------------------
 
-function bindMessageCopy() {
+function bindMessageActions() {
   els.messages?.addEventListener('click', (e) => {
-    const btn = e.target.closest('.msg-copy-btn');
+    const btn = e.target.closest('.msg-action-btn');
     if (!btn) return;
     e.preventDefault();
-    const wrapper = btn.closest('.assistant-wrapper, .message.user');
-    const content = wrapper?.querySelector('.message.assistant, .message-text');
-    const text = content?.innerText?.trim() || '';
-    if (!text) return;
-    const done = () => {
-      btn.classList.add('copied');
-      const prev = btn.textContent;
-      btn.textContent = '✓';
-      setTimeout(() => {
-        btn.classList.remove('copied');
-        btn.textContent = prev;
-      }, 1400);
-    };
-    if (navigator.clipboard?.writeText) {
-      navigator.clipboard.writeText(text).then(done).catch(() => {});
+    const turn = btn.closest('.message-turn');
+    if (!turn) return;
+    const action = btn.dataset.action;
+    const msgIdx = parseInt(turn.dataset.msgIdx, 10);
+
+    if (action === 'copy') {
+      const text = getMessageTurnContentEl(turn)?.innerText?.trim() || '';
+      if (!text) return;
+      const done = () => {
+        btn.classList.add('copied');
+        setTimeout(() => btn.classList.remove('copied'), 1400);
+      };
+      if (navigator.clipboard?.writeText) {
+        navigator.clipboard.writeText(text).then(done).catch(() => {});
+      }
+      return;
+    }
+
+    if (action === 'edit') {
+      if (!Number.isFinite(msgIdx) || msgIdx < 0) return;
+      startEditUserMessage(msgIdx);
+      return;
+    }
+
+    if (action === 'like' || action === 'dislike') {
+      if (!Number.isFinite(msgIdx) || msgIdx < 0) return;
+      if (action === 'like') MessageFeedback.handleLike(msgIdx);
+      else MessageFeedback.handleDislike(msgIdx);
+      return;
+    }
+
+    if (action === 'speak') {
+      speakMessageFromTurn(turn, btn);
+      return;
+    }
+
+    if (action === 'regenerate') {
+      if (!Number.isFinite(msgIdx) || msgIdx < 0) return;
+      regenerateAssistantMessage(msgIdx);
+    }
+  });
+
+  document.getElementById('composerEditCancel')?.addEventListener('click', () => {
+    cancelEditUserMessage();
+  });
+
+  if (typeof window !== 'undefined' && window.speechSynthesis) {
+    window.speechSynthesis.addEventListener('voiceschanged', () => {});
+  }
+}
+
+function bindHeaderMoreMenu() {
+  const btn = document.getElementById('headerMoreBtn');
+  const menu = document.getElementById('headerMoreMenu');
+  if (!btn || !menu) return;
+
+  const actionMap = {
+    notifications: () => toggleNotificationsPanel(),
+    terminal: () => {
+      if (typeof TerminalPanel === 'undefined') return;
+      TerminalPanel.setOpen(!TerminalPanel.isOpen());
+    },
+    secoc: () => {
+      if (secocOpen) closeSecocModal();
+      else openSecocModal();
+    },
+    office: () => {
+      if (typeof OfficePanel !== 'undefined') OfficePanel.toggle();
+    },
+    cabana: () => toggleCabanaModal(),
+  };
+
+  const setOpen = (open) => {
+    menu.classList.toggle('hidden', !open);
+    btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+  };
+
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    setOpen(menu.classList.contains('hidden'));
+  });
+
+  menu.querySelectorAll('[data-header-action]').forEach((item) => {
+    item.addEventListener('click', () => {
+      const action = item.getAttribute('data-header-action');
+      actionMap[action]?.();
+      setOpen(false);
+    });
+  });
+
+  document.addEventListener('click', (e) => {
+    if (!menu.classList.contains('hidden') && !btn.contains(e.target) && !menu.contains(e.target)) {
+      setOpen(false);
     }
   });
 }
 
 function bindUiEvents() {
-  bindMessageCopy();
+  bindMessageActions();
+  bindHeaderMoreMenu();
+  els.messages?.addEventListener('scroll', onMessagesScroll, { passive: true });
+  els.jumpToBottomBtn?.addEventListener('click', jumpToBottom);
   els.cabanaBtn?.addEventListener('click', toggleCabanaModal);
   els.cabanaClose?.addEventListener('click', closeCabanaModal);
   els.cabanaBackdrop?.addEventListener('click', closeCabanaModal);
@@ -7074,6 +7638,9 @@ function bindUiEvents() {
   els.usageDetailBackdrop?.addEventListener('click', closeUsageDetailModal);
   els.knowledgeBtn?.addEventListener('click', toggleKnowledgeModal);
   els.settingsKnowledgeBtn?.addEventListener('click', toggleKnowledgeModal);
+  document.getElementById('embeddingGoModelHubBtn')?.addEventListener('click', () => {
+    openSettingsTab('model');
+  });
   els.knowledgeClose?.addEventListener('click', closeKnowledgeModal);
   els.knowledgeBackdrop?.addEventListener('click', closeKnowledgeModal);
 
@@ -7196,9 +7763,12 @@ function bindUiEvents() {
     if (!onboardingModelCombo?.getValue()) {
       onboardingModelCombo?.setValue(defaults[p] || '', { silent: true });
     }
+    if (!els.onboardingEmbeddingSeparateToggle?.checked) {
+      refreshOnboardingEmbeddingModels();
+    }
     await refreshOnboardingModels().catch(() => refreshOnboardingEmbeddingModels());
   });
-  els.onboardingEmbeddingMode?.addEventListener('change', onOnboardingEmbeddingModeChange);
+  els.onboardingEmbeddingSeparateToggle?.addEventListener('change', onOnboardingEmbeddingSeparateToggle);
   els.onboardingEmbeddingProvider?.addEventListener('change', refreshOnboardingEmbeddingModels);
   els.onboardingApiKey?.addEventListener('change', () => {
     refreshOnboardingModels().catch(() => {});
@@ -7293,13 +7863,59 @@ function waitForSyncHello(timeoutMs = 6000) {
 }
 
 async function init() {
-  SessionStore.init();
+  SessionStore.init({ getDefaultChatRoute: hubPrimaryChatRoute });
   initChatJobs();
   if (typeof PlatformPanel !== 'undefined') {
     PlatformPanel.init({ api, showToast });
     PlatformPanel.bindFilePicker?.('onboardingBackupFile', 'onboardingBackupFileName', 'onboardingBackupPick');
   }
   initModelCombos();
+  if (typeof SessionModelPicker !== 'undefined') {
+    SessionModelPicker.mount('#sessionModelPicker', {
+      SessionStore,
+      getHub: () => effectiveModelHub(savedConfig),
+      getSession: () => SessionStore.getActive(),
+      providerLabel: providerDisplayName,
+      t,
+      scheduleSessionSync,
+      isSessionStreaming: isSessionJobRunning,
+      onRouteChange: () => {
+        refreshModelBadgeForSession();
+        refreshContextMeter();
+      },
+    });
+  }
+  if (typeof ComposerContextMeter !== 'undefined') {
+    ComposerContextMeter.mount('#composerContextMeter', {
+      getConfig: () => savedConfig,
+      getHub: () => effectiveModelHub(savedConfig),
+      getSession: () => SessionStore.getActive(),
+      getMessages: getCurrentMessages,
+      getToolsMeta: () => toolsMeta,
+      getSkillsRegistry: () => skillsRegistry,
+      getConnectors: () => mcpConnectors,
+      getRagStats: () => ragStatsCache,
+      getEmbeddingUsage: () => embeddingUsageData,
+      messageText,
+      getEffectiveRoute: typeof SessionModelPicker !== 'undefined'
+        ? (session, hub) => SessionModelPicker.getEffectiveRoute(session, hub)
+        : undefined,
+      fmtTokenNum,
+      t,
+      tf,
+    });
+  }
+  if (typeof SessionSearch !== 'undefined') {
+    SessionSearch.mount({
+      api,
+      t,
+      escapeHtml,
+      messageText,
+      listSessions: () => SessionStore.listWithContent(),
+      getSessionById: (id) => SessionStore.getById(id),
+      navigateToHit: navigateToSessionHit,
+    });
+  }
   if (typeof AgentsPanel !== 'undefined') {
     AgentsPanel.init({
       api,
@@ -7326,6 +7942,37 @@ async function init() {
     DeviceTrust.refreshTrust(api).catch(() => {});
   }
   bindSettingsTabs();
+  if (typeof ComposerMention !== 'undefined') {
+    ComposerMention.init({
+      api,
+      t,
+      showToast,
+      escapeHtml,
+      getInput: () => els.chatInput,
+      getPendingRefs: () => pendingFileRefs,
+      getPendingFiles: () => pendingFileRefs,
+      listSessions: () => SessionStore.listWithContent(),
+      getActiveSessionId: () => SessionStore.activeId,
+      getGitBranch: () => state?.fork?.git_branch || '',
+      onAttach: (ref) => {
+        pendingFileRefs.push(ref);
+        renderComposerAttachments();
+      },
+      autoResize,
+      hideSlashMenu: hideComposerSlashMenu,
+    });
+  }
+  if (typeof MessageFeedback !== 'undefined') {
+    MessageFeedback.init({
+      api,
+      t,
+      showToast,
+      SessionStore,
+      getCurrentMessages,
+      saveCurrentMessages,
+      setOverlayVisible,
+    });
+  }
   bindUiEvents();
   bindUsageDetailTabs();
   if (typeof TskPanel !== 'undefined') TskPanel.bind();

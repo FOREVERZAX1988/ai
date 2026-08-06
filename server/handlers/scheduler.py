@@ -7,12 +7,12 @@ from typing import Any
 from openpilot.common.swaglog import cloudlog
 
 from ai.server.deps import get_state_reader, params, read_ai_config
-from ai.sync_hub import broadcast_notifications
+from ai.core.sync.hub import broadcast_notifications
 from ai.tools.memory_store import append_note, get_memory
 from ai.tools.notifications import push_notification
 from ai.tools.scheduler_actions import execute_scheduler_action
 from ai.system.shell import run_command
-from ai.usage_log import load_usage
+from ai.core.llm.usage import load_usage
 
 _PARAMS = params()
 
@@ -67,7 +67,7 @@ async def scheduler_execute_action(action: str, _payload: dict[str, Any]) -> str
     append_note(_PARAMS, f"[offroad] {summary}", tags=["auto", "trip_review"])
     return summary or "trip_review ok"
   if action == "reindex_rag_wifi":
-    from ai.embedding import load_embedding_config
+    from ai.core.llm.embedding import load_embedding_config
     from ai.tools.rag_jobs import is_running, start_rag_job
     config = read_ai_config()
     embed_cfg = load_embedding_config(_PARAMS, config)
@@ -78,7 +78,7 @@ async def scheduler_execute_action(action: str, _payload: dict[str, Any]) -> str
     await start_rag_job(_PARAMS, embed_cfg, operation="reindex")
     return "rag reindex started in background"
   if action == "ingest_community_wiki_wifi":
-    from ai.embedding import load_embedding_config
+    from ai.core.llm.embedding import load_embedding_config
     from ai.tools.rag_jobs import is_running, start_rag_job
     config = read_ai_config()
     embed_cfg = load_embedding_config(_PARAMS, config)
@@ -120,7 +120,7 @@ async def scheduler_execute_action(action: str, _payload: dict[str, Any]) -> str
     res = git_fetch()
     return f"fetch ok={res.get('ok')}"
   if action == "heartbeat_tick":
-    from ai.heartbeat import run_heartbeat
+    from ai.core.runtime.heartbeat import run_heartbeat
     res = await run_heartbeat(_PARAMS, get_state_reader=get_state_reader)
     acts = ", ".join(res.get("actions") or [])
     return f"driving={res.get('driving')} notified={res.get('notified')} {acts}"[:300]
@@ -128,12 +128,14 @@ async def scheduler_execute_action(action: str, _payload: dict[str, Any]) -> str
     prompt = str((_payload or {}).get("prompt") or "").strip()
     if not prompt:
       return "chat_notify: empty prompt"
-    from ai.client import load_config_from_params, chat_completion_collect
-    config = load_config_from_params(_PARAMS)
+    from ai.server.deps import read_ai_config
+    from ai.core.llm.model_router import chat_completion_collect_with_failover
+    config = read_ai_config(_PARAMS)
     if not config.is_configured:
       return "chat_notify: AI not configured"
-    content, _, err = await chat_completion_collect(
+    content, _, _, err = await chat_completion_collect_with_failover(
       config,
+      _PARAMS,
       [
         {"role": "system", "content": "You are op助手. Reply in concise Chinese."},
         {"role": "user", "content": prompt},

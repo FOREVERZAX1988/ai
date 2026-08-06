@@ -22,10 +22,10 @@ from ai.common.params import (
   AI_SAME_MODE_EMBEDDING_MODELS,
 )
 from ai.server.deps import mask_key, openpilot_root, read_ai_config, read_param_bool_val, read_param_str
-from ai.embedding import DEFAULT_EMBEDDING_MODELS, load_embedding_config
-from ai.model_accounts import hub_for_api
-from ai.model_router import fallbacks_for_api
-from ai.persona import ensure_default_persona
+from ai.core.llm.embedding import DEFAULT_EMBEDDING_MODELS, load_embedding_config
+from ai.core.llm.model_accounts import hub_for_api
+from ai.core.llm.model_router import fallbacks_for_api
+from ai.core.workspace.persona import ensure_default_persona
 from ai.skills.loader import list_skills, load_enabled_skill_ids
 from ai.system.admin import is_admin_mode
 from ai.system.host_env import get_host_environment
@@ -91,9 +91,9 @@ def build_bootstrap_payload(
     car_fingerprint=state.car_fingerprint or "",
   )
   config = read_ai_config()
-  embed_cfg = load_embedding_config(params, config)
+  embed_cfg = load_embedding_config(params)
   skills_on = load_enabled_skill_ids(params)
-  from ai.timezone_util import read_ai_timezone_name
+  from ai.infra.timezone import read_ai_timezone_name
 
   tz_name = read_ai_timezone_name(params)
   first_run_done = read_param_bool_val("ai_first_run_done")
@@ -138,7 +138,7 @@ def build_bootstrap_payload(
     "config": {
       "provider": config.provider,
       "model": config.model,
-      "apiKey": mask_key(config.api_key),
+      "apiKey": config.api_key,
       "baseUrl": config.base_url,
       "systemPrompt": config.system_prompt,
       "temperature": config.temperature,
@@ -149,15 +149,10 @@ def build_bootstrap_payload(
       "timezone": tz_name,
       "configured": config.is_configured,
       "configureError": config.configuration_error,
-      "embeddingMode": embed_cfg.mode,
       "embeddingProvider": embed_cfg.provider,
       "embeddingModel": embed_cfg.model,
-      "embeddingApiKey": mask_key(read_param_str("ai_embedding_api_key"))
-      if embed_cfg.mode == "separate"
-      else "",
-      "embeddingBaseUrl": embed_cfg.base_url,
       "embeddingConfigured": embed_cfg.is_configured,
-      "modelHub": hub_for_api(params),
+      "modelHub": hub_for_api(params, mask_keys=False),
       "modelFallbacks": fallbacks_for_api(params, config),
     },
     "embeddingDefaults": DEFAULT_EMBEDDING_MODELS,

@@ -50,7 +50,7 @@
 | `POST /api/tsk/uninstall` | 卸载密钥 |
 | `POST /api/tsk/clear-cache` | 清除 CAN/DF 缓存 |
 
-实现：`ai/tsk_routes.py` 注册路由；业务逻辑在 `ai/tsk/service.py`（锁、作业线程、offroad 告警）。
+实现：`services/tsk/routes.py` 注册路由；业务逻辑在 `tsk/service.py`（锁、作业线程、offroad 告警）。
 
 ## Offroad 屏告警
 
@@ -82,7 +82,7 @@ TSK 后台循环写入 Param **`Offroad_NoFirmware`**（manager 启动时会清�
 
 ## op 助手 AI 工具
 
-见 `ai/skills/secoc-toyota/SKILL.md`（SecOC）与 `ai/skills/c3-dos-panda/SKILL.md`（C3 DOS/黑熊刷机）。工具直连 `ai.tsk.service` 或 `ai.tools.panda_flash_tools`，不经 HTTP 回环。
+见 `skills/secoc-toyota/SKILL.md`（SecOC）与 `skills/c3-dos-panda/SKILL.md`（C3 DOS/黑熊刷机）。工具实现位于 `tools/domains/secoc/`、`tools/domains/platform/panda_flash_tools.py`，不经 HTTP 回环。
 
 | 工具 | 用途 |
 |------|------|
@@ -99,23 +99,25 @@ TSK 后台循环写入 Param **`Offroad_NoFirmware`**（manager 启动时会清�
 
 ```bash
 cd openpilot
-tools/op.sh setup && source .venv/bin/activate
-python3 -m ai.aid
+py -3 ai/dev/run_pc.py --port 5090
 ```
 
 - 助手：`http://127.0.0.1:5090`  
 - SecOC：`http://127.0.0.1:5090/?settings=secoc`  
 
+详见 [dev/README.md](../dev/README.md)。
+
 ## 相关文件
 
 | 文件 | 职责 |
 |------|------|
-| `ai/aid.py` | HTTP 服务入口 |
-| `ai/tsk_routes.py` | `/api/tsk/*` 与 `/tsk/` 重定向 |
-| `ai/tsk/service.py` | 状态、作业 API、offroad 告警 |
-| `ai/tsk/lib/*` | CAN/DataFlash/匹配/panda 底层 |
-| `ai/tools/panda_flash_tools.py` | `recover_dos_panda` / `list_all_pandas` / `list_f4_pandas` 工具实现 |
-| `ai/scripts/recover_dos_panda.py` | CLI 刷 F4 固件 |
-| `ai/web/static/js/tsk-panel.js` | 设置侧边栏 SecOC UI |
+| `aid.py` | HTTP 服务入口 |
+| `server/app_factory.py` | 应用工厂、路由聚合 |
+| `services/tsk/routes.py` | `/api/tsk/*` 与 `/tsk/` 重定向 |
+| `tsk/service.py` | 状态、作业 API、offroad 告警 |
+| `tsk/lib/*` | CAN/DataFlash/匹配/panda 底层 |
+| `tools/domains/platform/panda_flash_tools.py` | `recover_dos_panda` 等工具 |
+| `scripts/recover_dos_panda.py` | CLI 刷 F4 固件 |
+| `web/static/js/tsk-panel.js` | 设置侧边栏 SecOC UI |
 | `launch_chffrplus.sh` | build 后启动 aid + 看门狗 |
-| `ai/scripts/start_aid.sh` | 手动启动 aid（调试用） |
+| `scripts/start_aid.sh` | 手动启动 aid（调试用） |

@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
   sys.path.insert(0, str(ROOT))
 
-from ai.cabana_replay_util import build_replay_snapshots, latest_frames_at_rel
+from ai.services.cabana.replay_util import build_replay_snapshots, latest_frames_at_rel
 
 
 def _frame(t: float, bus: int, addr: int, data: str) -> dict:

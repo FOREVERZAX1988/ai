@@ -6,7 +6,7 @@ import json
 import random
 from typing import Any
 
-from ai.client import chat_completion_collect
+from ai.core.llm.client import chat_completion_collect
 from ai.evolution.dataset import EvalDataset, EvalExample, _split_examples
 
 _SYSTEM = """You generate evaluation cases for an openpilot OP Agent skill.

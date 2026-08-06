@@ -31,11 +31,35 @@ class TestCommunityProfiles(unittest.TestCase):
       "param_prefixes": {"Sp": 8},
       "readme_excerpt": "",
       "git_branch": "dev",
+      "openpilot_root": ".",
     }
     profile = match_community_profile(scan)
     self.assertIsNotNone(profile)
     assert profile is not None
     self.assertIn("sunnypilot", profile["id"].lower())
+
+  def test_bluepilot_remote_ignored_on_sunnypilot_tree(self):
+    """Auxiliary bp remote must not beat sunnypilot when bluepilot/ dir is absent."""
+    import tempfile
+    from pathlib import Path
+
+    with tempfile.TemporaryDirectory() as tmp:
+      root = Path(tmp)
+      (root / "sunnypilot").mkdir()
+      scan = {
+        "openpilot_root": str(root),
+        "remote_identity": {"slug": "mouxangithub/openpilot", "owner": "mouxangithub", "repo": "openpilot"},
+        "distinctive_dirs": [],
+        "root_files": [],
+        "param_prefixes": {"Sp": 6, "SunnylinkCache_": 2},
+        "readme_excerpt": "sunnypilot fork",
+        "git_branch": "master-c3",
+      }
+      profile = match_community_profile(scan)
+      self.assertIsNotNone(profile)
+      assert profile is not None
+      self.assertNotEqual(profile["id"], "BluePilotDev/bluepilot")
+      self.assertIn(profile["id"], ("mouxangithub/openpilot", "sunnypilot/sunnypilot"))
 
 
 if __name__ == "__main__":

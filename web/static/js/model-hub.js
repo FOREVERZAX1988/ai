@@ -5,7 +5,7 @@ const ModelHub = (() => {
   const OPTIONAL_BASE_URL = new Set(['qwen', 'minimax', 'mimo', 'bigmodel']);
 
   let root = null;
-  let hub = { version: 1, accounts: [], primary: null, fallbacks: [] };
+  let hub = { version: 2, accounts: [], primary: null, fallbacks: [], embeddingPrimary: null, embeddingFallbacks: [] };
   let providers = [];
   let providerLabels = {};
   let getProviderLabel = (id) => id;
@@ -20,7 +20,8 @@ const ModelHub = (() => {
   let accountModalState = { index: -1, isNew: false };
   let accountModalDraft = null;
 
-  function getRoutes() {
+  function getRoutes(kind = 'chat') {
+    if (kind === 'embedding') return getEmbeddingRoutes();
     const routes = [];
     const p = hub.primary;
     if (p?.accountId) routes.push(p);
@@ -30,10 +31,30 @@ const ModelHub = (() => {
     return routes;
   }
 
-  function setRoutes(routes) {
+  function getEmbeddingRoutes() {
+    const routes = [];
+    const p = hub.embeddingPrimary;
+    if (p?.accountId) routes.push(p);
+    for (const f of hub.embeddingFallbacks || []) {
+      if (f?.accountId) routes.push(f);
+    }
+    return routes;
+  }
+
+  function setRoutes(routes, kind = 'chat') {
+    if (kind === 'embedding') {
+      setEmbeddingRoutes(routes);
+      return;
+    }
     const list = (routes || []).filter((r) => r?.accountId);
     hub.primary = list[0] ? { ...list[0] } : null;
     hub.fallbacks = list.slice(1).map((r) => ({ ...r }));
+  }
+
+  function setEmbeddingRoutes(routes) {
+    const list = (routes || []).filter((r) => r?.accountId);
+    hub.embeddingPrimary = list[0] ? { ...list[0] } : null;
+    hub.embeddingFallbacks = list.slice(1).map((r) => ({ ...r }));
   }
 
   function t(key, fallback, vars) {
@@ -59,7 +80,10 @@ const ModelHub = (() => {
   }
 
   function cloneHub(data) {
-    return JSON.parse(JSON.stringify(data || { version: 1, accounts: [], primary: null, fallbacks: [] }));
+    return JSON.parse(JSON.stringify(data || {
+      version: 2, accounts: [], primary: null, fallbacks: [],
+      embeddingPrimary: null, embeddingFallbacks: [],
+    }));
   }
 
   function accountById(id) {
@@ -88,18 +112,26 @@ const ModelHub = (() => {
     }).join('');
   }
 
-  function modelsForAccount(accountId) {
+  function modelsForAccount(accountId, kind = 'chat') {
     const acc = accountById(accountId);
     if (!acc) return [];
-    const ids = Array.isArray(acc.models) ? acc.models : [];
+    const pool = kind === 'embedding'
+      ? (Array.isArray(acc.embeddingModels) && acc.embeddingModels.length ? acc.embeddingModels : acc.models)
+      : acc.models;
+    const ids = Array.isArray(pool) ? pool : [];
     return ids.map((id) => ({ id }));
   }
 
-  function defaultModelForAccount(accountId) {
-    const opts = modelsForAccount(accountId);
+  function defaultModelForAccount(accountId, kind = 'chat') {
+    const opts = modelsForAccount(accountId, kind);
     if (opts.length) return opts[0].id;
-    const primary = hub.primary;
-    if (primary?.accountId === accountId && primary.model) return primary.model;
+    if (kind === 'embedding') {
+      const ep = hub.embeddingPrimary;
+      if (ep?.accountId === accountId && ep.model) return ep.model;
+    } else {
+      const primary = hub.primary;
+      if (primary?.accountId === accountId && primary.model) return primary.model;
+    }
     return '';
   }
 
@@ -203,24 +235,79 @@ const ModelHub = (() => {
     `;
   }
 
-  function buildSingleProviderHub({ provider, apiKey = '', model = '', baseUrl = '', models = [], label = '' }) {
-    const id = newAccountId();
+  function buildOnboardingHub({
+    provider,
+    apiKey = '',
+    model = '',
+    baseUrl = '',
+    models = [],
+    label = '',
+    embeddingSeparate = false,
+    embeddingProvider = '',
+    embeddingApiKey = '',
+    embeddingBaseUrl = '',
+    embeddingModel = '',
+    embeddingDefaults = {},
+  }) {
+    const chatId = newAccountId();
     const modelList = models.length ? [...models] : (model ? [model] : []);
     if (model && !modelList.includes(model)) modelList.unshift(model);
+    const accounts = [{
+      id: chatId,
+      provider,
+      label: label || '',
+      apiKey,
+      baseUrl,
+      enabled: true,
+      models: modelList,
+      embeddingModels: [],
+    }];
+    const chatProvider = provider;
+    const embModel = (embeddingModel || '').trim() || embeddingDefaults[chatProvider] || '';
+    const embProv = embeddingSeparate
+      ? ((embeddingProvider || '').trim() || 'siliconflow')
+      : chatProvider;
+    const embKey = embeddingSeparate ? (embeddingApiKey || '').trim() : apiKey;
+    const embUrl = embeddingSeparate ? (embeddingBaseUrl || '').trim() : baseUrl;
+    let embeddingPrimary = null;
+    if (embModel) {
+      const sameAccount = embProv === chatProvider && embKey === apiKey && embUrl === baseUrl;
+      let embAccId = chatId;
+      if (sameAccount) {
+        const acc = accounts[0];
+        if (!acc.embeddingModels.includes(embModel)) acc.embeddingModels.push(embModel);
+      } else {
+        embAccId = newAccountId();
+        accounts.push({
+          id: embAccId,
+          provider: embProv,
+          label: '',
+          apiKey: embKey,
+          baseUrl: embUrl,
+          enabled: true,
+          models: [],
+          embeddingModels: [embModel],
+        });
+      }
+      embeddingPrimary = { accountId: embAccId, model: embModel };
+    }
     return {
-      version: 1,
-      accounts: [{
-        id,
-        provider,
-        label: label || '',
-        apiKey,
-        baseUrl,
-        enabled: true,
-        models: modelList,
-      }],
-      primary: model ? { accountId: id, model } : null,
+      version: 2,
+      accounts,
+      primary: model ? { accountId: chatId, model } : null,
       fallbacks: [],
+      embeddingPrimary,
+      embeddingFallbacks: [],
     };
+  }
+
+  function buildSingleProviderHub(opts = {}) {
+    return buildOnboardingHub({
+      ...opts,
+      embeddingSeparate: false,
+      embeddingModel: opts.embeddingModel || '',
+      embeddingDefaults: opts.embeddingDefaults || {},
+    });
   }
 
   function exportRoute(row) {
@@ -251,7 +338,7 @@ const ModelHub = (() => {
 
   let routeModal = null;
   let routeModalCombo = null;
-  let routeModalState = { index: -1 };
+  let routeModalState = { index: -1, kind: 'chat' };
   let defaultThinkingEnabled = true;
 
   const THINKING_MODEL_HINTS = [
@@ -289,6 +376,7 @@ const ModelHub = (() => {
             <span class="field-label">${escapeHtml(t('fallbackLabel', '标签'))}</span>
             <input type="text" id="modelHubRouteLabel" placeholder="${escapeAttr(t('fallbackLabelPh', '可选'))}">
           </label>
+          <div class="model-hub-route-advanced-fields">
           <div class="field-row">
             <label class="field">
               <span class="field-label">${escapeHtml(t('modelHubContextWindow', '上下文窗口'))}</span>
@@ -317,6 +405,7 @@ const ModelHub = (() => {
             </label>
           </label>
           <p class="field-hint model-hub-route-thinking-hint" id="modelHubRouteThinkingHint">${escapeHtml(t('modelHubThinkingHint', '思考模型可开启深度推理；非思考模型可忽略此项。'))}</p>
+          </div>
           <p class="field-hint">${escapeHtml(t('modelHubRouteModalHint', '留空或 0 表示使用内置默认值。'))}</p>
         </div>
         <footer class="modal-footer">
@@ -332,9 +421,10 @@ const ModelHub = (() => {
     el.querySelector('#modelHubRouteSave')?.addEventListener('click', () => saveRouteModal());
     el.querySelector('#modelHubRouteAccount')?.addEventListener('change', (e) => {
       const accountId = e.target.value;
+      const kind = routeModalState.kind || 'chat';
       if (routeModalCombo) {
-        routeModalCombo.setOptions(modelsForAccount(accountId));
-        routeModalCombo.setValue(defaultModelForAccount(accountId), { silent: true });
+        routeModalCombo.setOptions(modelsForAccount(accountId, kind));
+        routeModalCombo.setValue(defaultModelForAccount(accountId, kind), { silent: true });
       }
       syncRouteModalThinkingVisibility();
     });
@@ -359,8 +449,9 @@ const ModelHub = (() => {
 
   function openRouteModal(opts = {}) {
     ensureRouteModal();
-    routeModalState = { index: opts.index ?? -1 };
-    const routes = getRoutes();
+    const kind = opts.kind === 'embedding' ? 'embedding' : 'chat';
+    routeModalState = { index: opts.index ?? -1, kind };
+    const routes = getRoutes(kind);
     const idx = routeModalState.index;
     const row = idx >= 0 ? { ...routes[idx] } : {
       accountId: hub.accounts?.[0]?.id || '',
@@ -369,8 +460,13 @@ const ModelHub = (() => {
     };
 
     routeModal.querySelector('#modelHubRouteModalTitle').textContent = idx >= 0
-      ? t('modelHubEditRoute', '编辑模型')
-      : t('modelHubAddRoute', '添加模型');
+      ? (kind === 'embedding' ? t('modelHubEditEmbedRoute', '编辑 Embedding') : t('modelHubEditRoute', '编辑模型'))
+      : (kind === 'embedding' ? t('modelHubAddEmbedRoute', '添加 Embedding') : t('modelHubAddRoute', '添加模型'));
+
+    const isEmbed = kind === 'embedding';
+    routeModal.querySelector('.model-hub-route-advanced-fields')?.classList.toggle('hidden', isEmbed);
+    routeModal.querySelector('.model-hub-route-thinking-row')?.classList.toggle('hidden', isEmbed);
+    routeModal.querySelector('.model-hub-route-thinking-hint')?.classList.toggle('hidden', isEmbed);
 
     routeModal.querySelector('.model-hub-route-label-field')?.classList.remove('hidden');
 
@@ -386,7 +482,7 @@ const ModelHub = (() => {
         onChange: () => syncRouteModalThinkingVisibility(),
         onInput: () => syncRouteModalThinkingVisibility(),
       });
-      routeModalCombo.setOptions(modelsForAccount(row.accountId));
+      routeModalCombo.setOptions(modelsForAccount(row.accountId, kind));
       routeModalCombo.setValue(row.model || '', { silent: true });
     }
 
@@ -420,9 +516,12 @@ const ModelHub = (() => {
       accountId,
       model: model.trim(),
       label: (routeModal.querySelector('#modelHubRouteLabel')?.value || '').trim(),
-      contextWindow: parseInt(routeModal.querySelector('#modelHubRouteContext')?.value, 10) || 0,
-      maxTokens: parseInt(routeModal.querySelector('#modelHubRouteMaxTokens')?.value, 10) || 0,
     };
+    if (routeModalState.kind === 'embedding') {
+      return row;
+    }
+    row.contextWindow = parseInt(routeModal.querySelector('#modelHubRouteContext')?.value, 10) || 0;
+    row.maxTokens = parseInt(routeModal.querySelector('#modelHubRouteMaxTokens')?.value, 10) || 0;
     const tempRaw = routeModal.querySelector('#modelHubRouteTemp')?.value;
     if (tempRaw !== '' && tempRaw != null) row.temperature = parseFloat(tempRaw);
     const topPRaw = routeModal.querySelector('#modelHubRouteTopP')?.value;
@@ -436,16 +535,18 @@ const ModelHub = (() => {
     if (!row.accountId || !row.model) {
       return;
     }
-    const routes = getRoutes();
+    const kind = routeModalState.kind || 'chat';
+    const routes = getRoutes(kind);
     const idx = routeModalState.index;
     if (idx >= 0) {
       routes[idx] = { ...routes[idx], ...row };
     } else {
       routes.push(row);
     }
-    setRoutes(routes);
+    setRoutes(routes, kind);
     closeRouteModal();
-    renderRouting();
+    if (kind === 'embedding') renderEmbeddingRouting();
+    else renderRouting();
     const btn = routeModal?.querySelector('#modelHubRouteSave');
     if (btn) btn.disabled = true;
     try {
@@ -485,7 +586,7 @@ const ModelHub = (() => {
           </label>
           <label class="field">
             <span class="field-label">${escapeHtml(t('apiKey', 'API Key'))}</span>
-            <input type="text" id="modelHubAccountApiKey" autocomplete="off" spellcheck="false" placeholder="sk-...">
+            ${PasswordField.wrapInput('modelHubAccountApiKey', 'placeholder="sk-..."')}
           </label>
           <div class="model-hub-url-primary hidden" id="modelHubAccountUrlPrimary">
             <label class="field">
@@ -529,6 +630,7 @@ const ModelHub = (() => {
     });
     el.querySelector('#modelHubAccountTest')?.addEventListener('click', () => testAccountFromModal());
     el.querySelector('#modelHubAccountFetch')?.addEventListener('click', () => fetchAccountModelsFromModal());
+    PasswordField.bind(el);
     accountModal = el;
     return el;
   }
@@ -601,6 +703,7 @@ const ModelHub = (() => {
     accountModal.querySelector('#modelHubAccountProvider').innerHTML = providerOptions(accountModalDraft.provider);
     accountModal.querySelector('#modelHubAccountLabel').value = accountModalDraft.label || '';
     accountModal.querySelector('#modelHubAccountApiKey').value = accountModalDraft.apiKey || '';
+    PasswordField.bind(accountModal);
     accountModal.querySelector('#modelHubAccountBaseUrl').value = accountModalDraft.baseUrl || '';
     accountModal.querySelector('#modelHubAccountBaseUrlAdv').value = accountModalDraft.baseUrl || '';
     accountModal.querySelector('#modelHubAccountEnabled').checked = accountModalDraft.enabled !== false;
@@ -757,13 +860,24 @@ const ModelHub = (() => {
         <section class="model-hub-section model-hub-section-routing">
           <div class="model-hub-section-head">
             <div>
-              <h4 class="model-hub-section-title">${escapeHtml(t('modelHubListTitle', '模型列表'))}</h4>
+              <h4 class="model-hub-section-title">${escapeHtml(t('modelHubListTitle', '聊天路由'))}</h4>
               <p class="field-hint">${escapeHtml(t('modelHubListHint', '按顺序调用，第一位为主模型。'))}</p>
             </div>
             <button type="button" class="btn small ghost" id="modelHubAddRoute">${escapeHtml(t('modelHubAddRoute', '+ 添加'))}</button>
           </div>
           <div class="mh-route-list" id="modelHubRouteList"></div>
           <p class="model-hub-empty hidden" id="modelHubRouteEmpty">${escapeHtml(t('modelHubRouteEmpty', '暂无模型，点击添加。'))}</p>
+        </section>
+        <section class="model-hub-section model-hub-section-embedding">
+          <div class="model-hub-section-head">
+            <div>
+              <h4 class="model-hub-section-title">${escapeHtml(t('modelHubEmbedTitle', 'Embedding 路由'))}</h4>
+              <p class="field-hint">${escapeHtml(t('modelHubEmbedHint', '知识库与记忆检索；按顺序尝试，第一位为主模型。'))}</p>
+            </div>
+            <button type="button" class="btn small ghost" id="modelHubAddEmbedRoute">${escapeHtml(t('modelHubAddEmbedRoute', '+ 添加'))}</button>
+          </div>
+          <div class="mh-route-list" id="modelHubEmbedRouteList"></div>
+          <p class="model-hub-empty hidden" id="modelHubEmbedRouteEmpty">${escapeHtml(t('modelHubEmbedRouteEmpty', '暂无 Embedding 模型'))}</p>
         </section>
         <section class="model-hub-section model-hub-section-accounts">
           <div class="model-hub-section-head">
@@ -784,7 +898,11 @@ const ModelHub = (() => {
     });
 
     root.querySelector('#modelHubAddRoute')?.addEventListener('click', () => {
-      openRouteModal({ index: -1 });
+      openRouteModal({ index: -1, kind: 'chat' });
+    });
+
+    root.querySelector('#modelHubAddEmbedRoute')?.addEventListener('click', () => {
+      openRouteModal({ index: -1, kind: 'embedding' });
     });
 
     if (opts.initial) setHub(opts.initial);
@@ -795,6 +913,7 @@ const ModelHub = (() => {
   function render() {
     renderAccounts();
     renderRouting();
+    renderEmbeddingRouting();
   }
 
   function renderAccounts() {
@@ -831,8 +950,10 @@ const ModelHub = (() => {
       el.querySelector('.mh-account-remove')?.addEventListener('click', async () => {
         const removedId = acc.id;
         hub.accounts = accounts.filter((_, i) => i !== idx);
-        const routes = getRoutes().filter((r) => r.accountId !== removedId);
-        setRoutes(routes);
+        const routes = getRoutes('chat').filter((r) => r.accountId !== removedId);
+        setRoutes(routes, 'chat');
+        const embRoutes = getRoutes('embedding').filter((r) => r.accountId !== removedId);
+        setRoutes(embRoutes, 'embedding');
         render();
         await commitHubSave();
       });
@@ -843,6 +964,8 @@ const ModelHub = (() => {
     hub = cloneHub(data);
     if (!Array.isArray(hub.accounts)) hub.accounts = [];
     if (!Array.isArray(hub.fallbacks)) hub.fallbacks = [];
+    if (!hub.embeddingPrimary && data?.embeddingPrimary) hub.embeddingPrimary = data.embeddingPrimary;
+    if (!Array.isArray(hub.embeddingFallbacks)) hub.embeddingFallbacks = [];
     render();
     if (!opts.silent) {
       onLegacySync(hub);
@@ -850,10 +973,18 @@ const ModelHub = (() => {
   }
 
   function renderRouting() {
-    const list = root?.querySelector('#modelHubRouteList');
-    const empty = root?.querySelector('#modelHubRouteEmpty');
+    renderRouteList('chat', '#modelHubRouteList', '#modelHubRouteEmpty');
+  }
+
+  function renderEmbeddingRouting() {
+    renderRouteList('embedding', '#modelHubEmbedRouteList', '#modelHubEmbedRouteEmpty');
+  }
+
+  function renderRouteList(kind, listSel, emptySel) {
+    const list = root?.querySelector(listSel);
+    const empty = root?.querySelector(emptySel);
     if (!list) return;
-    const routes = getRoutes();
+    const routes = getRoutes(kind);
     empty?.classList.toggle('hidden', routes.length > 0);
     list.innerHTML = '';
     routes.forEach((row, idx) => {
@@ -873,28 +1004,31 @@ const ModelHub = (() => {
       list.appendChild(el);
 
       el.querySelector('.mh-route-edit')?.addEventListener('click', () => {
-        openRouteModal({ index: idx });
+        openRouteModal({ index: idx, kind });
       });
       el.querySelector('.mh-route-remove')?.addEventListener('click', async () => {
-        const next = getRoutes().filter((_, i) => i !== idx);
-        setRoutes(next);
-        renderRouting();
+        const next = getRoutes(kind).filter((_, i) => i !== idx);
+        setRoutes(next, kind);
+        if (kind === 'embedding') renderEmbeddingRouting();
+        else renderRouting();
         await commitHubSave();
       });
       el.querySelector('.mh-route-up')?.addEventListener('click', async () => {
         if (idx <= 0) return;
-        const r = getRoutes();
+        const r = getRoutes(kind);
         [r[idx - 1], r[idx]] = [r[idx], r[idx - 1]];
-        setRoutes(r);
-        renderRouting();
+        setRoutes(r, kind);
+        if (kind === 'embedding') renderEmbeddingRouting();
+        else renderRouting();
         await commitHubSave({ silent: true });
       });
       el.querySelector('.mh-route-down')?.addEventListener('click', async () => {
         if (idx >= routes.length - 1) return;
-        const r = getRoutes();
+        const r = getRoutes(kind);
         [r[idx], r[idx + 1]] = [r[idx + 1], r[idx]];
-        setRoutes(r);
-        renderRouting();
+        setRoutes(r, kind);
+        if (kind === 'embedding') renderEmbeddingRouting();
+        else renderRouting();
         await commitHubSave({ silent: true });
       });
     });
@@ -917,9 +1051,15 @@ const ModelHub = (() => {
       .map((row) => exportRoute(row))
       .filter(Boolean);
     if (out.primary) {
-      const primary = exportRoute(out.primary);
-      out.primary = primary;
+      out.primary = exportRoute(out.primary);
     }
+    out.embeddingFallbacks = (out.embeddingFallbacks || [])
+      .map((row) => exportRoute(row))
+      .filter(Boolean);
+    if (out.embeddingPrimary) {
+      out.embeddingPrimary = exportRoute(out.embeddingPrimary);
+    }
+    out.version = 2;
     return out;
   }
 
@@ -942,6 +1082,7 @@ const ModelHub = (() => {
     setProviders,
     getPrimaryAccount,
     buildSingleProviderHub,
+    buildOnboardingHub,
     resolveProviderUsageLabel,
     render,
   };

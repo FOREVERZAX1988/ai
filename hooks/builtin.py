@@ -61,7 +61,7 @@ async def _hook_audit_tool(ctx: dict[str, Any]) -> dict[str, Any] | None:
   ok = bool(result.get("ok", True)) if isinstance(result, dict) else True
   cloudlog.info(f"aid: tool {name} agent={agent} ok={ok}")
   try:
-    from ai.sidecar_hub import publish_tool_event
+    from ai.core.runtime.sidecar_hub import publish_tool_event
     await publish_tool_event({
       "type": "tool_done",
       "name": name,
@@ -76,7 +76,7 @@ async def _hook_audit_tool(ctx: dict[str, Any]) -> dict[str, Any] | None:
 
 async def _hook_tool_start_sidecar(ctx: dict[str, Any]) -> dict[str, Any] | None:
   try:
-    from ai.sidecar_hub import publish_tool_event
+    from ai.core.runtime.sidecar_hub import publish_tool_event
     await publish_tool_event({
       "type": "tool_start",
       "name": ctx.get("name", ""),
