@@ -5,7 +5,8 @@ from __future__ import annotations
 import time
 from typing import Any
 
-from ai.client import AIConfig, load_config_from_params
+from ai.client import AIConfig
+from ai.server.deps import read_ai_config
 from ai.evolution.config import EvolutionRunConfig
 from ai.evolution.constraints import all_passed, validate_artifact
 from ai.evolution.dataset import EvalDataset, build_eval_dataset
@@ -38,7 +39,7 @@ async def evolve_skill_gepa(
   hotspot: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
   """Full Hermes-style skill evolution with eval dataset + constraints + approval gate."""
-  cfg = config or load_config_from_params(params)
+  cfg = config or read_ai_config(params)
   run = run or EvolutionRunConfig.from_params(skill_id=skill_id)
 
   if run.dry_run:

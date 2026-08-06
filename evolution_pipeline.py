@@ -8,7 +8,8 @@ from typing import Any
 
 from openpilot.common.params import Params
 
-from ai.client import AIConfig, load_config_from_params
+from ai.client import AIConfig
+from ai.server.deps import read_ai_config
 from ai.common.evolution_config import (
   evolution_auto_propose,
   evolution_auto_memory,
@@ -62,7 +63,7 @@ async def run_post_chat_pipeline(
   if not evolution_enabled():
     return {"ok": True, "skipped": True, "reason": "evolution disabled"}
 
-  cfg = config or load_config_from_params(params)
+  cfg = config or read_ai_config(params)
   result: dict[str, Any] = {"ok": True, "steps": []}
 
   from ai.tools.skill_evolution import analyze_execution_traces, evolve_skill_proposal
@@ -178,7 +179,7 @@ async def run_evolution_pipeline_manual(
   eval_source: str = "sessiondb",
 ) -> dict[str, Any]:
   """Manual trigger from UI or tool — runs full GEPA when enabled."""
-  cfg = load_config_from_params(params)
+  cfg = read_ai_config(params)
   from ai.tools.skill_evolution import analyze_execution_traces, evolve_skill_proposal
 
   sid = (skill_id or focus or "memory-protocol").strip()

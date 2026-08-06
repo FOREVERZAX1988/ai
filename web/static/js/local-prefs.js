@@ -97,8 +97,18 @@ const LocalPrefs = (() => {
         if (draftAccounts === 0 && serverAccounts > 0) continue;
         const draftFb = Array.isArray(v?.fallbacks) ? v.fallbacks.length : 0;
         const serverFb = Array.isArray(base.modelHub?.fallbacks) ? base.modelHub.fallbacks.length : 0;
+        const draftEmbFb = Array.isArray(v?.embeddingFallbacks) ? v.embeddingFallbacks.length : 0;
+        const serverEmbFb = Array.isArray(base.modelHub?.embeddingFallbacks) ? base.modelHub.embeddingFallbacks.length : 0;
         if (draftAccounts > 0 && draftFb === 0 && serverFb > 0) {
           base.modelHub = { ...v, fallbacks: base.modelHub.fallbacks };
+          continue;
+        }
+        if (draftAccounts > 0 && draftEmbFb === 0 && serverEmbFb > 0) {
+          base.modelHub = {
+            ...(base.modelHub || {}),
+            ...v,
+            embeddingFallbacks: base.modelHub.embeddingFallbacks,
+          };
           continue;
         }
       }

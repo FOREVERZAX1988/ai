@@ -93,7 +93,7 @@ async def maybe_compact_messages(
   if not transcript_lines:
     return messages
 
-  from ai.client import chat_completion_collect
+  from ai.model_router import chat_completion_collect_with_failover
 
   prompt = (
     "Summarize this openpilot assistant conversation for long-term memory. "
@@ -101,8 +101,9 @@ async def maybe_compact_messages(
     "Use concise bullet points in Chinese when the user wrote in Chinese.\n\n"
     + "\n".join(transcript_lines)
   )
-  content, _, err = await chat_completion_collect(
+  content, _, _, err = await chat_completion_collect_with_failover(
     config,
+    params,
     [
       {"role": "system", "content": "You produce compact session summaries for an automotive AI assistant."},
       {"role": "user", "content": prompt},

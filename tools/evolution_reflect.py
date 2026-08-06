@@ -7,7 +7,8 @@ from typing import Any
 
 from openpilot.common.params import Params
 
-from ai.client import AIConfig, load_config_from_params, chat_completion_collect
+from ai.client import AIConfig
+from ai.model_router import chat_completion_collect_with_failover
 
 
 _REFLECT_SYSTEM = """You are an AI agent evolution analyst (Hermes/GEPA style).
@@ -29,7 +30,8 @@ async def reflect_on_trace(
   focus: str = "",
   config: AIConfig | None = None,
 ) -> dict[str, Any]:
-  cfg = config or load_config_from_params(params)
+  from ai.server.deps import read_ai_config
+  cfg = config or read_ai_config(params)
   if not cfg.is_configured:
     return {"ok": False, "error": "AI not configured for reflection"}
 
@@ -41,7 +43,9 @@ async def reflect_on_trace(
     {"role": "system", "content": _REFLECT_SYSTEM},
     {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
   ]
-  content, _, err = await chat_completion_collect(cfg, messages, max_tokens=2500, temperature=0.3)
+  content, _, _, err = await chat_completion_collect_with_failover(
+    cfg, params, messages, max_tokens=2500, temperature=0.3,
+  )
   if err:
     return {"ok": False, "error": err}
 

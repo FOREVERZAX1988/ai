@@ -19,6 +19,15 @@ class SyncProtocolTests(unittest.TestCase):
     self.assertTrue(ok, err)
     self.assertIn("hello", get_protocol_schema()["messages"])
 
+  def test_hello_merge_preserves_type(self):
+    """Regression: status_payload must not overwrite hello frame type."""
+    payload = {"type": "hello", "sessions": [], "protocolVersion": 1}
+    status = {"type": "status", "ok": True, "driving": False, "state": {}}
+    status.pop("type", None)
+    payload.update(status)
+    self.assertEqual(payload["type"], "hello")
+    self.assertTrue(payload["driving"] is False)
+
 
 
 class ModelRouterTests(unittest.TestCase):

@@ -91,7 +91,7 @@ def build_bootstrap_payload(
     car_fingerprint=state.car_fingerprint or "",
   )
   config = read_ai_config()
-  embed_cfg = load_embedding_config(params, config)
+  embed_cfg = load_embedding_config(params)
   skills_on = load_enabled_skill_ids(params)
   from ai.timezone_util import read_ai_timezone_name
 
@@ -149,13 +149,8 @@ def build_bootstrap_payload(
       "timezone": tz_name,
       "configured": config.is_configured,
       "configureError": config.configuration_error,
-      "embeddingMode": embed_cfg.mode,
       "embeddingProvider": embed_cfg.provider,
       "embeddingModel": embed_cfg.model,
-      "embeddingApiKey": read_param_str("ai_embedding_api_key")
-      if embed_cfg.mode == "separate"
-      else "",
-      "embeddingBaseUrl": embed_cfg.base_url,
       "embeddingConfigured": embed_cfg.is_configured,
       "modelHub": hub_for_api(params, mask_keys=False),
       "modelFallbacks": fallbacks_for_api(params, config),

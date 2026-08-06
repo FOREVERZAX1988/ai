@@ -418,6 +418,8 @@ const PlatformPanel = (() => {
     const hubAccounts = m.modelHubAccounts ?? 0;
     const hubRoutes = m.modelHubRoutes ?? 0;
     const hubFallbacks = m.modelHubFallbacks ?? 0;
+    const embRoutes = m.embeddingRoutes ?? 0;
+    const embFallbacks = m.embeddingFallbacks ?? 0;
     const modelLine = m.modelConfigured
       ? (hubRoutes > 1
         ? `${m.provider || ''} / ${m.model || ''} (+${hubFallbacks} ${tr('modelHubFallbacks', '备用')})`
@@ -429,7 +431,7 @@ const PlatformPanel = (() => {
     box.innerHTML = [
       `<div class="platform-list-item">${tr('platformBackupModel', '模型')}: ${esc(modelLine)}</div>`,
       `<div class="platform-list-item">${tr('modelHubTitle', '模型中心')}: ${esc(hubLine)}</div>`,
-      `<div class="platform-list-item">${tr('platformBackupEmbedding', 'Embedding')}: ${esc(m.embeddingModel || '—')}</div>`,
+      `<div class="platform-list-item">${tr('platformBackupEmbedding', 'Embedding')}: ${esc(m.embeddingModel || '—')}${embRoutes > 1 ? ` (+${embFallbacks} ${tr('modelHubFallbacks', '备用')})` : ''}</div>`,
       `<div class="platform-list-item">${tr('platformBackupMemory', '记忆')}: ${m.memoryNotes ?? 0}</div>`,
       `<div class="platform-list-item">${tr('platformBackupSessions', '会话')}: ${m.sessions ?? 0}</div>`,
       `<div class="platform-list-item">${tr('platformBackupSkills', '技能')}: ${m.learnedSkills ?? 0} (+${m.enabledSkills ?? 0} 启用)</div>`,

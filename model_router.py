@@ -123,8 +123,19 @@ def resolve_chat_config(
   body: dict[str, Any] | None = None,
 ) -> AIConfig:
   """Return the primary chat config."""
-  del workflow_id, user_text, body
-  return base
+  del workflow_id, user_text
+  chain = resolve_chat_config_chain(base, params, body=body)
+  return chain[0] if chain else base
+
+
+def _chat_route_from_body(body: dict[str, Any] | None) -> dict[str, Any] | None:
+  if not isinstance(body, dict):
+    return None
+  raw = body.get("chatRoute") or body.get("chat_route")
+  if not isinstance(raw, dict):
+    return None
+  from ai.model_accounts import parse_chat_route
+  return parse_chat_route(raw)
 
 
 def resolve_chat_config_chain(
@@ -136,9 +147,9 @@ def resolve_chat_config_chain(
   body: dict[str, Any] | None = None,
 ) -> list[AIConfig]:
   """Primary config followed by fallback profiles from model hub."""
-  del workflow_id, user_text, body
-  from ai.model_accounts import resolve_chat_chain
-  return resolve_chat_chain(params, base)
+  del workflow_id, user_text
+  from ai.model_accounts import resolve_chat_chain_with_route
+  return resolve_chat_chain_with_route(params, base, chat_route=_chat_route_from_body(body))
 
 
 async def chat_completion_with_failover(
@@ -165,3 +176,34 @@ async def chat_completion_with_failover(
     if emitted:
       return
   yield ChatChunk(error=last_error or "All configured models failed"), base
+
+
+async def chat_completion_collect_with_failover(
+  base: AIConfig,
+  params,
+  messages: list[dict[str, Any]],
+  *,
+  tools: list[dict[str, Any]] | None = None,
+  body: dict[str, Any] | None = None,
+  temperature: float | None = None,
+  max_tokens: int | None = None,
+  timeout_total: float = 120,
+) -> tuple[str, str, AIConfig | None, str | None]:
+  """Collect full completion with failover. Returns (content, reasoning, active_cfg, error)."""
+  from ai.client import chat_completion_collect
+
+  last_error = ""
+  for cfg in resolve_chat_config_chain(base, params, body=body):
+    content, reasoning, err = await chat_completion_collect(
+      cfg,
+      messages,
+      tools=tools,
+      temperature=temperature,
+      max_tokens=max_tokens,
+      timeout_total=timeout_total,
+    )
+    if err:
+      last_error = err
+      continue
+    return content, reasoning, cfg, None
+  return "", "", None, last_error or "All configured models failed"

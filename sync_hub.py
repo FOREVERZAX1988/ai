@@ -11,9 +11,11 @@ from aiohttp import web
 from openpilot.common.params import Params
 from openpilot.common.swaglog import cloudlog
 
-from ai.client import load_config_from_params
 from ai.common.storage import read_param
 from ai.embedding import load_embedding_config
+from ai.model_accounts import hub_for_api, resolve_primary_config
+from ai.model_router import fallbacks_for_api
+from ai.client import load_config_from_params
 from ai.tools.notifications import list_notifications
 from ai.tools.session_store import get_sessions, session_state_version
 from ai.agents.config import agents_enabled_payload
@@ -21,10 +23,6 @@ from ai.agents.office import office_snapshot
 from ai.agents.registry import list_agents
 from ai.sync_protocol import WS_PROTOCOL_VERSION, validate_ws_message
 from ai.device_trust import check_device_trust, touch_device
-
-
-def _mask_key(key: str) -> str:
-  return key or ""
 
 
 def _read_param_str(params: Params, key: str, default: str = "") -> str:
@@ -35,12 +33,13 @@ def _read_param_str(params: Params, key: str, default: str = "") -> str:
 def config_snapshot(params: Params) -> dict[str, Any]:
   from ai.timezone_util import read_ai_timezone_name
 
-  config = load_config_from_params(params)
-  embed_cfg = load_embedding_config(params, config)
+  config = resolve_primary_config(params, load_config_from_params(params))
+  embed_cfg = load_embedding_config(params)
+  hub = hub_for_api(params, mask_keys=False)
   return {
     "provider": config.provider,
     "model": config.model,
-    "apiKey": _mask_key(config.api_key),
+    "apiKey": config.api_key,
     "baseUrl": config.base_url,
     "systemPrompt": config.system_prompt,
     "temperature": config.temperature,
@@ -51,11 +50,10 @@ def config_snapshot(params: Params) -> dict[str, Any]:
     "timezone": read_ai_timezone_name(params),
     "configured": config.is_configured,
     "configureError": config.configuration_error,
-    "embeddingMode": embed_cfg.mode,
+    "modelHub": hub,
+    "modelFallbacks": fallbacks_for_api(params, config),
     "embeddingProvider": embed_cfg.provider,
     "embeddingModel": embed_cfg.model,
-    "embeddingApiKey": _mask_key(_read_param_str(params, "ai_embedding_api_key")) if embed_cfg.mode == "separate" else "",
-    "embeddingBaseUrl": embed_cfg.base_url,
     "embeddingConfigured": embed_cfg.is_configured,
   }
 
@@ -209,7 +207,7 @@ async def notify_lifecycle(
 
 def _hello_payload(request: web.Request, params: Params) -> dict[str, Any]:
   from ai.chat_jobs import list_active_jobs
-  config = load_config_from_params(params)
+  config = resolve_primary_config(params, load_config_from_params(params))
   payload: dict[str, Any] = {
     "type": "hello",
     **get_sessions(params, compact=True),
@@ -232,7 +230,9 @@ def _hello_payload(request: web.Request, params: Params) -> dict[str, Any]:
   if callable(get_reader):
     try:
       state = get_reader().update(timeout=0)
-      payload.update(status_payload(state, config))
+      status = status_payload(state, config)
+      status.pop("type", None)
+      payload.update(status)
     except Exception as e:
       cloudlog.warning(f"aid: hello status skipped: {e}")
   return payload

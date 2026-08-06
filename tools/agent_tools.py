@@ -42,8 +42,6 @@ from ai.tools.rag_store import list_documents, remove_document, search_documents
 from ai.tools.write_pending import create_pending
 from ai.tools.scheduler import list_tasks, remove_task, upsert_task
 from ai.embedding import load_embedding_config
-from ai.client import load_config_from_params
-
 # Tool metadata for Web UI (enabled + driving flags)
 TOOL_META: dict[str, dict[str, Any]] = {
   "get_vehicle_state": {"label": "车辆状态", "group": "read", "default_enabled": True, "driving": True},
@@ -402,8 +400,7 @@ def make_handlers(
   admin = is_admin_mode(p)
 
   def _embedding_cfg():
-    chat = load_config_from_params(p)
-    return load_embedding_config(p, chat)
+    return load_embedding_config(p)
 
   def _stationary_check(action: str):
     state = get_state_reader().update(timeout=0)

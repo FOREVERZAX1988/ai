@@ -1,7 +1,7 @@
 """
 OpenAI-compatible embedding client for op助手 RAG.
 
-Supports same provider as chat or a separate embedding configuration.
+Routing via model hub (embeddingPrimary + embeddingFallbacks).
 """
 
 from __future__ import annotations
@@ -36,7 +36,6 @@ DEFAULT_EMBEDDING_MODELS = {
 
 @dataclass
 class EmbeddingConfig:
-  mode: str  # "same" | "separate"
   provider: str
   model: str
   api_key: str
@@ -56,33 +55,21 @@ class EmbeddingConfig:
 
 
 def load_embedding_config(params: Any, chat_config: Any | None = None) -> EmbeddingConfig:
-  from ai.common.storage import read_param
-  mode = _param_to_str(read_param(params, "ai_embedding_mode"), "same").lower()
-  if mode not in ("same", "separate"):
-    mode = "same"
+  """Resolve primary embedding config from model hub (legacy params migrated on load)."""
+  del chat_config
+  from openpilot.common.params import Params
+  from ai.model_accounts import resolve_embedding_primary_config
 
-  if mode == "same" and chat_config is not None:
-    provider = chat_config.provider
-    model = _param_to_str(read_param(params, "ai_embedding_model")) or DEFAULT_EMBEDDING_MODELS.get(
-      provider, DEFAULT_EMBEDDING_MODELS["openrouter"],
-    )
-    return EmbeddingConfig(
-      mode=mode,
-      provider=provider,
-      model=model,
-      api_key=chat_config.api_key,
-      base_url=chat_config.base_url or "",
-    )
+  p = params if isinstance(params, Params) else Params()
+  return resolve_embedding_primary_config(p)
 
-  provider = _param_to_str(read_param(params, "ai_embedding_provider"), "siliconflow")
-  model = _param_to_str(read_param(params, "ai_embedding_model")) or DEFAULT_EMBEDDING_MODELS.get(
-    provider, DEFAULT_EMBEDDING_MODELS["openrouter"],
-  )
-  api_key = _param_to_str(read_param(params, "ai_embedding_api_key"))
-  if not api_key and chat_config is not None:
-    api_key = chat_config.api_key
-  base_url = _param_to_str(read_param(params, "ai_embedding_base_url"))
-  return EmbeddingConfig(mode=mode, provider=provider, model=model, api_key=api_key, base_url=base_url)
+
+def load_embedding_config_chain(params: Any) -> list[EmbeddingConfig]:
+  from openpilot.common.params import Params
+  from ai.model_accounts import resolve_embedding_chain
+
+  p = params if isinstance(params, Params) else Params()
+  return resolve_embedding_chain(p)
 
 
 def normalize_embedding_usage(raw: dict[str, Any] | None) -> dict[str, int]:
@@ -151,3 +138,23 @@ async def embed_texts(
         return vectors, None
   except Exception as e:
     return None, str(e)
+
+
+async def embed_texts_with_failover(
+  params: Any,
+  texts: list[str],
+  *,
+  source: str = "embedding",
+) -> tuple[list[list[float]] | None, EmbeddingConfig | None, str | None]:
+  """Try embedding chain until one succeeds."""
+  chain = load_embedding_config_chain(params)
+  if not chain:
+    return None, None, "Embedding not configured"
+  last_error = ""
+  for cfg in chain:
+    vectors, err = await embed_texts(cfg, texts, params=params, source=source)
+    if err:
+      last_error = err
+      continue
+    return vectors, cfg, None
+  return None, None, last_error or "All embedding models failed"

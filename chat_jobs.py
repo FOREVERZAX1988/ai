@@ -177,7 +177,11 @@ async def start_chat_job(
           j = _jobs.get(job_id)
           if not j or j["status"] == "cancelled":
             return
-          j["status"] = "done"
+          if result.get("ok") is False:
+            j["status"] = "error"
+            j["error"] = str(result.get("error") or "Chat failed")
+          else:
+            j["status"] = "done"
           j["resolvedModel"] = result.get("resolvedModel")
           j["updatedAt"] = int(time.time())
         try:

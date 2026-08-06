@@ -470,11 +470,8 @@ async def api_get_config(request: web.Request) -> web.Response:
       "timezone": read_ai_timezone_name(_PARAMS),
       "configured": config.is_configured,
       "configureError": config.configuration_error,
-      "embeddingMode": embed_cfg.mode,
       "embeddingProvider": embed_cfg.provider,
       "embeddingModel": embed_cfg.model,
-      "embeddingApiKey": _read_param_str("ai_embedding_api_key") if embed_cfg.mode == "separate" else "",
-      "embeddingBaseUrl": embed_cfg.base_url,
       "embeddingConfigured": embed_cfg.is_configured,
       "contextWindow": ctx.get("contextWindow"),
       "compactionEnabled": ctx.get("enabled"),
@@ -518,6 +515,7 @@ async def api_post_config(request: web.Request) -> web.Response:
     else:
       write_param(_PARAMS, key, str(value))
 
+  embedding_routes_changed = False
   try:
     _put("ai_provider", body.get("provider"))
     _put("ai_model", body.get("model"))
@@ -549,18 +547,13 @@ async def api_post_config(request: web.Request) -> web.Response:
     _put("ai_evolution_use_dspy", body.get("evolutionUseDspy"))
     _put("ai_thinking_enabled", body.get("thinkingEnabled"))
     _put("ai_thinking_keep", body.get("thinkingKeep"))
-    _put("ai_embedding_mode", body.get("embeddingMode"))
-    _put("ai_embedding_provider", body.get("embeddingProvider"))
-    _put("ai_embedding_model", body.get("embeddingModel"))
-    emb_key = body.get("embeddingApiKey", "")
-    if emb_key and not str(emb_key).startswith("•"):
-      _put("ai_embedding_api_key", emb_key)
-    _put("ai_embedding_base_url", body.get("embeddingBaseUrl"))
     tz = body.get("timezone")
     if tz is not None and str(tz).strip():
       _put("ai_timezone", str(tz).strip())
+    embedding_routes_changed = False
     if "modelHub" in body and isinstance(body.get("modelHub"), dict):
-      save_model_hub(_PARAMS, body["modelHub"])
+      hub_result = save_model_hub(_PARAMS, body["modelHub"])
+      embedding_routes_changed = bool(hub_result.get("_embeddingPrimaryChanged"))
     elif "modelFallbacks" in body:
       existing = load_fallback_entries(_PARAMS)
       incoming = body.get("modelFallbacks") or []
@@ -577,6 +570,16 @@ async def api_post_config(request: web.Request) -> web.Response:
   except Exception as e:
     cloudlog.error(f"aid: api_post_config failed: {e}")
     return _json_response({"ok": False, "error": format_persist_error(e)}, status=500)
+
+  if embedding_routes_changed:
+    try:
+      from ai.tools.rag_store import reindex_all
+      from ai.tools.memory_vectors import index_memory_notes
+
+      await reindex_all(_PARAMS)
+      await index_memory_notes(_PARAMS)
+    except Exception as e:
+      cloudlog.warning(f"aid: embedding reindex after hub save failed: {e}")
 
   config = _read_ai_config()
   try:

@@ -10,9 +10,53 @@ const SessionStore = (() => {
 
   let sessions = [];
   let activeId = null;
+  let draftChatRoute = null;
+  let defaultChatRouteProvider = null;
+
+  function routeKey(route) {
+    if (!route?.accountId || !route?.model) return '';
+    return `${route.accountId}\0${route.model}`;
+  }
 
   function uid() {
     return `s_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+  }
+
+  function getById(id) {
+    if (!id) return null;
+    return sessions.find((s) => s.id === id) || null;
+  }
+
+  function getChatRoute(id) {
+    const s = id ? getById(id) : null;
+    if (s?.chatRoute?.accountId && s?.chatRoute?.model) {
+      return { accountId: s.chatRoute.accountId, model: s.chatRoute.model };
+    }
+    return null;
+  }
+
+  function setChatRoute(id, route) {
+    const s = getById(id);
+    if (!s) return;
+    if (!route?.accountId || !route?.model) {
+      delete s.chatRoute;
+    } else {
+      s.chatRoute = { accountId: route.accountId, model: route.model };
+      const key = routeKey(s.chatRoute);
+      const pins = Array.isArray(s.chatRoutePins) ? s.chatRoutePins.filter((k) => k !== key) : [];
+      pins.unshift(key);
+      s.chatRoutePins = pins.slice(0, 12);
+    }
+    s.updatedAt = Date.now();
+  }
+
+  function getDraftChatRoute() {
+    return draftChatRoute;
+  }
+
+  function setDraftChatRoute(route) {
+    if (!route?.accountId || !route?.model) draftChatRoute = null;
+    else draftChatRoute = { accountId: route.accountId, model: route.model };
   }
 
   function messageHasVisibleContent(msg) {
@@ -63,10 +107,18 @@ const SessionStore = (() => {
     resolveActiveId();
   }
 
+  function resolveDefaultChatRoute() {
+    if (typeof defaultChatRouteProvider !== 'function') return null;
+    const route = defaultChatRouteProvider();
+    if (!route?.accountId || !route?.model) return null;
+    return { accountId: route.accountId, model: route.model };
+  }
+
   /** Gateway mode: start empty; hydrate from WS hello / GET /api/ai/sessions. */
-  function init() {
+  function init(opts = {}) {
     sessions = [];
     activeId = null;
+    defaultChatRouteProvider = typeof opts.getDefaultChatRoute === 'function' ? opts.getDefaultChatRoute : null;
   }
 
   /** One-time export for migrating browser localStorage → server. */
@@ -144,6 +196,12 @@ const SessionStore = (() => {
       mode: 'chat',
       updatedAt: Date.now(),
     };
+    const initialRoute = draftChatRoute || resolveDefaultChatRoute();
+    if (initialRoute) {
+      session.chatRoute = { ...initialRoute };
+      session.chatRoutePins = [routeKey(initialRoute)];
+      draftChatRoute = null;
+    }
     sessions.unshift(session);
     activeId = id;
     while (sessions.length > MAX_SESSIONS) sessions.pop();
@@ -159,6 +217,7 @@ const SessionStore = (() => {
 
   function startDraft() {
     activeId = null;
+    draftChatRoute = resolveDefaultChatRoute();
   }
 
   function remove(id) {
@@ -271,6 +330,11 @@ const SessionStore = (() => {
     importMerged,
     patchSession,
     sessionHasContent,
+    getById,
+    getChatRoute,
+    setChatRoute,
+    getDraftChatRoute,
+    setDraftChatRoute,
     get activeId() { return activeId; },
   };
 })();

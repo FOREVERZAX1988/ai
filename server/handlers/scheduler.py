@@ -128,12 +128,14 @@ async def scheduler_execute_action(action: str, _payload: dict[str, Any]) -> str
     prompt = str((_payload or {}).get("prompt") or "").strip()
     if not prompt:
       return "chat_notify: empty prompt"
-    from ai.client import load_config_from_params, chat_completion_collect
-    config = load_config_from_params(_PARAMS)
+    from ai.server.deps import read_ai_config
+    from ai.model_router import chat_completion_collect_with_failover
+    config = read_ai_config(_PARAMS)
     if not config.is_configured:
       return "chat_notify: AI not configured"
-    content, _, err = await chat_completion_collect(
+    content, _, _, err = await chat_completion_collect_with_failover(
       config,
+      _PARAMS,
       [
         {"role": "system", "content": "You are op助手. Reply in concise Chinese."},
         {"role": "user", "content": prompt},

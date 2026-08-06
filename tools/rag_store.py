@@ -131,17 +131,20 @@ async def index_document_vectors(
   title: str,
   text: str,
   *,
-  embed_config: Any,
+  embed_config: Any | None = None,
 ) -> dict[str, Any]:
-  from ai.embedding import embed_texts
+  from ai.embedding import embed_texts_with_failover, load_embedding_config_chain
 
   pieces = _chunk_text(text)
   if not pieces:
     return {"ok": False, "error": "nothing to embed"}
-  if not embed_config.is_configured:
+  if embed_config is not None and not embed_config.is_configured:
+    if not load_embedding_config_chain(params):
+      return {"ok": False, "error": "embedding not configured", "fallback": "keyword"}
+  elif not load_embedding_config_chain(params):
     return {"ok": False, "error": "embedding not configured", "fallback": "keyword"}
 
-  vectors, err = await embed_texts(embed_config, pieces, params=params, source="rag_index")
+  vectors, _cfg, err = await embed_texts_with_failover(params, pieces, source="rag_index")
   if err or vectors is None:
     return {"ok": False, "error": err or "embed failed"}
 
@@ -266,9 +269,11 @@ async def search_documents(
   kw_hits = kw_res.get("hits") or []
 
   vec_hits: list[dict[str, Any]] = []
-  if embed_config is not None and embed_config.is_configured and chunk_count() > 0:
-    from ai.embedding import embed_texts
-    vectors, err = await embed_texts(embed_config, [query], params=params, source="rag_search")
+  from ai.embedding import embed_texts_with_failover, load_embedding_config_chain
+  chain_ok = bool(load_embedding_config_chain(params))
+  configured = (embed_config is not None and embed_config.is_configured) or chain_ok
+  if configured and chunk_count() > 0:
+    vectors, _cfg, err = await embed_texts_with_failover(params, [query], source="rag_search")
     if not err and vectors:
       vec_hits = search_vector_chunks(vectors[0], limit=limit * 2)
       for h in vec_hits:
@@ -305,7 +310,7 @@ async def search_documents(
   return {"ok": True, "query": query, "hits": hits, "method": "hybrid"}
 
 
-async def reindex_all(params: Params, embed_config: Any) -> dict[str, Any]:
+async def reindex_all(params: Params, embed_config: Any = None) -> dict[str, Any]:
   import asyncio
 
   docs = _load_docs(params)

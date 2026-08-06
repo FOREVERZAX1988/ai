@@ -98,10 +98,23 @@ def _hub_manifest_from_config(ai_cfg: dict[str, Any]) -> dict[str, Any]:
     acc = next((a for a in accounts if str(a.get("id")) == str(primary.get("accountId"))), None)
     if acc:
       primary_provider = str(acc.get("provider") or "").strip()
+  emb_routes = 0
+  emb_primary = hub.get("embeddingPrimary") if isinstance(hub.get("embeddingPrimary"), dict) else None
+  if emb_primary and emb_primary.get("accountId") and emb_primary.get("model"):
+    emb_routes += 1
+  for item in hub.get("embeddingFallbacks") or []:
+    if isinstance(item, dict) and item.get("accountId") and item.get("model"):
+      emb_routes += 1
+  emb_model = ""
+  if emb_primary:
+    emb_model = str(emb_primary.get("model") or "").strip()
   return {
     "accounts": len(accounts),
     "routes": routes,
     "fallbacks": max(0, routes - 1) if routes else 0,
+    "embeddingRoutes": emb_routes,
+    "embeddingFallbacks": max(0, emb_routes - 1) if emb_routes else 0,
+    "embeddingModel": emb_model,
     "primaryProvider": primary_provider,
     "primaryModel": primary_model,
     "configured": bool(accounts and routes),
@@ -295,7 +308,9 @@ def backup_manifest(params: Params | None = None) -> dict[str, Any]:
     "modelHubAccounts": hub_info.get("accounts", 0),
     "modelHubRoutes": hub_info.get("routes", 0),
     "modelHubFallbacks": hub_info.get("fallbacks", 0),
-    "embeddingModel": ai_cfg.get("ai_embedding_model") or "",
+    "embeddingRoutes": hub_info.get("embeddingRoutes", 0),
+    "embeddingFallbacks": hub_info.get("embeddingFallbacks", 0),
+    "embeddingModel": hub_info.get("embeddingModel") or ai_cfg.get("ai_embedding_model") or "",
     "memoryNotes": len(mem.get("notes") or []),
     "sessions": len((get_sessions(params).get("sessions") or [])),
     "learnedSkills": len(_load_learned(params)),

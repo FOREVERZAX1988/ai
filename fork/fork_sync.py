@@ -54,11 +54,11 @@ async def generate_fork_drafts(
   emit: EmitFn = None,
 ) -> dict[str, Any]:
   """Run AI repo analysis (if needed) then draft skill/doc notes."""
-  from ai.client import load_config_from_params
+  from ai.server.deps import read_ai_config
   from ai.system.paths import openpilot_root as default_root
 
   root = openpilot_root or default_root()
-  config = load_config_from_params(params)
+  config = read_ai_config(params)
   if not config.is_configured:
     err = config.configuration_error or "AI not configured"
     await emit_event(emit, {"type": "error", "error": err})

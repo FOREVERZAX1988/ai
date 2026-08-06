@@ -36,20 +36,20 @@ def _cosine(a: list[float], b: list[float]) -> float:
   return dot / (na * nb)
 
 
-async def index_memory_notes(params, embed_config) -> dict[str, Any]:
+async def index_memory_notes(params, embed_config=None) -> dict[str, Any]:
   """Embed recent memory notes into vector store."""
   from ai.tools.memory_store import get_memory
-  from ai.embedding import embed_texts
+  from ai.embedding import embed_texts_with_failover, load_embedding_config_chain
 
   notes = (get_memory(params).get("notes") or [])[:40]
   if not notes:
     return {"ok": True, "indexed": 0}
-  if not embed_config.is_configured:
+  if not load_embedding_config_chain(params):
     return {"ok": False, "error": "embedding not configured"}
 
   texts = [(n.get("text") or "").strip() for n in notes]
   texts = [t for t in texts if t]
-  vectors, err = await embed_texts(embed_config, texts, params=params, source="memory_index")
+  vectors, _cfg, err = await embed_texts_with_failover(params, texts, source="memory_index")
   if err or not vectors:
     return {"ok": False, "error": err or "embedding failed"}
 
@@ -83,8 +83,7 @@ async def search_memory_semantic(
 ) -> dict[str, Any]:
   """Vector search agent memory; falls back to keyword match."""
   from ai.tools.memory_store import get_memory
-  from ai.embedding import embed_texts, load_embedding_config
-  from ai.client import load_config_from_params
+  from ai.embedding import embed_texts_with_failover, load_embedding_config_chain
 
   q = (query or "").strip()
   if not q:
@@ -92,8 +91,8 @@ async def search_memory_semantic(
 
   store = _load()
   chunks = store.get("chunks") or []
-  if chunks and embed_config and embed_config.is_configured:
-    vectors, err = await embed_texts(embed_config, [q], params=params, source="memory_search")
+  if chunks and load_embedding_config_chain(params):
+    vectors, _cfg, err = await embed_texts_with_failover(params, [q], source="memory_search")
     if not err and vectors:
       scored = []
       for ch in chunks:

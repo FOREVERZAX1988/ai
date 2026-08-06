@@ -55,8 +55,9 @@ async def run_heartbeat(params: Params, *, get_state_reader) -> dict[str, Any]:
 
   llm_decision: dict[str, Any] = {}
   try:
-    from ai.client import load_config_from_params, chat_completion_collect
-    config = load_config_from_params(params)
+    from ai.server.deps import read_ai_config
+    from ai.model_router import chat_completion_collect_with_failover
+    config = read_ai_config(params)
     if config.is_configured:
       unread_hint = f"{len(unread)} unread notifications" if unread else "no unread notifications"
       prompt = (
@@ -68,8 +69,9 @@ async def run_heartbeat(params: Params, *, get_state_reader) -> dict[str, Any]:
         f"Checklist:\n{checklist}\n\n"
         f"State: driving={state.is_driving}, {unread_hint}"
       )
-      content, _, err = await chat_completion_collect(
+      content, _, _, err = await chat_completion_collect_with_failover(
         config,
+        params,
         [
           {"role": "system", "content": "Respond with compact JSON only."},
           {"role": "user", "content": prompt},

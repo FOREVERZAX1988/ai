@@ -225,8 +225,8 @@ async def run_chat_loop(
   """Run chat with tool loop; emit event dicts (same schema as SSE)."""
   config = body.get("_config")
   if config is None:
-    from ai.client import load_config_from_params
-    config = load_config_from_params(params)
+    from ai.server.deps import read_ai_config
+    config = read_ai_config(params)
 
   available_tool_names = None
   if tools:

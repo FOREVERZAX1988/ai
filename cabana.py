@@ -1989,9 +1989,9 @@ def _cabana_pick_ai_text(
 
 def _cabana_ai_config():
   """Load AI config for Cabana."""
-  from ai.client import load_config_from_params
+  from ai.server.deps import read_ai_config
 
-  return load_config_from_params(Params())
+  return read_ai_config(Params())
 
 
 async def _cabana_ai_complete(

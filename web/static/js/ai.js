@@ -170,7 +170,7 @@ const els = {
   onboardingResult: $('#onboardingResult'),
   onboardingCar: $('#onboardingCar'),
   onboardingBrand: $('#onboardingBrand'),
-  onboardingEmbeddingMode: $('#onboardingEmbeddingMode'),
+  onboardingEmbeddingSeparateToggle: $('#onboardingEmbeddingSeparateToggle'),
   onboardingEmbeddingProvider: $('#onboardingEmbeddingProvider'),
   onboardingEmbeddingApiKey: $('#onboardingEmbeddingApiKey'),
   onboardingEmbeddingSeparateFields: $('#onboardingEmbeddingSeparateFields'),
@@ -369,6 +369,7 @@ function initChatJobs() {
     loadUsage,
     syncThinkingBlock,
     updateModelBadge,
+    setMessageModelTag,
     clearLiveStreamChrome,
     getLiveStreamUi,
     getLastAssistantUi,
@@ -378,6 +379,11 @@ function initChatJobs() {
     assistantMessageHasContent,
     isLocallyStreaming,
     isChatUiLocked,
+    isSessionJobRunning,
+    getSessionMessages,
+    renderSessionList,
+    updateComposerSendBtn,
+    scheduleSessionSync,
   });
 }
 
@@ -404,6 +410,29 @@ function findChatJobCtx(jobId, sessionId) {
 
 function abortActiveChat() {
   if (typeof ChatJobs !== 'undefined') ChatJobs.abortActive();
+}
+
+function abortSessionChat(sessionId) {
+  if (typeof ChatJobs !== 'undefined') ChatJobs.abortSession(sessionId);
+}
+
+function isSessionJobRunning(sessionId) {
+  return typeof ChatJobs !== 'undefined' && ChatJobs.isSessionRunning(sessionId);
+}
+
+function getSessionMessages(sessionId) {
+  const session = SessionStore.getById(sessionId);
+  return session?.messages || [];
+}
+
+function updateComposerSendBtn() {
+  const sessionId = SessionStore.activeId;
+  const streaming = isSessionJobRunning(sessionId);
+  if (!els.sendBtn) return;
+  const label = streaming ? t('stop', 'Stop') : t('send', 'Send');
+  els.sendBtn.textContent = label;
+  els.sendBtn.title = label;
+  els.sendBtn.setAttribute('aria-label', label);
 }
 
 function applyBuiltinAgents(data) {
@@ -483,9 +512,8 @@ function setI18nText(selector, key, fallback) {
 
 function applyCachedUiState() {
   const src = savedConfig?.model ? savedConfig : LocalPrefs.getConfigCache();
-  if (!src?.model) return;
-  if (savedConfig?.model) updateModelBadgeFromSaved();
-  else updateModelBadge(src.model);
+  if (!src?.model && !src?.modelHub) return;
+  updateModelBadgeFromSaved();
 }
 
 function hydrateFromLocalPrefs() {
@@ -702,8 +730,8 @@ function applyTranslations() {
   setI18nText('#onboardingApiKeyLabel', 'apiKey', 'API Key');
   setI18nText('#onboardingModelLabel', 'model', 'Model');
   setI18nText('#onboardingEmbeddingTitle', 'onboardingEmbeddingTitle', 'Embedding (RAG)');
-  setI18nText('#onboardingEmbeddingDesc', 'onboardingEmbeddingDesc', 'For knowledge search; shares chat API key by default.');
-  setI18nText('#onboardingEmbeddingModeLabel', 'embeddingModeLabel', 'Embedding mode');
+  setI18nText('#onboardingEmbeddingDesc', 'onboardingEmbeddingDesc', 'For knowledge search; uses chat account embedding by default.');
+  setI18nText('#onboardingEmbeddingSeparateLabel', 'onboardingEmbeddingSeparateLabel', 'Separate embedding provider');
   setI18nText('#onboardingEmbeddingProviderLabel', 'embeddingProviderLabel', 'Embedding provider');
   setI18nText('#onboardingEmbeddingApiKeyLabel', 'embeddingApiKeyLabel', 'Embedding API Key');
   setI18nText('#onboardingEmbeddingModelLabel', 'embeddingModelLabel', 'Embedding model');
@@ -722,12 +750,6 @@ function applyTranslations() {
   if (els.onboardingSaveBtn) els.onboardingSaveBtn.textContent = t('onboardingSaveBtn', 'Save and continue');
   if (els.onboardingRagSkipBtn) els.onboardingRagSkipBtn.textContent = t('onboardingRagSkip', 'Set up later');
   if (els.onboardingRagStartBtn) els.onboardingRagStartBtn.textContent = t('onboardingRagStart', 'Start setup');
-  if (els.onboardingEmbeddingMode) {
-    const same = els.onboardingEmbeddingMode.querySelector('option[value="same"]');
-    const sep = els.onboardingEmbeddingMode.querySelector('option[value="separate"]');
-    if (same) same.textContent = t('embeddingModeSame', 'Same provider as chat');
-    if (sep) sep.textContent = t('embeddingModeSeparate', 'Separate embedding provider');
-  }
   const writeTitle = $('#writeConfirmTitle');
   if (writeTitle) writeTitle.textContent = t('writeConfirmTitle');
   const writeHint = $('#writeConfirmHint');
@@ -871,9 +893,12 @@ async function applyRemoteSessionsData(data) {
   if (typeof SessionSync !== 'undefined' && SessionSync.shouldSkipRemoteMerge({
     data,
     isLocallyStreaming,
-    hasActiveChatJob: () => Boolean(
-      (typeof ChatJobs !== 'undefined' && ChatJobs.getActiveJobId() && abortController)
-    ),
+    hasActiveChatJob: () => {
+      for (const s of SessionStore.listWithContent()) {
+        if (isSessionJobRunning(s.id)) return true;
+      }
+      return false;
+    },
   })) {
     return false;
   }
@@ -892,7 +917,7 @@ async function applyRemoteSessionsData(data) {
   const remoteAuthoritative = typeof SessionSync !== 'undefined'
     && SessionSync.shouldTakeRemoteAuthoritative(data)
     && !isLocallyStreaming()
-    && !(typeof ChatJobs !== 'undefined' && ChatJobs.getActiveJobId() && abortController);
+    && !SessionStore.listWithContent().some((s) => isSessionJobRunning(s.id));
 
   let merged = [];
   if (remoteSessions.length || localSessions.length) {
@@ -965,7 +990,7 @@ async function refreshSessionViewFromRemote() {
   const sessionsChanged = await loadSessionsFromDevice();
   const configChanged = await pullConfigFromDevice();
   renderSessionList();
-  if ((typeof ChatJobs !== 'undefined' && ChatJobs.getActiveJobId()) && abortController) {
+  if (isSessionJobRunning(SessionStore.activeId)) {
     updateLiveAssistantFromSession();
     return;
   }
@@ -1047,9 +1072,7 @@ function startSyncWebSocket() {
 
 async function handleSyncWsSessions(data) {
   if (typeof SessionSync !== 'undefined') SessionSync.setServerSyncMeta(data);
-  const locallyAttached = isLocallyStreaming() || Boolean(
-    (typeof ChatJobs !== 'undefined' && ChatJobs.getActiveJobId()) && abortController
-  );
+  const locallyAttached = SessionStore.listWithContent().some((s) => isSessionJobRunning(s.id));
   const changed = await applyRemoteSessionsData(data);
   renderSessionList();
   if (locallyAttached) {
@@ -1080,7 +1103,11 @@ async function handleSyncWsHello(data) {
     DeviceTrust.ensureTrusted(api).catch(() => {});
   }
   if (Array.isArray(data.activeJobs) && data.activeJobs.length) {
-    await syncActiveSessionStreaming();
+    if (typeof ChatJobs !== 'undefined' && ChatJobs.resumeActiveJobs) {
+      await ChatJobs.resumeActiveJobs(data.activeJobs);
+    } else {
+      await syncActiveSessionStreaming();
+    }
   }
 }
 
@@ -1545,7 +1572,17 @@ function renderSessionList() {
   }
   for (const s of sessions) {
     const li = document.createElement('li');
-    li.className = `session-item${s.id === activeId ? ' active' : ''}`;
+    const streaming = isSessionJobRunning(s.id);
+    li.className = `session-item${s.id === activeId ? ' active' : ''}${streaming ? ' streaming' : ''}`;
+    if (streaming) {
+      li.setAttribute('aria-busy', 'true');
+      const status = document.createElement('span');
+      status.className = 'session-status-spinner';
+      status.setAttribute('role', 'status');
+      status.title = t('sessionRunning', 'Generating…');
+      status.setAttribute('aria-label', t('sessionRunning', 'Generating…'));
+      li.appendChild(status);
+    }
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'session-btn';
@@ -1568,19 +1605,12 @@ function renderSessionList() {
 }
 
 function isLocallyStreaming(sessionId = SessionStore.activeId) {
-  return Boolean(
-    sessionId
-    && streamSessionId === sessionId
-    && abortController
-    && !abortController.cancelled
-  );
+  if (!sessionId) return false;
+  return SessionStore.activeId === sessionId && isSessionJobRunning(sessionId);
 }
 
 function isChatUiLocked() {
-  return Boolean(
-    isLocallyStreaming()
-    || (abortController && !abortController.cancelled)
-  );
+  return isLocallyStreaming(SessionStore.activeId);
 }
 
 function getLiveStreamUi() {
@@ -1667,17 +1697,18 @@ function showAssistantLoading(ui) {
 }
 
 function endChatStream(sessionId) {
-  if (sessionId && streamSessionId === sessionId) streamSessionId = null;
-  abortController = null;
-  if (typeof ChatJobs !== 'undefined') {
-    ChatJobs.setActiveJobId(null);
-    ChatJobs.endPoll();
+  if (sessionId && streamSessionId === sessionId) {
+    streamSessionId = null;
+    abortController = null;
   }
-  els.messages?.querySelectorAll('.assistant-wrapper[data-live-stream="1"]').forEach((el) => {
-    clearLiveStreamChrome(wrapperToAssistantUi(el));
-    delete el.dataset.liveStream;
-  });
-  if (els.sendBtn) els.sendBtn.textContent = t('send', 'Send');
+  // Do not call ChatJobs.endPoll() — other sessions may still stream in background.
+  if (!sessionId || SessionStore.activeId === sessionId) {
+    els.messages?.querySelectorAll('.assistant-wrapper[data-live-stream="1"]').forEach((el) => {
+      clearLiveStreamChrome(wrapperToAssistantUi(el));
+      delete el.dataset.liveStream;
+    });
+    if (els.sendBtn) els.sendBtn.textContent = t('send', 'Send');
+  }
 }
 
 function wrapperToAssistantUi(wrapper) {
@@ -1709,9 +1740,11 @@ function markLiveStreamUi(ui) {
 }
 
 function switchSession(id) {
-  abortActiveChat();
   SessionStore.setActive(id);
   const session = SessionStore.getActive();
+  refreshModelBadgeForSession();
+  if (typeof SessionModelPicker !== 'undefined') SessionModelPicker.refresh();
+  updateComposerSendBtn();
   const needsDetail = session?.hasContent && !(session.messages || []).length;
   if (needsDetail) {
     loadSessionDetail(id).then(() => {
@@ -1732,24 +1765,73 @@ function switchSession(id) {
 }
 
 function createNewSession() {
-  abortActiveChat();
   SessionStore.startDraft();
+  refreshModelBadgeForSession();
+  if (typeof SessionModelPicker !== 'undefined') SessionModelPicker.refresh();
+  updateComposerSendBtn();
   renderStoredMessages();
   renderSessionList();
   closeSessionsDrawer();
 }
 
-function updateModelBadge(model) {
+function formatResolvedModelLabel(model) {
+  const raw = String(model || '').trim();
+  if (!raw) return '';
+  return raw.length > 28 ? `${raw.slice(0, 26)}…` : raw;
+}
+
+function setMessageModelTag(metaEl, resolvedModel) {
+  if (!metaEl) return;
+  let tag = metaEl.querySelector('.message-model-tag');
+  if (!tag) {
+    tag = document.createElement('span');
+    tag.className = 'message-model-tag hidden';
+    metaEl.insertBefore(tag, metaEl.firstChild);
+  }
+  const label = formatResolvedModelLabel(resolvedModel);
+  if (!label) {
+    tag.classList.add('hidden');
+    tag.textContent = '';
+    tag.removeAttribute('title');
+    return;
+  }
+  tag.classList.remove('hidden');
+  tag.textContent = label;
+  tag.title = String(resolvedModel);
+}
+
+function hubPrimaryChatRoute() {
+  const hub = effectiveModelHub(savedConfig);
+  const primary = hub?.primary;
+  if (!primary?.accountId || !primary?.model) return null;
+  return { accountId: primary.accountId, model: primary.model };
+}
+
+function updateModelBadge(label, title) {
   if (!els.modelBadge) return;
-  const raw = String(model || savedConfig?.model || '').trim();
-  const label = raw || t('modelUnset', 'Not configured');
-  els.modelBadge.textContent = label;
-  els.modelBadge.title = raw || label;
+  const raw = String(label || '').trim();
+  const display = raw || t('modelUnset', 'Not configured');
+  els.modelBadge.textContent = display;
+  els.modelBadge.title = String(title || raw || display);
   els.modelBadge.classList.toggle('unset', !raw);
 }
 
-function updateModelBadgeFromSaved() {
+function refreshModelBadgeForSession() {
+  const hub = effectiveModelHub(savedConfig);
+  const session = SessionStore.getActive();
+  if (typeof SessionModelPicker !== 'undefined') {
+    const route = SessionModelPicker.getEffectiveRoute(session, hub);
+    updateModelBadge(
+      SessionModelPicker.formatRouteLabel(route, hub),
+      SessionModelPicker.formatRouteTitle(route, hub),
+    );
+    return;
+  }
   updateModelBadge(savedConfig?.model || '');
+}
+
+function updateModelBadgeFromSaved() {
+  refreshModelBadgeForSession();
 }
 
 function formatApiError(raw) {
@@ -1784,6 +1866,7 @@ function hasUnsavedConfigDraft() {
 function showUnsavedConfigWarning() {}
 
 function deleteSession(id) {
+  abortSessionChat(id);
   SessionStore.remove(id);
   if (!SessionStore.listWithContent().length) {
     SessionStore.startDraft();
@@ -2867,7 +2950,7 @@ function appendAssistantMessage({ withLoading = true } = {}) {
 
   const meta = document.createElement('div');
   meta.className = 'message-meta';
-  meta.innerHTML = `<button type="button" class="msg-copy-btn" title="${t('copy', '复制')}" aria-label="${t('copy', '复制')}">⎘</button>`;
+  meta.innerHTML = `<span class="message-model-tag hidden" aria-hidden="true"></span><button type="button" class="msg-copy-btn" title="${t('copy', '复制')}" aria-label="${t('copy', '复制')}">⎘</button>`;
 
   wrapper.appendChild(thinking);
   wrapper.appendChild(agentCallsBlock);
@@ -3202,8 +3285,7 @@ function selectSlashCommand(def) {
     els.chatInput.value = '';
     return;
   } else if (def.action === 'new_session') {
-    SessionStore.createSession();
-    renderSessionList();
+    createNewSession();
     hideComposerSlashMenu();
     els.chatInput.value = '';
     autoResize();
@@ -3581,10 +3663,9 @@ function onComposerInput() {
 
 async function sendChat(e) {
   e.preventDefault();
-  const jobActive = (typeof ChatJobs !== 'undefined' && ChatJobs.getActiveJobId())
-    || SessionStore.getActiveJobId(SessionStore.activeId);
-  if (abortController || jobActive) {
-    abortActiveChat();
+  const sessionId = SessionStore.activeId;
+  if (isSessionJobRunning(sessionId)) {
+    abortSessionChat(sessionId);
     return;
   }
 
@@ -3655,9 +3736,8 @@ async function sendChat(e) {
 }
 
 function savePartialAssistant(sessionId, assistantMessage) {
-  if (SessionStore.activeId !== sessionId) return;
-  if (!assistantMessageHasContent(assistantMessage)) return;
-  const session = SessionStore.getActive();
+  if (!sessionId || !assistantMessageHasContent(assistantMessage)) return;
+  const session = SessionStore.getById(sessionId);
   if (!session) return;
   const msgs = (session.messages || []).map(normalizeStoredMessage);
   const partial = {
@@ -3668,6 +3748,7 @@ function savePartialAssistant(sessionId, assistantMessage) {
     tool_results: assistantMessage.tool_results || {},
     agent_events: assistantMessage.agent_events || [],
   };
+  if (assistantMessage.resolvedModel) partial.resolvedModel = assistantMessage.resolvedModel;
   if (msgs[msgs.length - 1]?.role === 'assistant') {
     msgs[msgs.length - 1] = partial;
   } else {
@@ -3676,6 +3757,7 @@ function savePartialAssistant(sessionId, assistantMessage) {
   SessionStore.updateMessages(sessionId, msgs.slice(-200));
   if (typeof SessionSync !== 'undefined') SessionSync.markLocalDirty();
   scheduleSessionSync();
+  if (SessionStore.activeId === sessionId) renderStoredMessages();
 }
 
 function hydrateAssistantUi(ui, assistantMessage) {
@@ -3709,19 +3791,33 @@ function hydrateAssistantUi(ui, assistantMessage) {
 }
 
 function commitAssistantMessage(sessionId, assistantMessage) {
-  if (sessionId && SessionStore.activeId !== sessionId) return;
-  const history = getCurrentMessages();
+  if (!sessionId) return;
+  const session = SessionStore.getById(sessionId);
+  if (!session) return;
+  const msgs = (session.messages || []).map(normalizeStoredMessage);
   const normalized = normalizeStoredMessage({ ...assistantMessage });
-  if (history[history.length - 1]?.role === 'assistant') {
-    history[history.length - 1] = normalized;
+  if (msgs[msgs.length - 1]?.role === 'assistant') {
+    msgs[msgs.length - 1] = normalized;
   } else {
-    history.push(normalized);
+    msgs.push(normalized);
   }
-  saveCurrentMessages(history);
+  SessionStore.updateMessages(sessionId, msgs.slice(-200));
+  if (typeof SessionSync !== 'undefined') SessionSync.markLocalDirty();
+  scheduleSessionSync();
+  if (SessionStore.activeId === sessionId) {
+    const history = getCurrentMessages();
+    if (history[history.length - 1]?.role === 'assistant') {
+      history[history.length - 1] = normalized;
+    } else {
+      history.push(normalized);
+    }
+  }
 }
 
 function finishAssistant(ui, assistantMessage, sessionId) {
-  if (sessionId && SessionStore.activeId !== sessionId) return;
+  if (!sessionId) return;
+  commitAssistantMessage(sessionId, assistantMessage);
+  if (SessionStore.activeId !== sessionId) return;
   clearLiveStreamChrome(ui);
   hideAssistantLoading(ui);
   syncThinkingBlock(ui, assistantMessage);
@@ -3737,8 +3833,10 @@ function finishAssistant(ui, assistantMessage, sessionId) {
   }
   ui.wrapper?.querySelector('.assistant-trace')?.remove();
   if (ui?.wrapper) delete ui.wrapper.dataset.liveStream;
-  commitAssistantMessage(sessionId, assistantMessage);
+  setMessageModelTag(ui.wrapper?.querySelector('.message-meta'), assistantMessage.resolvedModel);
   syncSessionsToDevice().catch(() => {});
+  updateComposerSendBtn();
+  renderSessionList();
 }
 
 function updateToolCallsSummary(toolsBlock) {
@@ -3933,6 +4031,7 @@ function effectiveModelHub(c) {
     baseUrl: c.baseUrl || '',
     enabled: true,
     models: model ? [model] : [],
+    embeddingModels: [],
   };
   const accounts = [account];
   const index = { [`${providerId}\0${c.apiKey || ''}\0${c.baseUrl || ''}`]: accId };
@@ -3955,6 +4054,7 @@ function effectiveModelHub(c) {
         baseUrl: fbUrl,
         enabled: true,
         models: [],
+        embeddingModels: [],
       });
       index[key] = aid;
     }
@@ -3964,11 +4064,51 @@ function effectiveModelHub(c) {
     if (fb.label) row.label = fb.label;
     fallbacks.push(row);
   }
+  let embeddingPrimary = hub?.embeddingPrimary || null;
+  let embeddingFallbacks = Array.isArray(hub?.embeddingFallbacks) ? hub.embeddingFallbacks : [];
+  if (!embeddingPrimary) {
+    const embModel = (c.embeddingModel || '').trim();
+    if (embModel) {
+      const embMode = c.embeddingMode || 'same';
+      const embProv = c.embeddingProvider === 'zhipu' ? 'bigmodel' : ((c.embeddingProvider || providerId).trim() || providerId);
+      const embKey = embMode === 'separate' ? (c.embeddingApiKey || '').trim() : (c.apiKey || '');
+      const embUrl = embMode === 'separate' ? (c.embeddingBaseUrl || '').trim() : (c.baseUrl || '');
+      const sameAccount = embProv === providerId && embKey === (c.apiKey || '') && embUrl === (c.baseUrl || '');
+      let embAccId = accId;
+      if (!sameAccount) {
+        const embKeyIndex = `${embProv}\0${embKey}\0${embUrl}`;
+        let aid = index[embKeyIndex];
+        if (!aid) {
+          aid = `acc_emb_${accounts.length}_${embProv}`;
+          accounts.push({
+            id: aid,
+            provider: embProv,
+            label: '',
+            apiKey: embKey,
+            baseUrl: embUrl,
+            enabled: true,
+            models: [],
+            embeddingModels: [embModel],
+          });
+          index[embKeyIndex] = aid;
+        } else {
+          const acc = accounts.find((a) => a.id === aid);
+          if (acc && !acc.embeddingModels.includes(embModel)) acc.embeddingModels.push(embModel);
+        }
+        embAccId = aid;
+      } else {
+        account.embeddingModels = [embModel];
+      }
+      embeddingPrimary = { accountId: embAccId, model: embModel };
+    }
+  }
   return {
-    version: 1,
+    version: 2,
     accounts,
     primary: model ? { accountId: accId, model } : null,
     fallbacks,
+    embeddingPrimary,
+    embeddingFallbacks,
   };
 }
 
@@ -3978,6 +4118,9 @@ function applyModelHubFromConfig(c) {
   ModelHub.setHub(hub, { silent: true });
   syncLegacyFromModelHub(hub);
   ModelHub.setProviders(providers, providerLabels);
+  refreshEmbeddingRouteSummary();
+  if (typeof SessionModelPicker !== 'undefined') SessionModelPicker.refresh();
+  refreshModelBadgeForSession();
 }
 
 function initModelCombos() {
@@ -3998,18 +4141,14 @@ function initModelCombos() {
       refreshUsageForCurrentModel();
     },
   });
-  embeddingModelCombo = ModelCombobox.mount('#embeddingModelCombobox', {
-    ...labels(),
-    placeholder: t('embeddingModelPlaceholder', 'BAAI/bge-m3'),
-    onChange: () => {
-      scheduleEmbeddingSave();
-      refreshEmbeddingUsageForCurrentModel();
-    },
-    onInput: () => {
-      scheduleEmbeddingSave();
-      refreshEmbeddingUsageForCurrentModel();
-    },
-  });
+  if (document.querySelector('#embeddingModelCombobox')) {
+    embeddingModelCombo = ModelCombobox.mount('#embeddingModelCombobox', {
+      ...labels(),
+      placeholder: t('embeddingModelPlaceholder', 'BAAI/bge-m3'),
+      onChange: () => refreshEmbeddingUsageForCurrentModel(),
+      onInput: () => refreshEmbeddingUsageForCurrentModel(),
+    });
+  }
   onboardingModelCombo = ModelCombobox.mount('#onboardingModelCombobox', {
     placeholder: 'deepseek-v4-flash',
     emptyLabel: t('noModels', 'No models loaded'),
@@ -4131,27 +4270,49 @@ async function savePersonaConfig() {
 
 let embeddingSaveTimer = null;
 function scheduleEmbeddingSave() {
-  clearTimeout(embeddingSaveTimer);
-  embeddingSaveTimer = setTimeout(() => saveEmbeddingConfig({ silent: true }), 600);
+  /* Embedding routes are saved via ModelHub */
 }
 
-async function saveEmbeddingConfig(opts = {}) {
-  const silent = !!opts.silent;
-  const body = {
-    embeddingMode: els.embeddingModeSelect?.value || 'same',
-    embeddingProvider: els.embeddingProviderSelect?.value || 'siliconflow',
-    embeddingModel: getEmbeddingModelValue(),
-    embeddingApiKey: els.embeddingApiKeyInput?.value?.trim() || '',
-    embeddingBaseUrl: els.embeddingBaseUrlInput?.value?.trim() || '',
-  };
-  if (body.embeddingApiKey?.startsWith('•')) delete body.embeddingApiKey;
-  const { data } = await api('POST', '/api/ai/config', body);
-  if (!data?.ok) {
-    if (!silent) showToast(data?.error || t('saveFailed', '保存失败'), 'error');
+async function saveEmbeddingConfig(_opts = {}) {
+  /* no-op: embedding configured in model hub */
+}
+
+function refreshEmbeddingRouteSummary() {
+  const el = document.getElementById('embeddingRouteSummary');
+  const hint = document.getElementById('embeddingRouteHint');
+  if (!el) return;
+  const hub = effectiveModelHub(savedConfig);
+  const routes = [];
+  if (hub?.embeddingPrimary?.accountId) routes.push(hub.embeddingPrimary);
+  for (const f of hub?.embeddingFallbacks || []) {
+    if (f?.accountId) routes.push(f);
+  }
+  if (!routes.length) {
+    const p = savedConfig?.embeddingProvider;
+    const m = savedConfig?.embeddingModel;
+    if (p && m) {
+      el.textContent = `${providerLabels[p] || p} · ${m}`;
+      if (hint) hint.textContent = t('embeddingRouteLegacyHint', '建议在模型中心配置 Embedding 路由与备用模型。');
+      return;
+    }
+    el.textContent = t('embeddingRouteEmpty', '未配置 Embedding 模型');
+    if (hint) hint.textContent = t('embeddingRouteHint', '在模型中心添加 Embedding 路由与备用模型，保存后自动重建索引。');
     return;
   }
-  savedConfig = { ...savedConfig, ...body };
-  if (!silent) showToast(t('saved', '已保存'), 'success');
+  const lines = routes.map((r, i) => {
+    const acc = (hub.accounts || []).find((a) => a.id === r.accountId);
+    const prov = providerLabels[acc?.provider] || acc?.provider || r.accountId;
+    const label = r.label ? `${r.label} · ` : '';
+    const prefix = i === 0 ? t('modelHubPrimary', '主模型') : `#${i + 1}`;
+    return `${prefix}: ${label}${prov} / ${r.model}`;
+  });
+  el.textContent = lines.join(' → ');
+  if (hint) {
+    const fb = Math.max(0, routes.length - 1);
+    hint.textContent = fb
+      ? t('embeddingRouteFallbackCount', '含 {n} 个备用模型', { n: fb })
+      : t('embeddingRouteHint', '在模型中心添加 Embedding 路由与备用模型，保存后自动重建索引。');
+  }
 }
 
 function getModelHubPayload() {
@@ -4193,11 +4354,6 @@ function getConfigPayload() {
     thinkingEnabled: els.thinkingToggle.checked,
     thinkingKeep: '',
     timezone: els.timezoneSelect?.value || 'Asia/Shanghai',
-    embeddingMode: els.embeddingModeSelect?.value || 'same',
-    embeddingProvider: els.embeddingProviderSelect?.value || 'siliconflow',
-    embeddingModel: getEmbeddingModelValue(),
-    embeddingApiKey: els.embeddingApiKeyInput?.value?.trim() || '',
-    embeddingBaseUrl: els.embeddingBaseUrlInput?.value?.trim() || '',
     modelHub: getModelHubPayload(),
     modelFallbacks: typeof FallbackModels !== 'undefined' ? FallbackModels.getRows() : [],
   };
@@ -4391,8 +4547,7 @@ async function ensureModelsLoaded(savedModel, opts = {}) {
   const target = savedModel || defaults[provider] || '';
   primeModelsFromCacheOrCatalog(provider);
   await applySavedModelSelection(target);
-  if (savedConfig?.model) updateModelBadgeFromSaved();
-  else updateModelBadge(getMainModelValue() || target);
+  updateModelBadgeFromSaved();
   if (refresh && canFetchModelsFromForm()) {
     fetchModels({ savedModel: target }).catch(() => {});
   }
@@ -4542,20 +4697,9 @@ function applyConfigToForm(c) {
   if (els.timezoneSelect) {
     renderTimezoneSelect(c.timezone || 'Asia/Shanghai');
   }
-  if (els.embeddingModeSelect) els.embeddingModeSelect.value = c.embeddingMode || 'same';
-  if (els.embeddingProviderSelect) {
-    const ep = c.embeddingProvider || 'siliconflow';
-    if (embeddingProviders.includes(ep)) els.embeddingProviderSelect.value = ep;
-    else els.embeddingProviderSelect.value = 'siliconflow';
-  }
-  if (els.embeddingApiKeyInput) els.embeddingApiKeyInput.value = c.embeddingApiKey || '';
-  if (els.embeddingBaseUrlInput) els.embeddingBaseUrlInput.value = c.embeddingBaseUrl || '';
-  onEmbeddingModeChange();
-  onProviderChange();
-  refreshEmbeddingModels();
   if (c.model) mainModelCombo?.setValue(c.model, { silent: true });
-  applyEmbeddingModelSelection(c.embeddingModel || embeddingDefaults[getActiveEmbeddingProvider()] || '');
   applyModelHubFromConfig(c);
+  refreshEmbeddingRouteSummary();
   if (typeof FallbackModels !== 'undefined' && !(effectiveModelHub(c)?.accounts?.length)) {
     FallbackModels.setRows(c.modelFallbacks || []);
     FallbackModels.setProviders(providers);
@@ -6092,19 +6236,21 @@ function renderOnboardingEmbeddingProviders() {
 }
 
 function getOnboardingEmbeddingProvider() {
-  const mode = els.onboardingEmbeddingMode?.value || 'same';
-  if (mode === 'separate') {
+  const separate = !!els.onboardingEmbeddingSeparateToggle?.checked;
+  if (separate) {
     return els.onboardingEmbeddingProvider?.value || 'siliconflow';
   }
   return els.onboardingProvider?.value || 'opencode-zen';
 }
 
 function refreshOnboardingEmbeddingModels(preferredModel = '') {
-  const mode = els.onboardingEmbeddingMode?.value || 'same';
+  const separate = !!els.onboardingEmbeddingSeparateToggle?.checked;
   const provider = getOnboardingEmbeddingProvider();
-  const list = embeddingCatalogForProvider(provider, mode === 'same');
+  const list = embeddingCatalogForProvider(provider, !separate);
   onboardingEmbeddingModelCombo?.setOptions(list);
-  const current = (preferredModel || onboardingEmbeddingModelCombo?.getValue() || savedConfig?.embeddingModel || '').trim();
+  const hub = effectiveModelHub(savedConfig);
+  const hubModel = hub?.embeddingPrimary?.model || '';
+  const current = (preferredModel || onboardingEmbeddingModelCombo?.getValue() || hubModel || savedConfig?.embeddingModel || '').trim();
   if (current) {
     onboardingEmbeddingModelCombo?.setValue(current, { silent: true });
     return;
@@ -6117,8 +6263,8 @@ function refreshOnboardingEmbeddingModels(preferredModel = '') {
   }
 }
 
-function onOnboardingEmbeddingModeChange() {
-  const separate = els.onboardingEmbeddingMode?.value === 'separate';
+function onOnboardingEmbeddingSeparateToggle() {
+  const separate = !!els.onboardingEmbeddingSeparateToggle?.checked;
   els.onboardingEmbeddingSeparateFields?.classList.toggle('hidden', !separate);
   refreshOnboardingEmbeddingModels();
 }
@@ -6148,21 +6294,40 @@ function syncOnboardingFromSavedConfig() {
   const model = primary?.model || c.model || defaults[provider] || modelCatalog[provider]?.[0] || '';
   if (model) onboardingModelCombo?.setValue(model, { silent: true });
   if (acc?.models?.length) onboardingFetchedModels = acc.models.slice();
-  if (els.onboardingEmbeddingMode) {
-    els.onboardingEmbeddingMode.value = c.embeddingMode || 'same';
-  }
   renderOnboardingEmbeddingProviders();
-  if (c.embeddingProvider && els.onboardingEmbeddingProvider) {
-    if (embeddingProviders.includes(c.embeddingProvider)) {
+  let separate = false;
+  let embedModel = c.embeddingModel || '';
+  const ep = hub?.embeddingPrimary;
+  const chatAccId = primary?.accountId || hub?.accounts?.[0]?.id;
+  if (ep?.accountId && ep?.model) {
+    embedModel = ep.model;
+    separate = ep.accountId !== chatAccId;
+    if (separate) {
+      const embAcc = (hub.accounts || []).find((a) => a.id === ep.accountId);
+      if (embAcc?.provider && els.onboardingEmbeddingProvider && embeddingProviders.includes(embAcc.provider)) {
+        els.onboardingEmbeddingProvider.value = embAcc.provider;
+      } else if (c.embeddingProvider && els.onboardingEmbeddingProvider && embeddingProviders.includes(c.embeddingProvider)) {
+        els.onboardingEmbeddingProvider.value = c.embeddingProvider;
+      }
+      if (els.onboardingEmbeddingApiKey) {
+        els.onboardingEmbeddingApiKey.value = (hub.accounts || []).find((a) => a.id === ep.accountId)?.apiKey || c.embeddingApiKey || '';
+        els.onboardingEmbeddingApiKey.placeholder = t('embeddingApiKeyPlaceholder', '留空则使用上方聊天 Key');
+      }
+    }
+  } else if (c.embeddingMode === 'separate') {
+    separate = true;
+    if (c.embeddingProvider && els.onboardingEmbeddingProvider && embeddingProviders.includes(c.embeddingProvider)) {
       els.onboardingEmbeddingProvider.value = c.embeddingProvider;
     }
+    if (els.onboardingEmbeddingApiKey) {
+      els.onboardingEmbeddingApiKey.value = c.embeddingApiKey || '';
+      els.onboardingEmbeddingApiKey.placeholder = t('embeddingApiKeyPlaceholder', '留空则使用上方聊天 Key');
+    }
   }
-  if (els.onboardingEmbeddingApiKey) {
-    els.onboardingEmbeddingApiKey.value = c.embeddingApiKey || '';
-    els.onboardingEmbeddingApiKey.placeholder = t('embeddingApiKeyPlaceholder', '留空则使用上方聊天 Key');
+  if (els.onboardingEmbeddingSeparateToggle) {
+    els.onboardingEmbeddingSeparateToggle.checked = separate;
   }
-  onOnboardingEmbeddingModeChange();
-  const embedModel = c.embeddingModel || '';
+  onOnboardingEmbeddingSeparateToggle();
   refreshOnboardingEmbeddingModels(embedModel);
 }
 
@@ -6266,16 +6431,24 @@ async function saveOnboardingWizard() {
     return;
   }
   const run = async () => {
-    const embeddingMode = els.onboardingEmbeddingMode?.value || 'same';
+    const embeddingSeparate = !!els.onboardingEmbeddingSeparateToggle?.checked;
     const embeddingModel = onboardingEmbeddingModelCombo?.getValue()?.trim() || '';
     const embeddingProvider = els.onboardingEmbeddingProvider?.value || 'siliconflow';
     const embeddingApiKey = els.onboardingEmbeddingApiKey?.value?.trim() || '';
-    const modelHub = typeof ModelHub !== 'undefined'
-      ? ModelHub.buildSingleProviderHub({
+    const buildHub = typeof ModelHub !== 'undefined'
+      ? (ModelHub.buildOnboardingHub || ModelHub.buildSingleProviderHub)
+      : null;
+    const modelHub = buildHub
+      ? buildHub({
         provider,
         apiKey,
         model,
         models: onboardingFetchedModels,
+        embeddingSeparate,
+        embeddingProvider,
+        embeddingApiKey,
+        embeddingModel,
+        embeddingDefaults,
       })
       : undefined;
     const payload = {
@@ -6283,10 +6456,6 @@ async function saveOnboardingWizard() {
       apiKey,
       model,
       modelHub,
-      embeddingMode,
-      embeddingProvider,
-      embeddingModel,
-      embeddingApiKey,
     };
     const { data } = await api('POST', '/api/ai/config', payload);
     if (!data.ok) {
@@ -6313,8 +6482,9 @@ async function saveOnboardingWizard() {
     closeOnboardingWizard();
     showToast(t('onboardingDone', '配置已保存，可以开始对话'));
     await loadConfig();
-    refreshEmbeddingModels();
-    if (embeddingModel || savedConfig?.embeddingConfigured) {
+    refreshEmbeddingRouteSummary();
+    const hasEmbedding = !!(modelHub?.embeddingPrimary?.model || data.embeddingConfigured);
+    if (hasEmbedding) {
       openOnboardingKnowledgeSetup();
     }
   };
@@ -6608,8 +6778,16 @@ async function loadUsage() {
 }
 
 function getCurrentEmbeddingModelKey() {
-  const provider = getActiveEmbeddingProvider();
-  const model = getEmbeddingModelValue();
+  const hub = effectiveModelHub(savedConfig);
+  const ep = hub?.embeddingPrimary;
+  if (ep?.accountId && ep?.model) {
+    const acc = (hub.accounts || []).find((a) => a.id === ep.accountId);
+    const provider = acc?.provider || savedConfig?.embeddingProvider || '';
+    if (provider) return `${provider}::${ep.model}`;
+    return ep.model;
+  }
+  const provider = savedConfig?.embeddingProvider || getActiveEmbeddingProvider?.() || '';
+  const model = savedConfig?.embeddingModel || getEmbeddingModelValue?.() || '';
   if (!provider || !model) return '';
   return `${provider}::${model}`;
 }
@@ -6930,6 +7108,7 @@ function renderAssistantFromHistory(msg) {
   } else if (!msg.tool_calls?.length) {
     ui.content.textContent = t('noResponse', 'No response');
   }
+  setMessageModelTag(ui.wrapper?.querySelector('.message-meta'), msg.resolvedModel);
   return ui.wrapper;
 }
 
@@ -7067,6 +7246,9 @@ function bindUiEvents() {
   els.usageDetailBackdrop?.addEventListener('click', closeUsageDetailModal);
   els.knowledgeBtn?.addEventListener('click', toggleKnowledgeModal);
   els.settingsKnowledgeBtn?.addEventListener('click', toggleKnowledgeModal);
+  document.getElementById('embeddingGoModelHubBtn')?.addEventListener('click', () => {
+    openSettingsTab('model');
+  });
   els.knowledgeClose?.addEventListener('click', closeKnowledgeModal);
   els.knowledgeBackdrop?.addEventListener('click', closeKnowledgeModal);
 
@@ -7189,9 +7371,12 @@ function bindUiEvents() {
     if (!onboardingModelCombo?.getValue()) {
       onboardingModelCombo?.setValue(defaults[p] || '', { silent: true });
     }
+    if (!els.onboardingEmbeddingSeparateToggle?.checked) {
+      refreshOnboardingEmbeddingModels();
+    }
     await refreshOnboardingModels().catch(() => refreshOnboardingEmbeddingModels());
   });
-  els.onboardingEmbeddingMode?.addEventListener('change', onOnboardingEmbeddingModeChange);
+  els.onboardingEmbeddingSeparateToggle?.addEventListener('change', onOnboardingEmbeddingSeparateToggle);
   els.onboardingEmbeddingProvider?.addEventListener('change', refreshOnboardingEmbeddingModels);
   els.onboardingApiKey?.addEventListener('change', () => {
     refreshOnboardingModels().catch(() => {});
@@ -7286,13 +7471,25 @@ function waitForSyncHello(timeoutMs = 6000) {
 }
 
 async function init() {
-  SessionStore.init();
+  SessionStore.init({ getDefaultChatRoute: hubPrimaryChatRoute });
   initChatJobs();
   if (typeof PlatformPanel !== 'undefined') {
     PlatformPanel.init({ api, showToast });
     PlatformPanel.bindFilePicker?.('onboardingBackupFile', 'onboardingBackupFileName', 'onboardingBackupPick');
   }
   initModelCombos();
+  if (typeof SessionModelPicker !== 'undefined') {
+    SessionModelPicker.mount('#sessionModelPicker', {
+      SessionStore,
+      getHub: () => effectiveModelHub(savedConfig),
+      getSession: () => SessionStore.getActive(),
+      providerLabel: providerDisplayName,
+      t,
+      scheduleSessionSync,
+      isSessionStreaming: isSessionJobRunning,
+      onRouteChange: () => refreshModelBadgeForSession(),
+    });
+  }
   if (typeof AgentsPanel !== 'undefined') {
     AgentsPanel.init({
       api,

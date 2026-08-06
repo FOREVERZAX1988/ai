@@ -1,11 +1,9 @@
 /**
- * Chat job streaming — SSE/WS events, poll fallback, attach on refresh.
+ * Chat job streaming — multi-session concurrent jobs, poll fallback, attach on refresh.
  */
 const ChatJobs = (() => {
   let deps = {};
   const contexts = new Map();
-  let pollTimer = null;
-  let activeJobId = null;
 
   function init(d) {
     deps = d;
@@ -15,7 +13,8 @@ const ChatJobs = (() => {
         if (document.visibilityState !== 'visible') return;
         for (const ctx of contexts.values()) {
           if (!ctx?.ui?.content || !ctx.assistantMessage?.content) continue;
-          const streaming = Boolean(activeJobId && contexts.has(activeJobId));
+          if (!ctx.isVisible?.()) continue;
+          const streaming = !ctx.cancelled;
           renderChatMarkdown(ctx.ui.content, ctx.assistantMessage.content, { streaming });
           if (streaming) ctx.ui.content.classList.add('streaming');
         }
@@ -24,11 +23,22 @@ const ChatJobs = (() => {
   }
 
   function getActiveJobId() {
-    return activeJobId;
+    const sessionId = deps.SessionStore?.activeId;
+    if (!sessionId) return null;
+    return deps.SessionStore?.getActiveJobId(sessionId) || null;
   }
 
   function setActiveJobId(id) {
-    activeJobId = id;
+    const sessionId = deps.SessionStore?.activeId;
+    if (sessionId && id) deps.SessionStore?.setActiveJobId(sessionId, id);
+  }
+
+  function isSessionRunning(sessionId) {
+    if (!sessionId) return false;
+    for (const ctx of contexts.values()) {
+      if (ctx.sessionId === sessionId && !ctx.cancelled) return true;
+    }
+    return Boolean(deps.SessionStore?.getActiveJobId(sessionId));
   }
 
   function findCtx(jobId, sessionId) {
@@ -46,6 +56,29 @@ const ChatJobs = (() => {
   function registerCtx(jobId, sessionId, ctx) {
     contexts.delete(`pending:${sessionId}`);
     contexts.set(jobId, ctx);
+    deps.renderSessionList?.();
+    deps.updateComposerSendBtn?.();
+  }
+
+  function makeCtxBase(sessionId) {
+    return {
+      sessionId,
+      cancelled: false,
+      isVisible: () => deps.SessionStore?.activeId === sessionId,
+      jobActive: () => !ctxCancelled(this),
+    };
+  }
+
+  function ctxCancelled(ctx) {
+    return Boolean(ctx?.cancelled);
+  }
+
+  function clearCtxPoll(ctx) {
+    if (ctx?.pollTimer) {
+      clearTimeout(ctx.pollTimer);
+      ctx.pollTimer = null;
+    }
+    ctx._pollActive = false;
   }
 
   function renderChatMarkdown(el, text, options) {
@@ -76,7 +109,7 @@ const ChatJobs = (() => {
       ctx.mdRenderTimer = null;
       renderChatMarkdown(ui.content, text, { streaming: true });
       ui.content?.classList.add('streaming');
-      deps.scrollToBottom?.();
+      if (ctx.isVisible?.()) deps.scrollToBottom?.();
     }, 80);
   }
 
@@ -90,82 +123,81 @@ const ChatJobs = (() => {
     ui.content?.classList.remove('streaming');
   }
 
-  function abortActive() {
-    const sessionId = deps.SessionStore?.activeId;
-    const jobId = activeJobId || deps.SessionStore?.getActiveJobId(sessionId);
-
-    if (deps.getAbortController?.()) {
-      const ac = deps.getAbortController();
-      ac.cancelled = true;
-      if (typeof ac.abort === 'function') ac.abort();
-    }
-
-    endPoll();
-
+  function abortSession(sessionId) {
+    if (!sessionId) return;
+    const jobId = deps.SessionStore?.getActiveJobId(sessionId);
     for (const [key, ctx] of [...contexts.entries()]) {
-      if (sessionId && ctx.sessionId && ctx.sessionId !== sessionId && key !== jobId) continue;
+      if (ctx.sessionId !== sessionId) continue;
+      ctx.cancelled = true;
+      clearCtxPoll(ctx);
       if (ctx.mdRenderTimer) {
         clearTimeout(ctx.mdRenderTimer);
         ctx.mdRenderTimer = null;
       }
-      flushMarkdownRender(ctx.ui, ctx.assistantMessage?.content || '', ctx);
-      deps.hideAssistantLoading?.(ctx.ui);
-      deps.clearLiveStreamChrome?.(ctx.ui);
-      if (deps.assistantMessageHasContent?.(ctx.assistantMessage)) {
-        deps.finishAssistant?.(ctx.ui, ctx.assistantMessage, ctx.sessionId);
+      if (ctx.isVisible?.() && ctx.ui) {
+        flushMarkdownRender(ctx.ui, ctx.assistantMessage?.content || '', ctx);
+        deps.hideAssistantLoading?.(ctx.ui);
+        deps.clearLiveStreamChrome?.(ctx.ui);
+        if (deps.assistantMessageHasContent?.(ctx.assistantMessage)) {
+          deps.finishAssistant?.(ctx.ui, ctx.assistantMessage, ctx.sessionId);
+        }
       }
       contexts.delete(key);
     }
-
     if (jobId) {
       deps.api('DELETE', `/api/ai/chat/jobs/${encodeURIComponent(jobId)}`).catch(() => {});
       deps.SessionStore?.clearActiveJobId(sessionId);
       deps.syncSessionsToDevice?.().catch(() => {});
     }
+    if (deps.SessionStore?.activeId === sessionId) {
+      deps.setAbortController?.(null);
+      deps.setStreamSessionId?.(null);
+      deps.endChatStream?.(sessionId);
+    }
+    deps.renderSessionList?.();
+    deps.updateComposerSendBtn?.();
+  }
 
-    activeJobId = null;
-    deps.endChatStream?.(sessionId || deps.getStreamSessionId?.());
+  function abortActive() {
+    abortSession(deps.SessionStore?.activeId);
   }
 
   function endPoll() {
-    if (pollTimer) {
-      clearTimeout(pollTimer);
-      pollTimer = null;
-    }
+    for (const ctx of contexts.values()) clearCtxPoll(ctx);
   }
 
   async function handleStreamEvent(data, ctx) {
-    const ui = deps.reconcileStreamUi(ctx);
-    const { assistantMessage, streamActive } = ctx;
-    if (!streamActive()) return 'stop';
+    if (ctxCancelled(ctx)) return 'stop';
+    const visible = typeof ctx.isVisible === 'function' ? ctx.isVisible() : false;
+    const ui = visible ? deps.reconcileStreamUi(ctx) : ctx.ui;
+    const { assistantMessage } = ctx;
 
-    deps.handleAgentStreamEvent?.(data, ctx);
+    if (visible) deps.handleAgentStreamEvent?.(data, ctx);
 
     if (data.type === 'error') {
-      deps.hideAssistantLoading(ui);
-      ui.content.textContent = deps.formatApiError(data.error);
-      assistantMessage.content = ui.content.textContent;
+      assistantMessage.content = deps.formatApiError(data.error);
+      if (visible && ui?.content) {
+        deps.hideAssistantLoading?.(ui);
+        ui.content.textContent = assistantMessage.content;
+      }
       return 'error';
     }
 
     if (data.type === 'reasoning') {
-      deps.hideAssistantLoading(ui);
-      if (!ctx.thinkingStarted) {
-        ctx.thinkingStarted = true;
-        ui.thinking.classList.remove('hidden');
-        ui.thinkingLabel.textContent = deps.t('thinkingActive', 'Thinking…');
+      assistantMessage.reasoning_content += data.delta || '';
+      if (visible && ui) {
+        deps.hideAssistantLoading?.(ui);
+        if (!ctx.thinkingStarted) {
+          ctx.thinkingStarted = true;
+          ui.thinking?.classList.remove('hidden');
+          if (ui.thinkingLabel) ui.thinkingLabel.textContent = deps.t('thinkingActive', 'Thinking…');
+        }
+        if (ui.thinkingBody) ui.thinkingBody.textContent = assistantMessage.reasoning_content;
+        deps.scrollToBottom?.();
       }
-      assistantMessage.reasoning_content += data.delta;
-      ui.thinkingBody.textContent += data.delta;
-      deps.scrollToBottom();
     }
 
     if (data.type === 'content') {
-      deps.hideAssistantLoading(ui);
-      if (ctx.thinkingStarted) {
-        ui.thinking.classList.add('collapsed');
-        ui.thinkingLabel.textContent = deps.t('thinking', 'Thinking');
-      }
       ctx.contentStarted = true;
       ctx.rawContent = (ctx.rawContent || '') + (data.delta || '');
       const clean = typeof deps.stripLeakedToolCalls === 'function'
@@ -173,25 +205,19 @@ const ChatJobs = (() => {
         : ctx.rawContent;
       ctx.displayedContentLen = clean.length;
       assistantMessage.content = clean;
-      if (clean) {
-        scheduleMarkdownRender(ui, clean, ctx);
-      } else if (ui.content) {
-        ui.content.textContent = '';
+      if (visible && ui) {
+        deps.hideAssistantLoading?.(ui);
+        if (ctx.thinkingStarted) {
+          ui.thinking?.classList.add('collapsed');
+          if (ui.thinkingLabel) ui.thinkingLabel.textContent = deps.t('thinking', 'Thinking');
+        }
+        if (clean) scheduleMarkdownRender(ui, clean, ctx);
+        else if (ui.content) ui.content.textContent = '';
+        deps.scrollToBottom?.();
       }
-      deps.scrollToBottom();
     }
 
     if (data.type === 'tool_call') {
-      deps.hideAssistantLoading(ui);
-      if (ctx.thinkingStarted) {
-        ui.thinking.classList.add('collapsed');
-        ui.thinkingLabel.textContent = deps.t('thinking', 'Thinking');
-      } else {
-        ui.thinking.classList.add('hidden');
-      }
-      ui.toolsBlock.classList.remove('hidden');
-      deps.renderToolCall(ui.toolsList, data.id, data.name, data.arguments, null, data.agentId || data.agent_id);
-      deps.updateToolCallsSummary(ui.toolsBlock);
       if (!assistantMessage.tool_calls.some((tc) => tc.id === data.id)) {
         assistantMessage.tool_calls.push({
           id: data.id,
@@ -199,12 +225,23 @@ const ChatJobs = (() => {
           function: { name: data.name, arguments: data.arguments },
         });
       }
+      if (visible && ui) {
+        deps.hideAssistantLoading?.(ui);
+        if (ctx.thinkingStarted) {
+          ui.thinking?.classList.add('collapsed');
+          if (ui.thinkingLabel) ui.thinkingLabel.textContent = deps.t('thinking', 'Thinking');
+        } else {
+          ui.thinking?.classList.add('hidden');
+        }
+        ui.toolsBlock?.classList.remove('hidden');
+        deps.renderToolCall?.(ui.toolsList, data.id, data.name, data.arguments, null, data.agentId || data.agent_id);
+        deps.updateToolCallsSummary?.(ui.toolsBlock);
+      }
     }
 
     if (data.type === 'tool_result') {
-      deps.hideAssistantLoading(ui);
       let result = data.result;
-      if (result?.needs_confirmation && result.pending_id) {
+      if (result?.needs_confirmation && result.pending_id && visible) {
         let confirmed = { ok: false, cancelled: true };
         if (typeof deps.showWriteConfirmModal === 'function') {
           confirmed = await deps.showWriteConfirmModal(result.preview, result.pending_id, result);
@@ -215,14 +252,17 @@ const ChatJobs = (() => {
         result = confirmed;
       }
       assistantMessage.tool_results[data.id] = result;
-      deps.updateToolCallResult(ui.toolsList, data.id, result);
+      if (visible && ui) {
+        deps.hideAssistantLoading?.(ui);
+        deps.updateToolCallResult?.(ui.toolsList, data.id, result);
+      }
     }
 
     if (data.type === 'canvas' && typeof CanvasPanel !== 'undefined') {
       CanvasPanel.addArtifact(ctx.sessionId, data.artifact);
     }
 
-    if (data.type === 'usage') {
+    if (data.type === 'usage' && visible && ui) {
       deps.renderUsage?.(ui.wrapper, data.usage);
       if (deps.els?.settingsSidebar?.classList.contains('open')) deps.loadUsage?.();
       if (typeof OfficePanel !== 'undefined' && OfficePanel.isOpen()) {
@@ -235,10 +275,20 @@ const ChatJobs = (() => {
     }
 
     if (data.type === 'done') {
-      deps.hideAssistantLoading(ui);
-      deps.syncThinkingBlock(ui, assistantMessage);
-      flushMarkdownRender(ui, assistantMessage.content, ctx);
-      if (data.resolvedModel) deps.updateModelBadge?.(data.resolvedModel);
+      if (data.resolvedModel) {
+        assistantMessage.resolvedModel = data.resolvedModel;
+      }
+      if (visible && ui) {
+        deps.hideAssistantLoading?.(ui);
+        deps.syncThinkingBlock?.(ui, assistantMessage);
+        flushMarkdownRender(ui, assistantMessage.content, ctx);
+        if (data.resolvedModel) deps.setMessageModelTag?.(ui.wrapper?.querySelector('.message-meta'), data.resolvedModel);
+      }
+      if (data.resolvedModel && visible) deps.updateModelBadge?.(data.resolvedModel);
+    }
+
+    if (['content', 'reasoning', 'tool_call', 'tool_result'].includes(data.type) && !ctxCancelled(ctx)) {
+      deps.savePartialAssistant?.(ctx.sessionId, assistantMessage);
     }
 
     return 'continue';
@@ -246,29 +296,48 @@ const ChatJobs = (() => {
 
   async function finalizeCtx(jobId, sessionId, ctx, status, payload = {}) {
     contexts.delete(jobId);
-    const streamActive = ctx.streamActive;
-    flushMarkdownRender(ctx.ui, ctx.assistantMessage?.content, ctx);
-    deps.clearLiveStreamChrome?.(ctx.ui);
-    if (status === 'done' && streamActive()) {
-      deps.finishAssistant(ctx.ui, ctx.assistantMessage, sessionId);
-    } else if (status === 'error' && streamActive()) {
-      ctx.assistantMessage.content = deps.formatApiError(payload.error || 'Error');
-      deps.finishAssistant(ctx.ui, ctx.assistantMessage, sessionId);
-    } else if (status === 'cancelled' && streamActive() && ctx.ui.wrapper?.isConnected) {
-      ctx.ui.wrapper.remove();
-    } else if (status === 'done' && deps.SessionStore?.activeId === sessionId) {
-      deps.endChatStream?.(sessionId);
-      deps.commitAssistantMessage?.(sessionId, deps.normalizeStoredMessage({
-        role: 'assistant',
-        ...(payload.assistant || ctx.assistantMessage),
-      }));
-      deps.renderStoredMessages?.();
-      deps.SessionStore?.clearActiveJobId(sessionId);
-      deps.syncSessionsToDevice?.().catch(() => {});
-      return;
+    clearCtxPoll(ctx);
+
+    const visible = typeof ctx.isVisible === 'function' ? ctx.isVisible() : false;
+    if (visible && ctx.ui) {
+      flushMarkdownRender(ctx.ui, ctx.assistantMessage?.content || '', ctx);
+      deps.clearLiveStreamChrome?.(ctx.ui);
     }
+
+    const assistant = deps.normalizeStoredMessage({
+      role: 'assistant',
+      ...(payload.assistant || ctx.assistantMessage),
+    });
+    if (payload.resolvedModel) assistant.resolvedModel = payload.resolvedModel;
+
+    if (status === 'error') {
+      assistant.content = deps.formatApiError(payload.error || assistant.content || 'Error');
+    }
+
+    if (status === 'cancelled') {
+      if (visible && ctx.ui?.wrapper?.isConnected && !deps.assistantMessageHasContent?.(assistant)) {
+        ctx.ui.wrapper.remove();
+      } else if (deps.assistantMessageHasContent?.(assistant)) {
+        deps.commitAssistantMessage?.(sessionId, assistant);
+      }
+    } else if (status === 'done' || status === 'error') {
+      const hasContent = deps.assistantMessageHasContent?.(assistant) || status === 'error';
+      if (hasContent) {
+        if (visible) {
+          deps.finishAssistant?.(ctx.ui, assistant, sessionId);
+        } else {
+          deps.commitAssistantMessage?.(sessionId, assistant);
+        }
+      }
+    }
+
     deps.SessionStore?.clearActiveJobId(sessionId);
-    deps.endChatStream?.(sessionId);
+    if (visible && deps.SessionStore?.activeId === sessionId) {
+      deps.setAbortController?.(null);
+      deps.endChatStream?.(sessionId);
+    }
+    deps.renderSessionList?.();
+    deps.updateComposerSendBtn?.();
     deps.syncSessionsToDevice?.().catch(() => {});
   }
 
@@ -282,9 +351,7 @@ const ChatJobs = (() => {
       return;
     }
     contexts.delete(jobId);
-    deps.SessionStore?.clearActiveJobId(sessionId);
-    if (deps.SessionStore?.activeId !== sessionId) return;
-    if (status === 'done') {
+    if (status === 'done' || status === 'error') {
       const assistant = deps.normalizeStoredMessage({
         role: 'assistant',
         content: '',
@@ -293,31 +360,75 @@ const ChatJobs = (() => {
         tool_results: {},
         ...(payload.assistant || {}),
       });
+      if (payload.resolvedModel) assistant.resolvedModel = payload.resolvedModel;
+      if (status === 'error') {
+        assistant.content = deps.formatApiError(payload.error || assistant.content || 'Error');
+      }
       if (deps.assistantMessageHasContent?.(assistant)) {
         deps.commitAssistantMessage?.(sessionId, assistant);
-        deps.renderStoredMessages?.();
+        if (deps.SessionStore?.activeId === sessionId) deps.renderStoredMessages?.();
       }
     }
-    deps.endChatStream?.(sessionId);
+    deps.SessionStore?.clearActiveJobId(sessionId);
+    if (deps.SessionStore?.activeId === sessionId) {
+      deps.endChatStream?.(sessionId);
+      deps.updateComposerSendBtn?.();
+    }
+    deps.renderSessionList?.();
     deps.syncSessionsToDevice?.().catch(() => {});
+  }
+
+  function ensureBackgroundCtx(sessionId, jobId, initialData = {}) {
+    let ctx = findCtx(jobId, sessionId);
+    if (ctx) return ctx;
+    const assistantMessage = deps.normalizeStoredMessage({
+      role: 'assistant',
+      content: '',
+      reasoning_content: '',
+      tool_calls: [],
+      tool_results: {},
+      agent_events: [],
+      ...(initialData.assistant || {}),
+    });
+    const since = initialData.nextSince || 0;
+    ctx = {
+      ui: null,
+      assistantMessage,
+      sessionId,
+      cancelled: false,
+      isVisible: () => deps.SessionStore?.activeId === sessionId,
+      thinkingStarted: Boolean(assistantMessage.reasoning_content),
+      contentStarted: Boolean(assistantMessage.content),
+      rawContent: assistantMessage.content || '',
+      displayedContentLen: (assistantMessage.content || '').length,
+      since,
+      lastSeq: since,
+    };
+    registerCtx(jobId, sessionId, ctx);
+    return ctx;
   }
 
   async function handleSyncWsEvent(payload) {
     const { jobId, sessionId, event, status } = payload;
     let ctx = findCtx(jobId, sessionId);
-    if (ctx && !contexts.has(jobId)) {
-      registerCtx(jobId, sessionId, ctx);
+    if (ctx && !contexts.has(jobId)) registerCtx(jobId, sessionId, ctx);
+
+    if (!ctx && (status === 'running' || event)) {
+      deps.SessionStore?.setActiveJobId(sessionId, jobId);
+      if (deps.SessionStore?.activeId === sessionId) {
+        await attach(sessionId, jobId, {
+          assistant: payload.assistant,
+          events: event ? [event] : [],
+          nextSince: payload.nextSince || 0,
+          status: status || 'running',
+        });
+        ctx = findCtx(jobId, sessionId);
+      } else {
+        ctx = ensureBackgroundCtx(sessionId, jobId, payload);
+        if (!ctx._pollActive) watch(jobId, sessionId, ctx);
+      }
     }
-    if (!ctx && deps.SessionStore?.activeId === sessionId) {
-      deps.SessionStore.setActiveJobId(sessionId, jobId);
-      await attach(sessionId, jobId, {
-        assistant: payload.assistant,
-        events: event ? [event] : [],
-        nextSince: payload.nextSince || 0,
-        status: status || 'running',
-      });
-      ctx = findCtx(jobId, sessionId);
-    }
+
     if (!ctx) {
       if (['done', 'error', 'cancelled'].includes(status)) {
         await applyTerminalJobState(jobId, sessionId, null, status, payload);
@@ -339,7 +450,6 @@ const ChatJobs = (() => {
         await finalizeCtx(jobId, sessionId, ctx, 'error', payload);
         return;
       }
-      if (ctx.streamActive()) deps.savePartialAssistant?.(sessionId, ctx.assistantMessage);
     }
 
     if (['done', 'error', 'cancelled'].includes(status)) {
@@ -356,12 +466,13 @@ const ChatJobs = (() => {
   }
 
   function poll(jobId, sessionId, ctx) {
+    if (ctx._pollActive) return;
     ctx._pollActive = true;
     let since = ctx.since || 0;
     let finished = false;
 
     const tick = async () => {
-      if (finished) return;
+      if (finished || ctxCancelled(ctx)) return;
 
       try {
         const { data } = await deps.api('GET', `/api/ai/chat/jobs/${encodeURIComponent(jobId)}?since=${since}`);
@@ -372,10 +483,10 @@ const ChatJobs = (() => {
           }
           finished = true;
           contexts.delete(jobId);
+          deps.renderSessionList?.();
           return;
         }
 
-        const streamActive = ctx.streamActive;
         for (const ev of data.events || []) {
           since = Math.max(since, ev._seq || since);
           ctx.since = since;
@@ -389,7 +500,9 @@ const ChatJobs = (() => {
           if (result === 'stop') break;
         }
 
-        if (streamActive()) deps.savePartialAssistant?.(sessionId, ctx.assistantMessage);
+        if (!ctxCancelled(ctx)) {
+          deps.savePartialAssistant?.(sessionId, ctx.assistantMessage);
+        }
 
         if (['done', 'error', 'cancelled'].includes(data.status)) {
           finished = true;
@@ -397,9 +510,11 @@ const ChatJobs = (() => {
           return;
         }
 
-        pollTimer = setTimeout(tick, pollDelayMs());
+        ctx.pollTimer = setTimeout(tick, pollDelayMs());
       } catch {
-        if (!finished) pollTimer = setTimeout(tick, pollDelayMs());
+        if (!finished && !ctxCancelled(ctx)) {
+          ctx.pollTimer = setTimeout(tick, pollDelayMs());
+        }
       }
     };
 
@@ -408,26 +523,26 @@ const ChatJobs = (() => {
 
   async function stream(messages) {
     const sessionId = deps.SessionStore.activeId;
+    if (!sessionId) return;
+    if (isSessionRunning(sessionId)) return;
+
     deps.setStreamSessionId?.(sessionId);
     const abortController = { cancelled: false };
     deps.setAbortController?.(abortController);
-    if (deps.els?.sendBtn) deps.els.sendBtn.textContent = deps.t('stop', 'Stop');
-
-    const streamActive = () => (
-      deps.SessionStore.activeId === sessionId
-      && deps.getAbortController?.()
-      && !deps.getAbortController().cancelled
-    );
+    deps.updateComposerSendBtn?.();
 
     const hasImages = messages.some(
       (m) => m.role === 'user' && Array.isArray(m.content) && m.content.some((p) => p.type === 'image_url'),
     );
     const useTools = !hasImages;
-      const workflowId = deps.consumePendingWorkflow?.() || '';
-      const agentId = deps.consumePendingAgentId?.() || '';
-      const compact = deps.consumePendingCompact?.() || false;
-      const consumerMode = deps.consumePendingConsumerMode?.() || false;
-      const debug = deps.getChatDebugPrefs?.() || {};
+    const workflowId = deps.consumePendingWorkflow?.() || '';
+    const agentId = deps.consumePendingAgentId?.() || '';
+    const compact = deps.consumePendingCompact?.() || false;
+    const consumerMode = deps.consumePendingConsumerMode?.() || false;
+    const debug = deps.getChatDebugPrefs?.() || {};
+    const chatRoute = typeof SessionModelPicker !== 'undefined'
+      ? SessionModelPicker.getChatRouteForSend(sessionId)
+      : null;
 
     const ui = deps.appendAssistantMessage();
     deps.showAssistantLoading(ui);
@@ -445,7 +560,8 @@ const ChatJobs = (() => {
       ui,
       assistantMessage,
       sessionId,
-      streamActive,
+      cancelled: false,
+      isVisible: () => deps.SessionStore?.activeId === sessionId,
       thinkingStarted: false,
       contentStarted: false,
       rawContent: '',
@@ -459,7 +575,7 @@ const ChatJobs = (() => {
       const queueExtras = (typeof CommandQueue !== 'undefined' && deps.getState?.()?.driving)
         ? CommandQueue.payloadExtras(true)
         : {};
-      const { data: startData } = await deps.api('POST', '/api/ai/chat/jobs', {
+      const body = {
         sessionId,
         idempotencyKey,
         messages: deps.prepareMessagesForApi(messages),
@@ -473,22 +589,26 @@ const ChatJobs = (() => {
         trace: !!debug.trace,
         maxToolRounds: 'infinite',
         ...queueExtras,
-      });
+      };
+      if (chatRoute) body.chatRoute = chatRoute;
+
+      const { data: startData } = await deps.api('POST', '/api/ai/chat/jobs', body);
 
       if (!startData?.ok) {
         contexts.delete(`pending:${sessionId}`);
-        if (!streamActive()) return;
+        if (!ctx.isVisible()) return;
         deps.hideAssistantLoading(ui);
         ui.content.textContent = deps.formatApiError(startData?.error || 'Failed to start chat job');
         assistantMessage.content = ui.content.textContent;
         deps.finishAssistant(ui, assistantMessage, sessionId);
         deps.endChatStream?.(sessionId);
+        deps.updateComposerSendBtn?.();
         return;
       }
 
       if (startData.queued || startData.action === 'collected') {
         contexts.delete(`pending:${sessionId}`);
-        if (!streamActive()) return;
+        if (!ctx.isVisible()) return;
         deps.hideAssistantLoading(ui);
         const pos = startData.queuePosition || startData.collectBatch || '?';
         const msg = startData.action === 'collected'
@@ -498,29 +618,31 @@ const ChatJobs = (() => {
         assistantMessage.content = ui.content.textContent;
         deps.finishAssistant(ui, assistantMessage, sessionId);
         deps.endChatStream?.(sessionId);
+        deps.updateComposerSendBtn?.();
         deps.showToast?.('消息已排队，当前任务完成后继续');
         return;
       }
 
       if (!startData.jobId) {
         contexts.delete(`pending:${sessionId}`);
-        if (!streamActive()) return;
+        if (!ctx.isVisible()) return;
         deps.hideAssistantLoading(ui);
         ui.content.textContent = deps.formatApiError('Failed to start chat job');
         assistantMessage.content = ui.content.textContent;
         deps.finishAssistant(ui, assistantMessage, sessionId);
         deps.endChatStream?.(sessionId);
+        deps.updateComposerSendBtn?.();
         return;
       }
 
       const jobId = startData.jobId;
-      activeJobId = jobId;
       deps.SessionStore.setActiveJobId(sessionId, jobId);
       deps.syncSessionsToDevice?.().catch(() => {});
+      deps.renderSessionList?.();
       watch(jobId, sessionId, ctx);
     } catch (err) {
       contexts.delete(`pending:${sessionId}`);
-      if (streamActive()) {
+      if (ctx.isVisible()) {
         deps.hideAssistantLoading(ui);
         ui.content.textContent = `Error: ${err.message}`;
         assistantMessage.content = ui.content.textContent;
@@ -529,14 +651,15 @@ const ChatJobs = (() => {
         ui.wrapper.remove();
       }
       deps.endChatStream?.(sessionId);
+      deps.updateComposerSendBtn?.();
     }
   }
 
   async function attach(sessionId, jobId, initialData) {
-    if (activeJobId === jobId && deps.getAbortController?.()) return;
-    if (deps.isLocallyStreaming?.(sessionId) && findCtx(jobId, sessionId)) return;
+    const existingCtx = findCtx(jobId, sessionId);
+    if (existingCtx?._pollActive) return;
 
-    const messages = deps.getCurrentMessages?.() || [];
+    const messages = deps.getSessionMessages?.(sessionId) || deps.getCurrentMessages?.() || [];
     const last = messages[messages.length - 1];
     let ui;
     let assistantMessage;
@@ -578,19 +701,15 @@ const ChatJobs = (() => {
     deps.markLiveStreamUi(ui);
     deps.setStreamSessionId?.(sessionId);
     deps.setAbortController?.({ cancelled: false });
-    activeJobId = jobId;
-    if (deps.els?.sendBtn) deps.els.sendBtn.textContent = deps.t('stop', 'Stop');
+    deps.updateComposerSendBtn?.();
 
     const since = initialData?.nextSince || 0;
     const streamCtx = {
       ui,
       assistantMessage,
       sessionId,
-      streamActive: () => (
-        deps.SessionStore.activeId === sessionId
-        && deps.getAbortController?.()
-        && !deps.getAbortController().cancelled
-      ),
+      cancelled: false,
+      isVisible: () => deps.SessionStore?.activeId === sessionId,
       thinkingStarted: Boolean(assistantMessage.reasoning_content),
       contentStarted: Boolean(assistantMessage.content),
       rawContent: assistantMessage.content || '',
@@ -608,13 +727,14 @@ const ChatJobs = (() => {
       }
     }
 
+    const existing = findCtx(jobId, sessionId);
+    if (existing && existing._pollActive) return;
     watch(jobId, sessionId, streamCtx);
   }
 
   async function syncActiveSession() {
     const sessionId = deps.SessionStore?.activeId;
     if (!sessionId) return;
-    if (deps.isChatUiLocked?.()) return;
 
     let jobId = deps.SessionStore.getActiveJobId(sessionId);
     if (!jobId) {
@@ -622,32 +742,45 @@ const ChatJobs = (() => {
       jobId = listData?.jobs?.[0]?.id;
       if (jobId) deps.SessionStore.setActiveJobId(sessionId, jobId);
     }
-    if (!jobId) return;
-    if (activeJobId === jobId && deps.getAbortController?.()) return;
+    if (!jobId) {
+      deps.updateComposerSendBtn?.();
+      return;
+    }
+
+    const existing = findCtx(jobId, sessionId);
+    if (existing?._pollActive) {
+      deps.updateComposerSendBtn?.();
+      return;
+    }
 
     const { data } = await deps.api('GET', `/api/ai/chat/jobs/${encodeURIComponent(jobId)}?since=0`);
     if (!data?.ok) {
       deps.SessionStore.clearActiveJobId(sessionId);
+      deps.updateComposerSendBtn?.();
       return;
     }
 
     if (data.status === 'done') {
-      deps.commitAssistantMessage?.(sessionId, deps.normalizeStoredMessage({
+      const doneMsg = deps.normalizeStoredMessage({
         role: 'assistant',
         content: '',
         reasoning_content: '',
         tool_calls: [],
         tool_results: {},
         ...(data.assistant || {}),
-      }));
+      });
+      if (data.resolvedModel) doneMsg.resolvedModel = data.resolvedModel;
+      deps.commitAssistantMessage?.(sessionId, doneMsg);
       deps.SessionStore.clearActiveJobId(sessionId);
       deps.renderStoredMessages?.();
       deps.syncSessionsToDevice?.().catch(() => {});
+      deps.updateComposerSendBtn?.();
       return;
     }
 
     if (data.status !== 'running') {
       deps.SessionStore.clearActiveJobId(sessionId);
+      deps.updateComposerSendBtn?.();
       return;
     }
 
@@ -662,43 +795,58 @@ const ChatJobs = (() => {
 
   function resumePolling() {
     for (const [jobId, ctx] of contexts.entries()) {
-      if (!ctx._pollActive && ctx.sessionId) poll(jobId, ctx.sessionId, ctx);
+      if (!ctx._pollActive && ctx.sessionId && !ctx.cancelled) poll(jobId, ctx.sessionId, ctx);
     }
   }
 
   async function recoverStuckStreams() {
-    const sessionId = deps.SessionStore?.activeId;
-    if (!sessionId) {
-      if (deps.getAbortController?.() && !contexts.size) deps.endChatStream?.();
-      return;
-    }
+    const sessions = deps.SessionStore?.listWithContent?.() || deps.SessionStore?.list?.() || [];
+    for (const s of sessions) {
+      const sessionId = s.id;
+      let jobId = deps.SessionStore.getActiveJobId(sessionId);
+      if (!jobId) continue;
+      const ctx = findCtx(jobId, sessionId);
+      if (ctx && !ctx._pollActive && !ctx.cancelled) poll(jobId, sessionId, ctx);
+      if (ctx) continue;
 
-    let jobId = deps.SessionStore.getActiveJobId(sessionId) || activeJobId;
-    if (!jobId) {
-      if (deps.getAbortController?.() && !contexts.size) deps.endChatStream?.(sessionId);
-      return;
-    }
-
-    const ctx = findCtx(jobId, sessionId);
-    if (ctx && !ctx._pollActive) poll(jobId, sessionId, ctx);
-
-    const { data } = await deps.api('GET', `/api/ai/chat/jobs/${encodeURIComponent(jobId)}?since=0`);
-    if (!data?.ok) {
-      deps.SessionStore.clearActiveJobId(sessionId);
-      if (deps.SessionStore.activeId === sessionId) deps.endChatStream?.(sessionId);
-      return;
-    }
-
-    if (data.status === 'running') {
-      if (!ctx && deps.SessionStore.activeId === sessionId) {
-        await attach(sessionId, jobId, data);
+      const { data } = await deps.api('GET', `/api/ai/chat/jobs/${encodeURIComponent(jobId)}?since=0`);
+      if (!data?.ok) {
+        deps.SessionStore.clearActiveJobId(sessionId);
+        continue;
       }
-      return;
+      if (data.status === 'running') {
+        if (deps.SessionStore.activeId === sessionId) {
+          await attach(sessionId, jobId, data);
+        } else {
+          const bg = ensureBackgroundCtx(sessionId, jobId, data);
+          if (!bg._pollActive) watch(jobId, sessionId, bg);
+        }
+        continue;
+      }
+      if (['done', 'error', 'cancelled'].includes(data.status)) {
+        await applyTerminalJobState(jobId, sessionId, null, data.status, data);
+      }
     }
+    deps.updateComposerSendBtn?.();
+  }
 
-    if (['done', 'error', 'cancelled'].includes(data.status)) {
-      await applyTerminalJobState(jobId, sessionId, ctx, data.status, data);
+  async function resumeActiveJobs(jobs) {
+    if (!Array.isArray(jobs) || !jobs.length) return;
+    for (const job of jobs) {
+      const jobId = job.id || job.jobId;
+      const sessionId = job.sessionId;
+      if (!jobId || !sessionId) continue;
+      deps.SessionStore?.setActiveJobId(sessionId, jobId);
+      if (findCtx(jobId, sessionId)?._pollActive) continue;
+      if (deps.SessionStore?.activeId === sessionId) {
+        await syncActiveSession();
+      } else {
+        const ctx = ensureBackgroundCtx(sessionId, jobId, job);
+        if (!ctx._pollActive) watch(jobId, sessionId, ctx);
+      }
     }
+    deps.renderSessionList?.();
+    deps.updateComposerSendBtn?.();
   }
 
   return {
@@ -708,6 +856,8 @@ const ChatJobs = (() => {
     syncActiveSession,
     handleSyncWsEvent,
     abortActive,
+    abortSession,
+    isSessionRunning,
     findCtx,
     getActiveJobId,
     setActiveJobId,
@@ -715,5 +865,6 @@ const ChatJobs = (() => {
     forEachPollingCtx,
     resumePolling,
     recoverStuckStreams,
+    resumeActiveJobs,
   };
 })();
