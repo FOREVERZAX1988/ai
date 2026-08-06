@@ -38,15 +38,17 @@
 
 | 文档 | 说明 |
 |------|------|
-| [ARCHITECTURE.md](ARCHITECTURE.md) | 模块结构 |
-| [TSK_AND_AID.md](TSK_AND_AID.md) | aid 进程 |
+| [ARCHITECTURE.md](ARCHITECTURE.md) | **分层架构**（server / core / services / tools/domains） |
+| [ARCHITECTURE_TARGETS.md](ARCHITECTURE_TARGETS.md) | 迁移状态、依赖规则、脚本清单 |
+| [TSK_AND_AID.md](TSK_AND_AID.md) | aid 进程与 SecOC |
 | [VEHICLE_ADAPTATION_GUIDE.md](VEHICLE_ADAPTATION_GUIDE.md) | 新车适配 |
 | [HERMES_EVOLUTION.md](HERMES_EVOLUTION.md) | 技能进化闭环 |
 | [SKILL_AUTHORING.md](SKILL_AUTHORING.md) | 技能编写 |
 | [PLUGIN_DEV.md](PLUGIN_DEV.md) | 插件 |
 | [FORK_AND_COMMUNITY.md](FORK_AND_COMMUNITY.md) | Fork 与 Wiki RAG |
-| [SESSION_SYNC.md](SESSION_SYNC.md) | 会话同步 |
+| [SESSION_SYNC.md](SESSION_SYNC.md) | 会话同步（`core/sync/hub.py`） |
 | [UPSTREAM_SYNC.md](UPSTREAM_SYNC.md) | 上游同步 |
+| [../dev/README.md](../dev/README.md) | PC 预览与测试 |
 
 ## GitHub
 

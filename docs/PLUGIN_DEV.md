@@ -30,7 +30,7 @@ TOOL_SCHEMAS: list[dict[str, Any]] = [
 def make_handlers(ctx: dict) -> dict[str, Callable[..., Any]]:
   p = ctx.get("params")
   def h_my_tool(_a):
-    from ai.tools.my_module import my_tool
+    from ai.tools.domains.platform.my_module import my_tool
     return my_tool(p)
   return {"my_tool": h_my_tool}
 ```

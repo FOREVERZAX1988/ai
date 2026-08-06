@@ -11,8 +11,8 @@
 
 | 能力 | 实现 |
 |------|------|
-| Gateway | `sync_hub.py` — `/api/ai/sync/ws` |
-| 服务端存储 | Params `ai_web_sessions` + `stateVersion` |
+| Gateway | `core/sync/hub.py` — `/api/ai/sync/ws` |
+| 服务端存储 | `tools/domains/platform/session_store.py` — Params `ai_web_sessions` + `stateVersion` |
 | 客户端会话 | `SessionStore` **仅内存**，不写 localStorage |
 | WS hello 全量 | `connect` → `hello`（sessions + config + activeJobs） |
 | 实时推送 | POST sessions → `broadcast_sessions`；config 保存 → `broadcast_config` |

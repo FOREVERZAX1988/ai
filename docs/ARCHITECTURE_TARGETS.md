@@ -47,7 +47,9 @@ web/static/js/
 | `scripts/split_cabana_app.py` | Cabana app 物理拆分 |
 | `scripts/migrate_tools_domains.py` | tools → domains/* |
 | `scripts/export_rag_builtin.py` | RAG 静态文档导出 JSON |
-| `scripts/verify_architecture.py` | import 门禁 |
+| `scripts/fix_domain_packages.py` | 合并 domains 同名包冲突 |
+| `scripts/rewrite_domain_imports.py` | domains 内部 import 规范化 |
+| `scripts/verify_architecture.py` | import 门禁（PC 自动 mock） |
 
 ## 状态
 
@@ -58,6 +60,7 @@ web/static/js/
 | P4 | tools domains 全量物理迁移 + 根路径垫片 | ✅ |
 | P5 | 前端 app/dom.js、chat/model-tag | ✅ |
 | P6 | 根目录清理、import 规范化、RAG data 目录 | ✅ |
+| P7 | 文档与 PC 验证脚本对齐新架构 | ✅ |
 
 ## 后续（可选）
 
