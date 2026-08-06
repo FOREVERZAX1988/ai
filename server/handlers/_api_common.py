@@ -99,3 +99,6 @@ _read_ai_config = read_ai_config
 _get_tool_handlers = get_tool_handlers
 _resolve_max_tool_rounds = resolve_max_tool_rounds
 _filter_tools = filter_tools
+
+# Star-imported by handler modules — include _-prefixed aliases explicitly.
+__all__ = [name for name in globals() if not name.startswith("__")]

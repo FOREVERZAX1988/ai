@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from ai.tools.route_scoring_tools import score_tune_session
+from ai.tools.domains.tune.route_scoring_tools import score_tune_session
 
 
 def check_tune_regression(

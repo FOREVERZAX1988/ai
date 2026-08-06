@@ -192,7 +192,7 @@ def save_sessions(params: Params, payload: dict[str, Any]) -> dict[str, Any]:
     _invalidate_load_cache()
     write_param(params, SESSIONS_KEY, json.dumps(data, ensure_ascii=False))
     try:
-      from ai.tools.session_index import schedule_index_sessions
+      from ai.tools.domains.platform.session_index import schedule_index_sessions
       schedule_index_sessions(trimmed)
     except Exception:
       pass

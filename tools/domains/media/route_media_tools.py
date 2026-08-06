@@ -7,7 +7,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-from ai.tools.op_run import OPENPILOT_ROOT, resolve_route_ref, run_subprocess, validate_route_ref
+from ai.tools.domains.platform.op_run import OPENPILOT_ROOT, resolve_route_ref, run_subprocess, validate_route_ref
 
 _OUTPUT_ROOT = OPENPILOT_ROOT / "ai" / "data" / "exports"
 

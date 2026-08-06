@@ -8,7 +8,7 @@ import os
 from pathlib import Path
 from typing import Any
 
-from ai.tools.op_run import ROUTES_DIR, resolve_route_ref, validate_route_ref
+from ai.tools.domains.platform.op_run import ROUTES_DIR, resolve_route_ref, validate_route_ref
 
 _CAMERA_FILES = {
   "front": ("fcamera.hevc", "cameras"),
@@ -282,7 +282,7 @@ def search_local_routes_for_can(hex_ids: list[str], *, limit: int = 15) -> dict[
   if not os.path.isdir(ROUTES_DIR):
     return {"ok": True, "matches": [], "hint": "No local routes directory"}
 
-  from ai.tools.fingerprint_lib import extract_can_ids_from_route
+  from ai.tools.domains.vehicle.fingerprint_lib import extract_can_ids_from_route
 
   entries: list[dict[str, Any]] = []
   names = []

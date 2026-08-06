@@ -6,8 +6,8 @@ from typing import Any
 
 from openpilot.common.params import Params
 
-from ai.tools.param_write import put_param
-from ai.tools.params_policy import validate_write_batch
+from ai.tools.domains.platform.param_write import put_param
+from ai.tools.domains.platform.params_policy import validate_write_batch
 
 
 def apply_param_writes(
@@ -35,13 +35,13 @@ def apply_param_writes(
   rb = (route_before or "").strip()
   ra = (route_after or "").strip()
   if rb and ra and not skip_regression_check:
-    from ai.tools.tune_regression import check_tune_regression
+    from ai.tools.domains.tune.tune_regression import check_tune_regression
     reg = check_tune_regression(rb, ra, block_on_regression=True)
     if not reg.get("ok"):
       return reg
 
-  from ai.tools.tune_snapshot_store import save_tune_snapshot
-  from ai.tools.tune_passport_store import record_tune_passport
+  from ai.tools.domains.tune.tune_snapshot_store import save_tune_snapshot
+  from ai.tools.domains.tune.tune_passport_store import record_tune_passport
 
   snap = save_tune_snapshot(params, label=snapshot_label, brand=brand)
   applied: dict[str, Any] = {}

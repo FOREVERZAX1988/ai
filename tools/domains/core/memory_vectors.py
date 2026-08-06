@@ -38,7 +38,7 @@ def _cosine(a: list[float], b: list[float]) -> float:
 
 async def index_memory_notes(params, embed_config=None) -> dict[str, Any]:
   """Embed recent memory notes into vector store."""
-  from ai.tools.memory_store import get_memory
+  from ai.tools.domains.core.memory_store import get_memory
   from ai.core.llm.embedding import embed_texts_with_failover, load_embedding_config_chain
 
   notes = (get_memory(params).get("notes") or [])[:40]
@@ -82,7 +82,7 @@ async def search_memory_semantic(
   embed_config=None,
 ) -> dict[str, Any]:
   """Vector search agent memory; falls back to keyword match."""
-  from ai.tools.memory_store import get_memory
+  from ai.tools.domains.core.memory_store import get_memory
   from ai.core.llm.embedding import embed_texts_with_failover, load_embedding_config_chain
 
   q = (query or "").strip()

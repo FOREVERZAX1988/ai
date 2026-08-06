@@ -37,7 +37,7 @@ def _scrub_key_result(result: dict[str, Any]) -> dict[str, Any]:
 
 def _audit_tsk(tool: str, result: dict[str, Any]) -> dict[str, Any]:
   try:
-    from ai.tools.audit_store import record_audit
+    from ai.tools.domains.platform.audit_store import record_audit
     record_audit(
       action=f"tsk_{tool}",
       tool=tool,

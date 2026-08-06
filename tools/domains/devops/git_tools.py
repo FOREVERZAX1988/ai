@@ -6,7 +6,7 @@ import subprocess
 from typing import Any
 
 from ai.system.paths import openpilot_root
-from ai.tools.git_repo_context import current_git_repo_target, current_git_repo_root_override
+from ai.tools.domains.devops.git_repo_context import current_git_repo_target, current_git_repo_root_override
 
 
 def _git_root():

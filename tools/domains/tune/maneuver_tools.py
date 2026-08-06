@@ -6,7 +6,7 @@ import re
 from pathlib import Path
 from typing import Any
 
-from ai.tools.op_run import OPENPILOT_ROOT, parse_report_path, resolve_route_ref, run_subprocess, validate_route_ref
+from ai.tools.domains.platform.op_run import OPENPILOT_ROOT, parse_report_path, resolve_route_ref, run_subprocess, validate_route_ref
 
 
 def maneuver_mode_status() -> dict[str, Any]:
@@ -131,7 +131,7 @@ def lat_maneuver_report(route: str, description: str | None = None) -> dict[str,
 
 def maneuversd_status(get_state_reader) -> dict[str, Any]:
   """Longitudinal/lateral maneuver daemon status from managerState + Params."""
-  from ai.tools.maneuver_tools import maneuver_mode_status
+  from ai.tools.domains.tune.maneuver_tools import maneuver_mode_status
 
   modes = maneuver_mode_status()
   procs: list[dict[str, Any]] = []

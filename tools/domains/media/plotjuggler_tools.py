@@ -5,7 +5,7 @@ from __future__ import annotations
 import math
 from typing import Any
 
-from ai.tools.op_run import resolve_route_ref, validate_route_ref
+from ai.tools.domains.platform.op_run import resolve_route_ref, validate_route_ref
 
 _PJ_SIGNALS = {
   "carState": ["vEgo", "steeringAngleDeg", "gas", "brake"],
@@ -35,7 +35,7 @@ def plotjuggler_data_summary(
   max_messages: int = 10000,
 ) -> dict[str, Any]:
   """Aggregate key signals from a route (no PlotJuggler binary)."""
-  from ai.tools.route_tools import route_time_series
+  from ai.tools.domains.media.route_tools import route_time_series
 
   topic_list = topics or list(_PJ_SIGNALS.keys())
   ts_res = route_time_series(route, topics=topic_list, max_messages=max_messages, max_points=2000)

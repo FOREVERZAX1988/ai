@@ -14,7 +14,7 @@ def analyze_route_vision(
   camera: str = "front",
 ) -> dict[str, Any]:
   """Extract a route frame and return path + brightness stats for vision review."""
-  from ai.tools.route_tools import route_fetch_frame
+  from ai.tools.domains.media.route_tools import route_fetch_frame
 
   fetched = route_fetch_frame(route, segment=segment, frame=frame, camera=camera)
   if not fetched.get("ok"):

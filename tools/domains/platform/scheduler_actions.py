@@ -15,7 +15,7 @@ async def execute_scheduler_action(
   append_note: Callable,
 ) -> str:
   if action == "check_runner_health_offroad":
-    from ai.tools.github_actions_tools import check_github_runner_health
+    from ai.tools.domains.devops.github_actions_tools import check_github_runner_health
     res = check_github_runner_health(notify=bool(payload.get("notify", True)))
     if not res.get("healthy"):
       issues = ", ".join(res.get("issues") or [])
@@ -23,7 +23,7 @@ async def execute_scheduler_action(
     return "runner/ci healthy"
 
   if action == "check_device_health_offroad":
-    from ai.tools.device_health_tools import device_health
+    from ai.tools.domains.platform.device_health_tools import device_health
     h = device_health()
     issues = []
     disk = h.get("disk") or {}
@@ -37,7 +37,7 @@ async def execute_scheduler_action(
     return "device health ok"
 
   if action == "check_github_ci_failed":
-    from ai.tools.github_actions_tools import check_github_runner_health
+    from ai.tools.domains.devops.github_actions_tools import check_github_runner_health
     res = check_github_runner_health(notify=False)
     fails = res.get("recent_failures") or []
     if fails:
@@ -47,7 +47,7 @@ async def execute_scheduler_action(
     return "no recent ci failure"
 
   if action == "ota_preflight_offroad":
-    from ai.tools.branch_tools import ota_preflight_checklist
+    from ai.tools.domains.devops.branch_tools import ota_preflight_checklist
     res = ota_preflight_checklist(params)
     if not res.get("ready"):
       blockers = ", ".join(res.get("blockers") or [])

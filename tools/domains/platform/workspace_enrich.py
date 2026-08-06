@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from ai.tools.memory_store import get_memory
+from ai.tools.domains.core.memory_store import get_memory
 from ai.core.workspace.store import _FILE_MAP, read_workspace_file, write_workspace_file
 
 # Minimum useful content length (excluding boilerplate headers).

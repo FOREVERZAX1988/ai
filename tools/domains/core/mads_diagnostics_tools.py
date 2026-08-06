@@ -8,7 +8,7 @@ from typing import Any, Callable
 
 from openpilot.common.params import Params
 
-from ai.tools.mads_tools import get_mads_settings
+from ai.tools.domains.vehicle.mads_tools import get_mads_settings
 from ai.system.paths import openpilot_root, rel_source, source_path
 
 # Symptom → structured playbook (matches master-c3 fixes, 2026-07).

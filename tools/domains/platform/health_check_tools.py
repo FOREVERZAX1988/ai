@@ -105,7 +105,7 @@ def run_health_check(*, scope: str = "engage", get_state_reader=None) -> dict[st
 
     if brand in ("toyota", "lexus"):
       try:
-        from ai.tools.secoc_lookup import lookup_secoc_tier
+        from ai.tools.domains.secoc.secoc_lookup import lookup_secoc_tier
         tier = lookup_secoc_tier(brand=brand)
         tier_name = (tier or {}).get("tier") or (tier or {}).get("label") or "unknown"
         if str(tier_name).lower() in ("red", "block", "secoc_required", "tsks"):
@@ -117,7 +117,7 @@ def run_health_check(*, scope: str = "engage", get_state_reader=None) -> dict[st
 
   if scope in ("system", "full", "engage"):
     try:
-      from ai.tools.device_health_tools import device_health, panda_status
+      from ai.tools.domains.platform.device_health_tools import device_health, panda_status
       dh = device_health()
       if dh.get("ok"):
         checks.append(_item("device_health", "ok", "设备健康检查通过", details={k: dh[k] for k in ("board", "Version", "AGNOSVersion", "disk") if k in dh}))
@@ -135,7 +135,7 @@ def run_health_check(*, scope: str = "engage", get_state_reader=None) -> dict[st
 
   if scope in ("system", "full"):
     try:
-      from ai.tools.network_tools import network_diagnostics
+      from ai.tools.domains.platform.network_tools import network_diagnostics
       net = network_diagnostics()
       if net.get("ok"):
         checks.append(_item("network", "ok", "网络诊断通过", details={k: net.get(k) for k in ("wifi", "internet", "comma_auth") if k in net}))
@@ -198,7 +198,7 @@ def run_health_check(*, scope: str = "engage", get_state_reader=None) -> dict[st
 
 def guide_ota_update(*, confirm: bool = False) -> dict[str, Any]:
   """Read-only OTA guide unless confirm=true for prebuilt checkout hints."""
-  from ai.tools.branch_tools import ota_preflight_checklist
+  from ai.tools.domains.devops.branch_tools import ota_preflight_checklist
   pre = ota_preflight_checklist()
   steps = [
     "停车 offroad，电量充足，连接 WiFi",

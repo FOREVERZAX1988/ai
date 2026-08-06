@@ -12,7 +12,7 @@ from typing import Any
 from openpilot.common.params import Params
 
 from ai.common.storage import read_param
-from ai.tools.session_store import SESSIONS_KEY, get_sessions
+from ai.tools.domains.platform.session_store import SESSIONS_KEY, get_sessions
 
 _LOCK = threading.Lock()
 _DB: sqlite3.Connection | None = None

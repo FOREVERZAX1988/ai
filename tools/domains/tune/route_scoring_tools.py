@@ -5,8 +5,8 @@ from __future__ import annotations
 import math
 from typing import Any
 
-from ai.tools.op_run import validate_route_ref
-from ai.tools.route_analysis_tools import compare_tune_ab
+from ai.tools.domains.platform.op_run import validate_route_ref
+from ai.tools.domains.media.route_analysis_tools import compare_tune_ab
 
 
 def _jerk_from_series(vals: list | None) -> float | None:
@@ -36,7 +36,7 @@ def score_route_tune(route: str) -> dict[str, Any]:
   if err:
     return {"ok": False, "error": err}
 
-  from ai.tools.route_tools import route_time_series
+  from ai.tools.domains.media.route_tools import route_time_series
 
   ts = route_time_series(
     route,

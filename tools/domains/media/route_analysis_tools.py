@@ -6,7 +6,7 @@ import os
 from collections import Counter
 from typing import Any
 
-from ai.tools.op_run import ROUTES_DIR, resolve_route_ref, validate_route_ref
+from ai.tools.domains.platform.op_run import ROUTES_DIR, resolve_route_ref, validate_route_ref
 
 
 def _import_logreader():
@@ -72,7 +72,7 @@ def compare_route_signals(
   *,
   topics: list[str] | None = None,
 ) -> dict[str, Any]:
-  from ai.tools.plotjuggler_tools import plotjuggler_data_summary
+  from ai.tools.domains.media.plotjuggler_tools import plotjuggler_data_summary
 
   for label, route in (("a", route_a), ("b", route_b)):
     err = validate_route_ref(route)
@@ -198,7 +198,7 @@ def compare_tune_ab(
 
 def batch_route_summary(*, limit: int = 5) -> dict[str, Any]:
   from ai.tools.diagnostics_tools import analyze_route_summary
-  from ai.tools.plotjuggler_tools import plotjuggler_data_summary
+  from ai.tools.domains.media.plotjuggler_tools import plotjuggler_data_summary
 
   if not os.path.isdir(ROUTES_DIR):
     return {"ok": False, "error": f"Routes dir not found: {ROUTES_DIR}"}

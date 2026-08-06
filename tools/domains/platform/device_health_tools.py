@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from ai.system.paths import is_comma_device, openpilot_root
-from ai.tools.system_info_tools import get_build_info
+from ai.tools.domains.platform.system_info_tools import get_build_info
 
 
 def _run(cmd: list[str], *, timeout: int = 10) -> dict[str, Any]:
@@ -98,7 +98,7 @@ def panda_status(get_state_reader=None) -> dict[str, Any]:
       out["live_error"] = str(e)
 
   try:
-    from ai.tools.panda_flash_tools import list_all_pandas
+    from ai.tools.domains.platform.panda_flash_tools import list_all_pandas
 
     usb = list_all_pandas()
     if usb.get("ok"):

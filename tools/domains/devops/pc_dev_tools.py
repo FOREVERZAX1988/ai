@@ -16,7 +16,7 @@ from ai.system.pc_tool_sessions import (
   get_session,
   list_sessions,
 )
-from ai.tools.op_run import resolve_route_ref, validate_route_ref
+from ai.tools.domains.platform.op_run import resolve_route_ref, validate_route_ref
 
 
 def _require_pc() -> dict[str, Any] | None:

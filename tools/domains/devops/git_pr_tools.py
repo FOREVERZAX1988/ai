@@ -6,7 +6,7 @@ import re
 import time
 from typing import Any, TYPE_CHECKING
 
-from ai.tools.publish_tools import publish_changes
+from ai.tools.domains.platform.publish_tools import publish_changes
 from ai.common.repo_targets import (
   LABEL_AUTO_REVIEW,
   LABEL_SAFE_MERGE,
@@ -16,7 +16,7 @@ from ai.common.repo_targets import (
   default_base_branch,
   suggest_pr_labels,
 )
-from ai.tools.github_api_client import (
+from ai.tools.domains.devops.github_api_client import (
   DEFAULT_REPO,
   add_pull_request_labels,
   create_pull_request,
@@ -29,8 +29,8 @@ from ai.tools.github_api_client import (
   merge_pull_request,
   parse_repo_url,
 )
-from ai.tools.git_repo_context import git_repo_context
-from ai.tools.git_tools import (
+from ai.tools.domains.devops.git_repo_context import git_repo_context
+from ai.tools.domains.devops.git_tools import (
   git_commit,
   git_create_branch,
   git_diff,
@@ -88,7 +88,7 @@ def _ensure_branch(
     b = branch.strip()
     if current == b:
       return b, None
-    from ai.tools.git_tools import _git
+    from ai.tools.domains.devops.git_tools import _git
     exists = _git(["rev-parse", "--verify", b], timeout=10)
     if exists.get("ok"):
       if dirty:
@@ -99,7 +99,7 @@ def _ensure_branch(
           "branch": b,
           "current": current,
         }
-      from ai.tools.git_tools import git_checkout
+      from ai.tools.domains.devops.git_tools import git_checkout
       co = git_checkout(branch=b)
       if not co.get("ok"):
         return None, co

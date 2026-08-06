@@ -11,7 +11,7 @@ if TYPE_CHECKING:
   from openpilot.common.params import Params
 
 from ai.core.llm.client import AIConfig, chat_completion_collect
-from ai.tools.daily_memory import append_daily_memory
+from ai.tools.domains.core.daily_memory import append_daily_memory
 
 _EXTRACT_SYSTEM = """You are the memory curator for an openpilot OP Agent (Hermes / OpenClaw style).
 Given a short conversation excerpt, output JSON only:
@@ -104,7 +104,7 @@ def apply_memory_payload(
   memory_sections = data.get("memory_sections") or []
   user_sections = data.get("user_sections") or []
   if memory_sections or user_sections:
-    from ai.tools.workspace_enrich import update_workspace_file
+    from ai.tools.domains.platform.workspace_enrich import update_workspace_file
 
   for item in memory_sections[:4]:
     section = str(item.get("section") or "").strip()
@@ -127,7 +127,7 @@ def apply_memory_payload(
   for note in (data.get("notes") or [])[:3]:
     text = str(note or "").strip()
     if text:
-      from ai.tools.memory_store import append_note
+      from ai.tools.domains.core.memory_store import append_note
       append_note(params, text, tags=["memory-protocol", f"session:{session_id[:12]}"] if session_id else ["memory-protocol"])
       applied["notes"] += 1
 

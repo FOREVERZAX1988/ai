@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from ai.tools.system_info_tools import get_build_info
+from ai.tools.domains.platform.system_info_tools import get_build_info
 
 
 def ota_status(params=None) -> dict[str, Any]:

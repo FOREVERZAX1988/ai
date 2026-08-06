@@ -6,7 +6,7 @@ import json
 from functools import lru_cache
 from typing import Any
 
-from ai.tools.catalog_builder import build_merged_catalog
+from ai.tools.domains.platform.catalog_builder import build_merged_catalog
 from ai.system.hardware_lite import lite_write_block_reason
 from ai.common.sp_param_aliases import normalize_param_writes, resolve_sp_param_key
 

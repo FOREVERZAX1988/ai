@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from ai.common.consumer_lexicon import lexicon_snapshot, preview_param_writes
-from ai.tools.consumer_wizards import get_consumer_wizard, list_consumer_wizards
+from ai.tools.domains.platform.consumer_wizards import get_consumer_wizard, list_consumer_wizards
 
 
 def consumer_bootstrap_payload() -> dict[str, Any]:

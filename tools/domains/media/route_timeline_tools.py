@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from ai.tools.op_run import resolve_route_ref, validate_route_ref
+from ai.tools.domains.platform.op_run import resolve_route_ref, validate_route_ref
 
 
 def _import_logreader():

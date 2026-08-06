@@ -9,8 +9,8 @@ from typing import Any
 
 from openpilot.common.params import Params
 
-from ai.tools.sp_settings import list_sp_settings
-from ai.tools.params_policy import load_catalog
+from ai.tools.domains.tune.sp_settings import list_sp_settings
+from ai.tools.domains.platform.params_policy import load_catalog
 
 def _routes_dir() -> str:
   from ai.system.paths import routes_dir
@@ -285,7 +285,7 @@ def trip_review(
 
   # Panda / sidebar NO PANDA heuristic (no dedicated cereal event on all forks)
   try:
-    from ai.tools.panda_flash_tools import panda_recovery_hint
+    from ai.tools.domains.platform.panda_flash_tools import panda_recovery_hint
     ph = panda_recovery_hint(get_state_reader=get_state_reader)
     if ph.get("panda_states_count", 0) == 0 and ph.get("usb_f4"):
       recommendations.insert(0, "侧栏可能 NO PANDA：panda_recovery_hint → recover_dos_panda(internal=true) 或 tsk_restart_pandad")
@@ -297,7 +297,7 @@ def trip_review(
   engage_rate = None
   if route:
     try:
-      from ai.tools.route_scoring_tools import score_route_tune
+      from ai.tools.domains.tune.route_scoring_tools import score_route_tune
       scored = score_route_tune(route)
       if scored.get("ok"):
         engage_rate = (scored.get("metrics") or {}).get("engage_ratio")
@@ -480,7 +480,7 @@ def apply_tune_from_route(
   admin: bool = True,
 ) -> dict[str, Any]:
   """Analyze route, merge tune suggestions, optionally apply params (with auto snapshot)."""
-  from ai.tools.params_policy import validate_write_batch
+  from ai.tools.domains.platform.params_policy import validate_write_batch
 
   review = suggest_tune_from_route(params, route_name, brand=brand)
   if not review.get("ok"):
@@ -490,8 +490,8 @@ def apply_tune_from_route(
   applied_preset: str | None = None
   for item in review.get("tune_suggestions") or []:
     if item.get("preset_id") and not item.get("params"):
-      from ai.tools.presets import get_preset
-      from ai.tools.sp_presets import get_sp_preset
+      from ai.tools.domains.tune.presets import get_preset
+      from ai.tools.domains.tune.sp_presets import get_sp_preset
       pid = str(item["preset_id"])
       preset = get_sp_preset(pid) if pid.startswith("sp_") else get_preset(pid)
       if not preset and not pid.startswith("sp_"):
@@ -534,7 +534,7 @@ def apply_tune_from_route(
   ra = (route_after or "").strip() or route
   rb = (route_before or "").strip()
 
-  from ai.tools.tune_write_pipeline import apply_param_writes
+  from ai.tools.domains.tune.tune_write_pipeline import apply_param_writes
   out = apply_param_writes(
     params,
     merged,

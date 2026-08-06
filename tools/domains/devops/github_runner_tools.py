@@ -171,7 +171,7 @@ def github_runner_status(params: Params | None = None) -> dict[str, Any]:
     "skill": "github-runner",
   }
   try:
-    from ai.tools.github_actions_tools import github_actions_auth_status, github_api_snapshot
+    from ai.tools.domains.devops.github_actions_tools import github_actions_auth_status, github_api_snapshot
 
     auth = github_actions_auth_status(params)
     out["github_actions_pat"] = {

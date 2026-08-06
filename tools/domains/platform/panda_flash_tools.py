@@ -617,7 +617,7 @@ def list_all_pandas() -> dict[str, Any]:
     "firmware_guidance": guidance,
     "recover_script": str(script),
     "recover_script_present": script.is_file(),
-    "flash_implementation": "inline (ai.tools.panda_flash_tools); script optional",
+    "flash_implementation": "inline (ai.tools.domains.platform.panda_flash_tools); script optional",
     "hint": hint,
   }
 

@@ -12,7 +12,7 @@ from openpilot.common.params import Params
 
 from ai.common.storage import read_param, write_param
 
-from ai.tools.rag_vectors import chunk_count, remove_doc_chunks, replace_doc_chunks, search_vector_chunks
+from ai.tools.domains.core.rag_vectors import chunk_count, remove_doc_chunks, replace_doc_chunks, search_vector_chunks
 
 _RAG_KEY = "ai_rag_documents"
 _MAX_DOCS = 512

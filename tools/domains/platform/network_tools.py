@@ -86,7 +86,7 @@ def network_diagnostics(
       )
 
   try:
-    from ai.tools.comma_cloud_tools import comma_auth_status
+    from ai.tools.domains.cloud.comma_cloud_tools import comma_auth_status
     out["checks"]["comma_auth"] = comma_auth_status()
   except Exception as e:
     out["checks"]["comma_auth"] = {"ok": False, "error": str(e)}

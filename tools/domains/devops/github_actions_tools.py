@@ -8,7 +8,7 @@ from typing import Any, TYPE_CHECKING
 if TYPE_CHECKING:
   from openpilot.common.params import Params
 
-from ai.tools.github_api_client import (
+from ai.tools.domains.devops.github_api_client import (
   DEFAULT_REPO,
   PAT_KEY,
   cancel_workflow_run,
@@ -23,7 +23,7 @@ from ai.tools.github_api_client import (
   trigger_workflow_dispatch,
   verify_token,
 )
-from ai.tools.github_runner_tools import github_runner_status, resolve_service_name, runner_dir
+from ai.tools.domains.devops.github_runner_tools import github_runner_status, resolve_service_name, runner_dir
 
 
 def _params_or_none(params: "Params | None") -> "Params | None":
@@ -362,7 +362,7 @@ def wait_github_workflow(
       }
       if notify_on_complete:
         try:
-          from ai.tools.notifications import push_notification
+          from ai.tools.domains.platform.notifications import push_notification
           level = "info" if conclusion == "success" else "error"
           push_notification(
             f"CI {conclusion or 'done'}",
@@ -390,7 +390,7 @@ def check_github_runner_health(
   notify: bool = False,
 ) -> dict[str, Any]:
   """Combine local runner status + GitHub API runners/in-progress runs."""
-  from ai.tools.github_runner_tools import github_runner_status
+  from ai.tools.domains.devops.github_runner_tools import github_runner_status
 
   local = github_runner_status(params)
   out: dict[str, Any] = {
@@ -434,7 +434,7 @@ def check_github_runner_health(
   out["healthy"] = len(out["issues"]) == 0
   if notify and out["issues"]:
     try:
-      from ai.tools.notifications import push_notification
+      from ai.tools.domains.platform.notifications import push_notification
       push_notification("Runner/CI 告警", ", ".join(out["issues"]), level="warn")
     except Exception:
       pass

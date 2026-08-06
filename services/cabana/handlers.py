@@ -11,7 +11,6 @@ from ai.services.cabana.dbc import (
   _pick_preferred_dbc,
   _quick_dbc_catalog,
   _suggest_dbc_for_fingerprint,
-  warm_dbc_catalog,
 )
 from ai.services.cabana.replay import (
   _list_route_media,

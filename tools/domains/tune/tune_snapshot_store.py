@@ -11,7 +11,7 @@ from typing import Any
 from openpilot.common.params import Params
 
 from ai.tools.diagnostics_tools import snapshot_tune_state
-from ai.tools.param_write import put_param
+from ai.tools.domains.platform.param_write import put_param
 from ai.system.paths import tune_snapshots_dir
 
 _MAX_SNAPSHOTS = 8
@@ -87,7 +87,7 @@ def restore_tune_snapshot(params: Params, snapshot_id: str = "") -> dict[str, An
     return {"ok": False, "error": str(e)}
 
   writes = data.get("params") or {}
-  from ai.tools.params_policy import validate_write_batch
+  from ai.tools.domains.platform.params_policy import validate_write_batch
   ok, reason = validate_write_batch(writes)
   if not ok:
     return {"ok": False, "error": reason}

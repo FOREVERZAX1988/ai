@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 from openpilot.common.params import Params
@@ -20,6 +20,27 @@ AI_TIMEZONE_OPTIONS: list[tuple[str, str]] = [
   ("UTC", "UTC"),
 ]
 
+# Fixed offsets when IANA tz database is unavailable (e.g. Windows without tzdata).
+_TZ_FIXED_OFFSET_HOURS: dict[str, float] = {
+  "Asia/Shanghai": 8,
+  "Asia/Tokyo": 9,
+  "Asia/Seoul": 9,
+  "America/Los_Angeles": -8,
+  "America/New_York": -5,
+  "Europe/London": 0,
+  "UTC": 0,
+}
+
+
+def _zone_or_fixed(name: str) -> ZoneInfo | timezone:
+  try:
+    return ZoneInfo(name)
+  except Exception:
+    if name == "UTC":
+      return timezone.utc
+    hours = _TZ_FIXED_OFFSET_HOURS.get(name, _TZ_FIXED_OFFSET_HOURS[DEFAULT_AI_TIMEZONE])
+    return timezone(timedelta(hours=hours))
+
 
 def read_ai_timezone_name(params: Params | None = None) -> str:
   from ai.common.storage import read_param
@@ -31,9 +52,5 @@ def read_ai_timezone_name(params: Params | None = None) -> str:
   return name or DEFAULT_AI_TIMEZONE
 
 
-def get_route_timezone(params: Params | None = None) -> ZoneInfo:
-  name = read_ai_timezone_name(params)
-  try:
-    return ZoneInfo(name)
-  except Exception:
-    return ZoneInfo(DEFAULT_AI_TIMEZONE)
+def get_route_timezone(params: Params | None = None) -> ZoneInfo | timezone:
+  return _zone_or_fixed(read_ai_timezone_name(params))

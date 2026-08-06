@@ -13,7 +13,7 @@ from ai.common.publish_config import (
   project_fork_config,
 )
 from ai.common.repo_targets import suggest_pr_labels
-from ai.tools.adaptation_pr_tools import generate_adaptation_pr_draft
+from ai.tools.domains.vehicle.adaptation_pr_tools import generate_adaptation_pr_draft
 from ai.tools.forge import (
   forge_auth_status,
   get_forge_client,
@@ -23,16 +23,16 @@ from ai.tools.forge import (
   repo_slug,
   set_forge_token,
 )
-from ai.tools.git_remote_tools import git_push_at, git_remote_ensure, git_status_at
-from ai.tools.git_repo_context import git_repo_context
-from ai.tools.git_tools import (
+from ai.tools.domains.devops.git_remote_tools import git_push_at, git_remote_ensure, git_status_at
+from ai.tools.domains.devops.git_repo_context import git_repo_context
+from ai.tools.domains.devops.git_tools import (
   git_commit,
   git_create_branch,
   git_diff,
   git_status,
   _git,
 )
-from ai.tools.publish_units import discover_publish_units, get_unit
+from ai.tools.domains.platform.publish_units import discover_publish_units, get_unit
 
 if TYPE_CHECKING:
   from openpilot.common.params import Params
@@ -166,7 +166,7 @@ def _ensure_branch(
           "error": "cannot switch to existing branch with uncommitted changes",
           "branch": b,
         }
-      from ai.tools.git_tools import git_checkout
+      from ai.tools.domains.devops.git_tools import git_checkout
       co = git_checkout(branch=b)
       if not co.get("ok"):
         return None, co

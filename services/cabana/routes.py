@@ -4,18 +4,20 @@ from pathlib import Path
 from aiohttp import web
 
 from ai.services.cabana.handlers import (
-  api_analyze,
   api_car,
   api_dbc,
   api_dbcs,
-  api_explain_batch,
-  api_explain_cache,
-  api_explain_signal,
   api_route_file,
   api_route_media,
   api_route_summary,
   api_route_thumbnail,
   api_routes,
+)
+from ai.services.cabana.ai_explain import (
+  api_analyze,
+  api_explain_batch,
+  api_explain_cache,
+  api_explain_signal,
 )
 from ai.services.cabana.live import ws_live
 from ai.services.cabana.replay_ws import ws_offline

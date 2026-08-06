@@ -574,5 +574,5 @@ def get_file_content(
   data = github_request("GET", f"/repos/{owner}/{repo}/contents/{path.strip('/')}", token, query=query)
   if not _api_ok(data):
     return data
-  from ai.tools.issue_template_lib import decode_github_content
+  from ai.tools.domains.platform.issue_template_lib import decode_github_content
   return {"ok": True, "path": path, "text": decode_github_content(data)}

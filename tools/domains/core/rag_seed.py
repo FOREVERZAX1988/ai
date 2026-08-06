@@ -9,9 +9,10 @@ from openpilot.common.params import Params
 
 from ai.system.paths import rel_source
 from ai.services.rag.builtin_loader import load_json_builtin_docs
-from ai.tools.secoc_rag import SECOC_RAG
-from ai.tools.wiki_rag import WIKI_RAG
-from ai.tools.rag_store import (
+from ai.tools.domains.core.comma_docs_rag import COMMA_DOCS_RAG
+from ai.tools.domains.core.secoc_rag import SECOC_RAG
+from ai.tools.domains.core.wiki_rag import WIKI_RAG
+from ai.tools.domains.core.rag_store import (
   _MAX_DOC_CHARS,
   _MAX_DOCS,
   _load_docs,

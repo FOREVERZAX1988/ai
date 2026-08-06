@@ -106,7 +106,7 @@ def make_sp_extension_handlers(
   needs_confirm: Callable[[], bool],
   get_state_reader: Callable[[], Any] | None = None,
 ) -> dict[str, Callable[[dict[str, Any]], dict[str, Any]]]:
-  from ai.tools.write_pending import create_pending
+  from ai.tools.domains.platform.write_pending import create_pending
 
   def _group_set(action: str, group: str, apply_fn):
     def handler(args):
@@ -117,7 +117,7 @@ def make_sp_extension_handlers(
       if not isinstance(writes, dict):
         return {"ok": False, "error": "params must be an object"}
       if not args.get("confirm") and needs_confirm():
-        from ai.tools.sp_tune_groups import preview_group_writes
+        from ai.tools.domains.tune.sp_tune_groups import preview_group_writes
         preview = preview_group_writes(p, writes, group)
         if not preview.get("ok", True):
           return preview
@@ -134,7 +134,7 @@ def make_sp_extension_handlers(
       if not isinstance(writes, dict):
         return {"ok": False, "error": "params must be an object"}
       if not args.get("confirm") and needs_confirm():
-        from ai.tools.display_device_tools import preview_group_writes as dev_preview
+        from ai.tools.domains.platform.display_device_tools import preview_group_writes as dev_preview
         preview = dev_preview(p, writes, group)
         if not preview.get("ok", True):
           return preview
@@ -148,55 +148,55 @@ def make_sp_extension_handlers(
       return err
     writes = args.get("params") or {}
     if not args.get("confirm") and needs_confirm():
-      from ai.tools.model_tune_tools import preview_model_tune_writes
+      from ai.tools.domains.tune.model_tune_tools import preview_model_tune_writes
       preview = preview_model_tune_writes(p, writes)
       if not preview.get("ok", True):
         return preview
       return create_pending(p, action="set_model_tune_settings", payload={"params": writes}, preview=preview.get("changes", preview))
-    from ai.tools.model_tune_tools import apply_model_tune_writes
+    from ai.tools.domains.tune.model_tune_tools import apply_model_tune_writes
     return apply_model_tune_writes(p, writes)
 
   def h_get_model_tune_settings(_a):
-    from ai.tools.model_tune_tools import get_model_tune_settings
+    from ai.tools.domains.tune.model_tune_tools import get_model_tune_settings
     return get_model_tune_settings(p)
 
   def h_get_display_settings(_a):
-    from ai.tools.display_device_tools import get_display_settings
+    from ai.tools.domains.platform.display_device_tools import get_display_settings
     return get_display_settings(p)
 
   def h_get_device_settings(_a):
-    from ai.tools.display_device_tools import get_device_settings
+    from ai.tools.domains.platform.display_device_tools import get_device_settings
     return get_device_settings(p)
 
   def h_list_sunnylink_backups(_a):
-    from ai.tools.sunnylink_tools import list_sunnylink_backups
+    from ai.tools.domains.cloud.sunnylink_tools import list_sunnylink_backups
     return list_sunnylink_backups(p)
 
   def h_get_backup_manager_status(_a):
-    from ai.tools.sunnylink_tools import get_backup_manager_status
+    from ai.tools.domains.cloud.sunnylink_tools import get_backup_manager_status
     return get_backup_manager_status(get_state_reader=get_state_reader)
 
   def h_list_f4_pandas(_a):
-    from ai.tools.panda_flash_tools import list_f4_pandas
+    from ai.tools.domains.platform.panda_flash_tools import list_f4_pandas
     return list_f4_pandas()
 
   def h_list_all_pandas(_a):
-    from ai.tools.panda_flash_tools import list_all_pandas
+    from ai.tools.domains.platform.panda_flash_tools import list_all_pandas
     return list_all_pandas()
 
   def h_panda_firmware_status(_a):
-    from ai.tools.panda_flash_tools import panda_firmware_status
+    from ai.tools.domains.platform.panda_flash_tools import panda_firmware_status
     return panda_firmware_status()
 
   def h_panda_recovery_hint(_a):
-    from ai.tools.panda_flash_tools import panda_recovery_hint
+    from ai.tools.domains.platform.panda_flash_tools import panda_recovery_hint
     return panda_recovery_hint(get_state_reader=get_state_reader)
 
   def h_build_panda_firmware(args):
     err = stationary_check("run_shell")
     if err:
       return err
-    from ai.tools.panda_flash_tools import build_panda_firmware
+    from ai.tools.domains.platform.panda_flash_tools import build_panda_firmware
     target = str(args.get("target") or "auto")
     return build_panda_firmware(jobs=int(args.get("jobs", 4) or 4), target=target)
 
@@ -204,21 +204,21 @@ def make_sp_extension_handlers(
     err = stationary_check("run_shell")
     if err:
       return err
-    from ai.tools.panda_flash_tools import build_panda_h7_firmware
+    from ai.tools.domains.platform.panda_flash_tools import build_panda_h7_firmware
     return build_panda_h7_firmware(jobs=int(args.get("jobs", 4) or 4))
 
   def h_build_panda_tici_firmware(args):
     err = stationary_check("run_shell")
     if err:
       return err
-    from ai.tools.panda_flash_tools import build_panda_tici_firmware
+    from ai.tools.domains.platform.panda_flash_tools import build_panda_tici_firmware
     return build_panda_tici_firmware(jobs=int(args.get("jobs", 4) or 4))
 
   def h_recover_dos_panda(args):
     err = stationary_check("run_shell")
     if err:
       return err
-    from ai.tools.panda_flash_tools import recover_dos_panda
+    from ai.tools.domains.platform.panda_flash_tools import recover_dos_panda
     return recover_dos_panda(
       confirm=bool(args.get("confirm")),
       serial=str(args.get("serial", "") or ""),
@@ -231,7 +231,7 @@ def make_sp_extension_handlers(
     err = stationary_check("run_shell")
     if err:
       return err
-    from ai.tools.panda_flash_tools import flash_panda_firmware
+    from ai.tools.domains.platform.panda_flash_tools import flash_panda_firmware
     all_pandas = args.get("all_pandas")
     if all_pandas is None:
       all_pandas = not bool(args.get("serial") or args.get("external") or args.get("internal"))
@@ -248,29 +248,29 @@ def make_sp_extension_handlers(
     err = stationary_check("run_shell")
     if err:
       return err
-    from ai.tools.panda_flash_tools import rebuild_pandad
+    from ai.tools.domains.platform.panda_flash_tools import rebuild_pandad
     return rebuild_pandad(confirm=bool(args.get("confirm")))
 
   def h_rebuild_pandad_tici(args):
     err = stationary_check("run_shell")
     if err:
       return err
-    from ai.tools.panda_flash_tools import rebuild_pandad_tici
+    from ai.tools.domains.platform.panda_flash_tools import rebuild_pandad_tici
     return rebuild_pandad_tici(confirm=bool(args.get("confirm")))
 
   def h_github_runner_status(_a):
-    from ai.tools.github_runner_tools import github_runner_status
+    from ai.tools.domains.devops.github_runner_tools import github_runner_status
     return github_runner_status(p)
 
   def h_github_runner_recovery_hint(_a):
-    from ai.tools.github_runner_tools import github_runner_recovery_hint
+    from ai.tools.domains.devops.github_runner_tools import github_runner_recovery_hint
     return github_runner_recovery_hint(p, get_state_reader=get_state_reader)
 
   def h_install_github_runner(args):
     err = stationary_check("run_shell")
     if err:
       return err
-    from ai.tools.github_runner_tools import install_github_runner_preview
+    from ai.tools.domains.devops.github_runner_tools import install_github_runner_preview
 
     token = str(args.get("token", "") or "").strip()
     repo_url = str(args.get("repo_url", "") or "")
@@ -311,14 +311,14 @@ def make_sp_extension_handlers(
     return preview
 
   def h_github_actions_auth_status(args):
-    from ai.tools.github_actions_tools import github_actions_auth_status
+    from ai.tools.domains.devops.github_actions_tools import github_actions_auth_status
     return github_actions_auth_status(p, repo_url=str(args.get("repo_url", "") or ""))
 
   def h_set_github_actions_pat(args):
     err = stationary_check("write_param")
     if err:
       return err
-    from ai.tools.github_actions_tools import set_github_actions_pat
+    from ai.tools.domains.devops.github_actions_tools import set_github_actions_pat
     return set_github_actions_pat(
       token=str(args.get("token", "") or ""),
       confirm=bool(args.get("confirm")),
@@ -326,7 +326,7 @@ def make_sp_extension_handlers(
     )
 
   def h_list_github_workflow_runs(args):
-    from ai.tools.github_actions_tools import list_github_workflow_runs
+    from ai.tools.domains.devops.github_actions_tools import list_github_workflow_runs
     return list_github_workflow_runs(
       repo_url=str(args.get("repo_url", "") or ""),
       workflow=str(args.get("workflow", "") or "build.yaml"),
@@ -337,7 +337,7 @@ def make_sp_extension_handlers(
     )
 
   def h_get_github_workflow_run(args):
-    from ai.tools.github_actions_tools import get_github_workflow_run
+    from ai.tools.domains.devops.github_actions_tools import get_github_workflow_run
     return get_github_workflow_run(
       run_id=int(args.get("run_id") or 0),
       repo_url=str(args.get("repo_url", "") or ""),
@@ -345,7 +345,7 @@ def make_sp_extension_handlers(
     )
 
   def h_cancel_github_workflow_run(args):
-    from ai.tools.github_actions_tools import cancel_github_workflow_run
+    from ai.tools.domains.devops.github_actions_tools import cancel_github_workflow_run
     return cancel_github_workflow_run(
       run_id=int(args.get("run_id") or 0),
       repo_url=str(args.get("repo_url", "") or ""),
@@ -354,7 +354,7 @@ def make_sp_extension_handlers(
     )
 
   def h_list_github_runners(args):
-    from ai.tools.github_actions_tools import list_github_runners
+    from ai.tools.domains.devops.github_actions_tools import list_github_runners
     return list_github_runners(repo_url=str(args.get("repo_url", "") or ""), params=p)
 
   def h_stop_github_runner_service(args):
@@ -363,11 +363,11 @@ def make_sp_extension_handlers(
       return err
 
   def h_translation_status(_a):
-    from ai.tools.translation_tools import translation_status
+    from ai.tools.domains.platform.translation_tools import translation_status
     return translation_status()
 
   def h_update_zh_translations(args):
-    from ai.tools.translation_tools import merge_zh_translations, supplement_zh_translations, can_update_translations
+    from ai.tools.domains.platform.translation_tools import merge_zh_translations, supplement_zh_translations, can_update_translations
     status = can_update_translations()
     if not status["can_update"]:
       return {"ok": False, "error": "Translation update not available on this branch", "details": status}
@@ -385,31 +385,31 @@ def make_sp_extension_handlers(
       if not results["supplement"]["ok"]:
         return {"ok": False, "error": "supplement_zh_translations failed", "results": results}
     return {"ok": True, "results": results}
-    from ai.tools.github_actions_tools import stop_github_runner_service
+    from ai.tools.domains.devops.github_actions_tools import stop_github_runner_service
     return stop_github_runner_service(confirm=bool(args.get("confirm")), params=p)
 
   def h_get_torque_settings(_a):
-    from ai.tools.sp_tune_groups import get_torque_settings
+    from ai.tools.domains.tune.sp_tune_groups import get_torque_settings
     return get_torque_settings(p)
 
   def h_get_lane_change_settings(_a):
-    from ai.tools.sp_tune_groups import get_lane_change_settings
+    from ai.tools.domains.tune.sp_tune_groups import get_lane_change_settings
     return get_lane_change_settings(p)
 
   def h_get_speed_limit_settings(_a):
-    from ai.tools.sp_tune_groups import get_speed_limit_settings
+    from ai.tools.domains.tune.sp_tune_groups import get_speed_limit_settings
     return get_speed_limit_settings(p)
 
   def h_list_visuals_settings(_a):
-    from ai.tools.sp_tune_groups import list_visuals_settings
+    from ai.tools.domains.tune.sp_tune_groups import list_visuals_settings
     return list_visuals_settings(p)
 
   def h_get_sunnylink_status(_a):
-    from ai.tools.sunnylink_tools import get_sunnylink_status
+    from ai.tools.domains.cloud.sunnylink_tools import get_sunnylink_status
     return get_sunnylink_status(p)
 
   def h_get_sp_device_hw(_a):
-    from ai.tools.device_hw_tools import get_sp_device_hw
+    from ai.tools.domains.platform.device_hw_tools import get_sp_device_hw
     return get_sp_device_hw(p, get_state_reader=get_state_reader)
 
   def h_trigger_sunnylink_backup(args):
@@ -418,7 +418,7 @@ def make_sp_extension_handlers(
       return err
     if not args.get("confirm") and needs_confirm():
       return {"ok": True, "needs_confirmation": True, "hint": "Set confirm=true to queue backup."}
-    from ai.tools.sunnylink_tools import trigger_sunnylink_backup
+    from ai.tools.domains.cloud.sunnylink_tools import trigger_sunnylink_backup
     return trigger_sunnylink_backup(p)
 
   def h_trigger_sunnylink_restore(args):
@@ -428,7 +428,7 @@ def make_sp_extension_handlers(
     version = str(args.get("version", "latest") or "latest")
     if not args.get("confirm") and needs_confirm():
       return {"ok": True, "needs_confirmation": True, "version": version, "hint": "Set confirm=true to queue restore."}
-    from ai.tools.sunnylink_tools import trigger_sunnylink_restore
+    from ai.tools.domains.cloud.sunnylink_tools import trigger_sunnylink_restore
     return trigger_sunnylink_restore(p, version)
 
   def h_set_sp_dev_beep(args):
@@ -438,17 +438,17 @@ def make_sp_extension_handlers(
     enabled = bool(args.get("enabled"))
     if not args.get("confirm") and needs_confirm():
       return {"ok": True, "needs_confirmation": True, "SpDevBeep": enabled}
-    from ai.tools.device_hw_tools import set_sp_dev_beep
+    from ai.tools.domains.platform.device_hw_tools import set_sp_dev_beep
     return set_sp_dev_beep(p, enabled)
 
-  from ai.tools.sp_tune_groups import (
+  from ai.tools.domains.tune.sp_tune_groups import (
     apply_lane_change_writes,
     apply_speed_limit_writes,
     apply_torque_writes,
     apply_visuals_writes,
   )
 
-  from ai.tools.display_device_tools import apply_device_writes, apply_display_writes
+  from ai.tools.domains.platform.display_device_tools import apply_device_writes, apply_display_writes
 
   return {
     "get_torque_settings": h_get_torque_settings,

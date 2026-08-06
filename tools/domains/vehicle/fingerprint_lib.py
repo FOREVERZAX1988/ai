@@ -260,7 +260,7 @@ def extract_can_ids_from_route(route_name: str, *, max_frames: int = 8000) -> di
   hex_ids = [f"0x{a:X}" for a in sorted(observed.keys())]
   pattern = None
   if hex_ids:
-    from ai.tools.adaptation import analyze_can_id_pattern
+    from ai.tools.domains.vehicle.adaptation import analyze_can_id_pattern
     pattern = analyze_can_id_pattern(hex_ids)
   compare = compare_fingerprint(observed=observed) if observed else {"ok": False}
 

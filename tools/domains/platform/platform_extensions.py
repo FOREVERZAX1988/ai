@@ -7,28 +7,28 @@ from typing import Any, Callable
 from openpilot.common.params import Params
 
 from ai.mcp.host import call_mcp_tool, discover_mcp_tools, list_mcp_servers, upsert_mcp_server
-from ai.tools.session_index import (
+from ai.tools.domains.platform.session_index import (
   get_session_history,
   list_sessions_brief,
   rebuild_from_params,
   search_sessions,
 )
-from ai.tools.skill_learning import approve_learned_skill, list_learned_skills, propose_learned_skill
-from ai.tools.skill_evolution import analyze_execution_traces, evolution_status, evolve_skill_proposal
-from ai.tools.platform_backup import (
+from ai.tools.domains.platform.skill_learning import approve_learned_skill, list_learned_skills, propose_learned_skill
+from ai.tools.domains.platform.skill_evolution import analyze_execution_traces, evolution_status, evolve_skill_proposal
+from ai.tools.domains.platform.platform_backup import (
   backup_manifest,
   build_platform_bundle,
   export_platform_bundle,
   restore_platform_bundle,
 )
-from ai.tools.workspace_enrich import (
+from ai.tools.domains.platform.workspace_enrich import (
   bootstrap_workspace_templates,
   enrichment_prompt_block,
   update_workspace_file as enrich_update_workspace,
   workspace_health,
 )
 from ai.tools.toolsets import list_toolsets
-from ai.tools.daily_memory import (
+from ai.tools.domains.core.daily_memory import (
   append_daily_memory,
   list_daily_memory_files,
   read_daily_memory,
@@ -119,7 +119,7 @@ def make_platform_handlers(
       return {"ok": False, "error": "session_id and message required"}
     append_note(p, f"[会话 {sid[:8]}] {msg}", tags=["sessions_send", f"session:{sid[:12]}"])
     try:
-      from ai.tools.notifications import push_notification
+      from ai.tools.domains.platform.notifications import push_notification
       push_notification("跨会话消息", msg[:200], level="info")
     except Exception:
       pass
@@ -210,7 +210,7 @@ def make_platform_handlers(
     )
 
   def h_read_daily_memory(args: dict[str, Any]) -> dict[str, Any]:
-    from ai.tools.daily_memory import read_daily_index, refresh_daily_index
+    from ai.tools.domains.core.daily_memory import read_daily_index, refresh_daily_index
     from datetime import date as date_cls
     raw = str(args.get("date") or "").strip()
     day = None
@@ -267,7 +267,7 @@ def make_platform_handlers(
   async def h_run_gepa_evolution(args: dict[str, Any]) -> dict[str, Any]:
     from ai.evolution.config import EvolutionRunConfig
     from ai.evolution.gepa_engine import evolve_skill_gepa
-    from ai.tools.skill_evolution import analyze_execution_traces
+    from ai.tools.domains.platform.skill_evolution import analyze_execution_traces
     skill_id = str(args.get("skill_id") or args.get("skillId") or "memory-protocol")
     run = EvolutionRunConfig.from_params(
       skill_id=skill_id,
@@ -288,7 +288,7 @@ def make_platform_handlers(
     )
 
   def h_list_tool_desc(_a: dict[str, Any]) -> dict[str, Any]:
-    from ai.tools.tool_desc_store import list_tool_desc_overrides
+    from ai.tools.domains.platform.tool_desc_store import list_tool_desc_overrides
     return list_tool_desc_overrides(p)
 
   return {

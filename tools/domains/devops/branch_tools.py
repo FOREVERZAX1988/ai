@@ -5,9 +5,9 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, TYPE_CHECKING
 
-from ai.tools.git_tools import _git, git_status
-from ai.tools.ota_tools import ota_status
-from ai.tools.system_info_tools import get_build_info
+from ai.tools.domains.devops.git_tools import _git, git_status
+from ai.tools.domains.devops.ota_tools import ota_status
+from ai.tools.domains.platform.system_info_tools import get_build_info
 
 if TYPE_CHECKING:
   from openpilot.common.params import Params
@@ -112,9 +112,9 @@ def checkout_prebuilt_branch(
 
 def ota_preflight_checklist(params: "Params | None" = None) -> dict[str, Any]:
   """Health checklist before OTA or branch switch."""
-  from ai.tools.device_health_tools import device_health
-  from ai.tools.github_runner_tools import github_runner_status
-  from ai.tools.panda_flash_tools import list_all_pandas
+  from ai.tools.domains.platform.device_health_tools import device_health
+  from ai.tools.domains.devops.github_runner_tools import github_runner_status
+  from ai.tools.domains.platform.panda_flash_tools import list_all_pandas
 
   ota = ota_status(params)
   health = device_health()

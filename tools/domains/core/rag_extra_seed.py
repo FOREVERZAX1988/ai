@@ -10,7 +10,7 @@ from typing import Any
 
 from openpilot.common.params import Params
 
-from ai.tools.rag_store import upsert_document_sync
+from ai.tools.domains.core.rag_store import upsert_document_sync
 from ai.system.paths import rag_seed_version_path
 
 SEED_VERSION = 9
@@ -51,7 +51,7 @@ def _skills_digest() -> str:
 
 def _settings_digest() -> str:
   try:
-    from ai.tools.catalog_builder import build_merged_catalog
+    from ai.tools.domains.platform.catalog_builder import build_merged_catalog
     cat = build_merged_catalog()
   except Exception:
     return ""

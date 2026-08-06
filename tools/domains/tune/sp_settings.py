@@ -6,7 +6,7 @@ from typing import Any
 
 from openpilot.common.params import Params
 
-from ai.tools.catalog_builder import build_merged_catalog
+from ai.tools.domains.platform.catalog_builder import build_merged_catalog
 from ai.system.hardware_lite import LITE_UNAVAILABLE_NOTE, LITE_UNAVAILABLE_PARAMS, is_lite_hw, lite_profile
 
 _BOOL_KEYS = frozenset({

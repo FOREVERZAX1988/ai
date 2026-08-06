@@ -12,7 +12,7 @@ DOMAIN_MODULES: dict[str, list[str]] = {
   "core": list(core.MODULES) + ["ai.tools.agent_tools", "ai.tools.diagnostics_tools"],
   "tune": list(tune.MODULES),
   "vehicle": list(vehicle.MODULES),
-  "can": list(can.MODULES) + ["ai.tools.adaptation", "ai.tools.fingerprint_lib"],
+  "can": list(can.MODULES) + ["ai.tools.domains.vehicle.adaptation", "ai.tools.domains.vehicle.fingerprint_lib"],
   "secoc": list(secoc.MODULES),
   "devops": list(devops.MODULES),
   "cloud": list(cloud.MODULES),

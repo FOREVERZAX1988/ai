@@ -178,7 +178,7 @@ def clear_dev_cache(
 
   try:
     from ai.skills.loader import clear_cache as clear_skills_cache
-    from ai.tools.catalog_builder import clear_catalog_cache
+    from ai.tools.domains.platform.catalog_builder import clear_catalog_cache
 
     clear_skills_cache()
     clear_catalog_cache()

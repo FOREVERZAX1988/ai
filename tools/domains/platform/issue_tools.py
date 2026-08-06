@@ -16,14 +16,14 @@ from ai.tools.forge import (
   parse_repo_url,
   repo_slug,
 )
-from ai.tools.issue_template_lib import (
+from ai.tools.domains.platform.issue_template_lib import (
   get_builtin_template,
   list_builtin_templates,
   load_local_repo_templates,
   render_issue_body,
 )
-from ai.tools.publish_tools import resolve_publish_target
-from ai.tools.publish_units import get_unit
+from ai.tools.domains.platform.publish_tools import resolve_publish_target
+from ai.tools.domains.platform.publish_units import get_unit
 
 if TYPE_CHECKING:
   from openpilot.common.params import Params
@@ -52,7 +52,7 @@ def _git_version(git_root: Path) -> str:
 
 def _audit_excerpt(limit: int = 10) -> list[dict[str, Any]]:
   try:
-    from ai.tools.audit_store import list_audit_trail
+    from ai.tools.domains.platform.audit_store import list_audit_trail
     res = list_audit_trail(limit=limit)
     return res.get("entries") or res.get("audit") or []
   except Exception:
@@ -367,7 +367,7 @@ def report_issue(
 
 
 def issue_status() -> dict[str, Any]:
-  from ai.tools.publish_tools import publish_status
+  from ai.tools.domains.platform.publish_tools import publish_status
 
   pub = publish_status()
   issue_cfg = _issue_settings()

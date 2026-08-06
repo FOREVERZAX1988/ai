@@ -89,7 +89,7 @@ class CanvasStoreTests(unittest.TestCase):
 
 class ChatJobsWaitTests(unittest.TestCase):
   def test_wait_for_done_job(self):
-    from ai import chat_jobs
+    from ai.core.chat import jobs as chat_jobs
 
     async def run():
       chat_jobs._jobs["job_wait"] = {

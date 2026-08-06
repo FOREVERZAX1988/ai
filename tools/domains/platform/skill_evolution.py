@@ -9,9 +9,9 @@ from typing import Any
 from openpilot.common.params import Params
 
 from ai.core.llm.client import AIConfig
-from ai.tools.session_store import get_sessions
-from ai.tools.skill_learning import _load as _load_learned, propose_learned_skill
-from ai.tools.skill_evaluation import pick_best_candidate
+from ai.tools.domains.platform.session_store import get_sessions
+from ai.tools.domains.platform.skill_learning import _load as _load_learned, propose_learned_skill
+from ai.tools.domains.platform.skill_evaluation import pick_best_candidate
 
 _ERROR_PATTERNS = (
   re.compile(r"\b(error|failed|failure|exception|traceback)\b", re.I),
@@ -192,7 +192,7 @@ async def evolve_skill_proposal(
   if body:
     candidates.append({"title": title or "技能草案", "body": body, "hotspot": hotspot, "variant": "manual"})
   elif use_llm and hotspot:
-    from ai.tools.evolution_reflect import generate_skill_variants
+    from ai.tools.domains.platform.evolution_reflect import generate_skill_variants
     variants = await generate_skill_variants(
       params,
       hotspot,
@@ -218,8 +218,8 @@ async def evolve_skill_proposal(
 
   workspace_applied: list[str] = []
   if use_llm and hotspot:
-    from ai.tools.evolution_reflect import reflect_on_trace
-    from ai.tools.workspace_enrich import update_workspace_file
+    from ai.tools.domains.platform.evolution_reflect import reflect_on_trace
+    from ai.tools.domains.platform.workspace_enrich import update_workspace_file
     ref = await reflect_on_trace(params, hotspot, focus=focus, config=config)
     for upd in (ref.get("workspace_updates") or [])[:3]:
       key = str(upd.get("key") or "memory")
@@ -269,7 +269,7 @@ def evolution_status(params: Params | None = None) -> dict[str, Any]:
   evolved = [s for s in learned if "evolved" in (s.get("tags") or [])]
   traces = analyze_execution_traces(params, limit=6)
   from ai.common.evolution_config import evolution_settings
-  from ai.tools.tool_desc_store import list_tool_desc_overrides
+  from ai.tools.domains.platform.tool_desc_store import list_tool_desc_overrides
   from ai.core.runtime.evolution_pipeline import pipeline_log
 
   from ai.evolution.gepa_engine import gepa_status

@@ -5,8 +5,8 @@ from ai.services.cabana.dbc import (
   _list_dbc_names,
   _load_dbc_content,
   _parse_dbc_signals,
-  warm_dbc_catalog,
 )
+from ai.services.cabana.handlers import warm_dbc_catalog
 from ai.services.cabana.live import LIVE_CAN, LiveCanBroadcaster, ws_live
 from ai.services.cabana.ai_explain import cabana_analyze_tool, cabana_explain_signal_tool
 from ai.services.cabana.replay import (

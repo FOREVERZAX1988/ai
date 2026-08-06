@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from ai.system.paths import openpilot_root
-from ai.tools.git_tools import git_diff, git_status
+from ai.tools.domains.devops.git_tools import git_diff, git_status
 
 
 def generate_adaptation_pr_draft(

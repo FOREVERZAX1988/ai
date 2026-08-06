@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any, TYPE_CHECKING
 
 from ai.common.repo_targets import repo_target_meta, suggest_pr_labels
-from ai.tools.git_pr_tools import git_publish_pull_request
+from ai.tools.domains.devops.git_pr_tools import git_publish_pull_request
 from ai.system.host_env import get_host_environment
 
 if TYPE_CHECKING:
@@ -14,7 +14,7 @@ if TYPE_CHECKING:
 
 def _audit_excerpt(limit: int = 15) -> list[dict[str, Any]]:
   try:
-    from ai.tools.audit_store import list_audit_trail
+    from ai.tools.domains.platform.audit_store import list_audit_trail
     res = list_audit_trail(limit=limit)
     return res.get("entries") or res.get("audit") or []
   except Exception:

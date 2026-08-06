@@ -11,7 +11,7 @@ from openpilot.common.params import Params
 
 from ai.common.storage import read_param, write_param
 
-from ai.tools.params_policy import validate_write_batch
+from ai.tools.domains.platform.params_policy import validate_write_batch
 from ai.system.admin import is_admin_mode
 
 _PENDING_KEY = "ai_write_pending"
@@ -51,13 +51,13 @@ def create_pending(
     writes = payload.get("params") or {}
     ok, reason = validate_write_batch(writes, admin=is_admin_mode(params))
   elif action == "apply_tune_preset":
-    from ai.tools.presets import get_preset
+    from ai.tools.domains.tune.presets import get_preset
     preset = get_preset(str(payload.get("preset_id", "")))
     if not preset:
       return {"ok": False, "error": "Unknown preset_id"}
     ok, reason = validate_write_batch(preset["params"], admin=is_admin_mode(params))
   elif action == "apply_sp_tune_preset":
-    from ai.tools.sp_presets import get_sp_preset
+    from ai.tools.domains.tune.sp_presets import get_sp_preset
     preset = get_sp_preset(str(payload.get("preset_id", "")))
     if not preset:
       return {"ok": False, "error": "Unknown sp preset_id"}
@@ -105,7 +105,7 @@ def create_pending(
   _save_all(params, store)
   consumer_preview = None
   try:
-    from ai.tools.consumer_tools import enrich_write_preview
+    from ai.tools.domains.platform.consumer_tools import enrich_write_preview
     enriched = enrich_write_preview(preview)
     consumer_preview = enriched.get("consumer")
   except Exception:
@@ -133,7 +133,7 @@ def confirm_pending(params: Params, pending_id: str) -> dict[str, Any]:
 
   if action == "write_params":
     writes = payload.get("params") or {}
-    from ai.tools.tune_write_pipeline import apply_param_writes
+    from ai.tools.domains.tune.tune_write_pipeline import apply_param_writes
     brand = str(payload.get("brand", "") or "")
     return apply_param_writes(
       params,
@@ -148,8 +148,8 @@ def confirm_pending(params: Params, pending_id: str) -> dict[str, Any]:
     )
 
   if action == "apply_tune_preset":
-    from ai.tools.presets import get_preset
-    from ai.tools.tune_write_pipeline import apply_param_writes
+    from ai.tools.domains.tune.presets import get_preset
+    from ai.tools.domains.tune.tune_write_pipeline import apply_param_writes
     preset_id = str(payload.get("preset_id", ""))
     preset = get_preset(preset_id)
     if not preset:
@@ -168,8 +168,8 @@ def confirm_pending(params: Params, pending_id: str) -> dict[str, Any]:
     )
 
   if action == "apply_sp_tune_preset":
-    from ai.tools.sp_presets import get_sp_preset
-    from ai.tools.tune_write_pipeline import apply_param_writes
+    from ai.tools.domains.tune.sp_presets import get_sp_preset
+    from ai.tools.domains.tune.tune_write_pipeline import apply_param_writes
     preset_id = str(payload.get("preset_id", ""))
     preset = get_sp_preset(preset_id)
     if not preset:
@@ -188,56 +188,56 @@ def confirm_pending(params: Params, pending_id: str) -> dict[str, Any]:
     )
 
   if action in ("select_driving_model", "select_car_platform"):
-    from ai.tools.vehicle_platform import put_car_platform_bundle
+    from ai.tools.domains.vehicle.vehicle_platform import put_car_platform_bundle
     model = str(payload.get("model", ""))
     return put_car_platform_bundle(params, model)
 
   if action == "select_model_bundle":
-    from ai.tools.model_manager_tools import select_model_bundle
+    from ai.tools.domains.platform.model_manager_tools import select_model_bundle
     return select_model_bundle(params, str(payload.get("ref", "")))
 
   if action == "set_mads_settings":
-    from ai.tools.mads_tools import apply_mads_writes
+    from ai.tools.domains.vehicle.mads_tools import apply_mads_writes
     return apply_mads_writes(params, payload.get("params") or {})
 
   if action == "set_torque_settings":
-    from ai.tools.sp_tune_groups import apply_torque_writes
+    from ai.tools.domains.tune.sp_tune_groups import apply_torque_writes
     return apply_torque_writes(params, payload.get("params") or {})
 
   if action == "set_lane_change_settings":
-    from ai.tools.sp_tune_groups import apply_lane_change_writes
+    from ai.tools.domains.tune.sp_tune_groups import apply_lane_change_writes
     return apply_lane_change_writes(params, payload.get("params") or {})
 
   if action == "set_speed_limit_settings":
-    from ai.tools.sp_tune_groups import apply_speed_limit_writes
+    from ai.tools.domains.tune.sp_tune_groups import apply_speed_limit_writes
     return apply_speed_limit_writes(params, payload.get("params") or {})
 
   if action == "set_visuals_settings":
-    from ai.tools.sp_tune_groups import apply_visuals_writes
+    from ai.tools.domains.tune.sp_tune_groups import apply_visuals_writes
     return apply_visuals_writes(params, payload.get("params") or {})
 
   if action == "set_model_tune_settings":
-    from ai.tools.model_tune_tools import apply_model_tune_writes
+    from ai.tools.domains.tune.model_tune_tools import apply_model_tune_writes
     return apply_model_tune_writes(params, payload.get("params") or {})
 
   if action == "set_display_settings":
-    from ai.tools.display_device_tools import apply_display_writes
+    from ai.tools.domains.platform.display_device_tools import apply_display_writes
     return apply_display_writes(params, payload.get("params") or {})
 
   if action == "set_device_settings":
-    from ai.tools.display_device_tools import apply_device_writes
+    from ai.tools.domains.platform.display_device_tools import apply_device_writes
     return apply_device_writes(params, payload.get("params") or {})
 
   if action == "clear_model_cache":
-    from ai.tools.model_manager_tools import clear_model_cache
+    from ai.tools.domains.platform.model_manager_tools import clear_model_cache
     return clear_model_cache(params)
 
   if action == "cancel_osm_download":
-    from ai.tools.osm_tools import cancel_osm_download
+    from ai.tools.domains.platform.osm_tools import cancel_osm_download
     return cancel_osm_download(params)
 
   if action == "manage_model_favorites":
-    from ai.tools.model_manager_tools import manage_model_favorites
+    from ai.tools.domains.platform.model_manager_tools import manage_model_favorites
     return manage_model_favorites(
       params,
       add=payload.get("add"),
@@ -246,19 +246,19 @@ def confirm_pending(params: Params, pending_id: str) -> dict[str, Any]:
     )
 
   if action == "trigger_sunnylink_backup":
-    from ai.tools.sunnylink_tools import trigger_sunnylink_backup
+    from ai.tools.domains.cloud.sunnylink_tools import trigger_sunnylink_backup
     return trigger_sunnylink_backup(params)
 
   if action == "trigger_sunnylink_restore":
-    from ai.tools.sunnylink_tools import trigger_sunnylink_restore
+    from ai.tools.domains.cloud.sunnylink_tools import trigger_sunnylink_restore
     return trigger_sunnylink_restore(params, str(payload.get("version", "latest") or "latest"))
 
   if action == "set_sp_dev_beep":
-    from ai.tools.device_hw_tools import set_sp_dev_beep
+    from ai.tools.domains.platform.device_hw_tools import set_sp_dev_beep
     return set_sp_dev_beep(params, bool(payload.get("enabled")))
 
   if action == "install_github_runner":
-    from ai.tools.github_runner_tools import install_github_runner_preview
+    from ai.tools.domains.devops.github_runner_tools import install_github_runner_preview
     return install_github_runner_preview(
       token=str(payload.get("token", "") or ""),
       repo_url=str(payload.get("repo_url", "") or ""),
@@ -269,7 +269,7 @@ def confirm_pending(params: Params, pending_id: str) -> dict[str, Any]:
     )
 
   if action == "save_adaptation_draft":
-    from ai.tools.adaptation import save_adaptation_draft
+    from ai.tools.domains.vehicle.adaptation import save_adaptation_draft
     return save_adaptation_draft(
       project_id=str(payload.get("project_id", "")),
       fingerprint=str(payload.get("fingerprint", "")),
@@ -279,7 +279,7 @@ def confirm_pending(params: Params, pending_id: str) -> dict[str, Any]:
     )
 
   if action == "car_porting_fingerprint_to_draft":
-    from ai.tools.car_porting_tools import car_porting_fingerprint_to_draft
+    from ai.tools.domains.vehicle.car_porting_tools import car_porting_fingerprint_to_draft
     return car_porting_fingerprint_to_draft(
       project_id=str(payload.get("project_id", "")),
       route=str(payload.get("route", "")),
@@ -288,7 +288,7 @@ def confirm_pending(params: Params, pending_id: str) -> dict[str, Any]:
     )
 
   if action == "restore_tune_snapshot":
-    from ai.tools.tune_snapshot_store import restore_tune_snapshot
+    from ai.tools.domains.tune.tune_snapshot_store import restore_tune_snapshot
     return restore_tune_snapshot(params, str(payload.get("snapshot_id", "")))
 
   return {"ok": False, "error": f"Unknown action {action}"}

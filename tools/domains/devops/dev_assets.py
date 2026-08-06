@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 from typing import Any
 
-from ai.tools.op_run import OPENPILOT_ROOT
+from ai.tools.domains.platform.op_run import OPENPILOT_ROOT
 
 _DATA = Path(__file__).resolve().parents[1] / "data"
 _REPORTS = _DATA / "reports"

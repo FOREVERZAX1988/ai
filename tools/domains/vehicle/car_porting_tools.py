@@ -14,8 +14,8 @@ import sys
 from collections import defaultdict
 from typing import Any
 
-from ai.tools.op_run import ROUTES_DIR, run_subprocess, validate_route_ref
-from ai.tools.op_run import resolve_route_ref as resolve_car_porting_route
+from ai.tools.domains.platform.op_run import ROUTES_DIR, run_subprocess, validate_route_ref
+from ai.tools.domains.platform.op_run import resolve_route_ref as resolve_car_porting_route
 from ai.system.paths import rel_source, source_path, tools_path
 
 _ROUTES_DIR = ROUTES_DIR
@@ -315,7 +315,7 @@ def car_porting_fingerprint_to_draft(
   if not fp.get("ok"):
     return fp
 
-  from ai.tools.adaptation import save_adaptation_draft
+  from ai.tools.domains.vehicle.adaptation import save_adaptation_draft
 
   meta = {
     "source": "tools/car_porting/auto_fingerprint.py",

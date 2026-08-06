@@ -60,7 +60,7 @@ async def _run_job(
       if chain_reindex:
         operation = "reindex"
     if operation == "reindex":
-      from ai.tools.rag_store import reindex_all
+      from ai.tools.domains.core.rag_store import reindex_all
 
       result = await reindex_all(params)
       job["reindex"] = result

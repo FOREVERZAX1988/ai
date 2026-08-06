@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from ai.system.paths import openpilot_root
-from ai.tools.rag_store import upsert_document_sync
+from ai.tools.domains.core.rag_store import upsert_document_sync
 
 _DOC_GLOBS = (
   "ai/docs/*.md",

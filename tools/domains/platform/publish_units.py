@@ -11,7 +11,7 @@ from ai.common.publish_config import assistant_upstream
 from ai.common.repo_targets import assistant_repo_path
 from ai.system.paths import openpilot_root
 from ai.tools.forge import infer_forge_from_url, parse_repo_url, repo_slug
-from ai.tools.git_remote_tools import git_remotes_at, git_status_at
+from ai.tools.domains.devops.git_remote_tools import git_remotes_at, git_status_at
 
 
 def _git_is_repo(path: Path) -> bool:

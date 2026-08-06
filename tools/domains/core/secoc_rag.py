@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 try:
-  from ai.tools.secoc_rag_pages import SECOC_RAG_PAGES
+  from ai.tools.domains.core.secoc_rag_pages import SECOC_RAG_PAGES
 except ImportError:
   SECOC_RAG_PAGES: list[dict[str, Any]] = []
 
