@@ -1775,24 +1775,28 @@ function createNewSession() {
 }
 
 function formatResolvedModelLabel(model) {
+  if (typeof ChatModelTag !== 'undefined') return ChatModelTag.formatResolvedModelLabel(model);
   const raw = String(model || '').trim();
   if (!raw) return '';
   return raw.length > 28 ? `${raw.slice(0, 26)}…` : raw;
 }
 
 function setMessageModelTag(metaEl, resolvedModel) {
+  if (typeof ChatModelTag !== 'undefined') {
+    ChatModelTag.setMessageModelTag(metaEl, resolvedModel);
+    return;
+  }
   if (!metaEl) return;
+  const label = formatResolvedModelLabel(resolvedModel);
   let tag = metaEl.querySelector('.message-model-tag');
   if (!tag) {
     tag = document.createElement('span');
     tag.className = 'message-model-tag hidden';
     metaEl.insertBefore(tag, metaEl.firstChild);
   }
-  const label = formatResolvedModelLabel(resolvedModel);
   if (!label) {
     tag.classList.add('hidden');
     tag.textContent = '';
-    tag.removeAttribute('title');
     return;
   }
   tag.classList.remove('hidden');

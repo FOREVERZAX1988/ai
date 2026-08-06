@@ -79,16 +79,37 @@ op助手采用 **主调度 + 预制专员**，用户只与「op助手」对话�
 
 | 文件 | 说明 |
 |------|------|
-| `aid.py` | 应用工厂、启动循环、静态资源（~150 行） |
-| `server/deps.py` | Params、StateReader、JSON/SSE 等共享依赖 |
-| `server/handlers/api.py` | 全部 REST 处理器（自 aid 抽出） |
-| `server/handlers/scheduler.py` | 定时任务动作分发 |
-| `server/runtime.py` | 状态广播 / 调度后台循环 |
-| `server/routes/` | 路由注册（`agents` + 其余 API） |
-| `chat_runner.py` | 流式对话与工具循环 |
-| `session_store.py` | Params 会话读写 + 写锁 + stateVersion |
-| `sync_hub.py` | WebSocket 同步枢纽 |
-| `tools/domains/` | 工具领域索引（渐进物理分包） |
+| `aid.py` | 进程入口（~35 行），委托 `server/app_factory` |
+| `server/app_factory.py` | 应用工厂、启动任务 |
+| `server/handlers/` | REST 按域拆分（`chat_handlers`, `config_handlers`, …） |
+| `server/handlers/_api_common.py` | 共享依赖与别名 |
+| `server/deps.py` | Params、StateReader、JSON/SSE |
+| `core/` | 平台内核：`llm/`, `chat/`, `sync/`, `workspace/`, `runtime/` |
+| `services/` | 垂直服务：`cabana/`, `tsk/`, `panda/` |
+| `infra/` | 配置/安全/路径门面 |
+| `tools/registry.py` + `tools/executor.py` | 工具注册与执行 |
+| `agents/` | 多 Agent 编排 |
+
+根目录旧模块（如 `chat_runner.py`）为 **兼容垫片**，指向 `core/`。详见 [ARCHITECTURE_TARGETS.md](./ARCHITECTURE_TARGETS.md)。
+
+### 前端模块
+
+| 路径 | 职责 |
+|------|------|
+| `web/static/js/ai.js` | 主应用（逐步瘦身） |
+| `web/static/js/app/globals.js` | `App` 命名空间 |
+| `web/static/js/chat/model-tag.js` | 消息模型标签 |
+| `web/static/js/sessions.js` | SessionStore |
+| `web/static/js/session-sync.js` | 跨设备合并 |
+| `web/static/js/web-chat-jobs.js` | 多会话 job 轮询 |
+
+## 参考架构（历史）
+
+| 文件 | 说明 |
+|------|------|
+| `chat_runner.py` | 垫片 → `core/chat/runner.py` |
+| `session_store.py` | Params 会话读写（`tools/session_store.py`） |
+| `sync_hub.py` | 垫片 → `core/sync/hub.py` |
 
 详见 [OPENCLAW_LEARNINGS.md](./OPENCLAW_LEARNINGS.md)。
 
