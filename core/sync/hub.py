@@ -12,17 +12,17 @@ from openpilot.common.params import Params
 from openpilot.common.swaglog import cloudlog
 
 from ai.common.storage import read_param
-from ai.embedding import load_embedding_config
-from ai.model_accounts import hub_for_api, resolve_primary_config
-from ai.model_router import fallbacks_for_api
-from ai.client import load_config_from_params
+from ai.core.llm.embedding import load_embedding_config
+from ai.core.llm.model_accounts import hub_for_api, resolve_primary_config
+from ai.core.llm.model_router import fallbacks_for_api
+from ai.core.llm.client import load_config_from_params
 from ai.tools.notifications import list_notifications
 from ai.tools.session_store import get_sessions, session_state_version
 from ai.agents.config import agents_enabled_payload
 from ai.agents.office import office_snapshot
 from ai.agents.registry import list_agents
-from ai.sync_protocol import WS_PROTOCOL_VERSION, validate_ws_message
-from ai.device_trust import check_device_trust, touch_device
+from ai.core.sync.protocol import WS_PROTOCOL_VERSION, validate_ws_message
+from ai.core.sync.device_trust import check_device_trust, touch_device
 
 
 def _read_param_str(params: Params, key: str, default: str = "") -> str:
@@ -31,7 +31,7 @@ def _read_param_str(params: Params, key: str, default: str = "") -> str:
 
 
 def config_snapshot(params: Params) -> dict[str, Any]:
-  from ai.timezone_util import read_ai_timezone_name
+  from ai.infra.timezone import read_ai_timezone_name
 
   config = resolve_primary_config(params, load_config_from_params(params))
   embed_cfg = load_embedding_config(params)
@@ -206,7 +206,7 @@ async def notify_lifecycle(
 
 
 def _hello_payload(request: web.Request, params: Params) -> dict[str, Any]:
-  from ai.chat_jobs import list_active_jobs
+  from ai.core.chat.jobs import list_active_jobs
   config = resolve_primary_config(params, load_config_from_params(params))
   payload: dict[str, Any] = {
     "type": "hello",
@@ -275,7 +275,7 @@ async def ws_sync(request: web.Request) -> web.WebSocketResponse:
 
       msg_type = data.get("type")
       if msg_type == "connect":
-        from ai.sync_protocol import negotiate_client_version
+        from ai.core.sync.protocol import negotiate_client_version
         client_ver = int(data.get("protocolVersion") or 1)
         ok_neg, neg_err = negotiate_client_version(client_ver)
         await ws.send_str(json.dumps({

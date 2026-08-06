@@ -9,7 +9,7 @@ from typing import Any, Callable
 
 from openpilot.common.params import Params
 
-from ai.chat_runner import ChatCancelled, run_chat_loop
+from ai.core.chat.runner import ChatCancelled, run_chat_loop
 from ai.agents.orchestrator import run_chat_with_agents
 
 _MAX_JOBS = 20
@@ -145,7 +145,7 @@ async def start_chat_job(
       j["lastEventAt"] = int(time.time())
       _apply_event_to_assistant(j["assistant"], event)
     try:
-      from ai.sync_hub import notify_chat_event
+      from ai.core.sync.hub import notify_chat_event
       await notify_chat_event(job_id, job.get("sessionId") or "", event, j)
     except Exception:
       pass
@@ -185,7 +185,7 @@ async def start_chat_job(
           j["resolvedModel"] = result.get("resolvedModel")
           j["updatedAt"] = int(time.time())
         try:
-          from ai.sync_hub import notify_chat_status
+          from ai.core.sync.hub import notify_chat_status
           j = _jobs.get(job_id)
           if j:
             await notify_chat_status(job_id, j.get("sessionId") or "", j)
@@ -198,7 +198,7 @@ async def start_chat_job(
             j["status"] = "cancelled"
             j["updatedAt"] = int(time.time())
         try:
-          from ai.sync_hub import notify_chat_status
+          from ai.core.sync.hub import notify_chat_status
           j = _jobs.get(job_id)
           if j:
             await notify_chat_status(job_id, j.get("sessionId") or "", j)
@@ -216,7 +216,7 @@ async def start_chat_job(
             j["error"] = str(e)
             j["updatedAt"] = int(time.time())
         try:
-          from ai.sync_hub import notify_chat_status
+          from ai.core.sync.hub import notify_chat_status
           j = _jobs.get(job_id)
           if j:
             await notify_chat_status(job_id, j.get("sessionId") or "", j)
@@ -235,7 +235,7 @@ async def start_chat_job(
         except Exception:
           pass
         try:
-          from ai.command_queue import drain_session_queue
+          from ai.core.chat.command_queue import drain_session_queue
 
           async def _start_queued(queued_body: dict[str, Any]) -> str:
             prep_tools = tools
@@ -257,7 +257,7 @@ async def start_chat_job(
 
   _tasks[job_id] = asyncio.create_task(_run())
   try:
-    from ai.sync_hub import notify_chat_status
+    from ai.core.sync.hub import notify_chat_status
     j = _jobs.get(job_id)
     if j:
       await notify_chat_status(job_id, session_id or "", j)
@@ -347,7 +347,7 @@ async def stuck_job_watchdog_loop() -> None:
         f"aid: stuck chat job {jid} session={item['sessionId']} idle={item['idleSec']}s"
       )
       try:
-        from ai.sync_hub import notify_lifecycle
+        from ai.core.sync.hub import notify_lifecycle
         await notify_lifecycle(jid, item["sessionId"], "stuck", item)
       except Exception:
         pass
@@ -393,7 +393,7 @@ async def cancel_job(job_id: str) -> bool:
       j["status"] = "cancelled"
       j["updatedAt"] = int(time.time())
   try:
-    from ai.sync_hub import notify_chat_status
+    from ai.core.sync.hub import notify_chat_status
     j = _jobs.get(job_id)
     if j:
       await notify_chat_status(job_id, j.get("sessionId") or "", j)

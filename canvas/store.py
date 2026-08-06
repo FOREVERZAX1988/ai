@@ -88,7 +88,7 @@ def maybe_capture_tool_artifact(
 
 async def notify_artifact(session_id: str, artifact: dict[str, Any]) -> None:
   try:
-    from ai.sync_hub import notify_canvas_artifact
+    from ai.core.sync.hub import notify_canvas_artifact
     await notify_canvas_artifact(session_id, artifact)
   except Exception:
     pass

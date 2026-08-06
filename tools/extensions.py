@@ -577,7 +577,7 @@ def make_extension_handlers(
 
   async def h_search_memory_semantic(args):
     from ai.tools.memory_vectors import search_memory_semantic
-    from ai.embedding import load_embedding_config
+    from ai.core.llm.embedding import load_embedding_config
     embed_cfg = load_embedding_config(params)
     return await search_memory_semantic(
       params,

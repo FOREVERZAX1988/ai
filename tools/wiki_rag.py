@@ -1,12 +1,3 @@
-"""openpilot Wiki RAG integration."""
+"""Compatibility shim — use `ai.tools.domains.core.wiki_rag` instead."""
 
-from __future__ import annotations
-
-from typing import Any
-
-try:
-  from ai.tools.wiki_rag_pages import WIKI_RAG_PAGES
-except ImportError:
-  WIKI_RAG_PAGES: list[dict[str, Any]] = []
-
-WIKI_RAG: list[dict[str, Any]] = WIKI_RAG_PAGES
+from ai.tools.domains.core.wiki_rag import *  # noqa: F403

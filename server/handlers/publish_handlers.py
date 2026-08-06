@@ -185,7 +185,7 @@ async def api_issues(request: web.Request) -> web.Response:
 
 async def api_package_version(request: web.Request) -> web.Response:
   try:
-    from ai.version_info import check_update
+    from ai.infra.version import check_update
 
     fetch = request.query.get("fetch", "1") not in ("0", "false", "no")
     return _json_response(check_update(fetch_remote=fetch))
@@ -196,7 +196,7 @@ async def api_package_version(request: web.Request) -> web.Response:
 async def api_package_update(request: web.Request) -> web.Response:
   try:
     from ai.system.host_env import is_pc_dev
-    from ai.version_info import run_package_update
+    from ai.infra.version import run_package_update
 
     state = _get_state_reader().update(timeout=0)
     if state.is_driving and not is_pc_dev():
@@ -207,7 +207,7 @@ async def api_package_update(request: web.Request) -> web.Response:
     except (json.JSONDecodeError, ValueError, aiohttp.ClientPayloadError):
       body = {}
     if not body.get("confirm"):
-      from ai.version_info import package_info
+      from ai.infra.version import package_info
       pkg = package_info()
       hint = (
         "将执行 git pull 并重新集成 openpilot。请 POST confirm=true。"

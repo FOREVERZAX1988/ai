@@ -7,15 +7,15 @@ from aiohttp import web
 from openpilot.common.params import Params
 
 from ai.canvas.store import list_artifacts
-from ai.command_queue import list_queued
-from ai.device_trust import (
+from ai.core.chat.command_queue import list_queued
+from ai.core.sync.device_trust import (
   check_device_trust,
   list_paired_devices,
   pair_device,
   revoke_device,
   touch_device,
 )
-from ai.sync_protocol import get_protocol_schema
+from ai.core.sync.protocol import get_protocol_schema
 
 
 async def api_sync_schema(_request: web.Request) -> web.Response:
@@ -78,7 +78,7 @@ async def api_canvas(request: web.Request) -> web.Response:
 
 async def api_workspace(request: web.Request) -> web.Response:
   from ai.server.deps import json_response
-  from ai.workspace_store import list_workspace_files, read_workspace_file
+  from ai.core.workspace.store import list_workspace_files, read_workspace_file
 
   key = str(request.query.get("key") or "").strip()
   if key:
@@ -92,7 +92,7 @@ async def api_workspace(request: web.Request) -> web.Response:
 
 async def api_workspace_write(request: web.Request) -> web.Response:
   from ai.server.deps import json_response
-  from ai.workspace_store import write_workspace_file
+  from ai.core.workspace.store import write_workspace_file
 
   try:
     body = await request.json()
@@ -108,7 +108,7 @@ async def api_workspace_write(request: web.Request) -> web.Response:
 
 async def api_usage_detail(request: web.Request) -> web.Response:
   from ai.server.deps import json_response, params
-  from ai.usage_log import load_embedding_usage, load_usage
+  from ai.core.llm.usage import load_embedding_usage, load_usage
 
   p = request.app.get("params") or params()
   usage = load_usage(p)
@@ -290,7 +290,7 @@ async def api_platform_workspace_health(request: web.Request) -> web.Response:
 
 async def api_platform_evolution(request: web.Request) -> web.Response:
   from ai.server.deps import json_response, params
-  from ai.evolution_pipeline import pipeline_log, run_evolution_pipeline_manual
+  from ai.core.runtime.evolution_pipeline import pipeline_log, run_evolution_pipeline_manual
   from ai.tools.skill_evolution import analyze_execution_traces, evolution_status, evolve_skill_proposal
 
   p = request.app.get("params") or params()

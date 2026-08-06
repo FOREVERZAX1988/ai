@@ -39,7 +39,7 @@ def get_queue_mode(session_id: str) -> str:
 
 def _has_running_job(session_id: str) -> bool:
   try:
-    from ai.chat_jobs import list_active_jobs
+    from ai.core.chat.jobs import list_active_jobs
     for j in list_active_jobs(session_id or None):
       if not session_id or j.get("sessionId") == session_id:
         return True

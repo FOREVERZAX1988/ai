@@ -1,7 +1,7 @@
 """Public qlog/rlog discovery API for tools and tests."""
 from __future__ import annotations
 from pathlib import Path
-from ai.services.cabana.app import _find_qlogs, _find_rlogs
+from ai.services.cabana.replay import _find_qlogs, _find_rlogs
 
 def find_qlogs(route_dir: Path) -> list[Path]:
   return _find_qlogs(route_dir)

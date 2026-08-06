@@ -21,7 +21,7 @@ class TestShellSafety(unittest.TestCase):
 
 class TestWorkspace(unittest.TestCase):
   def test_default_files_and_prompt(self):
-    from ai.workspace_store import ensure_default_workspace_files, workspace_prompt_blocks
+    from ai.core.workspace.store import ensure_default_workspace_files, workspace_prompt_blocks
 
     ensure_default_workspace_files()
     blocks = workspace_prompt_blocks()
@@ -30,7 +30,7 @@ class TestWorkspace(unittest.TestCase):
 
 class TestSidecarHub(unittest.TestCase):
   def test_recent_events_ring(self):
-    from ai.sidecar_hub import _recent, recent_events
+    from ai.core.runtime.sidecar_hub import _recent, recent_events
 
     _recent.clear()
     for i in range(5):

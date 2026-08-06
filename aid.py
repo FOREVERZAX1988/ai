@@ -22,7 +22,7 @@ def main() -> None:
   parser.add_argument("--host", type=str, default="0.0.0.0", help="Listen host")
   args = parser.parse_args()
 
-  from ai.tsk_routes import init_tsk_for_aid
+  from ai.services.tsk.routes import init_tsk_for_aid
   init_tsk_for_aid(args.port)
 
   app = create_app()

@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 class SyncProtocolTests(unittest.TestCase):
   def test_validate_hello(self):
-    from ai.sync_protocol import validate_ws_message, get_protocol_schema
+    from ai.core.sync.protocol import validate_ws_message, get_protocol_schema
 
     ok, err = validate_ws_message({
       "type": "hello",
@@ -32,8 +32,8 @@ class SyncProtocolTests(unittest.TestCase):
 
 class ModelRouterTests(unittest.TestCase):
   def test_fallback_chain_empty(self):
-    from ai.client import AIConfig
-    from ai.model_router import resolve_chat_config_chain
+    from ai.core.llm.client import AIConfig
+    from ai.core.llm.model_router import resolve_chat_config_chain
 
     base = AIConfig(provider="opencode-zen", model="m1", api_key="k")
     chain = resolve_chat_config_chain(base, MagicMock())
@@ -43,7 +43,7 @@ class ModelRouterTests(unittest.TestCase):
 
 class CommandQueueTests(unittest.TestCase):
   def test_queue_when_driving_followup(self):
-    from ai.command_queue import submit_chat_request, _queues
+    from ai.core.chat.command_queue import submit_chat_request, _queues
 
     _queues.clear()
     started = []
@@ -70,7 +70,7 @@ class CommandQueueTests(unittest.TestCase):
 
 class DeviceTrustTests(unittest.TestCase):
   def test_pair_without_pin(self):
-    from ai.device_trust import pair_device
+    from ai.core.sync.device_trust import pair_device
 
     params = MagicMock()
     r = pair_device(params, device_id="d1", label="Browser")

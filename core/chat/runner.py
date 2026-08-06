@@ -8,12 +8,12 @@ from typing import Any
 
 from openpilot.common.params import Params
 
-from ai.client import AIConfig, expand_messages_for_api
-from ai.content_sanitize import strip_leaked_tool_calls
-from ai.embedding import load_embedding_config
-from ai.model_router import chat_completion_with_failover, resolve_chat_config
+from ai.core.llm.client import AIConfig, expand_messages_for_api
+from ai.core.chat.sanitize import strip_leaked_tool_calls
+from ai.core.llm.embedding import load_embedding_config
+from ai.core.llm.model_router import chat_completion_with_failover, resolve_chat_config
 from ai.skills.snapshot import get_skills_prompt
-from ai.session_compaction import maybe_compact_messages
+from ai.core.chat.compaction import maybe_compact_messages
 from ai.hooks.registry import run_hooks
 from ai.system.admin import is_admin_mode
 from ai.selfdrive.state import StateReader
@@ -21,7 +21,7 @@ from ai.tools.memory_store import format_memory_prompt
 from ai.tools.rag_store import format_rag_prompt, search_documents
 from ai.tools.workflows import workflow_system_prompt
 from ai.tools.agent_tools import execute_tool_async
-from ai.usage_log import record_usage
+from ai.core.llm.usage import record_usage
 from ai.agents.prompts import agent_system_prompt
 from ai.agents.office import on_handoff, on_tool_start, on_tool_done, on_chat_done, set_agent_status
 
@@ -32,7 +32,7 @@ _MAX_TOOL_ROUNDS = 64
 
 async def _broadcast_office_ws() -> None:
   try:
-    from ai.sync_hub import broadcast_office
+    from ai.core.sync.hub import broadcast_office
     await broadcast_office()
   except Exception:
     pass
@@ -131,7 +131,7 @@ async def build_chat_messages(
     pass
 
   try:
-    from ai.workspace_store import workspace_prompt_blocks
+    from ai.core.workspace.store import workspace_prompt_blocks
     for block in workspace_prompt_blocks():
       system_parts.append(block)
   except Exception:
@@ -424,7 +424,7 @@ async def run_chat_loop(
         last_user_text = c if isinstance(c, str) else str(c)
         break
     try:
-      from ai.evolution_pipeline import run_post_chat_pipeline
+      from ai.core.runtime.evolution_pipeline import run_post_chat_pipeline
       from ai.tools.memory_protocol import conversation_tail
       await run_post_chat_pipeline(
         params,

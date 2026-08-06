@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from ai.client import chat_completion_collect
+from ai.core.llm.client import chat_completion_collect
 from ai.evolution.dataset import EvalExample
 from ai.evolution.fitness import FitnessScore
 

@@ -8,7 +8,7 @@ from typing import Any
 
 from openpilot.common.params import Params
 
-from ai.client import AIConfig, ChatChunk, chat_completion
+from ai.core.llm.client import AIConfig, ChatChunk, chat_completion
 from ai.common.storage import read_param, write_param
 
 FALLBACKS_PARAM = "ai_model_fallbacks"
@@ -134,7 +134,7 @@ def _chat_route_from_body(body: dict[str, Any] | None) -> dict[str, Any] | None:
   raw = body.get("chatRoute") or body.get("chat_route")
   if not isinstance(raw, dict):
     return None
-  from ai.model_accounts import parse_chat_route
+  from ai.core.llm.model_accounts import parse_chat_route
   return parse_chat_route(raw)
 
 
@@ -148,7 +148,7 @@ def resolve_chat_config_chain(
 ) -> list[AIConfig]:
   """Primary config followed by fallback profiles from model hub."""
   del workflow_id, user_text
-  from ai.model_accounts import resolve_chat_chain_with_route
+  from ai.core.llm.model_accounts import resolve_chat_chain_with_route
   return resolve_chat_chain_with_route(params, base, chat_route=_chat_route_from_body(body))
 
 
@@ -190,7 +190,7 @@ async def chat_completion_collect_with_failover(
   timeout_total: float = 120,
 ) -> tuple[str, str, AIConfig | None, str | None]:
   """Collect full completion with failover. Returns (content, reasoning, active_cfg, error)."""
-  from ai.client import chat_completion_collect
+  from ai.core.llm.client import chat_completion_collect
 
   last_error = ""
   for cfg in resolve_chat_config_chain(base, params, body=body):

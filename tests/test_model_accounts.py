@@ -1,4 +1,4 @@
-"""Tests for ai.model_accounts (model hub)."""
+"""Tests for ai.core.llm.model_accounts (model hub)."""
 
 from __future__ import annotations
 
@@ -31,7 +31,7 @@ class TestModelAccounts(unittest.TestCase):
       self.skipTest("openpilot runtime not available")
 
   def test_save_and_resolve_primary(self):
-    from ai.model_accounts import hub_for_api, load_model_hub, resolve_primary_config, save_model_hub
+    from ai.core.llm.model_accounts import hub_for_api, load_model_hub, resolve_primary_config, save_model_hub
 
     p = self._params()
     hub = {
@@ -59,7 +59,7 @@ class TestModelAccounts(unittest.TestCase):
     self.assertTrue(api_hub["accounts"][0]["apiKey"].startswith("•"))
 
   def test_route_params_persist(self):
-    from ai.model_accounts import load_model_hub, resolve_primary_config, save_model_hub
+    from ai.core.llm.model_accounts import load_model_hub, resolve_primary_config, save_model_hub
 
     p = self._params()
     save_model_hub(p, {
@@ -101,7 +101,7 @@ class TestModelAccounts(unittest.TestCase):
     self.assertTrue(cfg.thinking_enabled)
 
   def test_route_thinking_enabled(self):
-    from ai.model_accounts import resolve_primary_config, resolve_fallback_configs, save_model_hub
+    from ai.core.llm.model_accounts import resolve_primary_config, resolve_fallback_configs, save_model_hub
 
     p = self._params()
     save_model_hub(p, {
@@ -132,7 +132,7 @@ class TestModelAccounts(unittest.TestCase):
     self.assertTrue(fallbacks[0].thinking_enabled)
 
   def test_fallback_chain(self):
-    from ai.model_accounts import resolve_chat_chain, save_model_hub
+    from ai.core.llm.model_accounts import resolve_chat_chain, save_model_hub
 
     p = self._params()
     save_model_hub(p, {
@@ -150,7 +150,7 @@ class TestModelAccounts(unittest.TestCase):
     self.assertEqual(chain[1].model, "m2")
 
   def test_chat_route_chain_reorders_primary(self):
-    from ai.model_accounts import resolve_chat_chain_with_route, save_model_hub
+    from ai.core.llm.model_accounts import resolve_chat_chain_with_route, save_model_hub
 
     p = self._params()
     save_model_hub(p, {
@@ -171,7 +171,7 @@ class TestModelAccounts(unittest.TestCase):
     self.assertEqual(len(chain), 2)
     self.assertEqual(chain[0].model, "m2")
     self.assertEqual(chain[1].model, "m3")
-    from ai.model_accounts import resolve_embedding_chain, save_model_hub
+    from ai.core.llm.model_accounts import resolve_embedding_chain, save_model_hub
 
     p = self._params()
     save_model_hub(p, {
@@ -192,7 +192,7 @@ class TestModelAccounts(unittest.TestCase):
     self.assertEqual(chain[1].provider, "openai")
 
   def test_embedding_primary_change_only_reindex_primary(self):
-    from ai.model_accounts import embedding_primary_signature, embedding_hub_signature
+    from ai.core.llm.model_accounts import embedding_primary_signature, embedding_hub_signature
 
     hub_a = {
       "embeddingPrimary": {"accountId": "e1", "model": "BAAI/bge-m3"},
@@ -207,7 +207,7 @@ class TestModelAccounts(unittest.TestCase):
 
   @unittest.skip("MAX_MODELS_PER_ACCOUNT / _trim_account_models not implemented in model_accounts")
   def test_trim_account_models_caps_pool(self):
-    from ai.model_accounts import MAX_MODELS_PER_ACCOUNT, _trim_account_models
+    from ai.core.llm.model_accounts import MAX_MODELS_PER_ACCOUNT, _trim_account_models
 
     models = [f"m{i}" for i in range(500)]
     trimmed = _trim_account_models(models, prefer={"m499", "m0"})
@@ -217,7 +217,7 @@ class TestModelAccounts(unittest.TestCase):
 
   def test_migrates_legacy_on_first_load(self):
     from ai.common.config_store import get_config_store
-    from ai.model_accounts import HUB_PARAM, load_model_hub
+    from ai.core.llm.model_accounts import HUB_PARAM, load_model_hub
 
     p = self._params()
     store = get_config_store()
@@ -229,7 +229,7 @@ class TestModelAccounts(unittest.TestCase):
     self.assertEqual(hub["primary"]["model"], "deepseek-v3-flash-free")
     raw = store.get(HUB_PARAM)
     self.assertTrue(raw)
-    from ai.model_accounts import save_model_hub
+    from ai.core.llm.model_accounts import save_model_hub
 
     p = self._params()
     raw = {

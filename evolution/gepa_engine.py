@@ -5,7 +5,7 @@ from __future__ import annotations
 import time
 from typing import Any
 
-from ai.client import AIConfig
+from ai.core.llm.client import AIConfig
 from ai.server.deps import read_ai_config
 from ai.evolution.config import EvolutionRunConfig
 from ai.evolution.constraints import all_passed, validate_artifact

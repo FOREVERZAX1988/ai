@@ -9,7 +9,7 @@ from typing import Any
 from openpilot.common.params import Params
 from openpilot.common.swaglog import cloudlog
 
-from ai.workspace_store import heartbeat_checklist
+from ai.core.workspace.store import heartbeat_checklist
 
 
 def _parse_llm_decision(content: str) -> dict[str, Any]:
@@ -56,7 +56,7 @@ async def run_heartbeat(params: Params, *, get_state_reader) -> dict[str, Any]:
   llm_decision: dict[str, Any] = {}
   try:
     from ai.server.deps import read_ai_config
-    from ai.model_router import chat_completion_collect_with_failover
+    from ai.core.llm.model_router import chat_completion_collect_with_failover
     config = read_ai_config(params)
     if config.is_configured:
       unread_hint = f"{len(unread)} unread notifications" if unread else "no unread notifications"

@@ -9,9 +9,9 @@ from typing import Any
 
 from openpilot.common.params import Params
 
-from ai.client import AIConfig, load_config_from_params
+from ai.core.llm.client import AIConfig, load_config_from_params
 from ai.common.storage import read_param, write_param
-from ai.model_router import FALLBACKS_PARAM, load_fallback_entries, save_fallback_entries
+from ai.core.llm.model_router import FALLBACKS_PARAM, load_fallback_entries, save_fallback_entries
 
 HUB_PARAM = "ai_model_hub"
 OPTIONAL_BASE_URL_PROVIDERS = frozenset({"qwen", "minimax", "mimo", "bigmodel"})
@@ -166,7 +166,7 @@ def _hub_from_legacy(params: Params) -> dict[str, Any]:
 
 
 def _read_embedding_legacy(params: Params) -> tuple[str, str, str, str, str]:
-  from ai.client import _param_to_str
+  from ai.core.llm.client import _param_to_str
   mode = _param_to_str(read_param(params, "ai_embedding_mode"), "same").lower()
   provider = _param_to_str(read_param(params, "ai_embedding_provider"), "siliconflow")
   model = _param_to_str(read_param(params, "ai_embedding_model"))
@@ -181,7 +181,7 @@ def _ensure_embedding_routes(hub: dict[str, Any], params: Params | None) -> None
     return
   if not params:
     return
-  from ai.embedding import DEFAULT_EMBEDDING_MODELS
+  from ai.core.llm.embedding import DEFAULT_EMBEDDING_MODELS
 
   mode, provider, model, api_key, base_url = _read_embedding_legacy(params)
   amap = _account_map(hub)
@@ -450,7 +450,7 @@ def resolve_fallback_configs(params: Params | None = None, base: AIConfig | None
 
 
 def _legacy_fallback_configs(params: Params, base: AIConfig) -> list[AIConfig]:
-  from ai.model_router import _parse_fallbacks
+  from ai.core.llm.model_router import _parse_fallbacks
   return _parse_fallbacks(params, base)
 
 
@@ -509,7 +509,7 @@ def resolve_chat_chain_with_route(
 
 
 def route_to_embedding_config(account: dict[str, Any], route: dict[str, Any]) -> "EmbeddingConfig":
-  from ai.embedding import EmbeddingConfig
+  from ai.core.llm.embedding import EmbeddingConfig
 
   model = str(route.get("model") or "").strip()
   return EmbeddingConfig(
@@ -521,7 +521,7 @@ def route_to_embedding_config(account: dict[str, Any], route: dict[str, Any]) ->
 
 
 def resolve_embedding_primary_config(params: Params | None = None) -> "EmbeddingConfig":
-  from ai.embedding import DEFAULT_EMBEDDING_MODELS, EmbeddingConfig
+  from ai.core.llm.embedding import DEFAULT_EMBEDDING_MODELS, EmbeddingConfig
 
   params = params or Params()
   hub = load_model_hub(params)
@@ -540,7 +540,7 @@ def resolve_embedding_primary_config(params: Params | None = None) -> "Embedding
 
 
 def resolve_embedding_fallback_configs(params: Params | None = None) -> list["EmbeddingConfig"]:
-  from ai.embedding import EmbeddingConfig
+  from ai.core.llm.embedding import EmbeddingConfig
 
   params = params or Params()
   hub = load_model_hub(params)
@@ -634,7 +634,7 @@ def _sync_legacy_params(params: Params, hub: dict[str, Any]) -> None:
     legacy_fallbacks.append(row)
   save_fallback_entries(params, legacy_fallbacks)
 
-  from ai.embedding import DEFAULT_EMBEDDING_MODELS
+  from ai.core.llm.embedding import DEFAULT_EMBEDDING_MODELS
 
   emb_primary = hub.get("embeddingPrimary") if isinstance(hub.get("embeddingPrimary"), dict) else None
   if emb_primary:

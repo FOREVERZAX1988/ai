@@ -8,15 +8,15 @@ from aiohttp import web
 
 from openpilot.common.swaglog import cloudlog
 
-from ai.cabana import register_routes as register_cabana_routes
-from ai.embedding import load_embedding_config
+from ai.services.cabana.app import register_routes as register_cabana_routes
+from ai.core.llm.embedding import load_embedding_config
 from ai.server.deps import WEB_DIR, json_response, params, read_ai_config
 from ai.server.runtime import scheduler_loop, status_watch_loop
 from ai.server.routes import register_routes as register_server_routes
-from ai.sync_hub import register_sync_routes
+from ai.core.sync.hub import register_sync_routes
 from ai.tools.rag_store import reindex_all
 from ai.tools.scheduler import ensure_default_scheduler_tasks
-from ai.web_auth import ai_auth_middleware
+from ai.infra.auth.web import ai_auth_middleware
 
 _PARAMS = params()
 
@@ -149,7 +149,7 @@ def create_app() -> web.Application:
     application["scheduler_task"] = asyncio.create_task(scheduler_loop(application))
     application["status_watch_task"] = asyncio.create_task(status_watch_loop(application))
     try:
-      from ai.workspace_store import ensure_default_workspace_files
+      from ai.core.workspace.store import ensure_default_workspace_files
       ensure_default_workspace_files()
     except Exception as e:
       cloudlog.warning(f"aid: workspace seed skipped: {e}")
@@ -162,7 +162,7 @@ def create_app() -> web.Application:
     application["rag_reindex_task"] = asyncio.create_task(_startup_rag_seed_and_reindex())
     try:
       from ai.skills.snapshot import warm_skills_snapshot
-      from ai.chat_jobs import ensure_stuck_watchdog
+      from ai.core.chat.jobs import ensure_stuck_watchdog
       from ai.hooks.builtin import register_builtin_hooks
       register_builtin_hooks()
       loop = asyncio.get_running_loop()
@@ -172,7 +172,7 @@ def create_app() -> web.Application:
     except Exception as e:
       cloudlog.warning(f"aid: skills snapshot / stuck watchdog skipped: {e}")
     try:
-      from ai.cabana import warm_dbc_catalog
+      from ai.services.cabana.app import warm_dbc_catalog
 
       async def _warm_dbc_catalog() -> None:
         loop = asyncio.get_running_loop()
@@ -200,15 +200,15 @@ def create_app() -> web.Application:
   register_sync_routes(app)
   from ai.server.terminal import register_terminal_routes
   register_terminal_routes(app)
-  from ai.sidecar_hub import register_sidecar_routes
+  from ai.core.runtime.sidecar_hub import register_sidecar_routes
   register_sidecar_routes(app)
   try:
-    from ai.tsk_routes import register_tsk_routes
+    from ai.services.tsk.routes import register_tsk_routes
     register_tsk_routes(app)
   except Exception as e:
     cloudlog.warning(f"aid: tsk routes skipped: {e}")
   try:
-    from ai.panda_routes import register_panda_routes
+    from ai.services.panda.routes import register_panda_routes
     register_panda_routes(app)
   except Exception as e:
     cloudlog.warning(f"aid: panda routes skipped: {e}")

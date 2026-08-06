@@ -93,7 +93,7 @@ async def maybe_compact_messages(
   if not transcript_lines:
     return messages
 
-  from ai.model_router import chat_completion_collect_with_failover
+  from ai.core.llm.model_router import chat_completion_collect_with_failover
 
   prompt = (
     "Summarize this openpilot assistant conversation for long-term memory. "

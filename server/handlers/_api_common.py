@@ -14,8 +14,8 @@ from aiohttp import web
 
 from openpilot.common.swaglog import cloudlog
 
-from ai.model_router import fallbacks_for_api, load_fallback_entries, save_fallback_entries
-from ai.model_accounts import (
+from ai.core.llm.model_router import fallbacks_for_api, load_fallback_entries, save_fallback_entries
+from ai.core.llm.model_accounts import (
   account_config_by_id,
   hub_for_api,
   load_model_hub,
@@ -36,7 +36,7 @@ from ai.server.deps import (
   resolve_max_tool_rounds,
   sse,
 )
-from ai.client import AIConfig, merge_config_from_body, test_connection, list_models
+from ai.core.llm.client import AIConfig, merge_config_from_body, test_connection, list_models
 from ai.common.storage import format_persist_error
 from ai.common.params import (
   AI_DEFAULT_MODELS,
@@ -49,8 +49,8 @@ from ai.common.params import (
   AI_SAME_MODE_EMBEDDING_MODELS,
 )
 from ai.common.storage import write_param, write_param_bool
-from ai.embedding import DEFAULT_EMBEDDING_MODELS, load_embedding_config
-from ai.persona import ensure_default_persona
+from ai.core.llm.embedding import DEFAULT_EMBEDDING_MODELS, load_embedding_config
+from ai.core.workspace.persona import ensure_default_persona
 from ai.skills.loader import list_skills, load_enabled_skill_ids, save_enabled_skill_ids
 from ai.system.admin import is_admin_mode
 from ai.system.host_env import get_host_environment
@@ -61,10 +61,10 @@ from ai.agents.office import office_snapshot as get_office_snapshot
 from ai.agents.orchestrator import detect_orchestration_plan, run_chat_with_agents
 from ai.agents.registry import filter_tools_for_agent, get_agent, list_agents, orchestrator_id
 from ai.agents.router import resolve_agent_route
-from ai.chat_jobs import cancel_job, cancel_jobs_for_session, get_job, list_active_jobs, start_chat_job, wait_for_job
-from ai.command_queue import submit_chat_request
-from ai.chat_runner import ChatCancelled
-from ai.sync_hub import broadcast_config, broadcast_notifications, broadcast_sessions
+from ai.core.chat.jobs import cancel_job, cancel_jobs_for_session, get_job, list_active_jobs, start_chat_job, wait_for_job
+from ai.core.chat.command_queue import submit_chat_request
+from ai.core.chat.runner import ChatCancelled
+from ai.core.sync.hub import broadcast_config, broadcast_notifications, broadcast_sessions
 from ai.tools.agent_tools import tool_meta_for_host
 from ai.tools.memory_store import (
   append_note,
@@ -86,7 +86,7 @@ from ai.tools.session_store import get_sessions, save_sessions
 from ai.tools.workflows import list_workflows
 from ai.tools.consumer_tools import consumer_bootstrap_payload
 from ai.tools.write_pending import confirm_pending, list_pending
-from ai.usage_log import load_embedding_usage, load_usage
+from ai.core.llm.usage import load_embedding_usage, load_usage
 
 _PARAMS = params()
 _get_state_reader = get_state_reader

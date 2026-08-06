@@ -69,7 +69,7 @@ class CabanaReplayWsTest(AioHTTPTestCase):
     super().tearDown()
 
   async def get_application(self):
-    import ai.cabana as cabana
+    import ai.services.cabana.app as cabana
 
     app = web.Application()
     cabana.register_routes(app, Path(__file__).parent)
@@ -77,7 +77,7 @@ class CabanaReplayWsTest(AioHTTPTestCase):
 
   @unittest_run_loop
   async def test_offline_ws_streams_metadata_and_can(self):
-    import ai.cabana as cabana
+    import ai.services.cabana.app as cabana
 
     route_name = self.route_dir.name
 

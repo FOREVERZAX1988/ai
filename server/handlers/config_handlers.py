@@ -57,8 +57,8 @@ async def api_providers(request: web.Request) -> web.Response:
 async def api_get_config(request: web.Request) -> web.Response:
   from ai.common.context_config import compaction_settings
   from ai.common.evolution_config import evolution_settings
-  from ai.model_accounts import load_model_hub, route_context_window
-  from ai.timezone_util import read_ai_timezone_name
+  from ai.core.llm.model_accounts import load_model_hub, route_context_window
+  from ai.infra.timezone import read_ai_timezone_name
 
   config = _read_ai_config()
   embed_cfg = load_embedding_config(_PARAMS, config)

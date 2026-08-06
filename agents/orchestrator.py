@@ -11,7 +11,7 @@ from ai.agents.config import load_disabled_agent_ids
 from ai.agents.registry import filter_tools_for_agent, get_agent, list_agents, orchestrator_id
 from ai.agents.office import on_orchestration_start
 from ai.agents.router import AgentRoute, _last_user_text, _score_agent, resolve_agent_route
-from ai.chat_runner import ChatCancelled, run_chat_loop
+from ai.core.chat.runner import ChatCancelled, run_chat_loop
 
 EmitFn = Callable[[dict[str, Any]], Any]
 ORCHESTRATE_MIN_SCORE = 2.5
@@ -110,7 +110,7 @@ async def run_chat_with_agents(
     "office": office,
   })
   try:
-    from ai.sync_hub import broadcast_office
+    from ai.core.sync.hub import broadcast_office
     await broadcast_office()
   except Exception:
     pass

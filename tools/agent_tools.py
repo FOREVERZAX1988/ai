@@ -41,7 +41,7 @@ from ai.tools.diagnostics_tools import (
 from ai.tools.rag_store import list_documents, remove_document, search_documents, upsert_document, reindex_all
 from ai.tools.write_pending import create_pending
 from ai.tools.scheduler import list_tasks, remove_task, upsert_task
-from ai.embedding import load_embedding_config
+from ai.core.llm.embedding import load_embedding_config
 # Tool metadata for Web UI (enabled + driving flags)
 TOOL_META: dict[str, dict[str, Any]] = {
   "get_vehicle_state": {"label": "车辆状态", "group": "read", "default_enabled": True, "driving": True},
@@ -1466,11 +1466,11 @@ def make_handlers(
     return save_adaptation_draft(**payload)
 
   async def h_cabana_explain_signal(args):
-    from ai.cabana import cabana_explain_signal_tool
+    from ai.services.cabana.app import cabana_explain_signal_tool
     return await cabana_explain_signal_tool(args)
 
   async def h_cabana_analyze(args):
-    from ai.cabana import cabana_analyze_tool
+    from ai.services.cabana.app import cabana_analyze_tool
     from ai.tools.fingerprint_lib import compare_fingerprint, extract_hex_ids_from_text, extract_observed_fingerprint
     question = args.get("question", "")
     frames = args.get("frames_text", "")

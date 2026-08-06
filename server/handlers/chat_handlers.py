@@ -146,7 +146,7 @@ async def api_chat_jobs(request: web.Request) -> web.Response:
   if request.method == "GET":
     session_id = str(request.query.get("sessionId", "") or "").strip()
     jobs = list_active_jobs(session_id or None)
-    from ai.command_queue import list_queued
+    from ai.core.chat.command_queue import list_queued
     return _json_response({"ok": True, "jobs": jobs, "queue": list_queued(session_id or None)})
 
   try:

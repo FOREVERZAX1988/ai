@@ -124,7 +124,7 @@ def run_post_install_learn(root: Path | None = None, *, write_workspace: bool = 
 
   if write_workspace:
     try:
-      from ai.workspace_store import ensure_default_workspace_files, write_workspace_file
+      from ai.core.workspace.store import ensure_default_workspace_files, write_workspace_file
 
       ensure_default_workspace_files()
       write_workspace_file("fork", _render_fork_profile_md(payload))

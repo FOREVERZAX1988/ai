@@ -635,7 +635,7 @@ def read_qlog_segment(
   if not wanted:
     wanted = {"can"}
 
-  from ai.cabana import _find_qlogs, _find_rlogs, _get_routes_dir, _pick_can_log_paths
+  from ai.services.cabana.app import _find_qlogs, _find_rlogs, _get_routes_dir, _pick_can_log_paths
 
   routes_dir = _get_routes_dir()
   if routes_dir is None:
@@ -773,7 +773,7 @@ def analyze_route_summary(route_name: str) -> dict[str, Any]:
   try:
     from pathlib import Path
 
-    from ai.cabana import _find_qlogs, _find_rlogs, _route_date_label
+    from ai.services.cabana.app import _find_qlogs, _find_rlogs, _route_date_label
 
     route_path = Path(base)
     qlogs = _find_qlogs(route_path)

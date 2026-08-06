@@ -11,7 +11,7 @@ from typing import Any
 
 import aiohttp
 
-from ai.client import DEFAULT_ENDPOINTS, _param_to_str
+from ai.core.llm.client import DEFAULT_ENDPOINTS, _param_to_str
 
 try:
   from ai.common.params import AI_OPTIONAL_BASE_URL_PROVIDERS
@@ -58,7 +58,7 @@ def load_embedding_config(params: Any, chat_config: Any | None = None) -> Embedd
   """Resolve primary embedding config from model hub (legacy params migrated on load)."""
   del chat_config
   from openpilot.common.params import Params
-  from ai.model_accounts import resolve_embedding_primary_config
+  from ai.core.llm.model_accounts import resolve_embedding_primary_config
 
   p = params if isinstance(params, Params) else Params()
   return resolve_embedding_primary_config(p)
@@ -66,7 +66,7 @@ def load_embedding_config(params: Any, chat_config: Any | None = None) -> Embedd
 
 def load_embedding_config_chain(params: Any) -> list[EmbeddingConfig]:
   from openpilot.common.params import Params
-  from ai.model_accounts import resolve_embedding_chain
+  from ai.core.llm.model_accounts import resolve_embedding_chain
 
   p = params if isinstance(params, Params) else Params()
   return resolve_embedding_chain(p)
@@ -126,7 +126,7 @@ async def embed_texts(
           return None, f"Expected {len(texts)} embeddings, got {len(vectors)}"
         usage = normalize_embedding_usage(body.get("usage") if isinstance(body, dict) else None)
         if params is not None and usage:
-          from ai.usage_log import record_embedding_usage
+          from ai.core.llm.usage import record_embedding_usage
 
           record_embedding_usage(
             params,

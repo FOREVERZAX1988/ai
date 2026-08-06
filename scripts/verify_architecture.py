@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verify architecture packages and compatibility shims import cleanly."""
+"""Verify architecture packages import cleanly (no root shims)."""
 
 from __future__ import annotations
 
@@ -16,20 +16,21 @@ MODULES = [
   "ai.core.sync.hub",
   "ai.core.sync.protocol",
   "ai.core.workspace.persona",
+  "ai.core.workspace.store",
   "ai.services.cabana",
+  "ai.services.cabana.replay",
   "ai.services.cabana.qlog_finder",
   "ai.services.tsk",
+  "ai.services.panda",
+  "ai.services.rag",
   "ai.infra.auth.web",
+  "ai.infra.timezone",
   "ai.tools.registry",
   "ai.tools.executor",
   "ai.tools.domains.core.diagnostics_tools",
+  "ai.tools.domains.tune.presets",
+  "ai.tools.domains.vehicle.adaptation",
   "ai.integration.fork",
-  # shims
-  "ai.client",
-  "ai.chat_runner",
-  "ai.sync_hub",
-  "ai.cabana",
-  "ai.model_accounts",
 ]
 
 HANDLERS = [
@@ -37,6 +38,8 @@ HANDLERS = [
   "ai.server.handlers.config_handlers",
   "ai.server.handlers.api",
 ]
+
+ROOT_PY = ["aid.py", "__init__.py"]
 
 
 def main() -> int:
@@ -48,6 +51,13 @@ def main() -> int:
     except Exception as e:
       print(f"FAIL {name}: {e}")
       failed.append(name)
+
+  root_files = sorted(p.name for p in ROOT.glob("*.py"))
+  extra = [f for f in root_files if f not in ROOT_PY]
+  if extra:
+    print(f"\nunexpected root py files: {extra}")
+    failed.extend(extra)
+
   if failed:
     print(f"\n{len(failed)} failed")
     return 1

@@ -723,8 +723,8 @@ class TestExtensionTools(unittest.TestCase):
       self.assertTrue(res.get("ok"))
 
   def test_model_router_auto(self):
-    from ai.model_router import resolve_chat_config
-    from ai.client import AIConfig
+    from ai.core.llm.model_router import resolve_chat_config
+    from ai.core.llm.client import AIConfig
     base = AIConfig(provider="openai", model="gpt-test", api_key="k")
     class _P:
       def get(self, key):

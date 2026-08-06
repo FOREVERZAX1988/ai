@@ -8,7 +8,7 @@ from typing import Any
 
 from openpilot.common.params import Params
 
-from ai.client import AIConfig
+from ai.core.llm.client import AIConfig
 from ai.server.deps import read_ai_config
 from ai.common.evolution_config import (
   evolution_auto_propose,

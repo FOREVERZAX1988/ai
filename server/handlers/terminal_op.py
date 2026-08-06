@@ -10,7 +10,7 @@ from aiohttp import web
 from openpilot.common.swaglog import cloudlog
 
 from ai.agents.orchestrator import run_chat_with_agents
-from ai.chat_runner import ChatCancelled
+from ai.core.chat.runner import ChatCancelled
 from ai.server.deps import get_state_reader, get_tool_handlers, json_response, params, read_ai_config, sse
 from ai.server.handlers.api import _prepare_chat_run, _parse_chat_body
 
