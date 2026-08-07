@@ -173,6 +173,15 @@ def notifications_path() -> Path:
   return workspace_path("ai_notifications.json", mkdir=True)
 
 
+def assistant_workspace_dir(*, mkdir: bool = True) -> Path:
+  """User-editable workspace markdown under ``<ai>/workspace/`` (gitignored)."""
+  from ai.common.repo_targets import assistant_repo_path
+  path = assistant_repo_path() / "workspace"
+  if mkdir:
+    path.mkdir(parents=True, exist_ok=True)
+  return path
+
+
 def ai_config_path() -> Path:
   from ai.common.config_store import ai_config_path as _path
   return _path()
