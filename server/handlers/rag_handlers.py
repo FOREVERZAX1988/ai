@@ -13,7 +13,8 @@ async def api_rag(request: web.Request) -> web.Response:
     q = request.query.get("q", "")
     if q:
       return _json_response(await search_documents(_PARAMS, q, embed_config=embed_cfg))
-    return _json_response(list_documents(_PARAMS))
+    compact = request.query.get("compact") in ("1", "true", "yes")
+    return _json_response(list_documents(_PARAMS, compact=compact))
   try:
     body = await request.json()
   except json.JSONDecodeError:

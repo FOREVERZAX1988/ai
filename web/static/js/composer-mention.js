@@ -196,7 +196,7 @@ const ComposerMention = (() => {
       'GET',
       `/api/ai/files/search?q=${encodeURIComponent(query || '')}&limit=20`,
       null,
-      { timeoutMs: 60000 },
+      { timeoutMs: 12000 },
     );
     if (!data?.ok || status >= 400) {
       throw new Error(data?.error || 'file search failed');

@@ -13,7 +13,7 @@ from openpilot.common.params import Params
 from ai.common.storage import read_param, write_param
 
 from ai.common.rag_config import rag_limits, rag_max_docs, rag_max_total_chars, rag_search_limit
-from ai.tools.domains.core.rag_vectors import chunk_count, remove_doc_chunks, replace_doc_chunks, search_vector_chunks
+from ai.tools.domains.core.rag_vectors import chunk_count, doc_chunk_counts, remove_doc_chunks, replace_doc_chunks, search_vector_chunks, vector_index_meta
 
 _RAG_KEY = "ai_rag_documents"
 _MAX_DOC_CHARS = 24000
@@ -104,25 +104,44 @@ def upsert_document_sync(
   return {"ok": True, "document": {"id": did, "title": title}}
 
 
-def list_documents(params: Params | None = None) -> dict[str, Any]:
+def list_documents(params: Params | None = None, *, compact: bool = False) -> dict[str, Any]:
   params = params or Params()
   docs = _load_docs(params)
+  meta = vector_index_meta()
+  by_doc = meta.get("by_doc") or {}
+  if not isinstance(by_doc, dict):
+    by_doc = {}
+  total_chunks = int(meta.get("chunk_count") or 0)
+  if compact:
+    embedded = sum(1 for d in docs if int(by_doc.get(str(d.get("id") or ""), 0)) > 0)
+    return {
+      "ok": True,
+      "compact": True,
+      "documents": [],
+      "count": len(docs),
+      "embedded_docs": embedded,
+      "vector_chunks": total_chunks,
+      "limits": rag_limits(),
+    }
+  items = []
+  for d in docs:
+    did = str(d.get("id") or "")
+    actual_chunks = int(by_doc.get(did, 0))
+    items.append({
+      "id": d.get("id"),
+      "title": d.get("title"),
+      "tags": d.get("tags", []),
+      "chars": len(d.get("text", "")),
+      "at": d.get("at"),
+      "embedded": actual_chunks > 0,
+      "chunks": actual_chunks,
+    })
   return {
     "ok": True,
-    "documents": [
-      {
-        "id": d.get("id"),
-        "title": d.get("title"),
-        "tags": d.get("tags", []),
-        "chars": len(d.get("text", "")),
-        "at": d.get("at"),
-        "embedded": bool(d.get("embedded")),
-        "chunks": d.get("chunk_count", 0),
-      }
-      for d in docs
-    ],
+    "documents": items,
     "count": len(docs),
-    "vector_chunks": chunk_count(),
+    "embedded_docs": sum(1 for x in items if x["embedded"]),
+    "vector_chunks": total_chunks,
     "limits": rag_limits(),
   }
 
@@ -323,11 +342,13 @@ async def reindex_all(
   import asyncio
 
   from ai.common.rag_config import rag_max_chunks
-  from ai.tools.domains.core.rag_vectors import clear_all_chunks, write_all_chunks
+  from ai.tools.domains.core.rag_vectors import chunk_count, write_all_chunks
 
   cap = rag_max_chunks()
-  clear_all_chunks()
   docs = _load_docs(params)
+  for doc in docs:
+    doc["embedded"] = False
+    doc["chunk_count"] = 0
   ok_n = 0
   errors: list[str] = []
   all_rows: list[dict[str, Any]] = []
@@ -352,13 +373,24 @@ async def reindex_all(
           all_rows = all_rows[:cap]
     else:
       errors.append(f"{doc.get('id')}: {res.get('error', '?')}")
+      doc["embedded"] = False
+      doc["chunk_count"] = 0
     if on_progress:
       try:
         on_progress(i + 1, total, ok_n)
       except Exception:
         pass
     await asyncio.sleep(0)
+  if not all_rows:
+    return {
+      "ok": False,
+      "indexed": ok_n,
+      "total": total,
+      "errors": errors[:5] or ["no vectors produced"],
+      "vector_chunks": chunk_count(),
+    }
   write_all_chunks(all_rows)
+  vector_index_meta(rebuild=True)
   _save_docs(params, docs)
   return {"ok": True, "indexed": ok_n, "total": total, "errors": errors[:5], "vector_chunks": len(all_rows)}
 
