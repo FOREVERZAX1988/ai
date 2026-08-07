@@ -225,7 +225,7 @@ function getSessionMessages(sessionId) {
 
 function updateComposerSendBtn() {
   const sessionId = SessionStore.activeId;
-  const streaming = isSessionJobRunning(sessionId);
+  const streaming = isSessionStreaming(sessionId);
   if (!els.sendBtn) return;
   let label = t('send', 'Send');
   if (streaming) label = t('stop', 'Stop');
@@ -651,7 +651,10 @@ function getCurrentMessages() {
 }
 
 function sessionsForSync() {
-  return SessionStore.listWithContent();
+  return SessionStore.listWithContent().map((s) => {
+    const { activeJobId: _drop, ...rest } = s;
+    return rest;
+  });
 }
 
 function saveCurrentMessages(messages) {
@@ -1407,8 +1410,11 @@ function renderSessionList() {
   }
   for (const s of sessions) {
     const li = document.createElement('li');
-    const streaming = isSessionJobRunning(s.id);
-    if (streaming && typeof ChatJobs !== 'undefined') ChatJobs.scheduleStaleJobSweep(s.id);
+    const streaming = isSessionStreaming(s.id);
+    if (!streaming && isSessionJobRunning(s.id) && typeof ChatJobs !== 'undefined') {
+      ChatJobs.scheduleStaleJobSweep(s.id);
+      ChatJobs.scheduleSweepAllPendingJobs?.();
+    }
     li.className = `session-item${s.id === activeId ? ' active' : ''}${streaming ? ' streaming' : ''}`;
     if (streaming) {
       li.setAttribute('aria-busy', 'true');
@@ -7992,7 +7998,7 @@ async function init() {
       providerLabel: providerDisplayName,
       t,
       scheduleSessionSync,
-      isSessionStreaming: isSessionJobRunning,
+      isSessionStreaming: isSessionStreaming,
       onRouteChange: () => {
         refreshModelBadgeForSession();
         refreshContextMeter();
@@ -8017,7 +8023,7 @@ async function init() {
       fmtTokenNum,
       t,
       tf,
-      isBusy: () => isSessionJobRunning(SessionStore.activeId),
+      isBusy: () => isSessionStreaming(SessionStore.activeId),
       onCompact: () => { runManualCompact().catch(() => {}); },
     });
   }

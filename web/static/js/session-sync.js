@@ -49,6 +49,22 @@ const SessionSync = (() => {
     return score;
   }
 
+  function sessionCreatedAt(s) {
+    if (!s) return 0;
+    const explicit = Number(s.createdAt);
+    if (Number.isFinite(explicit) && explicit > 0) return explicit;
+    const m = /^s_([a-z0-9]+)_/i.exec(String(s.id || ''));
+    if (m) {
+      const parsed = parseInt(m[1], 36);
+      if (Number.isFinite(parsed) && parsed > 1e11) return parsed;
+    }
+    return Number(s.updatedAt) || 0;
+  }
+
+  function sortSessionsByCreated(sessions) {
+    return [...sessions].sort((a, b) => sessionCreatedAt(b) - sessionCreatedAt(a));
+  }
+
   function pickSessionMessages(a, b) {
     const aMsgs = Array.isArray(a.messages) ? a.messages : [];
     const bMsgs = Array.isArray(b.messages) ? b.messages : [];
@@ -73,21 +89,26 @@ const SessionSync = (() => {
 
   function mergeSessionRecords(remoteSessions, localSessions, sessionHasContent, opts = {}) {
     if (opts.remoteAuthoritative && remoteSessions.length) {
-      return remoteSessions
+      const normalized = remoteSessions
         .filter((s) => sessionHasContent(s))
-        .map((s) => ({
-          ...s,
-          mode: s.mode || 'chat',
-          messages: Array.isArray(s.messages) ? s.messages : [],
-          updatedAt: Number(s.updatedAt) || 0,
-        }))
-        .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+        .map((s) => {
+          const { activeJobId: _drop, ...rest } = s;
+          return {
+            ...rest,
+            mode: s.mode || 'chat',
+            messages: Array.isArray(s.messages) ? s.messages : [],
+            createdAt: sessionCreatedAt(s),
+            updatedAt: Number(s.updatedAt) || 0,
+          };
+        });
+      return sortSessionsByCreated(normalized);
     }
     const byId = new Map();
     const normalize = (s) => ({
       ...s,
       mode: s.mode || 'chat',
       messages: Array.isArray(s.messages) ? s.messages : [],
+      createdAt: sessionCreatedAt(s),
       updatedAt: Number(s.updatedAt) || 0,
     });
 
@@ -116,15 +137,15 @@ const SessionSync = (() => {
         { messages: ls.messages, updatedAt: ls.updatedAt || 0 },
         { messages: prev.messages, updatedAt: prev.updatedAt || 0 },
       );
-      const newer = preferLocalMeta ? ls : prev;
 
       byId.set(ls.id, {
         ...prev,
         mode: prev.mode || ls.mode || 'chat',
         messages,
         title: preferLocalMeta && ls.title ? ls.title : (prev.title || ls.title),
+        createdAt: sessionCreatedAt(preferLocalMeta ? ls : prev),
         updatedAt: Math.max(ls.updatedAt || 0, prev.updatedAt || 0),
-        activeJobId: newer.activeJobId || prev.activeJobId || ls.activeJobId || null,
+        activeJobId: ls.activeJobId || null,
         chatRoute: preferLocalMeta ? (ls.chatRoute || prev.chatRoute) : (prev.chatRoute || ls.chatRoute),
         chatRoutePins: preferLocalMeta
           ? (ls.chatRoutePins || prev.chatRoutePins)
@@ -132,7 +153,7 @@ const SessionSync = (() => {
       });
     }
 
-    return [...byId.values()].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+    return sortSessionsByCreated([...byId.values()]);
   }
 
   function shouldSkipRemoteMerge(ctx) {

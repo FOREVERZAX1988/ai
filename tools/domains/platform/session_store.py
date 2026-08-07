@@ -96,14 +96,39 @@ def _session_quick_has_content(session: dict[str, Any]) -> bool:
   return _session_has_content(session)
 
 
+def _session_created_at(session: dict[str, Any]) -> int:
+  created = session.get("createdAt")
+  if created is not None:
+    try:
+      val = int(created)
+      if val > 0:
+        return val
+    except (TypeError, ValueError):
+      pass
+  sid = str(session.get("id") or "")
+  if sid.startswith("s_"):
+    parts = sid.split("_", 2)
+    if len(parts) >= 2:
+      try:
+        val = int(parts[1], 36)
+        if val > 10**11:
+          return val
+      except ValueError:
+        pass
+  try:
+    return int(session.get("updatedAt") or 0)
+  except (TypeError, ValueError):
+    return 0
+
+
 def _session_compact(session: dict[str, Any]) -> dict[str, Any]:
   msgs = session.get("messages") or []
   return {
     "id": session.get("id"),
     "title": session.get("title"),
+    "createdAt": session.get("createdAt") or _session_created_at(session),
     "updatedAt": session.get("updatedAt"),
     "mode": session.get("mode"),
-    "activeJobId": session.get("activeJobId"),
     "messageCount": len(msgs),
     "hasContent": True,
     "messages": [],
@@ -174,11 +199,16 @@ def save_sessions(params: Params, payload: dict[str, Any]) -> dict[str, Any]:
         updated_at = int(updated_at) if updated_at is not None else int(time.time())
       except (TypeError, ValueError):
         updated_at = int(time.time())
-      entry = {**s, "messages": msgs, "updatedAt": updated_at}
+      created_at = s.get("createdAt")
+      try:
+        created_at = int(created_at) if created_at is not None else _session_created_at(s)
+      except (TypeError, ValueError):
+        created_at = _session_created_at(s)
+      entry = {k: v for k, v in {**s, "messages": msgs, "updatedAt": updated_at, "createdAt": created_at}.items() if k != "activeJobId"}
       if not _session_has_content(entry):
         continue
       trimmed.append(entry)
-    trimmed.sort(key=lambda x: x.get("updatedAt") or 0, reverse=True)
+    trimmed.sort(key=_session_created_at, reverse=True)
     active_id = payload.get("activeId")
     if active_id and not any(s.get("id") == active_id for s in trimmed):
       active_id = trimmed[0].get("id") if trimmed else None

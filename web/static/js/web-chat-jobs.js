@@ -11,6 +11,7 @@ const ChatJobs = (() => {
       document.__opChatVisibilityBound = true;
       document.addEventListener('visibilitychange', () => {
         if (document.visibilityState !== 'visible') return;
+        scheduleSweepAllPendingJobs();
         for (const ctx of contexts.values()) {
           if (!ctx?.ui?.content || !ctx.assistantMessage?.content) continue;
           if (!ctx.isVisible?.()) continue;
@@ -58,6 +59,41 @@ const ChatJobs = (() => {
   }
 
   const staleJobSweepTimers = new Map();
+  let sweepAllPendingTimer = null;
+
+  function purgeSessionCtxs(sessionId, jobId) {
+    if (!sessionId && !jobId) return;
+    for (const [key, ctx] of [...contexts.entries()]) {
+      const match = (sessionId && ctx.sessionId === sessionId)
+        || (jobId && key === jobId)
+        || (sessionId && key === `pending:${sessionId}`);
+      if (!match) continue;
+      ctx.cancelled = true;
+      clearCtxPoll(ctx);
+      if (ctx.mdRenderTimer) {
+        clearTimeout(ctx.mdRenderTimer);
+        ctx.mdRenderTimer = null;
+      }
+      contexts.delete(key);
+    }
+  }
+
+  function scheduleSweepAllPendingJobs() {
+    if (sweepAllPendingTimer) return;
+    sweepAllPendingTimer = setTimeout(async () => {
+      sweepAllPendingTimer = null;
+      const sessions = deps.SessionStore?.listWithContent?.() || deps.SessionStore?.list?.() || [];
+      for (const s of sessions) {
+        const sid = s.id;
+        if (!sid) continue;
+        if (hasActiveCtx(sid)) continue;
+        if (!deps.SessionStore?.getActiveJobId(sid)) continue;
+        await verifySessionJobId(sid);
+      }
+      deps.renderSessionList?.();
+      deps.updateComposerSendBtn?.();
+    }, 80);
+  }
 
   function scheduleStaleJobSweep(sessionId) {
     if (!sessionId || hasActiveCtx(sessionId)) return;
@@ -98,7 +134,10 @@ const ChatJobs = (() => {
       }
       return false;
     } catch {
-      return Boolean(deps.SessionStore?.getActiveJobId(sessionId));
+      deps.SessionStore?.clearActiveJobId(sessionId);
+      deps.renderSessionList?.();
+      deps.updateComposerSendBtn?.();
+      return false;
     }
   }
 
@@ -355,18 +394,19 @@ const ChatJobs = (() => {
   }
 
   async function finalizeCtx(jobId, sessionId, ctx, status, payload = {}) {
-    contexts.delete(jobId);
-    clearCtxPoll(ctx);
-
-    const visible = typeof ctx.isVisible === 'function' ? ctx.isVisible() : false;
-    if (visible && ctx.ui) {
-      flushMarkdownRender(ctx.ui, ctx.assistantMessage?.content || '', ctx);
-      deps.clearLiveStreamChrome?.(ctx.ui);
+    const visible = ctx && typeof ctx.isVisible === 'function' ? ctx.isVisible() : false;
+    if (ctx) {
+      contexts.delete(jobId);
+      clearCtxPoll(ctx);
+      if (visible && ctx.ui) {
+        flushMarkdownRender(ctx.ui, ctx.assistantMessage?.content || '', ctx);
+        deps.clearLiveStreamChrome?.(ctx.ui);
+      }
     }
 
     const assistant = deps.normalizeStoredMessage({
       role: 'assistant',
-      ...(payload.assistant || ctx.assistantMessage),
+      ...(payload.assistant || ctx?.assistantMessage || {}),
     });
     if (payload.resolvedModel) assistant.resolvedModel = payload.resolvedModel;
 
@@ -375,7 +415,7 @@ const ChatJobs = (() => {
     }
 
     if (status === 'cancelled') {
-      if (visible && ctx.ui?.wrapper?.isConnected && !deps.assistantMessageHasContent?.(assistant)) {
+      if (visible && ctx?.ui?.wrapper?.isConnected && !deps.assistantMessageHasContent?.(assistant)) {
         ctx.ui.wrapper.remove();
       } else if (deps.assistantMessageHasContent?.(assistant)) {
         deps.commitAssistantMessage?.(sessionId, assistant);
@@ -383,7 +423,7 @@ const ChatJobs = (() => {
     } else if (status === 'done' || status === 'error') {
       const hasContent = deps.assistantMessageHasContent?.(assistant) || status === 'error';
       if (hasContent) {
-        if (visible) {
+        if (visible && ctx?.ui) {
           deps.finishAssistant?.(ctx.ui, assistant, sessionId);
         } else {
           deps.commitAssistantMessage?.(sessionId, assistant);
@@ -392,6 +432,7 @@ const ChatJobs = (() => {
     }
 
     deps.SessionStore?.clearActiveJobId(sessionId);
+    purgeSessionCtxs(sessionId, jobId);
     if (visible && deps.SessionStore?.activeId === sessionId) {
       deps.setAbortController?.(null);
       deps.endChatStream?.(sessionId);
@@ -430,6 +471,7 @@ const ChatJobs = (() => {
       }
     }
     deps.SessionStore?.clearActiveJobId(sessionId);
+    purgeSessionCtxs(sessionId, jobId);
     if (deps.SessionStore?.activeId === sessionId) {
       deps.endChatStream?.(sessionId);
       deps.updateComposerSendBtn?.();
@@ -905,6 +947,7 @@ const ChatJobs = (() => {
         await applyTerminalJobState(jobId, sessionId, null, data.status, data);
       }
     }
+    deps.renderSessionList?.();
     deps.updateComposerSendBtn?.();
   }
 
@@ -934,6 +977,7 @@ const ChatJobs = (() => {
     syncActiveSession,
     verifySessionJobId,
     scheduleStaleJobSweep,
+    scheduleSweepAllPendingJobs,
     handleSyncWsEvent,
     abortActive,
     abortSession,
