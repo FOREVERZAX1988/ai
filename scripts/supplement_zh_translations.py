@@ -3,26 +3,26 @@
 from pathlib import Path
 import re
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[2] / "openpilot"
 TRANSLATIONS = ROOT / "selfdrive/ui/translations"
 
 # Simplified Chinese translations (msgid -> msgstr)
 ZH_CHS = {
-  "Firehose": "洪流",
-  "Firehose Mode": "洪流模式",
-  "🔥 Firehose Mode 🔥": "🔥 洪流模式 🔥",
+  "Firehose": "数据洪流",
+  "Firehose Mode": "Firehose 模式",
+  "🔥 Firehose Mode 🔥": "🔥 Firehose 模式 🔥",
   "sunnypilot learns to drive by watching humans, like you, drive.\n\nFirehose Mode allows you to maximize your training data uploads to improve openpilot's driving models. More data means bigger models, which means better Experimental Mode.":
-    "openpilot 通过观察像您这样的真人驾驶来学习驾驶。\n\n"
-    "洪流模式可最大化训练数据上传，以改进 openpilot 驾驶模型。数据越多，模型越大，实验模式效果越好。",
+    "sunnypilot 通过观察像你这样的真人驾驶来学习开车。\n\n"
+    "Firehose 模式可最大化训练数据上传，改进 openpilot 驾驶模型。数据越多，模型越大，实验模式越好。",
   "For maximum effectiveness, bring your device inside and connect to a good USB-C adapter and Wi-Fi weekly.\n\nFirehose Mode can also work while you're driving if connected to a hotspot or unlimited SIM card.\n\n\nFrequently Asked Questions\n\nDoes it matter how or where I drive? Nope, just drive as you normally would.\n\nDo all of my segments get pulled in Firehose Mode? No, we selectively pull a subset of your segments.\n\nWhat's a good USB-C adapter? Any fast phone or laptop charger should be fine.\n\nDoes it matter which software I run? Yes, only upstream openpilot (and particular forks) are able to be used for training.":
-    "为获得最佳效果，请每周将设备带回室内，并连接优质 USB-C 充电器与 Wi-Fi。\n\n"
-    "若连接热点或不限流量 SIM 卡，驾驶时也可使用洪流模式。\n\n\n"
+    "为获得最佳效果，建议每周把设备带回家，接上 USB-C 充电器和 Wi-Fi。\n\n"
+    "连接热点或不限流量 SIM 卡时，开车也能用 Firehose 模式。\n\n\n"
     "常见问题\n\n"
-    "驾驶方式或地点重要吗？不重要，正常驾驶即可。\n\n"
-    "洪流模式会拉取我的全部片段吗？不会，我们只会选择性拉取部分片段。\n\n"
-    "什么样的 USB-C 充电器合适？任何快充手机或笔记本充电器均可。\n\n"
-    "使用什么软件重要吗？是的，仅上游 openpilot（及特定分支）可用于训练。",
-  "Do all of my segments get pulled in Firehose Mode?": "洪流模式会拉取我的全部片段吗？",
+    "怎么开、在哪开重要吗？不重要，正常开就行。\n\n"
+    "Firehose 模式会上传全部片段吗？不会，只会抽取部分片段。\n\n"
+    "USB-C 充电器怎么选？手机或笔记本快充头都可以。\n\n"
+    "用什么软件重要吗？重要，只有上游 openpilot（及指定分支）可用于训练。",
+  "Do all of my segments get pulled in Firehose Mode?": "Firehose 模式会上传全部片段吗？",
   "Toggle visibility of advanced openpilot controls.<br>This only changes the visibility of the toggles; it does not change the actual enabled/disabled state.":
     "切换高级 openpilot 控制项的显示。<br>仅改变开关可见性，不会改变实际启用/禁用状态。",
   "Show Advanced Controls": "显示高级控制项",
@@ -56,6 +56,23 @@ ZH_CHS = {
     "使用转向灯时设置延迟计时器以延迟自动变道。设置计时器后无需轻推方向盘即可变道，默认为轻推。<br>请谨慎使用，仅在交通和路况允许时使用转向灯。",
   "Toggle to enable a delay timer for seamless lane changes when blind spot monitoring (BSM) detects a obstructing vehicle, ensuring safe maneuvering.":
     "当盲点监测 (BSM) 检测到障碍车辆时启用延迟计时器，以确保安全变道。",
+  "Block Lane Change: Road Edge Detection": "阻止变道：路沿检测",
+  "Blocks the lane change if the model sees a road edge on your signaled side.":
+    "若模型在转向灯一侧检测到道路边缘，将阻止变道。",
+  "Enable Accel Controller": "启用加减速控制",
+  "Begin slowing early and smoothly behind lead vehicles. Stock longitudinal control retains braking and stopping authority.":
+    "跟车时更早、更平顺地减速。原车纵向控制仍保留制动和停车权限。",
+  "Acceleration Profile": "加速风格",
+  "Eco slows earliest and recovers gently, Normal balances comfort and response, and Sport reacts and recovers more quickly.":
+    "节能最早减速、恢复更柔和；标准兼顾舒适和响应；运动反应更快。",
+  "Eco": "节能",
+  "Normal": "标准",
+  "Sport": "运动",
+  "enable accel controller": "启用加减速控制",
+  "acceleration profile": "加速风格",
+  "eco": "节能",
+  "normal": "标准",
+  "sport": "运动",
   "Apply a custom timeout for settings UI.<br>This is the time after which settings UI closes automatically if user is not interacting with the screen.":
     "为设置界面设置自定义超时。<br>用户无操作后，设置界面将自动关闭。",
   "Experimental feature to enable stop and go for Subaru Global models with manual handbrake. Models with electric parking brake should keep this disabled. Thanks to martinl for this implementation!":
@@ -108,6 +125,53 @@ ZH_CHS = {
   "lateral": "横向",
   "This alert will be cleared when new maps are downloaded.":
     "下载新地图后此警报将清除。",
+  # Tesla MADS
+  "MADS Screen Activation": "MADS 屏幕激活",
+  "3-Finger": "三指",
+  "4-Finger": "四指",
+  "5-Finger": "五指",
+  "Use a multi-finger press on the infotainment screen to toggle MADS.": "在车机屏幕多指按压可切换 MADS。",
+  "This allows the use of full MADS functionality when enabled.": "开启后可使用完整 MADS 功能。",
+  "Selecting a higher finger count may reduce accidental activations.": "提高手指数量，可减少误触发。",
+  "Note: Setting this to Off will reset your MADS settings to default.": "注意：设为关闭会重置 MADS 为默认设置。",
+  'Enable "Always Offroad" in Device panel, or turn vehicle off to change.': "请在设备面板启用“始终非行车”，或熄火后再更改。",
+  # Models
+  "Adjust Camera Offset": "调整摄像头偏移",
+  "Virtually shift camera's perspective to move model's center to Left(+ values) or Right (- values)":
+    "虚拟调整摄像头视角，正值向左、负值向右移动模型中心。",
+  # Firehose FAQ (individual strings for mici)
+  "Frequently Asked Questions": "常见问题",
+  "Does it matter how or where I drive?": "怎么开、在哪开重要吗？",
+  "Nope, just drive as you normally would.": "不重要，正常开就行。",
+  "Do all of my segments get pulled in Firehose Mode?": "Firehose 模式会上传全部片段吗？",
+  "No, we selectively pull a subset of your segments.": "不会，只会抽取部分片段。",
+  "What's a good USB-C adapter?": "USB-C 充电器怎么选？",
+  "Any fast phone or laptop charger should be fine.": "手机或笔记本快充头都可以。",
+  "Does it matter which software I run?": "用什么软件重要吗？",
+  "Yes, only upstream openpilot (and particular forks) are able to be used for training.":
+    "重要，只有上游 openpilot（及指定分支）可用于训练。",
+  "{} segment of your driving is in the training dataset so far.": "目前已有 {} 个您的驾驶片段被纳入训练数据集。",
+  "{} segments of your driving is in the training dataset so far.": "目前已有 {} 个您的驾驶片段被纳入训练数据集。",
+  "MPH": "MPH",
+  # MICI personality / distraction
+  "aggressive": "激进",
+  "standard": "标准",
+  "relaxed": "从容",
+  "distraction detection level": "分心检测灵敏度",
+  "strict": "严格",
+  "moderate": "适中",
+  "lenient": "宽松",
+  "firehose": "Firehose",
+  "Distraction Detection Level": "分心检测灵敏度",
+  # Units and network labels
+  "ETH": "ETH",
+  "km/h": "km/h",
+  "mph": "mph",
+  "OSM": "OSM",
+  "comma prime": "comma prime",
+  "SCC-M": "SCC-M",
+  "SCC-V": "SCC-V",
+  "{} s": "{} s",
 }
 
 # Traditional Chinese - convert key terms
@@ -158,6 +222,63 @@ ZH_CHT.update({
     "偵測到上次駕駛中 %1 過度操控。請聯絡 https://comma.ai/support 支援並提供設備 Dongle ID 以進行故障排除。",
   "<b>Unsupported branch detected</b> - The current version of <b><u>%1</u></b> branch is no longer supported on the comma three. Please go to <b>[Device > Software]</b> and install a supported branch with <b><u>-tici</u></b> in the branch name for the comma three.":
     "<b>偵測到不受支援的分支</b> - 當前 <b><u>%1</u></b> 分支版本已不再支援 comma three。請前往 <b>[設備 > 軟體]</b> 安裝分支名稱包含 <b><u>-tici</u></b> 的受支援分支。",
+  "Block Lane Change: Road Edge Detection": "阻止變道：路沿檢測",
+  "Blocks the lane change if the model sees a road edge on your signaled side.":
+    "若模型在轉向燈一側偵測到道路邊緣，將阻止變道。",
+  "Enable Accel Controller": "啟用加減速控制器",
+  "Begin slowing early and smoothly behind lead vehicles. Stock longitudinal control retains braking and stopping authority.":
+    "在跟隨前車時更早、更平順地開始減速。原車縱向控制仍保留制動和停車權限。",
+  "Acceleration Profile": "加速模式",
+  "Eco slows earliest and recovers gently, Normal balances comfort and response, and Sport reacts and recovers more quickly.":
+    "節能模式最早開始減速且恢復更柔和，標準模式在舒適與響應之間取得平衡，運動模式反應和恢復更快。",
+  "Eco": "節能",
+  "Normal": "標準",
+  "Sport": "運動",
+  "enable accel controller": "啟用加減速控制器",
+  "acceleration profile": "加速模式",
+  "eco": "節能",
+  "normal": "標準",
+  "sport": "運動",
+  "MADS Screen Activation": "MADS 螢幕啟用",
+  "3-Finger": "三指",
+  "4-Finger": "四指",
+  "5-Finger": "五指",
+  "Use a multi-finger press on the infotainment screen to toggle MADS.": "在車機螢幕上多指按壓以切換 MADS。",
+  "This allows the use of full MADS functionality when enabled.": "啟用後可使用完整的 MADS 功能。",
+  "Selecting a higher finger count may reduce accidental activations.": "提高手指數量，可減少誤觸發。",
+  "Note: Setting this to Off will reset your MADS settings to default.": "注意：設為關閉將把 MADS 設定重置為預設值。",
+  'Enable "Always Offroad" in Device panel, or turn vehicle off to change.': "請在裝置面板啟用「始終離路」，或熄火後再更改。",
+  "Adjust Camera Offset": "調整攝影機偏移",
+  "Virtually shift camera's perspective to move model's center to Left(+ values) or Right (- values)":
+    "虛擬移動攝影機視角，將模型中心向左（正值）或向右（負值）偏移。",
+  "Frequently Asked Questions": "常見問題",
+  "Does it matter how or where I drive?": "駕駛方式或地點重要嗎？",
+  "Nope, just drive as you normally would.": "不重要，正常駕駛即可。",
+  "Do all of my segments get pulled in Firehose Mode?": "洪流模式會拉取我的全部片段嗎？",
+  "No, we selectively pull a subset of your segments.": "不會，我們只會選擇性拉取部分片段。",
+  "What's a good USB-C adapter?": "什麼樣的 USB-C 充電器合適？",
+  "Any fast phone or laptop charger should be fine.": "任何快充手機或筆記型電腦充電器均可。",
+  "Does it matter which software I run?": "使用什麼軟體重要嗎？",
+  "Yes, only upstream openpilot (and particular forks) are able to be used for training.":
+    "是的，僅上游 openpilot（及特定分支）可用於訓練。",
+  "{} segment of your driving is in the training dataset so far.": "目前已有 {} 段行駛資料進入訓練資料集。",
+  "{} segments of your driving is in the training dataset so far.": "目前已有 {} 段行駛資料進入訓練資料集。",
+  "MPH": "英里/時",
+  "aggressive": "激進",
+  "standard": "標準",
+  "relaxed": "悠閒",
+  "distraction detection level": "分心偵測級別",
+  "strict": "嚴格",
+  "moderate": "適中",
+  "lenient": "寬鬆",
+  "ETH": "乙太網路",
+  "km/h": "公里/時",
+  "mph": "英里/時",
+  "OSM": "開放街圖",
+  "comma prime": "Comma Prime",
+  "SCC-M": "智慧巡航-M",
+  "SCC-V": "智慧巡航-V",
+  "{} s": "{} 秒",
 })
 
 
