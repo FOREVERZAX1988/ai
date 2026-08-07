@@ -17,7 +17,7 @@ from ai.mcp.host import MCP_SERVERS_KEY, _load_servers as _load_mcp
 from ai.tools.domains.core.memory_store import NOTES_KEY, PROFILE_KEY, get_memory
 from ai.tools.domains.platform.session_store import SESSIONS_KEY, get_sessions
 from ai.tools.domains.platform.skill_learning import LEARNED_KEY, _load as _load_learned
-from ai.core.workspace.store import _FILE_MAP, list_workspace_files, read_workspace_file, write_workspace_file
+from ai.core.wspace.store import _FILE_MAP, list_workspace_files, read_workspace_file, write_workspace_file
 
 BUNDLE_VERSION = 2
 OPBAK_SUFFIX = ".opbak"

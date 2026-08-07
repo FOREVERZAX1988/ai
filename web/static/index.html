@@ -192,6 +192,9 @@
                     </div>
                     <div class="composer-context-bar" id="composerContextBar"></div>
                     <div class="composer-context-list" id="composerContextList"></div>
+                    <div class="composer-context-panel-actions">
+                      <button type="button" class="btn secondary composer-context-compact-btn" id="composerContextCompactBtn" data-i18n="contextCompactBtn">压缩上下文</button>
+                    </div>
                     <div class="composer-context-panel-footer hidden" id="composerContextPanelFooter"></div>
                   </div>
                 </div>
@@ -496,6 +499,13 @@
               <h3 class="settings-card-title" id="knowledgeIndexTitle">索引与检索</h3>
               <button type="button" id="settingsKnowledgeBtn" class="btn ghost small">管理文档</button>
             </header>
+            <div class="settings-card-body">
+              <label class="field field-inline">
+                <span class="field-label" id="ragSearchLimitLabel">工具检索默认条数</span>
+                <input type="number" id="ragSearchLimitInput" min="1" max="50" step="1" value="20">
+              </label>
+              <p class="field-hint" id="ragSearchLimitHint">AI 通过 search_knowledge_base 工具自行检索；此为未指定 limit 时的默认值（最大 50）</p>
+            </div>
             <div class="settings-card-body" id="ragStatusBox">
               <div class="dev-skeleton dev-skeleton-line"></div>
             </div>
@@ -1430,7 +1440,7 @@
   <script src="/static/js/app/globals.js?v=20260807b"></script>
   <script src="/static/js/app/dom.js?v=20260806c"></script>
   <script src="/static/js/session-search.js?v=20260806j"></script>
-  <script src="/static/js/composer-context-meter.js?v=20260806i"></script>
+  <script src="/static/js/composer-context-meter.js?v=20260807a"></script>
   <script src="/static/js/composer-mention.js?v=20260806t"></script>
   <script src="/static/js/message-feedback.js?v=20260806q"></script>
   <script src="/static/js/web-chat-jobs.js?v=20260806m"></script>

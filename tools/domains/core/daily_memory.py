@@ -8,7 +8,7 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-from ai.core.workspace.store import workspace_dir
+from ai.core.wspace.store import workspace_dir
 
 _MEMORY_SUBDIR = "memory"
 _INDEX_NAME = "INDEX.md"

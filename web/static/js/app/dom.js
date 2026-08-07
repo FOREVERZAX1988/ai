@@ -83,6 +83,7 @@ const AppDom = (() => {
     evolutionGepaEnabledToggle: $('#evolutionGepaEnabledToggle'),
     evolutionUseDspyToggle: $('#evolutionUseDspyToggle'),
     skillsDisclosureMaxInput: $('#skillsDisclosureMaxInput'),
+    ragSearchLimitInput: $('#ragSearchLimitInput'),
     evolutionCandidatesInput: $('#evolutionCandidatesInput'),
     thinkingToggle: $('#thinkingToggle'),
     langSelect: $('#langSelect'),

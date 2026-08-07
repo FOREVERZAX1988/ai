@@ -51,7 +51,7 @@ async def _startup_rag_seed_and_reindex() -> None:
 
     wiki = await loop.run_in_executor(
       None,
-      lambda: ingest_wikis_for_current_fork(_PARAMS, max_files_per_repo=35, force=False),
+      lambda: ingest_wikis_for_current_fork(_PARAMS, max_files_per_repo=0, force=False),
     )
     if wiki.get("indexed"):
       cloudlog.info(
@@ -149,7 +149,7 @@ def create_app() -> web.Application:
     application["scheduler_task"] = asyncio.create_task(scheduler_loop(application))
     application["status_watch_task"] = asyncio.create_task(status_watch_loop(application))
     try:
-      from ai.core.workspace.store import ensure_default_workspace_files
+      from ai.core.wspace.store import ensure_default_workspace_files
       ensure_default_workspace_files()
     except Exception as e:
       cloudlog.warning(f"aid: workspace seed skipped: {e}")

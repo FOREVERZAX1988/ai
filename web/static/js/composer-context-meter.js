@@ -22,7 +22,7 @@ const ComposerContextMeter = (() => {
     { id: 'skills', color: '#6ba4f5', labelKey: 'contextCatSkills', fallback: 'Skills' },
   ];
 
-  const RAG_HIT_LIMIT = 3;
+  const RAG_HIT_LIMIT = 8;
   const RAG_SNIPPET_CHARS = 800;
   const MEMORY_NOTES_TOKENS = 420;
   const DAILY_MEMORY_TOKENS = 620;
@@ -44,6 +44,7 @@ const ComposerContextMeter = (() => {
   let barEl = null;
   let listEl = null;
   let footerEl = null;
+  let compactBtn = null;
   let refreshTimer = null;
   let panelOpen = false;
 
@@ -176,22 +177,14 @@ const ComposerContextMeter = (() => {
     return Boolean(hub?.accounts?.length || config.provider || config.model);
   }
 
-  function estimateKnowledgeTokens(ragStats, messages) {
-    const stats = ragStats || {};
-    const docCount = Number(stats.count) || 0;
-    const chunks = Number(stats.vector_chunks) || 0;
-    if (docCount <= 0 && chunks <= 0) return 0;
+  function ragHitLimit() {
+    const config = deps.getConfig?.() || {};
+    const n = Number(config.ragSearchLimit);
+    return Number.isFinite(n) && n > 0 ? n : RAG_HIT_LIMIT;
+  }
 
-    const totalChars = Number(stats.totalChars) || 0;
-    const avgChunkChars = chunks > 0
-      ? Math.min(RAG_SNIPPET_CHARS, Math.max(240, Math.round(totalChars / Math.max(chunks, 1))))
-      : Math.min(RAG_SNIPPET_CHARS, Math.max(240, Math.round(totalChars / Math.max(docCount, 1))));
-
-    let tokens = estimateMessageTokens('# Knowledge base excerpts\n');
-    tokens += RAG_HIT_LIMIT * estimateMessageTokens('x'.repeat(avgChunkChars));
-    tokens += 24 * RAG_HIT_LIMIT;
-
-    return tokens;
+  function estimateKnowledgeTokens(_ragStats, _messages) {
+    return 0;
   }
 
   function estimateEmbeddingContextTokens(config, messages, ragStats) {
@@ -298,6 +291,14 @@ const ComposerContextMeter = (() => {
     ) || `Embedding API total: ${fmtTokens(total)}`;
   }
 
+  function updateCompactBtn() {
+    if (!compactBtn) return;
+    const busy = typeof deps.isBusy === 'function' ? !!deps.isBusy() : false;
+    compactBtn.disabled = busy;
+    compactBtn.textContent = label('contextCompactBtn', 'Compact context');
+    compactBtn.title = label('contextCompactHint', 'Same as /compact — summarize older turns into memory');
+  }
+
   function renderPanel(state) {
     if (!panel || !barEl || !listEl) return;
     const { used, window, pct, breakdown } = state;
@@ -349,6 +350,7 @@ const ComposerContextMeter = (() => {
       footerEl.textContent = parts.join(' · ');
       footerEl.classList.toggle('hidden', !parts.length);
     }
+    updateCompactBtn();
   }
 
   function render() {
@@ -399,6 +401,13 @@ const ComposerContextMeter = (() => {
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape' && panelOpen) setPanelOpen(false);
     });
+    compactBtn?.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (compactBtn.disabled) return;
+      setPanelOpen(false);
+      deps.onCompact?.();
+    });
   }
 
   function mount(selector, options = {}) {
@@ -415,6 +424,7 @@ const ComposerContextMeter = (() => {
     barEl = root.querySelector('.composer-context-bar');
     listEl = root.querySelector('.composer-context-list');
     footerEl = root.querySelector('.composer-context-panel-footer');
+    compactBtn = root.querySelector('.composer-context-compact-btn');
     bindEvents();
     render();
   }

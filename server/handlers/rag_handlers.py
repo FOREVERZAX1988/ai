@@ -7,9 +7,9 @@ async def api_rag(request: web.Request) -> web.Response:
   embed_cfg = load_embedding_config(_PARAMS, config)
   if request.method == "GET":
     if request.query.get("job") or request.query.get("operation") == "job_status":
-      from ai.tools.rag_jobs import job_status
+      from ai.tools.rag_jobs import job_poll_view
 
-      return _json_response(job_status())
+      return _json_response(job_poll_view())
     q = request.query.get("q", "")
     if q:
       return _json_response(await search_documents(_PARAMS, q, embed_config=embed_cfg))
@@ -34,7 +34,7 @@ async def api_rag(request: web.Request) -> web.Response:
             wiki_options={
               "force": bool(body.get("force")),
               "all_registered": bool(body.get("all_registered")),
-              "max_files_per_repo": int(body.get("max_files_per_repo", 35) or 35),
+              "max_files_per_repo": int(body.get("max_files_per_repo", 0) or 0),
             },
             chain_reindex=bool(body.get("chain_reindex", True)),
           )

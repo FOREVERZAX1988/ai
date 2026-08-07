@@ -21,7 +21,7 @@ class TestShellSafety(unittest.TestCase):
 
 class TestWorkspace(unittest.TestCase):
   def test_default_files_and_prompt(self):
-    from ai.core.workspace.store import ensure_default_workspace_files, workspace_prompt_blocks
+    from ai.core.wspace.store import ensure_default_workspace_files, workspace_prompt_blocks
 
     ensure_default_workspace_files()
     blocks = workspace_prompt_blocks()

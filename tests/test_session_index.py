@@ -47,6 +47,22 @@ class SessionIndexTests(unittest.TestCase):
       self.assertTrue(hits)
       self.assertEqual(hits[0].get("sessionId"), "sess_test_1")
 
+  def test_search_handles_apostrophe(self):
+    _require_openpilot()
+    import tempfile
+    import ai.tools.session_index as mod
+    from ai.tools.session_index import index_session, search_sessions
 
-if __name__ == "__main__":
+    with tempfile.TemporaryDirectory() as td:
+      db_path = Path(td) / "session_index.db"
+      mod.SESSIONS_DB = db_path
+      mod._DB = None
+      index_session({
+        "id": "sess_quote",
+        "title": "it's fine",
+        "messages": [{"role": "user", "content": "driver's camera issue"}],
+      })
+      res = search_sessions("it's")
+      self.assertTrue(res.get("ok"))
+      self.assertIsInstance(res.get("hits"), list)
   unittest.main()

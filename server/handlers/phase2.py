@@ -78,7 +78,7 @@ async def api_canvas(request: web.Request) -> web.Response:
 
 async def api_workspace(request: web.Request) -> web.Response:
   from ai.server.deps import json_response
-  from ai.core.workspace.store import list_workspace_files, read_workspace_file
+  from ai.core.wspace.store import list_workspace_files, read_workspace_file
 
   key = str(request.query.get("key") or "").strip()
   if key:
@@ -92,7 +92,7 @@ async def api_workspace(request: web.Request) -> web.Response:
 
 async def api_workspace_write(request: web.Request) -> web.Response:
   from ai.server.deps import json_response
-  from ai.core.workspace.store import write_workspace_file
+  from ai.core.wspace.store import write_workspace_file
 
   try:
     body = await request.json()

@@ -47,7 +47,7 @@ def fork_context_prompt_block(root: Path | None = None) -> str | None:
 
   fork_md = ""
   try:
-    from ai.core.workspace.store import read_workspace_file
+    from ai.core.wspace.store import read_workspace_file
 
     fork_md = read_workspace_file("fork").strip()
   except Exception:

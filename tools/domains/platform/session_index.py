@@ -125,23 +125,39 @@ def rebuild_from_params(params: Params | None = None) -> dict[str, Any]:
   return {"ok": True, "sessions": len(data.get("sessions") or []), "messagesIndexed": total}
 
 
+def _sanitize_fts_query(query: str) -> str:
+  """Turn free text into a safe FTS5 MATCH expression (no bare quotes/operators)."""
+  import re
+
+  tokens = re.findall(r"[\w\u4e00-\u9fff]+", query, flags=re.UNICODE)
+  if not tokens:
+    return ""
+  return " OR ".join(f"{tok}*" for tok in tokens[:16])
+
+
 def search_sessions(query: str, *, limit: int = 8) -> dict[str, Any]:
   q = (query or "").strip()
   if not q:
     return {"ok": True, "hits": []}
-  with _LOCK:
-    conn = _conn()
-    rows = conn.execute(
-      """
-      SELECT m.session_id, m.session_title, m.role, snippet(messages_fts, 3, '…', '…', 12, 64) AS snip, m.ts
-      FROM messages_fts f
-      JOIN messages m ON m.id = f.rowid
-      WHERE messages_fts MATCH ?
-      ORDER BY rank
-      LIMIT ?
-      """,
-      (q, limit),
-    ).fetchall()
+  match = _sanitize_fts_query(q)
+  if not match:
+    return {"ok": True, "query": q, "hits": []}
+  try:
+    with _LOCK:
+      conn = _conn()
+      rows = conn.execute(
+        """
+        SELECT m.session_id, m.session_title, m.role, snippet(messages_fts, 3, '…', '…', 12, 64) AS snip, m.ts
+        FROM messages_fts f
+        JOIN messages m ON m.id = f.rowid
+        WHERE messages_fts MATCH ?
+        ORDER BY rank
+        LIMIT ?
+        """,
+        (match, limit),
+      ).fetchall()
+  except sqlite3.OperationalError as e:
+    return {"ok": False, "query": q, "error": str(e), "hits": []}
   hits = [
     {
       "sessionId": r[0],

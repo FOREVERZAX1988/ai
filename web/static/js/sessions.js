@@ -165,8 +165,20 @@ const SessionStore = (() => {
     return (text || '历史对话').slice(0, 40);
   }
 
+  function sessionCreatedAt(s) {
+    if (!s) return 0;
+    const explicit = Number(s.createdAt);
+    if (Number.isFinite(explicit) && explicit > 0) return explicit;
+    const m = /^s_([a-z0-9]+)_/i.exec(String(s.id || ''));
+    if (m) {
+      const parsed = parseInt(m[1], 36);
+      if (Number.isFinite(parsed) && parsed > 1e11) return parsed;
+    }
+    return Number(s.updatedAt) || 0;
+  }
+
   function list() {
-    return [...sessions].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+    return [...sessions].sort((a, b) => sessionCreatedAt(b) - sessionCreatedAt(a));
   }
 
   function listWithContent() {
@@ -189,12 +201,14 @@ const SessionStore = (() => {
 
   function createSession(title) {
     const id = uid();
+    const now = Date.now();
     const session = {
       id,
       title: (title || '新对话').slice(0, 60),
       messages: [],
       mode: 'chat',
-      updatedAt: Date.now(),
+      createdAt: now,
+      updatedAt: now,
     };
     const initialRoute = draftChatRoute || resolveDefaultChatRoute();
     if (initialRoute) {
@@ -294,10 +308,14 @@ const SessionStore = (() => {
   function importMerged(nextSessions, nextActiveId) {
     const cleaned = (Array.isArray(nextSessions) ? nextSessions : [])
       .filter(sessionHasContent)
-      .map((s) => ({
-        ...s,
-        messages: dedupeTrailingAssistants(s.messages),
-      }))
+      .map((s) => {
+        const { activeJobId: _drop, ...rest } = s;
+        return {
+          ...rest,
+          createdAt: sessionCreatedAt(s),
+          messages: dedupeTrailingAssistants(s.messages),
+        };
+      })
       .slice(0, MAX_SESSIONS);
     sessions = cleaned;
     if (nextActiveId && sessions.some((s) => s.id === nextActiveId)) {
@@ -330,6 +348,7 @@ const SessionStore = (() => {
     importMerged,
     patchSession,
     sessionHasContent,
+    sessionCreatedAt,
     getById,
     getChatRoute,
     setChatRoute,

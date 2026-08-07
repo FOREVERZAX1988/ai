@@ -27,9 +27,9 @@ MOVES: list[tuple[str, str]] = [
   ("sync_hub.py", "core/sync/hub.py"),
   ("sync_protocol.py", "core/sync/protocol.py"),
   ("device_trust.py", "core/sync/device_trust.py"),
-  # core/workspace
-  ("workspace_store.py", "core/workspace/store.py"),
-  ("persona.py", "core/workspace/persona.py"),
+  # core/wspace (code); user markdown data in ai/workspace/
+  ("workspace_store.py", "core/wspace/store.py"),
+  ("persona.py", "core/wspace/persona.py"),
   # core/runtime
   ("heartbeat.py", "core/runtime/heartbeat.py"),
   ("evolution_pipeline.py", "core/runtime/evolution_pipeline.py"),
@@ -66,8 +66,8 @@ MODULE_MAP = {
   "sync_hub.py": "ai.core.sync.hub",
   "sync_protocol.py": "ai.core.sync.protocol",
   "device_trust.py": "ai.core.sync.device_trust",
-  "workspace_store.py": "ai.core.workspace.store",
-  "persona.py": "ai.core.workspace.persona",
+  "workspace_store.py": "ai.core.wspace.store",
+  "persona.py": "ai.core.wspace.persona",
   "heartbeat.py": "ai.core.runtime.heartbeat",
   "evolution_pipeline.py": "ai.core.runtime.evolution_pipeline",
   "sidecar_hub.py": "ai.core.runtime.sidecar_hub",
@@ -107,7 +107,7 @@ def move_and_shim(old_name: str, new_rel: str) -> None:
 
 def main() -> None:
   for pkg in [
-    "core", "core/llm", "core/chat", "core/sync", "core/workspace", "core/runtime",
+    "core", "core/llm", "core/chat", "core/sync", "core/wspace", "core/runtime",
     "infra", "infra/auth", "infra/config", "infra/safety", "infra/paths", "infra/hardware",
     "services", "services/cabana", "services/tsk", "services/panda", "services/rag",
     "integration",

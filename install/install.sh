@@ -137,6 +137,17 @@ run_integrate() {
 }
 run_integrate
 
+seed_workspace() {
+  local py=python3
+  command -v "$py" >/dev/null 2>&1 || py=python
+  echo ""
+  echo ">>> 初始化 op助手 workspace（ai/workspace/）"
+  OPENPILOT_ROOT="$ROOT" PYTHONPATH="$ROOT:$TARGET" "$py" -c \
+    "from ai.core.wspace.store import ensure_default_workspace_files; ensure_default_workspace_files(); print('workspace ready:', __import__('ai.core.wspace.store', fromlist=['workspace_dir']).workspace_dir())" \
+    || echo "警告: workspace 初始化失败，首次启动 aid 时会重试。" >&2
+}
+seed_workspace
+
 OP_BIN="$TARGET/scripts/op"
 if [[ -x "$OP_BIN" ]] || [[ -f "$OP_BIN" ]]; then
   chmod +x "$OP_BIN" 2>/dev/null || true

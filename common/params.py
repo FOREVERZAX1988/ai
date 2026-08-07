@@ -17,6 +17,7 @@ AI_PROVIDERS = [
   "openrouter",
   "openai",
   "kimi",
+  "siliconflow",
   "custom",
 ]
 
@@ -31,6 +32,7 @@ AI_PROVIDER_LABELS = {
   "openrouter": "OpenRouter",
   "openai": "OpenAI",
   "kimi": "Kimi (Moonshot)",
+  "siliconflow": "硅基流动 SiliconFlow",
   "custom": "Custom",
 }
 
@@ -49,6 +51,7 @@ AI_DEFAULT_MODELS = {
   "openrouter": "openai/gpt-4o-mini",
   "openai": "gpt-4o-mini",
   "kimi": "moonshot-v1-8k",
+  "siliconflow": "deepseek-ai/DeepSeek-V3",
   "custom": "",
 }
 
@@ -138,6 +141,13 @@ AI_PROVIDER_MODEL_CATALOG = {
     "kimi-k2.7",
     "kimi-k2.7-code",
     "kimi-k3",
+  ],
+  "siliconflow": [
+    "deepseek-ai/DeepSeek-V3",
+    "Qwen/Qwen2.5-7B-Instruct",
+    "BAAI/bge-m3",
+    "Qwen/Qwen3-Embedding-8B",
+    "Qwen/Qwen2-VL-Embedding",
   ],
   "custom": [],
 }
@@ -441,6 +451,36 @@ ITEMS = [
     "flags": "PERSISTENT",
     "param_type": "STRING",
     "default": "",
+  },
+  {
+    "key": "ai_rag_max_docs",
+    "flags": "PERSISTENT",
+    "param_type": "STRING",
+    "default": "20000",
+  },
+  {
+    "key": "ai_rag_max_chunks",
+    "flags": "PERSISTENT",
+    "param_type": "STRING",
+    "default": "100000",
+  },
+  {
+    "key": "ai_rag_max_total_chars",
+    "flags": "PERSISTENT",
+    "param_type": "STRING",
+    "default": "50000000",
+  },
+  {
+    "key": "ai_rag_search_limit",
+    "flags": "PERSISTENT",
+    "param_type": "STRING",
+    "default": "20",
+  },
+  {
+    "key": "ai_wiki_max_files_per_repo",
+    "flags": "PERSISTENT",
+    "param_type": "STRING",
+    "default": "0",
   },
   {
     "key": "ai_embedding_mode",

@@ -623,6 +623,7 @@ html, body {
   border: 1px solid var(--border);
   background: var(--surface-2, rgba(127, 127, 127, 0.08));
   font-size: 0.78rem;
+  pointer-events: auto;
 }
 
 .composer-file-chip-name {
@@ -2158,6 +2159,23 @@ html, body {
   font-size: 0.72rem;
   line-height: 1.35;
   color: var(--text-muted);
+}
+
+.composer-context-panel-actions {
+  margin-top: 0.55rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+}
+
+.composer-context-compact-btn {
+  width: 100%;
+  font-size: 0.76rem;
+  padding: 0.38rem 0.55rem;
+}
+
+.composer-context-compact-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 .composer-context-panel-footer.hidden {
@@ -5480,6 +5498,43 @@ body.session-search-modal-open {
 .model-hub-status {
   margin: 0;
   font-size: 0.78rem;
+}
+
+.model-hub-status.pending {
+  color: var(--text-secondary);
+}
+
+.model-hub-status.pending::before {
+  content: '';
+  display: inline-block;
+  width: 0.75rem;
+  height: 0.75rem;
+  margin-right: 0.4rem;
+  vertical-align: -0.1em;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: tsk-spin 0.75s linear infinite;
+}
+
+.model-hub-account-modal.is-busy .modal-content,
+.model-hub-route-modal.is-busy .modal-content {
+  pointer-events: none;
+  opacity: 0.92;
+}
+
+.model-hub.is-saving {
+  position: relative;
+  pointer-events: none;
+  opacity: 0.88;
+}
+
+.model-hub.is-saving::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: color-mix(in srgb, var(--bg) 40%, transparent);
+  pointer-events: none;
 }
 
 .model-hub-status.ok {

@@ -4,7 +4,7 @@ import os
 from itertools import chain
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[2] / "openpilot"
 TRANSLATIONS = ROOT / "selfdrive/ui/translations"
 SYSTEM_UI_DIR = ROOT / "system/ui"
 UI_DIR = ROOT / "selfdrive/ui"

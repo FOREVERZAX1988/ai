@@ -6,6 +6,7 @@ import unittest
 from unittest.mock import patch
 
 from ai.tools.issue_template_lib import (
+  _parse_github_issue_yaml,
   get_builtin_template,
   list_builtin_templates,
   render_issue_body,
@@ -25,6 +26,11 @@ class TestIssueTemplates(unittest.TestCase):
     body = render_issue_body(tpl, {"description": "Something broke", "repro": "1. click"})
     self.assertIn("Something broke", body)
     self.assertIn("Steps to reproduce", body)
+
+  def test_shim_exports_private_parser(self):
+    parsed = _parse_github_issue_yaml("name: Test\n", "bug.yml")
+    self.assertIsNotNone(parsed)
+    self.assertEqual(parsed.get("name"), "Test")
 
 
 class TestIssueTarget(unittest.TestCase):

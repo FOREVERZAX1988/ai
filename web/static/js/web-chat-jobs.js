@@ -11,6 +11,7 @@ const ChatJobs = (() => {
       document.__opChatVisibilityBound = true;
       document.addEventListener('visibilitychange', () => {
         if (document.visibilityState !== 'visible') return;
+        scheduleSweepAllPendingJobs();
         for (const ctx of contexts.values()) {
           if (!ctx?.ui?.content || !ctx.assistantMessage?.content) continue;
           if (!ctx.isVisible?.()) continue;
@@ -33,12 +34,111 @@ const ChatJobs = (() => {
     if (sessionId && id) deps.SessionStore?.setActiveJobId(sessionId, id);
   }
 
-  function isSessionRunning(sessionId) {
+  function hasActiveCtx(sessionId) {
     if (!sessionId) return false;
     for (const ctx of contexts.values()) {
       if (ctx.sessionId === sessionId && !ctx.cancelled) return true;
     }
+    return false;
+  }
+
+  /** Live stream in memory — used to lock composer re-render during token streaming. */
+  function isSessionStreaming(sessionId) {
+    return hasActiveCtx(sessionId);
+  }
+
+  /** Sidebar / stop button — job id or live ctx (may be stale until verified). */
+  function isSessionJobPending(sessionId) {
+    if (!sessionId) return false;
+    if (hasActiveCtx(sessionId)) return true;
     return Boolean(deps.SessionStore?.getActiveJobId(sessionId));
+  }
+
+  function isSessionRunning(sessionId) {
+    return isSessionJobPending(sessionId);
+  }
+
+  const staleJobSweepTimers = new Map();
+  let sweepAllPendingTimer = null;
+
+  function purgeSessionCtxs(sessionId, jobId) {
+    if (!sessionId && !jobId) return;
+    for (const [key, ctx] of [...contexts.entries()]) {
+      const match = (sessionId && ctx.sessionId === sessionId)
+        || (jobId && key === jobId)
+        || (sessionId && key === `pending:${sessionId}`);
+      if (!match) continue;
+      ctx.cancelled = true;
+      clearCtxPoll(ctx);
+      if (ctx.mdRenderTimer) {
+        clearTimeout(ctx.mdRenderTimer);
+        ctx.mdRenderTimer = null;
+      }
+      contexts.delete(key);
+    }
+  }
+
+  function scheduleSweepAllPendingJobs() {
+    if (sweepAllPendingTimer) return;
+    sweepAllPendingTimer = setTimeout(async () => {
+      sweepAllPendingTimer = null;
+      const sessions = deps.SessionStore?.listWithContent?.() || deps.SessionStore?.list?.() || [];
+      for (const s of sessions) {
+        const sid = s.id;
+        if (!sid) continue;
+        if (hasActiveCtx(sid)) continue;
+        if (!deps.SessionStore?.getActiveJobId(sid)) continue;
+        await verifySessionJobId(sid);
+      }
+      deps.renderSessionList?.();
+      deps.updateComposerSendBtn?.();
+    }, 80);
+  }
+
+  function scheduleStaleJobSweep(sessionId) {
+    if (!sessionId || hasActiveCtx(sessionId)) return;
+    const jobId = deps.SessionStore?.getActiveJobId(sessionId);
+    if (!jobId) return;
+    if (staleJobSweepTimers.has(sessionId)) return;
+    staleJobSweepTimers.set(sessionId, setTimeout(() => {
+      staleJobSweepTimers.delete(sessionId);
+      verifySessionJobId(sessionId).catch(() => {});
+    }, 60));
+  }
+
+  async function verifySessionJobId(sessionId) {
+    if (!sessionId) return false;
+    if (hasActiveCtx(sessionId)) return true;
+    const jobId = deps.SessionStore?.getActiveJobId(sessionId);
+    if (!jobId) return false;
+
+    try {
+      const { data } = await deps.api('GET', `/api/ai/chat/jobs/${encodeURIComponent(jobId)}?since=0`);
+      if (!data?.ok) {
+        deps.SessionStore?.clearActiveJobId(sessionId);
+        deps.renderSessionList?.();
+        deps.updateComposerSendBtn?.();
+        return false;
+      }
+      if (data.status === 'running') return true;
+
+      if (['done', 'error', 'cancelled'].includes(data.status)) {
+        await applyTerminalJobState(jobId, sessionId, findCtx(jobId, sessionId), data.status, data);
+      } else {
+        deps.SessionStore?.clearActiveJobId(sessionId);
+      }
+      deps.renderSessionList?.();
+      deps.updateComposerSendBtn?.();
+      if (deps.SessionStore?.activeId === sessionId) {
+        deps.renderStoredMessages?.({ force: true });
+      }
+      return false;
+    } catch {
+      deps.SessionStore?.clearActiveJobId(sessionId);
+      deps.renderSessionList?.();
+      deps.updateComposerSendBtn?.();
+      return false;
+    }
   }
 
   function findCtx(jobId, sessionId) {
@@ -294,18 +394,19 @@ const ChatJobs = (() => {
   }
 
   async function finalizeCtx(jobId, sessionId, ctx, status, payload = {}) {
-    contexts.delete(jobId);
-    clearCtxPoll(ctx);
-
-    const visible = typeof ctx.isVisible === 'function' ? ctx.isVisible() : false;
-    if (visible && ctx.ui) {
-      flushMarkdownRender(ctx.ui, ctx.assistantMessage?.content || '', ctx);
-      deps.clearLiveStreamChrome?.(ctx.ui);
+    const visible = ctx && typeof ctx.isVisible === 'function' ? ctx.isVisible() : false;
+    if (ctx) {
+      contexts.delete(jobId);
+      clearCtxPoll(ctx);
+      if (visible && ctx.ui) {
+        flushMarkdownRender(ctx.ui, ctx.assistantMessage?.content || '', ctx);
+        deps.clearLiveStreamChrome?.(ctx.ui);
+      }
     }
 
     const assistant = deps.normalizeStoredMessage({
       role: 'assistant',
-      ...(payload.assistant || ctx.assistantMessage),
+      ...(payload.assistant || ctx?.assistantMessage || {}),
     });
     if (payload.resolvedModel) assistant.resolvedModel = payload.resolvedModel;
 
@@ -314,7 +415,7 @@ const ChatJobs = (() => {
     }
 
     if (status === 'cancelled') {
-      if (visible && ctx.ui?.wrapper?.isConnected && !deps.assistantMessageHasContent?.(assistant)) {
+      if (visible && ctx?.ui?.wrapper?.isConnected && !deps.assistantMessageHasContent?.(assistant)) {
         ctx.ui.wrapper.remove();
       } else if (deps.assistantMessageHasContent?.(assistant)) {
         deps.commitAssistantMessage?.(sessionId, assistant);
@@ -322,7 +423,7 @@ const ChatJobs = (() => {
     } else if (status === 'done' || status === 'error') {
       const hasContent = deps.assistantMessageHasContent?.(assistant) || status === 'error';
       if (hasContent) {
-        if (visible) {
+        if (visible && ctx?.ui) {
           deps.finishAssistant?.(ctx.ui, assistant, sessionId);
         } else {
           deps.commitAssistantMessage?.(sessionId, assistant);
@@ -331,6 +432,7 @@ const ChatJobs = (() => {
     }
 
     deps.SessionStore?.clearActiveJobId(sessionId);
+    purgeSessionCtxs(sessionId, jobId);
     if (visible && deps.SessionStore?.activeId === sessionId) {
       deps.setAbortController?.(null);
       deps.endChatStream?.(sessionId);
@@ -369,6 +471,7 @@ const ChatJobs = (() => {
       }
     }
     deps.SessionStore?.clearActiveJobId(sessionId);
+    purgeSessionCtxs(sessionId, jobId);
     if (deps.SessionStore?.activeId === sessionId) {
       deps.endChatStream?.(sessionId);
       deps.updateComposerSendBtn?.();
@@ -662,11 +765,18 @@ const ChatJobs = (() => {
     const last = messages[messages.length - 1];
     let ui;
     let assistantMessage;
+    let skipEventReplay = false;
+    const serverAssistant = initialData?.assistant
+      ? deps.normalizeStoredMessage({ role: 'assistant', ...initialData.assistant })
+      : null;
 
     if (last?.role === 'assistant' && deps.assistantMessageHasContent?.(last)) {
       ui = deps.getLiveStreamUi?.() || deps.getLastAssistantUi?.() || deps.appendAssistantMessage();
-      assistantMessage = deps.normalizeStoredMessage({ ...last });
+      assistantMessage = serverAssistant && deps.assistantMessageHasContent?.(serverAssistant)
+        ? serverAssistant
+        : deps.normalizeStoredMessage({ ...last });
       deps.hydrateAssistantUi?.(ui, assistantMessage);
+      skipEventReplay = true;
     } else if (last?.role === 'user') {
       ui = deps.getLiveStreamUi?.() || deps.appendAssistantMessage();
       if (!deps.getLiveStreamUi?.()) deps.showAssistantLoading(ui);
@@ -702,7 +812,7 @@ const ChatJobs = (() => {
     deps.setAbortController?.({ cancelled: false });
     deps.updateComposerSendBtn?.();
 
-    const since = initialData?.nextSince || 0;
+    const replaySince = Number.isFinite(initialData?.nextSince) ? initialData.nextSince : 0;
     const streamCtx = {
       ui,
       assistantMessage,
@@ -713,15 +823,16 @@ const ChatJobs = (() => {
       contentStarted: Boolean(assistantMessage.content),
       rawContent: assistantMessage.content || '',
       displayedContentLen: (assistantMessage.content || '').length,
-      since,
-      lastSeq: since,
+      since: replaySince,
+      lastSeq: replaySince,
     };
 
-    if (initialData?.events?.length) {
+    if (!skipEventReplay && initialData?.events?.length) {
       for (const ev of initialData.events) {
         const seq = ev._seq || 0;
         if (seq <= streamCtx.lastSeq) continue;
         streamCtx.lastSeq = seq;
+        streamCtx.since = seq;
         await handleStreamEvent(ev, streamCtx);
       }
     }
@@ -752,7 +863,15 @@ const ChatJobs = (() => {
       return;
     }
 
-    const { data } = await deps.api('GET', `/api/ai/chat/jobs/${encodeURIComponent(jobId)}?since=0`);
+    const messages = deps.getSessionMessages?.(sessionId) || [];
+    const last = messages[messages.length - 1];
+    const sinceHint = (last?.role === 'assistant' && deps.assistantMessageHasContent?.(last))
+      ? Number.MAX_SAFE_INTEGER
+      : 0;
+    const { data } = await deps.api(
+      'GET',
+      `/api/ai/chat/jobs/${encodeURIComponent(jobId)}?since=${sinceHint}`,
+    );
     if (!data?.ok) {
       deps.SessionStore.clearActiveJobId(sessionId);
       deps.updateComposerSendBtn?.();
@@ -769,16 +888,18 @@ const ChatJobs = (() => {
         ...(data.assistant || {}),
       });
       if (data.resolvedModel) doneMsg.resolvedModel = data.resolvedModel;
-      deps.commitAssistantMessage?.(sessionId, doneMsg);
+      if (deps.assistantMessageHasContent?.(doneMsg)) {
+        deps.commitAssistantMessage?.(sessionId, doneMsg);
+      }
       deps.SessionStore.clearActiveJobId(sessionId);
-      deps.renderStoredMessages?.();
+      deps.renderStoredMessages?.({ force: true });
       deps.syncSessionsToDevice?.().catch(() => {});
       deps.updateComposerSendBtn?.();
       return;
     }
 
     if (data.status !== 'running') {
-      deps.SessionStore.clearActiveJobId(sessionId);
+      await applyTerminalJobState(jobId, sessionId, findCtx(jobId, sessionId), data.status, data);
       deps.updateComposerSendBtn?.();
       return;
     }
@@ -826,6 +947,7 @@ const ChatJobs = (() => {
         await applyTerminalJobState(jobId, sessionId, null, data.status, data);
       }
     }
+    deps.renderSessionList?.();
     deps.updateComposerSendBtn?.();
   }
 
@@ -853,10 +975,16 @@ const ChatJobs = (() => {
     stream,
     attach,
     syncActiveSession,
+    verifySessionJobId,
+    scheduleStaleJobSweep,
+    scheduleSweepAllPendingJobs,
     handleSyncWsEvent,
     abortActive,
     abortSession,
     isSessionRunning,
+    isSessionStreaming,
+    isSessionJobPending,
+    hasActiveCtx,
     findCtx,
     getActiveJobId,
     setActiveJobId,

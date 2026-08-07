@@ -20,8 +20,18 @@ AI_DIR = Path(__file__).resolve().parent.parent
 CACHE_DIR = AI_DIR / "data" / "wiki_cache"
 USER_AGENT = "op-assistant-wiki-ingest/1.0"
 MAX_CHUNK = 2000
-MAX_FILES_DEFAULT = 45
+MAX_FILES_DEFAULT = 0  # 0 = no per-source file cap (full wiki / repo)
 SKIP_PATH_PARTS = ("/node_modules/", "/.git/", "/images/", "/assets/", "/_book/")
+
+
+def _slice_by_max(items: list, max_files: int) -> list:
+  if max_files <= 0:
+    return items
+  return items[:max_files]
+
+
+def _list_limit(max_files: int) -> int:
+  return 999_999 if max_files <= 0 else max_files
 
 
 def _slug(text: str, *, max_len: int = 64) -> str:
@@ -139,12 +149,15 @@ def _mediawiki_query(base_url: str, params: dict[str, str]) -> dict[str, Any]:
 
 def _list_mediawiki_pages(base_url: str, *, limit: int = 80) -> list[str]:
   titles: list[str] = []
+  unlimited = limit <= 0
+  effective_limit = _list_limit(limit)
   apcontinue: str | None = None
-  while len(titles) < limit:
+  while unlimited or len(titles) < effective_limit:
+    page_size = 50 if unlimited else min(50, effective_limit - len(titles))
     params: dict[str, str] = {
       "action": "query",
       "list": "allpages",
-      "aplimit": str(min(50, limit - len(titles))),
+      "aplimit": str(page_size),
       "apnamespace": "0",
     }
     if apcontinue:
@@ -157,7 +170,7 @@ def _list_mediawiki_pages(base_url: str, *, limit: int = 80) -> list[str]:
     apcontinue = (data.get("continue") or {}).get("apcontinue")
     if not apcontinue:
       break
-  return titles[:limit]
+  return titles if unlimited else titles[:effective_limit]
 
 
 def _fetch_mediawiki_page(base_url: str, title: str) -> str:
@@ -347,12 +360,27 @@ def _list_repo_markdown(owner: str, repo: str, branch: str) -> tuple[str, list[s
   return tree_sha, sorted(paths)
 
 
-# Subset for runtime GitHub-wiki fetch (full set baked in wiki_rag_pages.py).
+# Fallback when GitHub wiki git tree is unavailable.
 _GITHUB_WIKI_PAGES: dict[str, list[str]] = {
   "commaai/openpilot": [
     "Home", "FAQ", "Troubleshooting", "SSH", "Tuning", "comma-three", "Installing-openpilot",
   ],
 }
+
+
+def _list_github_wiki_page_names(owner: str, repo: str) -> list[str]:
+  wiki_repo = f"{repo}.wiki"
+  branch = _repo_default_branch(owner, wiki_repo)
+  _tree_sha, paths = _list_repo_markdown(owner, wiki_repo, branch)
+  if paths:
+    names: list[str] = []
+    for path in paths:
+      if path.lower().endswith(".md"):
+        names.append(path[:-3])
+      else:
+        names.append(path)
+    return names
+  return list(_GITHUB_WIKI_PAGES.get(f"{owner}/{repo}", ["Home", "FAQ", "Troubleshooting"]))
 
 
 def _strip_markdown(md: str) -> str:
@@ -491,13 +519,13 @@ def ingest_wiki_source(
     topic_rows = _list_discourse_category_topics(
       base_url,
       category_id,
-      limit=max_files,
+      limit=_list_limit(max_files),
       doc_filter=doc_filter,
       doc_tags=doc_tags,
       max_posts=max_posts,
     )
     tree_sha = "-".join(
-      f"{t.get('id')}:{t.get('bumped_at')}" for t in topic_rows[:max_files]
+      f"{t.get('id')}:{t.get('bumped_at')}" for t in topic_rows[: _list_limit(max_files)]
     ) or f"discourse-{category_id}-empty"
     prev = _load_manifest(slug)
     if not force and prev.get("tree_sha") == tree_sha and prev.get("indexed", 0) > 0:
@@ -542,12 +570,12 @@ def ingest_wiki_source(
     branch = str(source.get("branch") or _repo_default_branch(owner, repo))
 
     if kind == "github_wiki":
-      pages = _GITHUB_WIKI_PAGES.get(f"{owner}/{repo}", ["Home", "FAQ", "Troubleshooting"])
+      pages = _list_github_wiki_page_names(owner, repo)
       tree_sha = f"wiki-pages-{len(pages)}"
       prev = _load_manifest(slug)
       if not force and prev.get("tree_sha") == tree_sha and prev.get("indexed", 0) > 0:
         return {"ok": True, "skipped": True, "reason": "unchanged", "slug": slug, "indexed": 0}
-      for page in pages[:max_files]:
+      for page in _slice_by_max(pages, max_files):
         status, raw = _http_get(f"https://raw.githubusercontent.com/wiki/{owner}/{repo}/{page}.md")
         if status != 200 or len(raw) < 80:
           continue
@@ -569,7 +597,7 @@ def ingest_wiki_source(
       prev = _load_manifest(slug)
       if not force and prev.get("tree_sha") == tree_sha and prev.get("indexed", 0) > 0:
         return {"ok": True, "skipped": True, "reason": "unchanged", "slug": slug, "tree_sha": tree_sha}
-      for path in paths[:max_files]:
+      for path in _slice_by_max(paths, max_files):
         if path.lower().endswith(".json"):
           raw = _fetch_repo_json(owner, repo, branch, path)
         else:

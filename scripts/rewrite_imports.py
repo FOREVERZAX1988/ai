@@ -16,7 +16,7 @@ REPLACEMENTS: list[tuple[str, str]] = [
   ("ai.content_sanitize", "ai.core.chat.sanitize"),
   ("ai.evolution_pipeline", "ai.core.runtime.evolution_pipeline"),
   ("ai.model_accounts", "ai.core.llm.model_accounts"),
-  ("ai.workspace_store", "ai.core.workspace.store"),
+  ("ai.workspace_store", "ai.core.wspace.store"),
   ("ai.command_queue", "ai.core.chat.command_queue"),
   ("ai.sync_protocol", "ai.core.sync.protocol"),
   ("ai.cabana", "ai.services.cabana.app"),
@@ -34,7 +34,7 @@ REPLACEMENTS: list[tuple[str, str]] = [
   ("ai.sync_hub", "ai.core.sync.hub"),
   ("ai.embedding", "ai.core.llm.embedding"),
   ("ai.web_auth", "ai.infra.auth.web"),
-  ("ai.persona", "ai.core.workspace.persona"),
+  ("ai.persona", "ai.core.wspace.persona"),
   ("ai.client", "ai.core.llm.client"),
 ]
 
