@@ -88,7 +88,7 @@ async def scheduler_execute_action(action: str, _payload: dict[str, Any]) -> str
       _PARAMS,
       embed_cfg,
       operation="wiki_ingest",
-      wiki_options={"max_files_per_repo": 35, "force": False, "all_registered": False},
+      wiki_options={"max_files_per_repo": 0, "force": False, "all_registered": False},
       chain_reindex=False,
     )
     return "wiki ingest started in background"

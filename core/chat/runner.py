@@ -10,7 +10,6 @@ from openpilot.common.params import Params
 
 from ai.core.llm.client import AIConfig, expand_messages_for_api
 from ai.core.chat.sanitize import strip_leaked_tool_calls
-from ai.core.llm.embedding import load_embedding_config
 from ai.core.llm.model_router import chat_completion_with_failover, resolve_chat_config
 from ai.skills.snapshot import get_skills_prompt
 from ai.core.chat.compaction import maybe_compact_messages
@@ -18,7 +17,6 @@ from ai.hooks.registry import run_hooks
 from ai.system.admin import is_admin_mode
 from ai.selfdrive.state import StateReader
 from ai.tools.memory_store import format_memory_prompt
-from ai.tools.rag_store import format_rag_prompt, search_documents
 from ai.tools.workflows import workflow_system_prompt
 from ai.tools.agent_tools import execute_tool_async
 from ai.core.llm.usage import record_usage
@@ -180,11 +178,11 @@ async def build_chat_messages(
   except Exception:
     pass
 
-  embed_cfg = load_embedding_config(params, config)
-  rag_res = await search_documents(params, last_user_text, limit=3, embed_config=embed_cfg)
-  rag_block = format_rag_prompt(params, query=last_user_text, limit=3, hits=rag_res.get("hits"))
-  if rag_block:
-    system_parts.append(rag_block)
+  system_parts.append(
+    "Knowledge base: do not assume prior doc context. When you need manuals, wiki, or saved notes, "
+    "call search_knowledge_base with your own query and limit (repeat with different queries if needed). "
+    "Use list_knowledge_docs to see what is indexed."
+  )
 
   system_parts.append(
     "Use available tools proactively to diagnose and complete the task without asking for step-by-step confirmation. "

@@ -1,6 +1,53 @@
 """API handlers — config."""
 
+from dataclasses import replace
+
 from ai.server.handlers._api_common import *  # noqa: F403
+
+
+def _body_account_id(body: dict[str, Any] | None) -> str:
+  if not body:
+    return ""
+  return str(body.get("accountId") or body.get("account_id") or "").strip()
+
+
+def _has_inline_hub_credentials(body: dict[str, Any] | None) -> bool:
+  if not body:
+    return False
+  provider = str(body.get("provider") or "").strip()
+  key = str(body.get("apiKey") or body.get("api_key") or "").strip()
+  return bool(provider and key and not key.startswith("•"))
+
+
+def _ensure_probe_model(config: AIConfig) -> AIConfig:
+  if (config.model or "").strip():
+    return config
+  model = AI_DEFAULT_MODELS.get(config.provider) or ""
+  if not model:
+    catalog = AI_PROVIDER_MODEL_CATALOG.get(config.provider) or []
+    model = catalog[0] if catalog else ""
+  if not model:
+    model = "gpt-4o-mini"
+  return replace(config, model=model)
+
+
+def _resolve_hub_account_config(
+  saved: AIConfig,
+  body: dict[str, Any] | None,
+) -> tuple[AIConfig | None, str]:
+  """Resolve model-hub test/fetch config; fall back to inline credentials if account id is stale."""
+  account_id = _body_account_id(body)
+  if account_id:
+    cfg = account_config_by_id(_PARAMS, account_id)
+    if cfg:
+      return _ensure_probe_model(cfg), account_id
+    if _has_inline_hub_credentials(body):
+      return _ensure_probe_model(merge_config_from_body(saved, body)), ""
+    return None, account_id
+  if body:
+    return _ensure_probe_model(merge_config_from_body(saved, body)), ""
+  return _ensure_probe_model(saved), ""
+
 
 async def api_bootstrap(request: web.Request) -> web.Response:
   """Single round-trip bootstrap: status + config + providers (faster page load)."""
@@ -57,6 +104,7 @@ async def api_providers(request: web.Request) -> web.Response:
 async def api_get_config(request: web.Request) -> web.Response:
   from ai.common.context_config import compaction_settings
   from ai.common.evolution_config import evolution_settings
+  from ai.common.rag_config import rag_settings
   from ai.core.llm.model_accounts import load_model_hub, route_context_window
   from ai.infra.timezone import read_ai_timezone_name
 
@@ -71,6 +119,7 @@ async def api_get_config(request: web.Request) -> web.Response:
     route_cw = 0
   ctx = compaction_settings(model=config.model, context_window=route_cw)
   evo = evolution_settings()
+  rag = rag_settings()
   return _json_response({
     "ok": True,
     "config": {
@@ -111,6 +160,10 @@ async def api_get_config(request: web.Request) -> web.Response:
       "evolutionGepaIterations": evo.get("gepaIterations"),
       "evolutionEvalCases": evo.get("evalCases"),
       "evolutionUseDspy": evo.get("useDspy"),
+      "ragSearchLimit": rag.get("ragSearchLimit"),
+      "ragMaxDocs": rag.get("ragMaxDocs"),
+      "ragMaxChunks": rag.get("ragMaxChunks"),
+      "wikiMaxFilesPerRepo": rag.get("wikiMaxFilesPerRepo"),
     },
   })
 
@@ -163,6 +216,10 @@ async def api_post_config(request: web.Request) -> web.Response:
     _put("ai_evolution_gepa_iterations", body.get("evolutionGepaIterations"))
     _put("ai_evolution_eval_cases", body.get("evolutionEvalCases"))
     _put("ai_evolution_use_dspy", body.get("evolutionUseDspy"))
+    _put("ai_rag_search_limit", body.get("ragSearchLimit"))
+    _put("ai_rag_max_docs", body.get("ragMaxDocs"))
+    _put("ai_rag_max_chunks", body.get("ragMaxChunks"))
+    _put("ai_wiki_max_files_per_repo", body.get("wikiMaxFilesPerRepo"))
     _put("ai_thinking_enabled", body.get("thinkingEnabled"))
     _put("ai_thinking_keep", body.get("thinkingKeep"))
     tz = body.get("timezone")
@@ -222,15 +279,9 @@ async def api_models(request: web.Request) -> web.Response:
         body = await request.json()
       except json.JSONDecodeError:
         return _json_response({"ok": False, "error": "Invalid JSON body."}, status=400)
-    account_id = ""
-    if body:
-      account_id = str(body.get("accountId") or body.get("account_id") or "").strip()
-    if account_id:
-      config = account_config_by_id(_PARAMS, account_id)
-      if not config:
-        return _json_response({"ok": False, "error": "账户不存在"}, status=404)
-    else:
-      config = merge_config_from_body(saved, body)
+    config, account_id = _resolve_hub_account_config(saved, body)
+    if config is None:
+      return _json_response({"ok": False, "error": "账户不存在，请先保存账户或重新填写 API 密钥"}, status=404)
     result = await list_models(config)
     models = result.get("models") or []
     if account_id and result.get("ok") and models:
@@ -262,21 +313,15 @@ async def api_test_connection(request: web.Request) -> web.Response:
         body = await request.json()
       except json.JSONDecodeError:
         return _json_response({"ok": False, "error": "Invalid JSON body."}, status=400)
-    account_id = ""
-    if body:
-      account_id = str(body.get("accountId") or body.get("account_id") or "").strip()
-    if account_id:
-      config = account_config_by_id(_PARAMS, account_id)
-      if not config:
-        return _json_response({"ok": False, "error": "账户不存在"}, status=404)
-    else:
-      config = merge_config_from_body(saved, body)
-    if not config.is_configured:
+    config, account_id = _resolve_hub_account_config(saved, body)
+    if config is None:
+      return _json_response({"ok": False, "error": "账户不存在，请先保存账户或重新填写 API 密钥"}, status=404)
+    if not config.api_key:
       return _json_response({
         "ok": False,
-        "error": config.configuration_error or "AI not configured",
+        "error": "请填写 API 密钥",
         "configured": False,
-        "configureError": config.configuration_error,
+        "configureError": "API key is required",
       })
     result = await test_connection(config)
     return _json_response({
@@ -297,14 +342,10 @@ async def api_model_hub_fetch(request: web.Request) -> web.Response:
     body = await request.json()
   except json.JSONDecodeError:
     body = {}
-  account_id = str(body.get("accountId") or body.get("account_id") or "").strip()
-  if account_id:
-    config = account_config_by_id(_PARAMS, account_id)
-    if not config:
-      return _json_response({"ok": False, "error": "账户不存在"}, status=404)
-  else:
-    saved = read_ai_config()
-    config = merge_config_from_body(saved, body)
+  saved = read_ai_config()
+  config, account_id = _resolve_hub_account_config(saved, body)
+  if config is None:
+    return _json_response({"ok": False, "error": "账户不存在，请先保存账户或重新填写 API 密钥"}, status=404)
   result = await list_models(config)
   models = result.get("models") or []
   if account_id and result.get("ok") and models:
@@ -325,22 +366,19 @@ async def api_model_hub_test(request: web.Request) -> web.Response:
     body = await request.json()
   except json.JSONDecodeError:
     body = {}
-  account_id = str(body.get("accountId") or body.get("account_id") or "").strip()
-  if account_id:
-    config = account_config_by_id(_PARAMS, account_id)
-    if not config:
-      return _json_response({"ok": False, "error": "账户不存在"}, status=404)
-  else:
-    saved = read_ai_config()
-    config = merge_config_from_body(saved, body)
-  if not config or not config.is_configured:
-    err = config.configuration_error if config else "invalid account"
-    return _json_response({"ok": False, "error": err, "configured": False})
+  saved = read_ai_config()
+  config, _account_id = _resolve_hub_account_config(saved, body)
+  if config is None:
+    return _json_response({"ok": False, "error": "账户不存在，请先保存账户或重新填写 API 密钥"}, status=404)
+  if not config.api_key:
+    return _json_response({"ok": False, "error": "请填写 API 密钥", "configured": False})
   result = await test_connection(config)
   return _json_response({
     "ok": bool(result.get("ok")),
     "error": result.get("error"),
     "configured": True,
+    "models_count": result.get("models_count"),
+    "message": result.get("message"),
   })
 
 async def api_onboarding_profile(request: web.Request) -> web.Response:

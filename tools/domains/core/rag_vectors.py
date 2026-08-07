@@ -8,9 +8,15 @@ import os
 from pathlib import Path
 from typing import Any
 
+from ai.common.rag_config import rag_max_chunks
 from ai.system.paths import rag_vectors_path
 
-_MAX_CHUNKS = 200
+# Re-export for tests / API limits display (value follows ai_rag_max_chunks param).
+def _max_chunks() -> int:
+  return rag_max_chunks()
+
+
+_MAX_CHUNKS = 100_000  # module default; runtime uses rag_max_chunks()
 
 
 def _index_path() -> Path:
@@ -31,7 +37,8 @@ def _load_chunks() -> list[dict[str, Any]]:
 
 
 def _save_chunks(chunks: list[dict[str, Any]]) -> None:
-  _index_path().write_text(json.dumps(chunks[:_MAX_CHUNKS], ensure_ascii=False), encoding="utf-8")
+  cap = rag_max_chunks()
+  _index_path().write_text(json.dumps(chunks[:cap], ensure_ascii=False), encoding="utf-8")
 
 
 def _cosine(a: list[float], b: list[float]) -> float:
@@ -48,11 +55,21 @@ def _cosine(a: list[float], b: list[float]) -> float:
 def replace_doc_chunks(doc_id: str, chunks: list[dict[str, Any]]) -> None:
   all_chunks = [c for c in _load_chunks() if c.get("doc_id") != doc_id]
   all_chunks = chunks + all_chunks
-  _save_chunks(all_chunks[:_MAX_CHUNKS])
+  _save_chunks(all_chunks[: rag_max_chunks()])
+
+
+def write_all_chunks(chunks: list[dict[str, Any]]) -> None:
+  _save_chunks(chunks[: rag_max_chunks()])
 
 
 def remove_doc_chunks(doc_id: str) -> None:
   _save_chunks([c for c in _load_chunks() if c.get("doc_id") != doc_id])
+
+
+def clear_all_chunks() -> None:
+  path = _index_path()
+  if path.is_file():
+    path.unlink()
 
 
 def search_vector_chunks(query_vec: list[float], *, limit: int = 5) -> list[dict[str, Any]]:

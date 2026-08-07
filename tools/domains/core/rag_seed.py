@@ -12,9 +12,9 @@ from ai.services.rag.builtin_loader import load_json_builtin_docs
 from ai.tools.domains.core.comma_docs_rag import COMMA_DOCS_RAG
 from ai.tools.domains.core.secoc_rag import SECOC_RAG
 from ai.tools.domains.core.wiki_rag import WIKI_RAG
+from ai.common.rag_config import rag_max_docs
 from ai.tools.domains.core.rag_store import (
   _MAX_DOC_CHARS,
-  _MAX_DOCS,
   _load_docs,
   _save_docs,
 )
@@ -284,7 +284,7 @@ def ensure_builtin_rag_docs(params: Params | None = None) -> dict[str, Any]:
     "removed": removed,
     "skipped": skipped,
     "total": len(_BUILTIN_DOCS),
-    "stored": min(len(by_id), _MAX_DOCS),
+    "stored": min(len(by_id), rag_max_docs()),
     "errors": [],
     "at": now,
   }

@@ -51,7 +51,7 @@ async def _startup_rag_seed_and_reindex() -> None:
 
     wiki = await loop.run_in_executor(
       None,
-      lambda: ingest_wikis_for_current_fork(_PARAMS, max_files_per_repo=35, force=False),
+      lambda: ingest_wikis_for_current_fork(_PARAMS, max_files_per_repo=0, force=False),
     )
     if wiki.get("indexed"):
       cloudlog.info(

@@ -249,7 +249,7 @@ def build_tool_schemas() -> list[dict[str, Any]]:
     {"type": "function", "function": {"name": "fetch_dashy_settings", "description": "Fetch Dashy Web UI settings from localhost:5088.", "parameters": {"type": "object", "properties": {}, "required": []}}},
     {"type": "function", "function": {"name": "read_manager_log", "description": "Read recent device log (dp_dev_last_log or /data/log/latest.log).", "parameters": {"type": "object", "properties": {"lines": {"type": "integer"}}, "required": []}}},
     {"type": "function", "function": {"name": "grep_log", "description": "Regex search in recent manager log.", "parameters": {"type": "object", "properties": {"pattern": {"type": "string"}, "lines": {"type": "integer"}}, "required": ["pattern"]}}},
-    {"type": "function", "function": {"name": "search_knowledge_base", "description": "Semantic (vector) or keyword search in user knowledge base.", "parameters": {"type": "object", "properties": {"query": {"type": "string"}, "limit": {"type": "integer"}, "tags": {"type": "array", "items": {"type": "string"}, "description": "Filter by doc tags e.g. openpilot, toyota, dp_legacy"}}, "required": ["query"]}}},
+    {"type": "function", "function": {"name": "search_knowledge_base", "description": "Search indexed knowledge (keyword + vector). Call when you need docs/wiki/notes; choose query and limit (up to 50). Repeat with different queries if needed.", "parameters": {"type": "object", "properties": {"query": {"type": "string"}, "limit": {"type": "integer", "description": "Max hits to return (default from settings, max 50)"}, "tags": {"type": "array", "items": {"type": "string"}, "description": "Filter by doc tags e.g. openpilot, toyota, dp_legacy"}}, "required": ["query"]}}},
     {"type": "function", "function": {"name": "reindex_knowledge_base", "description": "Rebuild cloud embedding index for all knowledge docs (stationary, needs WiFi).", "parameters": {"type": "object", "properties": {}, "required": []}}},
     {"type": "function", "function": {"name": "list_knowledge_docs", "description": "List knowledge base document titles.", "parameters": {"type": "object", "properties": {}, "required": []}}},
     {"type": "function", "function": {"name": "manage_knowledge_doc", "description": "Add/update/remove a knowledge document.", "parameters": {"type": "object", "properties": {"operation": {"type": "string", "enum": ["upsert", "remove"]}, "doc_id": {"type": "string"}, "title": {"type": "string"}, "text": {"type": "string"}, "tags": {"type": "array", "items": {"type": "string"}}}, "required": ["operation"]}}},
@@ -865,12 +865,24 @@ def make_handlers(
     return grep_log(p, str(args.get("pattern", "")), lines=int(args.get("lines", 200)))
 
   async def h_search_knowledge_base(args):
+    from ai.common.rag_config import rag_tool_search_limit, rag_tool_search_limit_cap
     tags = args.get("tags")
     tag_list = [str(t) for t in tags] if isinstance(tags, list) else None
+    cap = rag_tool_search_limit_cap()
+    default_limit = rag_tool_search_limit()
+    raw_limit = args.get("limit")
+    if raw_limit is None or raw_limit == "":
+      limit = default_limit
+    else:
+      try:
+        limit = int(raw_limit)
+      except (TypeError, ValueError):
+        limit = default_limit
+    limit = max(1, min(cap, limit))
     return await search_documents(
       p,
       str(args.get("query", "")),
-      limit=int(args.get("limit", 5)),
+      limit=limit,
       embed_config=_embedding_cfg(),
       tags=tag_list,
     )

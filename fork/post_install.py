@@ -115,7 +115,7 @@ def run_post_install_learn(root: Path | None = None, *, write_workspace: bool = 
       wiki_result = ingest_wikis_for_profile(
         Params(),
         profile,
-        max_files_per_repo=30,
+        max_files_per_repo=0,
         force=False,
       )
       payload["wiki_ingest"] = wiki_result

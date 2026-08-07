@@ -1,4 +1,4 @@
-let hostEnvironment = null;
+const RAG_WIKI_MAX_FILES_PER_REPO = 0;
 /* $, $$, els, APP_SPLASH_* provided by app/dom.js */
 
 let toolsMeta = {};
@@ -15,7 +15,7 @@ let providers = [];
 let providerLabels = {};
 const FALLBACK_PROVIDERS = [
   'opencode-zen', 'opencode-go', 'deepseek', 'bigmodel', 'qwen', 'mimo', 'minimax',
-  'openrouter', 'openai', 'kimi', 'custom',
+  'openrouter', 'openai', 'kimi', 'siliconflow', 'custom',
 ];
 const FALLBACK_PROVIDER_LABELS = {
   'opencode-zen': 'OpenCode Zen',
@@ -28,6 +28,7 @@ const FALLBACK_PROVIDER_LABELS = {
   openrouter: 'OpenRouter',
   openai: 'OpenAI',
   kimi: 'Kimi (Moonshot)',
+  siliconflow: '硅基流动 SiliconFlow',
   custom: 'Custom',
 };
 let modelCatalog = {};
@@ -210,7 +211,11 @@ function abortSessionChat(sessionId) {
 }
 
 function isSessionJobRunning(sessionId) {
-  return typeof ChatJobs !== 'undefined' && ChatJobs.isSessionRunning(sessionId);
+  return typeof ChatJobs !== 'undefined' && ChatJobs.isSessionJobPending(sessionId);
+}
+
+function isSessionStreaming(sessionId) {
+  return typeof ChatJobs !== 'undefined' && ChatJobs.isSessionStreaming(sessionId);
 }
 
 function getSessionMessages(sessionId) {
@@ -380,6 +385,11 @@ function applyTranslations() {
   }
   const contextPanelTitle = document.getElementById('composerContextPanelTitle');
   if (contextPanelTitle) contextPanelTitle.textContent = t('contextUsageTitle', 'Context usage');
+  const contextCompactBtn = document.getElementById('composerContextCompactBtn');
+  if (contextCompactBtn) {
+    contextCompactBtn.textContent = t('contextCompactBtn', '压缩上下文');
+    contextCompactBtn.title = t('contextCompactHint', '等同 /compact，将较早对话摘要写入记忆');
+  }
   const sessionSearchInput = document.getElementById('sessionSearchInput');
   if (sessionSearchInput) sessionSearchInput.placeholder = t('sessionSearchPlaceholder', 'Search chats…');
   const sessionSearchModalInput = document.getElementById('sessionSearchModalInput');
@@ -462,6 +472,8 @@ function applyTranslations() {
   setI18nText('#devCanvasDesc', 'devCanvasDesc', '调参报告、图表与结构化结果（随当前会话）');
   setI18nText('#devCanvasFilterLabel', 'devCanvasFilterLabel', '筛选');
   setI18nText('#knowledgeIndexTitle', 'knowledgeIndexTitle', '索引与检索');
+  setI18nText('#ragSearchLimitLabel', 'ragSearchLimitLabel', '工具检索默认条数');
+  setI18nText('#ragSearchLimitHint', 'ragSearchLimitHint', 'AI 通过 search_knowledge_base 工具自行检索；此为未指定 limit 时的默认值（最大 50）');
   const devPackageTitle = $('#devPackageTitle');
   if (devPackageTitle) devPackageTitle.textContent = t('devPackageTitle', 'op助手 版本');
   if (els.devPackageCheckBtn) els.devPackageCheckBtn.textContent = t('devPackageCheck', '检查更新');
@@ -485,7 +497,7 @@ function applyTranslations() {
   if (devIssueTitle) devIssueTitle.textContent = t('devIssueTitle', '反馈提交');
   if (els.devIssueSubmitBtn) els.devIssueSubmitBtn.textContent = t('devIssueSubmit', '提交 Issue');
   setI18nText('#contextSettingsTitle', 'contextSettingsTitle', '上下文与压缩');
-  setI18nText('#contextSettingsHint', 'contextSettingsHint', '长对话自动摘要写入记忆；手动压缩请用 /compact');
+  setI18nText('#contextSettingsHint', 'contextSettingsHint', '长对话自动摘要写入记忆；也可在上下文用量面板点击「压缩上下文」或输入 /compact');
   setI18nText('#compactionEnabledLabel', 'compactionEnabledLabel', '自动压缩会话');
   setI18nText('#compactionTokenTriggerLabel', 'compactionTokenTriggerLabel', '按 token 数触发压缩');
   setI18nText('#evolutionSettingsTitle', 'evolutionSettingsTitle', '助手学习与进化');
@@ -813,7 +825,7 @@ async function refreshSessionViewFromRemote() {
   const sessionsChanged = await loadSessionsFromDevice();
   const configChanged = await pullConfigFromDevice();
   renderSessionList();
-  if (isSessionJobRunning(SessionStore.activeId)) {
+  if (isSessionStreaming(SessionStore.activeId)) {
     updateLiveAssistantFromSession();
     return;
   }
@@ -1132,7 +1144,7 @@ async function runOnboardingRagSetup() {
         {
           operation: 'wiki_ingest',
           all_registered: true,
-          max_files_per_repo: 35,
+          max_files_per_repo: RAG_WIKI_MAX_FILES_PER_REPO,
           force: false,
           chain_reindex: doReindex,
         },
@@ -1396,6 +1408,7 @@ function renderSessionList() {
   for (const s of sessions) {
     const li = document.createElement('li');
     const streaming = isSessionJobRunning(s.id);
+    if (streaming && typeof ChatJobs !== 'undefined') ChatJobs.scheduleStaleJobSweep(s.id);
     li.className = `session-item${s.id === activeId ? ' active' : ''}${streaming ? ' streaming' : ''}`;
     if (streaming) {
       li.setAttribute('aria-busy', 'true');
@@ -1429,12 +1442,14 @@ function renderSessionList() {
 
 function isLocallyStreaming(sessionId = SessionStore.activeId) {
   if (!sessionId) return false;
-  return SessionStore.activeId === sessionId && isSessionJobRunning(sessionId);
+  return SessionStore.activeId === sessionId && isSessionStreaming(sessionId);
 }
 
 function isChatUiLocked() {
   return isLocallyStreaming(SessionStore.activeId);
 }
+
+let sessionSwitchGeneration = 0;
 
 function getLiveStreamUi() {
   const live = els.messages?.querySelector('.assistant-wrapper[data-live-stream="1"]');
@@ -1601,29 +1616,38 @@ async function navigateToSessionHit(hit) {
 }
 
 function switchSession(id) {
+  const gen = ++sessionSwitchGeneration;
   cancelEditUserMessage();
   SessionStore.setActive(id);
   const session = SessionStore.getActive();
   refreshModelBadgeForSession();
   if (typeof SessionModelPicker !== 'undefined') SessionModelPicker.refresh();
   updateComposerSendBtn();
+  if (els.messages) els.messages.innerHTML = '';
   const needsDetail = session?.hasContent && !(session.messages || []).length;
-  if (needsDetail) {
-    loadSessionDetail(id).then(() => {
-      loadSessionMode();
-      renderStoredMessages();
-      renderSessionList();
-      syncActiveSessionStreaming().catch(() => {});
-    }).catch(() => {});
-  } else {
+  const finishSwitch = () => {
+    if (gen !== sessionSwitchGeneration) return;
     loadSessionMode();
-    renderStoredMessages();
+    renderStoredMessages({ force: true });
+    renderSessionList();
+    if (typeof ChatJobs !== 'undefined') {
+      ChatJobs.verifySessionJobId(id)
+        .then(() => {
+          if (gen !== sessionSwitchGeneration) return;
+          return syncActiveSessionStreaming();
+        })
+        .catch(() => {});
+    }
+    if (typeof CanvasPanel !== 'undefined') CanvasPanel.loadSession(id).catch(() => {});
+    closeSessionsDrawer();
+  };
+  if (needsDetail) {
+    loadSessionDetail(id).then(finishSwitch).catch(finishSwitch);
+  } else {
+    finishSwitch();
   }
   renderSessionList();
   scheduleSessionSync();
-  if (!needsDetail) syncActiveSessionStreaming().catch(() => {});
-  if (typeof CanvasPanel !== 'undefined') CanvasPanel.loadSession(id).catch(() => {});
-  closeSessionsDrawer();
 }
 
 function createNewSession() {
@@ -2061,10 +2085,13 @@ async function pollRagJob({ onPhase } = {}) {
   while (Date.now() - started < RAG_JOB_TIMEOUT_MS) {
     const { data } = await api('GET', '/api/ai/rag?job=1', null, { timeoutMs: 12000 });
     if (!data?.ok) throw new Error(data?.error || t('ragJobFailed', '知识库任务失败'));
-    if (typeof onPhase === 'function' && data.phase) onPhase(data.phase);
-    if (!data.running) {
-      if (data.status === 'error') throw new Error(data.error || t('ragJobFailed', '知识库任务失败'));
-      return data;
+    const job = data.job || {};
+    const running = data.running ?? (job.status === 'queued' || job.status === 'running');
+    const phase = data.phase || job.phase || job.operation;
+    if (typeof onPhase === 'function' && phase) onPhase(phase);
+    if (!running) {
+      if ((data.status || job.status) === 'error') throw new Error(data.error || job.error || t('ragJobFailed', '知识库任务失败'));
+      return { ...data, result: data.result || { wiki: job.wiki, reindex: job.reindex } };
     }
     await new Promise((r) => setTimeout(r, RAG_JOB_POLL_MS));
   }
@@ -2077,7 +2104,7 @@ async function startRagBackgroundJob(body, { onPhase } = {}) {
     if (data?.job?.running) throw new Error(t('ragJobBusy', '已有知识库任务进行中'));
     throw new Error(data?.error || t('ragJobFailed', '知识库任务失败'));
   }
-  if (data.started) return pollRagJob({ onPhase });
+  if (data.started || data.jobId) return pollRagJob({ onPhase });
   return data;
 }
 
@@ -2138,7 +2165,7 @@ async function syncWikiRag() {
       {
         operation: 'wiki_ingest',
         all_registered: true,
-        max_files_per_repo: 35,
+        max_files_per_repo: RAG_WIKI_MAX_FILES_PER_REPO,
         force: false,
         chain_reindex: true,
       },
@@ -2154,7 +2181,11 @@ async function syncWikiRag() {
     );
     const wiki = job?.result?.wiki || job?.result || {};
     const indexed = Number(wiki.indexed) || 0;
-    showToast(tf('ragWikiSyncResult', { indexed }), 'success');
+    if (wiki.skipped || indexed === 0) {
+      showToast(t('ragWikiSyncSkipped', 'Wiki 无新变化（已达文档上限或未变更时可忽略）'), 'info');
+    } else {
+      showToast(tf('ragWikiSyncResult', { indexed }), 'success');
+    }
     await loadRagPanel();
     const reindex = job?.result?.reindex;
     if (reindex?.ok) {
@@ -2547,6 +2578,21 @@ async function addImageFiles(files) {
   renderComposerAttachments();
 }
 
+function pendingRefKey(ref) {
+  const type = ref.type || (ref.kind === 'dir' ? 'dir' : 'file');
+  if (type === 'url') return `url:${ref.url}`;
+  if (type === 'branch') return 'branch';
+  if (type === 'browser') return 'browser';
+  if (type === 'session') return `session:${ref.sessionId}`;
+  return `file:${ref.path}`;
+}
+
+function removePendingRef(ref) {
+  const key = pendingRefKey(ref);
+  pendingFileRefs = pendingFileRefs.filter((item) => pendingRefKey(item) !== key);
+  renderComposerAttachments();
+}
+
 function renderComposerAttachments() {
   const hasImages = pendingImages.length > 0;
   const hasFiles = pendingFileRefs.length > 0;
@@ -2558,7 +2604,7 @@ function renderComposerAttachments() {
   els.composerAttachments.classList.remove('hidden');
   els.composerAttachments.innerHTML = '';
 
-  pendingFileRefs.forEach((ref, index) => {
+  pendingFileRefs.forEach((ref) => {
     const item = document.createElement('div');
     item.className = 'composer-file-chip';
     const icon = document.createElement('span');
@@ -2575,9 +2621,10 @@ function renderComposerAttachments() {
     remove.className = 'composer-file-chip-remove';
     remove.textContent = '×';
     remove.title = t('mentionRemoveFile', 'Remove file');
-    remove.addEventListener('click', () => {
-      pendingFileRefs.splice(index, 1);
-      renderComposerAttachments();
+    remove.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      removePendingRef(ref);
     });
     item.appendChild(icon);
     item.appendChild(label);
@@ -3904,6 +3951,44 @@ function onComposerInput() {
 // Streaming chat
 // ---------------------------------------------------------------------------
 
+async function runManualCompact() {
+  const sessionId = SessionStore.activeId;
+  if (isSessionJobRunning(sessionId)) {
+    showToast(t('contextCompactBusy', '请等待当前回复完成后再压缩'), 'warning');
+    return;
+  }
+  if (!getCurrentMessages().length) {
+    showToast(t('contextCompactEmpty', '当前会话为空，无需压缩'), 'info');
+    return;
+  }
+
+  SessionStore.ensureSessionOnSend(t('slashCmdCompact', '/compact'));
+  renderSessionList();
+  clearWelcomePanel();
+  syncMessagesLayoutMode();
+  chatScrollPinned = true;
+
+  const historyContent = buildUserContent(t('slashCompactPrompt', '请压缩本会话历史并写入记忆。'), []);
+  const displayContent = buildUserContent(t('slashCmdCompact', '/compact'), []);
+  appendUserMessage(displayContent);
+
+  const history = getCurrentMessages();
+  history.push({ role: 'user', content: historyContent });
+  saveCurrentMessages(history);
+  syncSessionsToDevice().catch(() => {});
+
+  pendingCompact = true;
+  try {
+    await streamAssistantResponse(history);
+    showToast(t('contextCompactDone', '已触发会话压缩'), 'success');
+  } catch {
+    showToast(t('contextCompactFailed', '压缩失败，请稍后重试'), 'error');
+  } finally {
+    pendingCompact = false;
+    refreshContextMeter();
+  }
+}
+
 async function sendChat(e) {
   e.preventDefault();
   const sessionId = SessionStore.activeId;
@@ -4035,7 +4120,9 @@ function savePartialAssistant(sessionId, assistantMessage) {
   SessionStore.updateMessages(sessionId, msgs.slice(-200));
   if (typeof SessionSync !== 'undefined') SessionSync.markLocalDirty();
   scheduleSessionSync();
-  if (SessionStore.activeId === sessionId) renderStoredMessages();
+  if (SessionStore.activeId === sessionId && !isChatUiLocked()) {
+    renderStoredMessages();
+  }
 }
 
 function hydrateAssistantUi(ui, assistantMessage) {
@@ -4403,7 +4490,8 @@ function applyModelHubFromConfig(c) {
   if (typeof ModelHub === 'undefined' || !hub) return;
   ModelHub.setHub(hub, { silent: true });
   syncLegacyFromModelHub(hub);
-  ModelHub.setProviders(providers, providerLabels);
+  const hubProviders = hubProviderOptions();
+  ModelHub.setProviders(hubProviders.providers, hubProviders.providerLabels);
   refreshEmbeddingRouteSummary();
   if (typeof SessionModelPicker !== 'undefined') SessionModelPicker.refresh();
   refreshModelBadgeForSession();
@@ -4486,28 +4574,34 @@ function sanitizeModelHubForSave(hub) {
 
 async function saveModelHubToServer(hub, opts = {}) {
   const silent = !!opts.silent;
-  const body = { modelHub: sanitizeModelHubForSave(hub) };
-  const { data } = await api('POST', '/api/ai/config', body);
-  if (!data?.ok) {
-    if (!silent) showToast(data?.error || t('saveFailed', '保存失败'), 'error');
-    throw new Error(data?.error || 'save failed');
-  }
-  configured = !!data.configured;
-  configureError = data.configureError || '';
-  if (data.modelHub) {
-    savedConfig = { ...savedConfig, modelHub: data.modelHub };
-    if (typeof ModelHub !== 'undefined') {
-      ModelHub.setHub(data.modelHub, { silent: true });
+  const hubRoot = document.querySelector('#modelHubRoot');
+  hubRoot?.classList.add('is-saving');
+  try {
+    const body = { modelHub: sanitizeModelHubForSave(hub) };
+    const { data } = await api('POST', '/api/ai/config', body);
+    if (!data?.ok) {
+      if (!silent) showToast(data?.error || t('saveFailed', '保存失败'), 'error');
+      throw new Error(data?.error || 'save failed');
     }
+    configured = !!data.configured;
+    configureError = data.configureError || '';
+    if (data.modelHub) {
+      savedConfig = { ...savedConfig, modelHub: data.modelHub };
+      if (typeof ModelHub !== 'undefined') {
+        ModelHub.setHub(data.modelHub, { silent: true });
+      }
+    }
+    syncLegacyFromModelHub(savedConfig.modelHub || hub);
+    updateModelBadgeFromSaved();
+    refreshUsageForCurrentModel();
+    LocalPrefs.clearConfigDraft();
+    if (!silent) {
+      showToast(t('saved', '已保存'), 'success');
+    }
+    return data;
+  } finally {
+    hubRoot?.classList.remove('is-saving');
   }
-  syncLegacyFromModelHub(savedConfig.modelHub || hub);
-  updateModelBadgeFromSaved();
-  refreshUsageForCurrentModel();
-  LocalPrefs.clearConfigDraft();
-  if (!silent) {
-    showToast(t('saved', '已保存'), 'success');
-  }
-  return data;
 }
 
 function getPersonaPayload() {
@@ -4528,6 +4622,7 @@ function getPersonaPayload() {
     evolutionGepaEnabled: els.evolutionGepaEnabledToggle?.checked !== false,
     evolutionUseDspy: !!els.evolutionUseDspyToggle?.checked,
     skillsDisclosureMax: parseInt(els.skillsDisclosureMaxInput?.value, 10) || 10,
+    ragSearchLimit: parseInt(els.ragSearchLimitInput?.value, 10) || 20,
     evolutionCandidates: parseInt(els.evolutionCandidatesInput?.value, 10) || 3,
     thinkingEnabled: !!els.thinkingToggle?.checked,
     thinkingKeep: '',
@@ -4636,6 +4731,7 @@ function getConfigPayload() {
     evolutionGepaEnabled: els.evolutionGepaEnabledToggle?.checked !== false,
     evolutionUseDspy: !!els.evolutionUseDspyToggle?.checked,
     skillsDisclosureMax: parseInt(els.skillsDisclosureMaxInput?.value, 10) || 10,
+    ragSearchLimit: parseInt(els.ragSearchLimitInput?.value, 10) || 20,
     evolutionCandidates: parseInt(els.evolutionCandidatesInput?.value, 10) || 3,
     thinkingEnabled: els.thinkingToggle.checked,
     thinkingKeep: '',
@@ -4736,6 +4832,7 @@ function bindConfigPersistence() {
     els.evolutionGepaEnabledToggle,
     els.evolutionUseDspyToggle,
     els.skillsDisclosureMaxInput,
+    els.ragSearchLimitInput,
     els.evolutionCandidatesInput,
     els.timezoneSelect,
   ].filter(Boolean);
@@ -4842,9 +4939,21 @@ async function ensureModelsLoaded(savedModel, opts = {}) {
 
 function providerDisplayName(id) {
   if (providerLabels[id]) return providerLabels[id];
+  if (embeddingProviderLabels[id]) return embeddingProviderLabels[id];
   const key = `provider_${id}`;
   const label = t(key, '');
   return label || id;
+}
+
+function hubProviderOptions() {
+  const out = [...providers];
+  for (const p of embeddingProviders) {
+    if (!out.includes(p)) out.push(p);
+  }
+  return {
+    providers: out,
+    providerLabels: { ...embeddingProviderLabels, ...providerLabels },
+  };
 }
 
 function renderProviderOptions() {
@@ -4979,6 +5088,7 @@ function applyConfigToForm(c) {
   if (els.evolutionGepaEnabledToggle) els.evolutionGepaEnabledToggle.checked = c.evolutionGepaEnabled !== false;
   if (els.evolutionUseDspyToggle) els.evolutionUseDspyToggle.checked = !!c.evolutionUseDspy;
   if (els.skillsDisclosureMaxInput) els.skillsDisclosureMaxInput.value = c.skillsDisclosureMax ?? 10;
+  if (els.ragSearchLimitInput) els.ragSearchLimitInput.value = c.ragSearchLimit ?? 20;
   if (els.evolutionCandidatesInput) els.evolutionCandidatesInput.value = c.evolutionCandidates ?? 3;
   els.thinkingToggle.checked = !!c.thinkingEnabled;
   if (els.timezoneSelect) {
@@ -5023,6 +5133,10 @@ async function loadBootstrap() {
   embeddingModelCatalog = data.embeddingModelCatalog || {};
   embeddingSameModeCatalog = data.embeddingSameModeCatalog || {};
   renderProviderOptions();
+  if (typeof ModelHub !== 'undefined') {
+    const hubProviders = hubProviderOptions();
+    ModelHub.setProviders(hubProviders.providers, hubProviders.providerLabels);
+  }
 
   if (data.config) {
     await applyServerConfig(data.config, { keepDraft: true });
@@ -7462,8 +7576,8 @@ async function runQuickAction(action) {
   await sendChat(new Event('submit'));
 }
 
-function renderStoredMessages() {
-  if (isChatUiLocked()) return;
+function renderStoredMessages(opts = {}) {
+  if (!opts.force && isChatUiLocked()) return;
   const history = getCurrentMessages();
   els.messages.innerHTML = '';
   for (let i = 0; i < history.length; i += 1) {
@@ -7903,6 +8017,8 @@ async function init() {
       fmtTokenNum,
       t,
       tf,
+      isBusy: () => isSessionJobRunning(SessionStore.activeId),
+      onCompact: () => { runManualCompact().catch(() => {}); },
     });
   }
   if (typeof SessionSearch !== 'undefined') {

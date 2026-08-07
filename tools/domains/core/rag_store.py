@@ -12,12 +12,11 @@ from openpilot.common.params import Params
 
 from ai.common.storage import read_param, write_param
 
+from ai.common.rag_config import rag_limits, rag_max_docs, rag_max_total_chars, rag_search_limit
 from ai.tools.domains.core.rag_vectors import chunk_count, remove_doc_chunks, replace_doc_chunks, search_vector_chunks
 
 _RAG_KEY = "ai_rag_documents"
-_MAX_DOCS = 512
 _MAX_DOC_CHARS = 24000
-_MAX_TOTAL_CHARS = 2_000_000
 _CHUNK_SIZE = 900
 _CHUNK_OVERLAP = 120
 
@@ -57,11 +56,13 @@ def _load_docs(params: Params) -> list[dict[str, Any]]:
 
 
 def _save_docs(params: Params, docs: list[dict[str, Any]]) -> None:
+  max_docs = rag_max_docs()
+  max_chars = rag_max_total_chars()
   total = sum(len(d.get("text", "")) for d in docs)
-  while docs and total > _MAX_TOTAL_CHARS:
+  while docs and total > max_chars:
     removed = docs.pop()
     total -= len(removed.get("text", ""))
-  write_param(params, _RAG_KEY, json.dumps(docs[:_MAX_DOCS], ensure_ascii=False))
+  write_param(params, _RAG_KEY, json.dumps(docs[:max_docs], ensure_ascii=False))
 
 
 def upsert_document_sync(
@@ -122,6 +123,7 @@ def list_documents(params: Params | None = None) -> dict[str, Any]:
     ],
     "count": len(docs),
     "vector_chunks": chunk_count(),
+    "limits": rag_limits(),
   }
 
 
@@ -132,6 +134,7 @@ async def index_document_vectors(
   text: str,
   *,
   embed_config: Any | None = None,
+  persist: bool = True,
 ) -> dict[str, Any]:
   from ai.core.llm.embedding import embed_texts_with_failover, load_embedding_config_chain
 
@@ -157,8 +160,9 @@ async def index_document_vectors(
       "text": piece,
       "embedding": vec,
     })
-  replace_doc_chunks(doc_id, chunks)
-  return {"ok": True, "chunks": len(chunks), "dims": len(vectors[0]) if vectors else 0}
+  if persist:
+    replace_doc_chunks(doc_id, chunks)
+  return {"ok": True, "chunks": len(chunks), "dims": len(vectors[0]) if vectors else 0, "chunk_rows": chunks}
 
 
 async def upsert_document(
@@ -310,12 +314,24 @@ async def search_documents(
   return {"ok": True, "query": query, "hits": hits, "method": "hybrid"}
 
 
-async def reindex_all(params: Params, embed_config: Any = None) -> dict[str, Any]:
+async def reindex_all(
+  params: Params,
+  embed_config: Any = None,
+  *,
+  on_progress: Any | None = None,
+) -> dict[str, Any]:
   import asyncio
 
+  from ai.common.rag_config import rag_max_chunks
+  from ai.tools.domains.core.rag_vectors import clear_all_chunks, write_all_chunks
+
+  cap = rag_max_chunks()
+  clear_all_chunks()
   docs = _load_docs(params)
   ok_n = 0
   errors: list[str] = []
+  all_rows: list[dict[str, Any]] = []
+  total = len(docs)
   for i, doc in enumerate(docs):
     res = await index_document_vectors(
       params,
@@ -323,26 +339,38 @@ async def reindex_all(params: Params, embed_config: Any = None) -> dict[str, Any
       doc.get("title", ""),
       doc.get("text", ""),
       embed_config=embed_config,
+      persist=False,
     )
     if res.get("ok"):
       ok_n += 1
       doc["embedded"] = True
       doc["chunk_count"] = res.get("chunks", 0)
+      rows = res.get("chunk_rows") or []
+      if rows:
+        all_rows = rows + all_rows
+        if len(all_rows) > cap:
+          all_rows = all_rows[:cap]
     else:
       errors.append(f"{doc.get('id')}: {res.get('error', '?')}")
-    if i % 3 == 2:
-      await asyncio.sleep(0)
+    if on_progress:
+      try:
+        on_progress(i + 1, total, ok_n)
+      except Exception:
+        pass
+    await asyncio.sleep(0)
+  write_all_chunks(all_rows)
   _save_docs(params, docs)
-  return {"ok": True, "indexed": ok_n, "total": len(docs), "errors": errors[:5]}
+  return {"ok": True, "indexed": ok_n, "total": total, "errors": errors[:5], "vector_chunks": len(all_rows)}
 
 
-def format_rag_prompt(params: Params, query: str = "", limit: int = 3, hits: list[dict[str, Any]] | None = None) -> str:
+def format_rag_prompt(params: Params, query: str = "", limit: int | None = None, hits: list[dict[str, Any]] | None = None) -> str:
+  hit_limit = limit if limit is not None else rag_search_limit()
   if hits is None:
     if query:
-      res = search_documents_keyword(params, query, limit=limit)
+      res = search_documents_keyword(params, query, limit=hit_limit)
       hits = res.get("hits") or []
     else:
-      docs = _load_docs(params)[:limit]
+      docs = _load_docs(params)[:hit_limit]
       hits = [{"title": d.get("title"), "snippet": d.get("text", "")[:600]} for d in docs]
   if not hits:
     return ""

@@ -446,7 +446,7 @@ def make_extension_handlers(
     from ai.fork.wiki_ingest import ingest_wikis_for_current_fork
     return ingest_wikis_for_current_fork(
       params,
-      max_files_per_repo=int(args.get("max_files_per_repo", 45) or 45),
+      max_files_per_repo=int(args.get("max_files_per_repo", 0) or 0),
       force=bool(args.get("force")),
       include_all_registered=bool(args.get("all_registered")),
     )

@@ -91,8 +91,9 @@ const ModelHub = (() => {
   }
 
   function providerOptions(selected) {
-    const list = providers.length ? providers : Object.keys(providerLabels);
-    return list.map((p) => {
+    const base = providers.length ? [...providers] : Object.keys(providerLabels);
+    if (selected && !base.includes(selected)) base.push(selected);
+    return base.map((p) => {
       const id = typeof p === 'string' ? p : (p.id || p);
       const label = getProviderLabel(id);
       const text = label && label !== id ? `${label} (${id})` : id;
@@ -407,6 +408,7 @@ const ModelHub = (() => {
           <p class="field-hint model-hub-route-thinking-hint" id="modelHubRouteThinkingHint">${escapeHtml(t('modelHubThinkingHint', '思考模型可开启深度推理；非思考模型可忽略此项。'))}</p>
           </div>
           <p class="field-hint">${escapeHtml(t('modelHubRouteModalHint', '留空或 0 表示使用内置默认值。'))}</p>
+          <p class="model-hub-status hidden pending" id="modelHubRouteStatus"></p>
         </div>
         <footer class="modal-footer">
           <button type="button" class="btn ghost" data-close="1">${escapeHtml(t('cancel', '取消'))}</button>
@@ -544,16 +546,29 @@ const ModelHub = (() => {
       routes.push(row);
     }
     setRoutes(routes, kind);
-    closeRouteModal();
-    if (kind === 'embedding') renderEmbeddingRouting();
-    else renderRouting();
     const btn = routeModal?.querySelector('#modelHubRouteSave');
     if (btn) btn.disabled = true;
+    setRouteModalBusy(true, t('saving', '保存中…'));
     try {
       await commitHubSave();
+      closeRouteModal();
+      if (kind === 'embedding') renderEmbeddingRouting();
+      else renderRouting();
+    } catch (e) {
+      setRouteModalBusy(false, '');
+      showRouteModalStatus(e?.message || t('saveFailed', '保存失败'), 'err');
     } finally {
+      setRouteModalBusy(false, '');
       if (btn) btn.disabled = false;
     }
+  }
+
+  function showRouteModalStatus(message, kind) {
+    const status = routeModal?.querySelector('#modelHubRouteStatus');
+    if (!status) return;
+    status.classList.remove('hidden', 'ok', 'err', 'pending');
+    if (kind) status.classList.add(kind);
+    status.textContent = message || '';
   }
 
   function ensureAccountModal() {
@@ -645,8 +660,45 @@ const ModelHub = (() => {
   function showAccountModalStatus(message, kind) {
     const status = accountModal?.querySelector('#modelHubAccountStatus');
     if (!status) return;
-    status.classList.remove('hidden', 'ok', 'err');
+    status.classList.remove('hidden', 'ok', 'err', 'pending');
     if (kind) status.classList.add(kind);
+    status.textContent = message || '';
+    if (!message) status.classList.add('hidden');
+  }
+
+  function setAccountModalBusy(busy, message) {
+    if (!accountModal) return;
+    accountModal.classList.toggle('is-busy', busy);
+    accountModal.querySelectorAll('button, input, select, textarea').forEach((el) => {
+      if (el.closest('[data-close]')) {
+        el.disabled = busy;
+        return;
+      }
+      if (el.id === 'modelHubAccountSave' || el.id === 'modelHubAccountTest' || el.id === 'modelHubAccountFetch') {
+        el.disabled = busy;
+      }
+    });
+    if (busy && message) showAccountModalStatus(message, 'pending');
+    else if (!busy) {
+      const status = accountModal?.querySelector('#modelHubAccountStatus');
+      if (status?.classList.contains('pending')) {
+        status.textContent = '';
+        status.classList.add('hidden');
+        status.classList.remove('pending');
+      }
+    }
+  }
+
+  function setRouteModalBusy(busy, message) {
+    if (!routeModal) return;
+    routeModal.classList.toggle('is-busy', busy);
+    routeModal.querySelectorAll('button, input, select').forEach((el) => {
+      el.disabled = busy;
+    });
+    const status = routeModal.querySelector('#modelHubRouteStatus');
+    if (!status) return;
+    status.classList.toggle('hidden', !message);
+    status.classList.toggle('pending', !!message);
     status.textContent = message || '';
   }
 
@@ -729,8 +781,25 @@ const ModelHub = (() => {
       apiKey: acc.apiKey || '',
       baseUrl: acc.baseUrl || '',
     };
+    if (acc.model) payload.model = acc.model;
     if (!omitAccountId && acc.id) payload.accountId = acc.id;
     return payload;
+  }
+
+  async function postHubModelsFetch(payload) {
+    const endpoints = ['/api/ai/model-hub/fetch-models', '/api/ai/models'];
+    let last = { status: 0, data: { ok: false, error: '' } };
+    for (const path of endpoints) {
+      try {
+        const res = await apiFn('POST', path, payload);
+        last = res;
+        if (res.status !== 404) return res;
+        if (res.data?.error && !String(res.data.error).includes('账户不存在')) return res;
+      } catch (e) {
+        last = { status: 0, data: { ok: false, error: e?.message || 'request failed' } };
+      }
+    }
+    return last;
   }
 
   async function testAccountFromModal() {
@@ -763,8 +832,16 @@ const ModelHub = (() => {
     showAccountModalStatus(t('loadingModels', '加载中…'), null);
     let httpStatus = 0;
     let data;
+    const payloads = [
+      accountRequestPayload(accountModalDraft, { omitAccountId: accountModalState.isNew }),
+    ];
+    const credOnly = accountRequestPayload(accountModalDraft, { omitAccountId: true });
+    if (JSON.stringify(credOnly) !== JSON.stringify(payloads[0])) payloads.push(credOnly);
     try {
-      ({ status: httpStatus, data } = await apiFn('POST', '/api/ai/models', accountRequestPayload(accountModalDraft, { omitAccountId: accountModalState.isNew })));
+      for (const payload of payloads) {
+        ({ status: httpStatus, data } = await postHubModelsFetch(payload));
+        if (httpStatus !== 404) break;
+      }
     } catch (e) {
       if (btn) btn.disabled = false;
       showAccountModalStatus(e?.message || t('modelHubFetchFail', '拉取失败'), 'err');
@@ -772,7 +849,10 @@ const ModelHub = (() => {
     }
     if (btn) btn.disabled = false;
     if (httpStatus === 404) {
-      showAccountModalStatus(t('modelHubApiMissing', '模型 API 未就绪，请重启 op助手 后重试'), 'err');
+      showAccountModalStatus(
+        data?.error || t('modelHubApiMissing', '模型 API 未就绪，请重启 op助手 后重试'),
+        'err',
+      );
       return;
     }
     if (data?.modelHub) {
@@ -807,6 +887,7 @@ const ModelHub = (() => {
 
     const btn = accountModal?.querySelector('#modelHubAccountSave');
     if (btn) btn.disabled = true;
+    setAccountModalBusy(true, t('saving', '保存中…'));
     try {
       await commitHubSave();
       closeAccountModal();
@@ -814,6 +895,7 @@ const ModelHub = (() => {
     } catch (e) {
       showAccountModalStatus(e?.message || t('saveFailed', '保存失败'), 'err');
     } finally {
+      setAccountModalBusy(false, '');
       if (btn) btn.disabled = false;
     }
   }
@@ -894,7 +976,15 @@ const ModelHub = (() => {
     `;
 
     root.querySelector('#modelHubAddAccount')?.addEventListener('click', () => {
-      openAccountModal({ isNew: true });
+      const btn = root.querySelector('#modelHubAddAccount');
+      if (btn) btn.classList.add('is-loading');
+      requestAnimationFrame(() => {
+        try {
+          openAccountModal({ isNew: true });
+        } finally {
+          if (btn) btn.classList.remove('is-loading');
+        }
+      });
     });
 
     root.querySelector('#modelHubAddRoute')?.addEventListener('click', () => {
@@ -907,6 +997,13 @@ const ModelHub = (() => {
 
     if (opts.initial) setHub(opts.initial);
     else render();
+
+    const prefetch = () => {
+      ensureAccountModal();
+      ensureRouteModal();
+    };
+    if (typeof requestIdleCallback === 'function') requestIdleCallback(prefetch);
+    else setTimeout(prefetch, 120);
   }
 
 
@@ -914,6 +1011,17 @@ const ModelHub = (() => {
     renderAccounts();
     renderRouting();
     renderEmbeddingRouting();
+  }
+
+  function accountModelPool(acc) {
+    const seen = new Set();
+    const out = [];
+    for (const m of [...(acc?.models || []), ...(acc?.embeddingModels || [])]) {
+      if (!m || seen.has(m)) continue;
+      seen.add(m);
+      out.push(m);
+    }
+    return out;
   }
 
   function renderAccounts() {
@@ -927,15 +1035,16 @@ const ModelHub = (() => {
       const el = document.createElement('div');
       el.className = `mh-account-item${acc.enabled === false ? ' is-disabled' : ''}`;
       el.dataset.accountId = acc.id;
-      const modelCount = (acc.models || []).length;
+      const pool = accountModelPool(acc);
+      const modelCount = pool.length;
       const hasKey = !!(acc.apiKey || '').trim();
-      const preview = modelPreviewText(acc.models, 3);
+      const preview = modelPreviewText(pool, 3);
       el.innerHTML = `
         <span class="mh-account-dot${hasKey ? ' ok' : ''}" title="${escapeAttr(hasKey ? t('modelHubKeySet', '已配置 Key') : t('modelHubKeyMissing', '未配置 Key'))}"></span>
         <div class="mh-account-body">
           <div class="mh-account-name">${escapeHtml(accountDisplayName(acc))}</div>
           <div class="mh-account-meta">${modelCount ? t('modelHubModelCount', '{n} 个模型', { n: modelCount }) : escapeHtml(t('modelHubPoolEmptyShort', '未拉取'))}${acc.enabled === false ? ` · ${escapeHtml(t('modelHubDisabled', '已禁用'))}` : ''}</div>
-          ${preview ? `<div class="mh-account-preview" title="${escapeAttr((acc.models || []).join(', '))}">${escapeHtml(preview)}</div>` : ''}
+          ${preview ? `<div class="mh-account-preview" title="${escapeAttr(pool.join(', '))}">${escapeHtml(preview)}</div>` : ''}
         </div>
         <div class="mh-account-actions">
           <button type="button" class="btn small ghost mh-account-edit" data-idx="${idx}">${escapeHtml(t('modelHubConfigure', '配置'))}</button>
