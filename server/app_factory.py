@@ -149,7 +149,7 @@ def create_app() -> web.Application:
     application["scheduler_task"] = asyncio.create_task(scheduler_loop(application))
     application["status_watch_task"] = asyncio.create_task(status_watch_loop(application))
     try:
-      from ai.core.workspace.store import ensure_default_workspace_files
+      from ai.core.wspace.store import ensure_default_workspace_files
       ensure_default_workspace_files()
     except Exception as e:
       cloudlog.warning(f"aid: workspace seed skipped: {e}")

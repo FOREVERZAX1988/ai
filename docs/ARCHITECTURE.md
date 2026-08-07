@@ -32,7 +32,7 @@ aid.py ──► server/app_factory.create_app()
 | 内核 | `core/llm/` | `client`、`model_accounts`、`model_router`、`embedding`、`usage` |
 | 内核 | `core/chat/` | `runner`、`jobs`、`compaction`、`command_queue`、`sanitize` |
 | 内核 | `core/sync/` | `hub`（`/api/ai/sync/ws`）、`protocol`、`device_trust` |
-| 内核 | `core/workspace/` | `store`、`persona` |
+| 内核 | `core/wspace/` | `store`、`persona`（用户数据在 `ai/workspace/`） |
 | 内核 | `core/runtime/` | `heartbeat`、`evolution_pipeline`、`sidecar_hub` |
 | 服务 | `services/cabana/` | `car_params`、`dbc`、`live`、`replay`、`handlers`、`routes` |
 | 服务 | `services/tsk/` | SecOC HTTP API（`routes.py`） |

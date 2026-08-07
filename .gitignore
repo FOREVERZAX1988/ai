@@ -18,7 +18,6 @@ web/static/vendor/office/_staging/
 cabana_cache
 data
 /workspace/
-/core/workspace/workspace/
 
 # Panda firmware is built under openpilot/panda/board/obj — never vendor into ai/
 **/*.signed

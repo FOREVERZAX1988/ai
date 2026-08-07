@@ -50,7 +50,7 @@ from ai.common.params import (
 )
 from ai.common.storage import write_param, write_param_bool
 from ai.core.llm.embedding import DEFAULT_EMBEDDING_MODELS, load_embedding_config
-from ai.core.workspace.persona import ensure_default_persona
+from ai.core.wspace.persona import ensure_default_persona
 from ai.skills.loader import list_skills, load_enabled_skill_ids, save_enabled_skill_ids
 from ai.system.admin import is_admin_mode
 from ai.system.host_env import get_host_environment

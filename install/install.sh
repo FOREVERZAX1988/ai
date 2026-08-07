@@ -143,7 +143,7 @@ seed_workspace() {
   echo ""
   echo ">>> 初始化 op助手 workspace（ai/workspace/）"
   OPENPILOT_ROOT="$ROOT" PYTHONPATH="$ROOT:$TARGET" "$py" -c \
-    "from ai.core.workspace.store import ensure_default_workspace_files; ensure_default_workspace_files(); print('workspace ready:', __import__('ai.core.workspace.store', fromlist=['workspace_dir']).workspace_dir())" \
+    "from ai.core.wspace.store import ensure_default_workspace_files; ensure_default_workspace_files(); print('workspace ready:', __import__('ai.core.wspace.store', fromlist=['workspace_dir']).workspace_dir())" \
     || echo "警告: workspace 初始化失败，首次启动 aid 时会重试。" >&2
 }
 seed_workspace

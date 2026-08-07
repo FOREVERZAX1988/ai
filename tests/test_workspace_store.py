@@ -15,7 +15,7 @@ if str(ROOT) not in sys.path:
 
 class TestWorkspaceStore(unittest.TestCase):
   def test_workspace_dir_under_ai_repo(self):
-    from ai.core.workspace import store as ws
+    from ai.core.wspace import store as ws
 
     with tempfile.TemporaryDirectory() as tmp:
       ai_root = Path(tmp) / "ai"
@@ -29,7 +29,7 @@ class TestWorkspaceStore(unittest.TestCase):
       self.assertTrue(path.is_dir())
 
   def test_default_files_created(self):
-    from ai.core.workspace.store import ensure_default_workspace_files, workspace_prompt_blocks
+    from ai.core.wspace.store import ensure_default_workspace_files, workspace_prompt_blocks
 
     with tempfile.TemporaryDirectory() as tmp:
       ai_root = Path(tmp) / "ai"

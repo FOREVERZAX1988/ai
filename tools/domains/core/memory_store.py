@@ -115,7 +115,7 @@ def delete_note(params: Params, note_id: str) -> dict[str, Any]:
 
 
 def format_memory_prompt(params: Params, *, max_notes: int = 5) -> str:
-  from ai.core.workspace.store import read_workspace_file
+  from ai.core.wspace.store import read_workspace_file
 
   data = get_memory(params)
   profile = data.get("vehicle_profile") or {}
