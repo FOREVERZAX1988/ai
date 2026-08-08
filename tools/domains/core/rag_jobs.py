@@ -108,10 +108,12 @@ async def _run_job(
       job["phase"] = "reindex"
       from ai.tools.domains.core.rag_store import reindex_all
 
+      embed_cfg = job.get("embed_config")
+
       def _progress(done: int, total: int, indexed: int) -> None:
         job["progress"] = {"done": done, "total": total, "indexed": indexed}
 
-      result = await reindex_all(params, on_progress=_progress)
+      result = await reindex_all(params, embed_cfg, on_progress=_progress)
       job["reindex"] = result
     job["status"] = "done"
     job["finishedAt"] = int(time.time())
@@ -133,7 +135,6 @@ async def start_rag_job(
   wiki_options: dict[str, Any] | None = None,
   chain_reindex: bool = True,
 ) -> dict[str, Any]:
-  del embed_cfg
   global _CURRENT
   if is_running():
     return {"ok": False, "error": "已有任务在运行", "job": job_status(_CURRENT)}
@@ -144,6 +145,7 @@ async def start_rag_job(
     "status": "queued",
     "phase": operation,
     "createdAt": int(time.time()),
+    "embed_config": embed_cfg,
   }
   _CURRENT = job_id
   asyncio.create_task(_run_job(job_id, params, operation, wiki_options=wiki_options, chain_reindex=chain_reindex))

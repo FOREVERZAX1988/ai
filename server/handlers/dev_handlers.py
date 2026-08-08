@@ -86,11 +86,17 @@ async def api_files_search(request: web.Request) -> web.Response:
   from ai.tools.file_search import search_repo_files
 
   query = str(request.query.get("q") or request.query.get("query") or "")
+  scope = str(request.query.get("scope") or "").strip().lower() or None
   try:
     limit = int(request.query.get("limit", "25"))
   except (TypeError, ValueError):
     limit = 25
-  return _json_response(search_repo_files(query, limit=limit))
+  loop = asyncio.get_running_loop()
+  result = await loop.run_in_executor(
+    None,
+    lambda: search_repo_files(query, limit=limit, scope=scope),
+  )
+  return _json_response(result)
 
 
 async def api_files_content(request: web.Request) -> web.Response:

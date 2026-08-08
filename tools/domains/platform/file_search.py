@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import subprocess
 import time
 from pathlib import Path
 from typing import Any, Iterator
@@ -82,7 +83,7 @@ _SKIP_EXTENSIONS = frozenset({
 _INDEX_TTL_SEC = 300
 _MAX_INDEX_ENTRIES = 80_000
 _COMPOSER_MAX_CHARS = 48_000
-_index_cache: tuple[float, list[dict[str, Any]]] | None = None
+_index_cache: dict[str, tuple[float, list[dict[str, Any]]]] = {}
 
 
 def _should_skip_dir(name: str, *, system_root: bool = False) -> bool:
@@ -102,12 +103,12 @@ def _rel_path(root: Path, path: Path) -> str:
   return text if text != "." else path.name
 
 
-def _search_roots() -> list[tuple[Path, str, int, int | None]]:
+def _search_roots(*, include_system: bool = False) -> list[tuple[Path, str, int, int | None]]:
   """path, label, priority, max_depth (None = unlimited)."""
   roots: list[tuple[Path, str, int, int | None]] = [
     (openpilot_root().resolve(), "openpilot", 100, None),
   ]
-  if is_comma_device():
+  if include_system and is_comma_device():
     for raw, label, priority, max_depth in (
       ("/data", "data", 70, 9),
       ("/persist", "persist", 65, 9),
@@ -143,9 +144,9 @@ def _walk_root(
 
     for name in dirnames:
       full = current / name
-      if not full.is_dir():
-        continue
       try:
+        if not full.is_dir():
+          continue
         resolved = full.resolve()
       except OSError:
         continue
@@ -174,9 +175,9 @@ def _walk_root(
       if ext in _SKIP_EXTENSIONS:
         continue
       full = current / name
-      if not full.is_file():
-        continue
       try:
+        if not full.is_file():
+          continue
         resolved = full.resolve()
       except OSError:
         continue
@@ -199,23 +200,127 @@ def _walk_root(
       }
 
 
-def _build_index() -> list[dict[str, Any]]:
+def _entry(
+  *,
+  name: str,
+  rel: str,
+  path: str,
+  kind: str,
+  root: str,
+  priority: int,
+  ext: str = "",
+) -> dict[str, Any]:
+  return {
+    "name": name,
+    "rel": rel,
+    "path": path,
+    "ext": ext,
+    "kind": kind,
+    "root": root,
+    "priority": priority,
+  }
+
+
+def _openpilot_git_index(op_root: Path) -> list[dict[str, Any]] | None:
+  git_dir = op_root / ".git"
+  if not git_dir.exists():
+    return None
+  try:
+    proc = subprocess.run(
+      ["git", "-C", str(op_root), "ls-files", "-z", "--cached", "--others", "--exclude-standard"],
+      capture_output=True,
+      timeout=20,
+      check=False,
+    )
+  except (OSError, subprocess.TimeoutExpired):
+    return None
+  if proc.returncode != 0:
+    return None
+
+  entries: list[dict[str, Any]] = []
+  seen_paths: set[str] = set()
+  seen_dirs: set[str] = set()
+
+  def add_dir(dir_rel: str) -> None:
+    if not dir_rel or dir_rel in seen_dirs:
+      return
+    seen_dirs.add(dir_rel)
+    full = op_root / dir_rel
+    path = str(full)
+    if path in seen_paths:
+      return
+    seen_paths.add(path)
+    entries.append(_entry(
+      name=Path(dir_rel).name,
+      rel=dir_rel,
+      path=path,
+      kind="dir",
+      root="openpilot",
+      priority=100,
+    ))
+
+  for raw in proc.stdout.split(b"\0"):
+    if not raw:
+      continue
+    rel = raw.decode("utf-8", errors="replace").strip()
+    if not rel:
+      continue
+    parts = Path(rel).parts
+    for i in range(1, len(parts)):
+      add_dir("/".join(parts[:i]))
+    full = op_root / rel
+    path = str(full)
+    if path in seen_paths:
+      continue
+    seen_paths.add(path)
+    entries.append(_entry(
+      name=Path(rel).name,
+      rel=rel,
+      path=path,
+      kind="file",
+      root="openpilot",
+      priority=100,
+      ext=Path(rel).suffix.lower().lstrip("."),
+    ))
+
+  try:
+    for child in op_root.iterdir():
+      if not child.is_dir() or _should_skip_dir(child.name):
+        continue
+      add_dir(child.name)
+  except OSError:
+    pass
+
+  return entries or None
+
+
+def _build_index(*, scope: str = "repo") -> list[dict[str, Any]]:
   op_root = openpilot_root().resolve()
+  include_system = scope == "all"
+  if not include_system:
+    git_entries = _openpilot_git_index(op_root)
+    if git_entries:
+      return git_entries[:_MAX_INDEX_ENTRIES]
+
   entries: list[dict[str, Any]] = []
   seen_paths: set[str] = set()
 
-  for root, label, priority, max_depth in _search_roots():
+  for root, label, priority, max_depth in _search_roots(include_system=include_system):
     if len(entries) >= _MAX_INDEX_ENTRIES:
       break
     skip_under_op = label != "openpilot"
-    for entry in _walk_root(
-      root,
-      label=label,
-      priority=priority,
-      max_depth=max_depth,
-      op_root=op_root,
-      skip_under_op=skip_under_op,
-    ):
+    try:
+      walker = _walk_root(
+        root,
+        label=label,
+        priority=priority,
+        max_depth=max_depth,
+        op_root=op_root,
+        skip_under_op=skip_under_op,
+      )
+    except OSError:
+      continue
+    for entry in walker:
       path_key = entry["path"]
       if path_key in seen_paths:
         continue
@@ -226,13 +331,24 @@ def _build_index() -> list[dict[str, Any]]:
   return entries
 
 
-def _file_index(*, force: bool = False) -> list[dict[str, Any]]:
+def _resolve_scope(query: str, scope: str | None) -> str:
+  if scope in ("repo", "all"):
+    return scope
+  q = (query or "").strip().lower()
+  if q.startswith(("data/", "data:", "/data/", "persist/", "etc/", "var/", "system/")):
+    return "all"
+  return "repo"
+
+
+def _file_index(*, scope: str = "repo", force: bool = False) -> list[dict[str, Any]]:
   global _index_cache
+  scope = _resolve_scope("", scope)
   now = time.time()
-  if not force and _index_cache and now - _index_cache[0] < _INDEX_TTL_SEC:
-    return _index_cache[1]
-  entries = _build_index()
-  _index_cache = (now, entries)
+  cached = _index_cache.get(scope)
+  if not force and cached and now - cached[0] < _INDEX_TTL_SEC:
+    return cached[1]
+  entries = _build_index(scope=scope)
+  _index_cache[scope] = (now, entries)
   return entries
 
 
@@ -270,11 +386,12 @@ def _score(query: str, entry: dict[str, Any]) -> int:
   return base + priority_boost
 
 
-def search_repo_files(query: str = "", *, limit: int = 25) -> dict[str, Any]:
+def search_repo_files(query: str = "", *, limit: int = 25, scope: str | None = None) -> dict[str, Any]:
   q = (query or "").strip().lower()
   limit = max(1, min(int(limit or 25), 50))
+  resolved_scope = _resolve_scope(q, scope)
   try:
-    entries = _file_index()
+    entries = _file_index(scope=resolved_scope)
   except Exception as exc:
     return {"ok": False, "error": str(exc)}
 
@@ -288,6 +405,7 @@ def search_repo_files(query: str = "", *, limit: int = 25) -> dict[str, Any]:
       "files": preview,
       "total": len(entries),
       "roots": roots,
+      "scope": resolved_scope,
       "device": is_comma_device(),
     }
 
@@ -310,6 +428,7 @@ def search_repo_files(query: str = "", *, limit: int = 25) -> dict[str, Any]:
     "files": files,
     "total": len(scored),
     "roots": roots,
+    "scope": resolved_scope,
     "device": is_comma_device(),
   }
 
@@ -413,4 +532,8 @@ def read_repo_file_snippet(path: str, *, max_chars: int = _COMPOSER_MAX_CHARS) -
 
 def invalidate_file_index() -> None:
   global _index_cache
-  _index_cache = None
+  _index_cache = {}
+
+
+def warm_file_index(*, scope: str = "repo") -> int:
+  return len(_file_index(scope=scope))

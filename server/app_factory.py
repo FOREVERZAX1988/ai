@@ -64,10 +64,33 @@ async def _startup_rag_seed_and_reindex() -> None:
     embed_cfg = load_embedding_config(_PARAMS, config)
     if not embed_cfg.is_configured:
       return
-    res = await reindex_all(_PARAMS, embed_cfg)
-    cloudlog.info(f"aid: RAG auto-reindex indexed={res.get('indexed')}/{res.get('total')}")
+    from ai.tools.domains.core.rag_vectors import chunk_count, vector_index_meta
+    from ai.tools.domains.core.rag_store import _load_docs
+
+    def _warm_only() -> None:
+      vector_index_meta()
+
+    if chunk_count() == 0 and len(_load_docs(_PARAMS)) > 0:
+      res = await reindex_all(_PARAMS, embed_cfg)
+      cloudlog.info(f"aid: RAG auto-reindex indexed={res.get('indexed')}/{res.get('total')}")
+    else:
+      await loop.run_in_executor(None, _warm_only)
+      cloudlog.info(f"aid: RAG vectors present chunks={chunk_count()}, skip auto-reindex")
   except Exception as e:
     cloudlog.warning(f"aid: RAG auto-reindex skipped: {e}")
+  try:
+    from ai.tools.domains.core.rag_vectors import _meta_path, vector_index_meta
+
+    def _warm_vector_meta() -> None:
+      if not _meta_path().is_file():
+        vector_index_meta(rebuild=True)
+      else:
+        vector_index_meta()
+
+    await loop.run_in_executor(None, _warm_vector_meta)
+    cloudlog.info("aid: RAG vector meta cache ready")
+  except Exception as e:
+    cloudlog.warning(f"aid: RAG vector meta warm skipped: {e}")
 
 
 async def _startup_session_index() -> None:
@@ -168,6 +191,13 @@ def create_app() -> web.Application:
       loop = asyncio.get_running_loop()
       n = await loop.run_in_executor(None, warm_skills_snapshot, _PARAMS)
       cloudlog.info(f"aid: skills snapshot warmed entries={n}")
+      try:
+        from ai.tools.file_search import warm_file_index
+
+        file_n = await loop.run_in_executor(None, warm_file_index)
+        cloudlog.info(f"aid: composer file index warmed entries={file_n}")
+      except Exception as e:
+        cloudlog.warning(f"aid: composer file index warm skipped: {e}")
       ensure_stuck_watchdog()
     except Exception as e:
       cloudlog.warning(f"aid: skills snapshot / stuck watchdog skipped: {e}")

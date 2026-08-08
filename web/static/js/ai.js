@@ -2017,12 +2017,17 @@ function getSchedActionValue() {
   return v;
 }
 
+async function fetchRagApi({ compact = false, timeoutMs = 10000 } = {}) {
+  const q = compact ? '?compact=1' : '';
+  return api('GET', `/api/ai/rag${q}`, null, { timeoutMs });
+}
+
 async function loadRagPanel() {
   if (!els.ragDocList) return;
   if (typeof UiBusy !== 'undefined') {
     UiBusy.showPanelLoading(els.ragDocList, t('uiLoading', '加载中…'));
   }
-  const { data } = await api('GET', '/api/ai/rag');
+  const { data } = await fetchRagApi({ timeoutMs: 30000 });
   if (typeof UiBusy !== 'undefined') UiBusy.clearPanelBusy(els.ragDocList);
   if (!data.ok || !els.ragDocList) return;
   applyRagStatsFromApi(data);
@@ -2186,17 +2191,17 @@ async function syncWikiRag() {
       },
     );
     const wiki = job?.result?.wiki || job?.result || {};
+    const reindex = job?.result?.reindex || {};
     const indexed = Number(wiki.indexed) || 0;
-    if (wiki.skipped || indexed === 0) {
+    const vectorChunks = Number(reindex.vector_chunks) || 0;
+    if ((wiki.skipped || indexed === 0) && vectorChunks === 0) {
       showToast(t('ragWikiSyncSkipped', 'Wiki 无新变化（已达文档上限或未变更时可忽略）'), 'info');
+    } else if (vectorChunks > 0) {
+      showToast(tf('ragReindexResult', { indexed: reindex.indexed || vectorChunks, total: reindex.total || indexed }), 'success');
     } else {
-      showToast(tf('ragWikiSyncResult', { indexed }), 'success');
+      showToast(tf('ragWikiSyncResult', { indexed }), indexed > 0 ? 'success' : 'info');
     }
     await loadRagPanel();
-    const reindex = job?.result?.reindex;
-    if (reindex?.ok) {
-      showToast(t('ragWikiSyncDone', 'Wiki 已同步并完成索引'), 'success');
-    }
     loadUsage();
   } catch (e) {
     showToast(String(e?.message || e), 'error');
@@ -3238,13 +3243,14 @@ function applyRagStatsFromApi(data) {
     vector_chunks: data.vector_chunks ?? 0,
     totalChars: docs.reduce((sum, d) => sum + (Number(d.chars) || 0), 0),
     embeddedDocs: docs.filter((d) => d.embedded).length,
+    embedded_docs: data.embedded_docs ?? docs.filter((d) => d.embedded).length,
   };
   refreshContextMeter();
 }
 
 async function refreshRagStatsForMeter() {
   try {
-    const { data } = await api('GET', '/api/ai/rag', null, { timeoutMs: 10000 });
+    const { data } = await fetchRagApi({ compact: true, timeoutMs: 8000 });
     applyRagStatsFromApi(data);
   } catch {
     /* ignore */
@@ -5636,7 +5642,7 @@ async function loadKnowledgeRagStatus(ragData) {
     let cfg = savedConfig;
     if (!rag) {
       const [{ data }, boot] = await Promise.all([
-        api('GET', '/api/ai/rag'),
+        fetchRagApi({ compact: true, timeoutMs: 8000 }),
         cfg ? Promise.resolve({ data: { config: cfg } }) : api('GET', '/api/ai/bootstrap').catch(() => ({ data: {} })),
       ]);
       rag = data;
@@ -6315,23 +6321,30 @@ async function submitIssue() {
 function renderRagStatusCard(rag, cfg) {
   const docCount = Number(rag?.count) || 0;
   const vectorChunks = Number(rag?.vector_chunks) || 0;
-  const embedded = (rag?.documents || []).filter((d) => d.embedded).length;
+  const embedded = Number(rag?.embedded_docs)
+    || (rag?.documents || []).filter((d) => d.embedded).length;
   const embedOk = !!cfg?.embeddingConfigured;
-  const chatRag = embedOk && vectorChunks > 0;
+  const vectorReady = embedOk && vectorChunks > 0;
+  const staleEmbedded = embedded > 0 && vectorChunks === 0;
   const lines = [
     [t('devRagDocs', '文档'), `${docCount}（已向量化 ${embedded}）`],
     [t('devRagVectors', '向量块'), String(vectorChunks)],
     [t('devRagEmbedding', 'Embedding'), embedOk ? t('devRagEmbeddingOk', '已配置') : t('devRagEmbeddingMissing', '未配置')],
-    [t('devRagChat', '对话检索'), chatRag ? t('devRagChatOn', '已启用（每轮自动注入）') : t('devRagChatOff', '未启用')],
+    [t('devRagChat', '向量检索'), vectorReady ? t('devRagChatOn', '已启用（工具检索）') : t('devRagChatOff', '未启用')],
   ];
   const rows = lines.map(([label, val]) => `
     <div class="dev-kv">
       <span class="dev-kv-label">${escapeHtml(label)}</span>
       <span class="dev-kv-value">${escapeHtml(String(val))}</span>
     </div>`).join('');
-  const hint = chatRag
-    ? `<p class="dev-env-hint muted">${escapeHtml(t('devRagChatHintOn', '聊天时会把相关文档片段写入 system prompt。'))}</p>`
-    : `<p class="dev-env-hint muted">${escapeHtml(t('devRagChatHintOff', '请在设置中配置 Embedding，并在知识库中执行「重建索引」或同步 Wiki。'))}</p>`;
+  let hint;
+  if (staleEmbedded) {
+    hint = `<p class="dev-env-hint muted">${escapeHtml(t('devRagStaleHint', '文档标记与向量索引不一致，请点击「重建向量索引」。'))}</p>`;
+  } else if (vectorReady) {
+    hint = `<p class="dev-env-hint muted">${escapeHtml(t('devRagChatHintOn', '模型可通过 search_knowledge_base 工具检索知识库。'))}</p>`;
+  } else {
+    hint = `<p class="dev-env-hint muted">${escapeHtml(t('devRagChatHintOff', '请配置 Embedding 后点击「重建向量索引」。'))}</p>`;
+  }
   return rows + hint;
 }
 
