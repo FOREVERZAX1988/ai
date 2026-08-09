@@ -58,6 +58,17 @@ def _read_device_log(params: Params, *, lines: int = 80) -> tuple[str, str]:
   err_text = (err_tail.get("stdout") or "").strip()
   if err_text and err_text != "(no matches)":
     return err_text, "grep_log_errors"
+  # 回退: 轮转 swaglog（本机无 /data/log/latest.log, 日志在 swaglog.NNNN）
+  try:
+    import glob as _glob
+    swag = sorted(_glob.glob("/data/log/swaglog.*"), key=os.path.getmtime, reverse=True)
+    if swag:
+      with open(swag[0], "r", errors="replace") as _f:
+        swag_text = _f.read()
+      if swag_text.strip():
+        return swag_text, swag[0]
+  except Exception:
+    pass
   return text, "empty"
 
 
@@ -635,7 +646,7 @@ def read_qlog_segment(
   if not wanted:
     wanted = {"can"}
 
-  from ai.services.cabana.app import _find_qlogs, _find_rlogs, _get_routes_dir, _pick_can_log_paths
+  from ai.services.cabana.app import _find_qlogs, _find_rlogs, _get_routes_dir
 
   routes_dir = _get_routes_dir()
   if routes_dir is None:
@@ -647,7 +658,10 @@ def read_qlog_segment(
 
   qlogs = _find_qlogs(route_path)
   rlogs = _find_rlogs(route_path)
-  log_paths, source = _pick_can_log_paths(qlogs, rlogs)
+  # 绕开 openpilot 内部 _replay_log_paths（新 API 要求 full 参数）:
+  # 直接优先 rlog（含全量 CAN），qlog 兜底；log_path 为绝对 Path，LogReader 可直接打开。
+  log_paths = list(rlogs) if rlogs else list(qlogs)
+  source = "rlog" if rlogs else "qlog"
   if not log_paths:
     return {"ok": False, "error": "No qlog/rlog in route"}
 

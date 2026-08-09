@@ -32,6 +32,13 @@ def resolve_route_ref(route: str) -> str:
     return route.replace("\\", "/")
   base = os.path.join(ROUTES_DIR, route)
   if os.path.isdir(base):
+    # 标准布局: routeid/0/rlog
+    if os.path.isdir(os.path.join(base, "0")):
+      return f"{route}/0"
+    # 本机(sunnypilot)布局: segment 在目录名, rlog 直接放目录内 -> 00000004--dongle--2/rlog.zst
+    for name in ("rlog.zst", "rlog", "qlog.zst", "qlog"):
+      if os.path.isfile(os.path.join(base, name)):
+        return f"{route}/{name}"
     return f"{route}/0"
   return route
 
