@@ -43,12 +43,15 @@ def route_can_stats(route: str, *, max_batches: int = 2000) -> dict[str, Any]:
     if not mbytes:
       return {"ok": False, "error": "No can messages in route", "route": route_arg}
 
-    frames = [item for batch in can_capnp_to_list(mbytes) for item in batch]
+    # can_capnp_to_list -> [(nanos, [(address, data, src), ...]), ...]
+    frames: list[tuple[int, bytes, int]] = []
+    for _nanos, batch in can_capnp_to_list(mbytes):
+      frames.extend(batch)
     id_counter: Counter[int] = Counter()
     bus_counter: Counter[int] = Counter()
-    for _ts, _src, address, _dat, bus in frames:
+    for address, _dat, src in frames:
       id_counter[address] += 1
-      bus_counter[bus] += 1
+      bus_counter[src] += 1
 
     top_ids = [{"address": hex(a), "count": c} for a, c in id_counter.most_common(30)]
     return {

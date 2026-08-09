@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import glob
 import os
 import subprocess
 import sys
@@ -35,12 +36,38 @@ def resolve_route_ref(route: str) -> str:
     # 标准布局: routeid/0/rlog
     if os.path.isdir(os.path.join(base, "0")):
       return f"{route}/0"
-    # 本机(sunnypilot)布局: segment 在目录名, rlog 直接放目录内 -> 00000004--dongle--2/rlog.zst
+    # 本机(sunnypilot)布局: segment 在目录名, rlog 直接放目录内 -> 绝对路径交给 LogReader
     for name in ("rlog.zst", "rlog", "qlog.zst", "qlog"):
-      if os.path.isfile(os.path.join(base, name)):
-        return f"{route}/{name}"
+      p = os.path.join(base, name)
+      if os.path.isfile(p):
+        return p
     return f"{route}/0"
+  # 本机布局 route 名不带段号(如 00000004--915ebf086f): 匹配 {route}--* 段目录,
+  # 返回序号最小段的 rlog 绝对路径; LogReader 不接受相对路径/无段 route 名
+  segments = sorted(
+    glob.glob(os.path.join(ROUTES_DIR, route + "--*")),
+    key=lambda p: _segment_index(p),
+  )
+  if segments:
+    first = segments[0]
+    for name in ("rlog.zst", "rlog", "qlog.zst", "qlog"):
+      p = os.path.join(first, name)
+      if os.path.isfile(p):
+        return p
+    return first
   return route
+
+
+def _segment_index(path: str) -> int:
+  """Extract trailing segment number from local layout dir name (…--N)."""
+  name = os.path.basename(path).rstrip("/")
+  idx = name.rfind("--")
+  if idx >= 0:
+    try:
+      return int(name[idx + 2:])
+    except ValueError:
+      pass
+  return 0
 
 
 def build_openpilot_env() -> dict[str, str]:
