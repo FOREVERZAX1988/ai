@@ -233,3 +233,49 @@ VorB 0→1                 ← 制动预充（准备液压制动）
 | 0x12b | 1 | 33Hz | 全零 | 无意义 |
 | 0x395 | 2 | 10Hz | 540 unique/1200，中动态（byte0/4-5 变化） | 疑似雷达配置/诊断，非控制请求 |
 | 0x6b9 | 2 | 1Hz | 全零 | 无意义 |
+
+---
+
+## 14. 跟停（stop & go）与 RESUME 恢复机制（route 00000002--5284e8b7f1 seg13/14 实测）
+
+> 来源：旧 route（本地 seg9-40 共 32 段）。seg13 = 32→0 km/h ACC 跟停；seg14 = 停稳保持 + RESUME 恢复起步。补齐了 §7 中"Anhalten 未触发"与"RES 未按过"的缺口。
+
+### 14.1 跟停过程（seg13，60s 内 32km/h → 0）
+
+| 阶段 | ACC_05 | 其他 |
+|------|--------|------|
+| 减速中（0-26s） | FV=1、Verz=-1、axG=-1、**VorB=1（制动预充全程保持）**、FM=0、Mom=0 | o_ex≈30（怠速），TSK/ESP/EPB 全 0 |
+| **Anhalten 置位（26s，v≈2km/h）** | **Anh=1**，之后持续保持 | — |
+| 蠕行逼近（26-58s） | Anh=1 保持，v 2→0 约 30s | — |
+| **停稳后（58s+）** | ST=3 保持激活、Anh=1、**Verz 从 -1 加大到 -2**、VorB=1、FM=0/FV=1 | o_ex≈37（怠速维持），ESP_VerzTSK=0、EPB_FreigV=0 |
+
+- **Anhalten 语义**：v≈2km/h 时置位，置位后**持续保持**（不是单帧脉冲）；停稳后 Verz 反而加大到 -2（维持"停住"请求）
+- **液压制动不参与常规跟停**（平路）：ESP_VerzTSK/EPB_FreigV 全程 0；停稳保持力 = **1挡怠速拖滞**（变速箱 Zielgang=1、Uefkt=17.2、Waehlhebel=8=D、Eingang=0，发动机不熄火 o_ex≈37）
+- **TSK_05.Verz02/FreigV 全程 0（含 Anh=1/Verz=-2 时）**→ 确认 Macan 上 TSK_05 减速回显**不参与** ACC 减速/停车链路（DBC 位定义可能不对应 Macan，勿用于 OP 闭环）
+
+### 14.2 RESUME 恢复起步（seg14 @58.5s，100ms 内完成）
+
+```
+停稳保持（0-58s）: ST=3, FM=0, FV=1, Verz=-2, VorB=1, Anh=1, o_ex≈38
+58.5s 按 RES（LS_RES=1）
+58.6s: FM 0→1, FV 1→0, Mom 0→49→52, Loese=1, VorB 1→0, Anh 1→0
+58.7-59s: Mom→69, o_ex 48→59, axG 0→1, 车辆起步
+```
+
+- **Loeseanforderung 语义修正**：=「解除保持/起步释放」，不是"取消 ACC"（ST 全程保持 3）——RESUME 起步瞬间置位，伴随 Anh 1→0
+- 状态切换再次实锤 **FM/FV 严格互斥**（停住=FM0/FV1，起步=FM1/FV0）
+- 与 00000004 seg6（SET 激活）对比：激活/恢复的状态机切换模式一致
+
+### 14.3 对 OP 适配的意义（跟停状态机模板）
+
+代发 ACC_05 的跟停完整状态机：
+
+```
+减速:  FV=1, Verz=-1~-2, axG=-1, VorB=1        (FM=0)
+置停:  v<2km/h → Anhalten=1 保持               (Verz→-2)
+停稳:  ST=3, Anh=1, VorB=1, FM=0/FV=1          持续
+起步:  Loese=1 + FM=1 + Mom 爬升 + Anh 0         (RES 或前车起步触发)
+```
+
+- 平路跟停**无需模拟 ESP/EPB 液压制动**（原厂不介入）；坡道保持/溜车防护机制未验证（需坡道跟停场景）
+- OP 若只发纵向，可读 carState vEgo 判断 v<2km/h 触发 Anhalten，停稳后持续保持直至起步条件
