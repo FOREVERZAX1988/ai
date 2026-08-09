@@ -298,3 +298,69 @@ VorB 0→1                 ← 制动预充（准备液压制动）
 ### 15.3 未覆盖场景提醒（该 route 不满足）
 - 急刹/液压制动（ESP_VerzTSK）、跟停（Anhalten）、坡道、RESUME 均未出现
 - 剩余待验证项仍为：**急刹触发阈值、坡道跟停保持、下长坡 Uebersetz/降挡行为**
+
+---
+
+## 16. Macan 按键逻辑与 SET 激活链路（route 00000004--915ebf086f seg6 实测）
+
+> 本文档最初分析时已有激活时序（§3），本节约到**按键信号级**，并记录 SET 激活问题（resumeBlocked）的根因与修复原理，供后续排查直接引用。
+
+### 16.1 LS_01 按键位定义（vw_mlb.dbc BO_ 267）
+
+| 位 | 信号 | 功能 |
+|----|------|------|
+| 12 | LS_Hauptschalter | 巡航主开关（本车恒 1=ON，`cruiseState.available` 用此位） |
+| 13 | LS_Abbrechen | 取消 |
+| 15 | LS_Limiter | 限速器 |
+| **16** | **LS_Tip_Setzen** | **SET**（设定/激活） |
+| **17** | **LS_Tip_Hoch** | **速度 +** |
+| 18 | LS_Tip_Runter | 速度 - |
+| 19 | LS_Tip_Wiederaufnahme | RES（恢复） |
+| 20\|2 | LS_Verstellung_Zeitluecke | 距离调节 |
+
+**Macan 特性（用户确认 + 实测）**：**SET 键与速度 + 是同一个物理键**——按下时 bit16+bit17 **严格同帧**置位、松开时严格同帧清零。实测帧（seg6 @51.3s）：`raw=0b160314`（SET=1 +=1）→ 保持 5 帧 → `raw=021c0014`（同时归零）。
+
+### 16.2 事件产生与 resumeBlocked 根因
+
+```
+按 SET（bit16+bit17 同帧=1）
+ → create_button_events 产生 [setCruise(rising), accelCruise(rising)] 同帧
+ → selfdrived.py:222: resume_pressed = any(accelCruise, resumeCruise)  ← accelCruise 被当成"恢复"
+ → pcmCruise=False 且 vCruise=255(从未初始化)>250 → resumeBlocked NO_ENTRY
+ → "sunnypilot 不可用 / 请按设定键以启用" → 激活被挡
+```
+
+- **resumeBlocked 的意图**：pcmCruise=False 时，未设过速度（vCruise=255）按"恢复/+"无效，提示用户用 SET 激活。
+- **Macan 的坑**：SET 键物理上同时置 bit17 → 被误判为"+恢复" → 挡掉真正的 SET 激活。
+- 单独按 +/-（bit16=0）→ 只有 accelCruise → 正常（激活后调速度、未激活时提示恢复）。
+
+### 16.3 修复（opendbc carstate.py update_mlb）
+
+```python
+# 过滤条件：同帧出现 setCruise 或 LS_Tip_Setzen 当前按下（防个别帧 bit17 先置位）
+if any(b.type == ButtonType.setCruise for b in ret.buttonEvents) or pt_cp.vl["LS_01"]["LS_Tip_Setzen"]:
+  ret.buttonEvents = [b for b in ret.buttonEvents if b.type != ButtonType.accelCruise]
+```
+
+- SET 按下期间所有 accelCruise 事件被压制 → 不再 resumeBlocked
+- 单独按 +/-（bit16=0）→ 不受影响，accelCruise 保留
+- **部署前提**：必须重启 card/selfdrived 进程（或设备）才生效——route 00000004 录制时（08-09 08:00）rlog 里 accelCruise 仍在，证明当时过滤代码未运行（0808 的 cecbbdb1 提交于 08-08 但未部署/未重启）
+
+### 16.4 SET 激活完整链路（修复后）
+
+```
+按 SET → 松开（falling edge）
+ → setCruise(falling) → interfaces.py:293 update_button_enable → buttonEnable=True
+ → car_specific.py:156 → buttonEnable 事件（ET.ENABLE）
+ → selfdrived StateMachine.update → State.enabled
+ → card.py:219 enabled 上升沿 → initialize_v_cruise → vCruise = clip(vEgo, initial, 145)
+   （initial=40，实验模式=105；即设定速度初始化为当前车速——回应"SET 没传入初始速度"的疑问）
+ → ACC_05 代发激活（FM=1, Mom 按 vEgo 拟合基线起步）
+```
+
+### 16.5 相关行为说明
+
+- **未激活时按 RES** → resumeBlocked 提示"请按设定键以启用"：**正常**（原厂无记忆可恢复，提示一致），不是故障
+- **激活后 SET/+ 短按** = +1km/h（原厂语义，VCruiseHelper 的 accelCruise 处理）
+- **MADS UEM**（MadsUnifiedEngagementMode=True 默认）：不移除 buttonEnable 事件，SET 激活链路不被挡
+- 速度条件：自动挡 minEnableSpeed=-1，MADS 静默移除 belowEngageSpeed/speedTooLow/preEnableStandstill → 低速/静止（实验模式）也可接合
