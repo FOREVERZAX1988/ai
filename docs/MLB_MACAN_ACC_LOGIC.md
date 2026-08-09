@@ -128,3 +128,53 @@ VorB 0→1                 ← 制动预充（准备液压制动）
 
 - ACC_05 = 269 = 0x10d；ACC_02 = 780 = 0x30c；ACC_04 = 804 = 0x324；ACC_10 = 279 = 0x117；LS_01 = 267 = 0x10b；Motor_01 = 128 = 0x80；HCA_01 = 294 = 0x126
 - 所有 ACC 报文含 CHECKSUM(0|8) + COUNTER(8|4)；ACC_05 checksum 算法见 vw_mlb.dbc
+
+---
+
+## 11. ECU 状态回传闭环（TSK 家族，bus1，全部由发动机 Motor_EDC17_D4 发出）
+
+> 用户补充要求：除 ACC 请求链外，ECU 侧状态回显同样重要。本 route 实测（seg7 全程巡航+减速）：
+
+| 报文 | ID | 频率 | 关键信号 | 实测行为（route 00000004） |
+|------|-----|------|---------|--------------------------|
+| TSK_02 | 0x10c | — | TSK_Status(16\|2) | 本 route 未出现（可能仅点火/特殊状态） |
+| TSK_03 | 0x312 | ~20Hz | FAS_Wunschgeschw(12\|10 ×0.32) / FAS_Status_Prim_Anz(22\|2) / FAS_Status_Anzeige(61\|3) | 发动机回显设定速度+显示状态，与 ACC_02 字段同构（HUD/仪表交叉验证） |
+| TSK_04 | 0x10e | ~50Hz | **TSK_Status_GRA_ACC_02(62\|2)** | **子状态机回显：1=巡航 2=加速段，与 ACC_05.Status(3/4) 一一对应（421s:ST3/St02=1, 430s:ST4/St02=2）** |
+|        |       |      | TSK_ax_Getriebe(18\|9 ×0.024-2.016) / TSK_Wunsch_Uebersetz(27\|10) / TSK_Freig_WU(37\|1) | 本 route 恒 0（常规减速未触发变速箱主动减速/换挡请求） |
+| TSK_05 | 0x111 | ~50Hz | **TSK_Status_GRA_ACC_01(16\|2)** | **激活状态回显：0=待机 1=激活，与 cruiseState.enabled 对应** |
+|        |       |      | **TSK_Steigung(40\|8 ×0.8-101.6)** | **坡度实时工作（实测 -2~+2%），发动机坡度补偿输入，OP 可直接复用** |
+|        |       |      | TSK_Fahrzeugmasse(18\|5 ×200+500) | 本 route=500（无效/未设置） |
+|        |       |      | TSK_Freig_Verzoeg_Anf(55\|1) / TSK_Verzoeg_Anf_02(56\|8 ×0.024-3.984) | 本 route 恒 0（需更强减速/跟停场景验证） |
+| ESP_01 | 0x100 | ~50Hz | ESP_Verz_TSK_aktiv(27\|1) / ESP_Konsistenz_TSK(29\|1) | 本 route 恒 0（常规滑行减速未触发 ESP 主动制动） |
+
+### TSK 闭环结论（对 OP 适配）
+- **状态机回显可用**：ACC_05.Status 3↔4 ↔ TSK_04.St02 1↔2；激活态 ↔ TSK_05.St01=1 → OP 代发 ACC_05 后可用 TSK 回显做闭环验证
+- **减速执行路径**：常规减速（Verz -1~-2.2、axG -1~-2）由**发动机扭矩卸载+滑行**完成，TSK_04.ax_Getriebe / TSK_05.Verz02 / ESP_01.VerzTSK 均未置位；液压制动需更紧急场景（待新 route 验证，注意 Anhalten/VorB 联动）
+- **坡度补偿**：TSK_05.Steigung 实时可用 → OP 纵向控制可直接读取做坡度补偿
+- 注意：TSK 系列在 bus1（发动机域），ACC 系列在 bus2（雷达域），两条域经网关交互
+
+## 12. 总线活跃信号全景（seg1 实测 60s，DBC vw_mlb.dbc）
+
+### bus0（PT 动力底盘，44 个活跃 ID）
+- 100Hz：LH_EPS_03(0x9f)、Getriebe_01(0x82)、LWI_01(0x86)、0xa1(未收录)、Motor_01(0x80)、Motor_03(0x105)
+- 50Hz：TSK_05(0x111)、ESP_01(0x100)、ESP_02(0x101)、ESP_03(0x103)、Getriebe_03(0x102)、ESP_05(0x106)、ESP_08(0x11e)、EPB_01(0x104)
+- 20Hz：Kombi_01(0x30b)、Airbag_01(0x40)、ESP_04(0x308)
+- 10Hz：Blinkmodi_01(0x363)、ESP_07_FR(0x392)、LS_01(0x10b)、Klemmen_Status_01(0x3c0)、Gateway_05(0x39c)、Gateway_06(0x39f)、Licht_hinten_01(0x471)、0x3c1/0x3a0/0x3c3(未收录)
+- 低频：VIN_01(0x6b4)、BCM(0x526)、Dimmung_01(0x5f0)、PSD_01/02(0x3a1/0x3a2)、Gateway_11(0x644)、Kombi_02/03(0x6b7/0x6b8)
+
+### bus1（舒适/发动机域，70 个活跃 ID）
+- 100Hz：0xb0(未收录)、Getriebe_02(0x83)、Motor_02(0x81)、0xaa/0xab(未收录)、LH_EPS_03(0x9f)、LWI_01(0x86)、Motor_03(0x105)、Getriebe_01(0x82)
+- 50Hz：TSK_04(0x10e)、TSK_05(0x111)、Motor_04(0x107)、Motor_10(0x114)、LH_EPS_02(0x11d)、ACC_05(0x10d，转发)、ESP_01/02/03(0x100/101/103)、ESP_05(0x106)、ESP_08(0x11e)、Getriebe_03(0x102)、EPB_01(0x104)
+- 20Hz：TSK_03(0x312)、Motor_05(0x30e)、BEM_01(0x309)、Kombi_01(0x30b)
+- 10Hz：LS_01(0x10b)、Klima_01(0x3bf)、Getriebe_04(0x441)、0x3b2/0x3b3/0x3f1/0x663/0x390(未收录)
+
+### bus2（驾驶辅助/ACC 雷达域，7 个活跃 ID）
+- 20Hz：ACC_05(0x10d)、ACC_10(0x117)、0x127(未收录)
+- 10Hz：ACC_02(0x30c)、ACC_04(0x324)
+- 1Hz：0x395(未收录)、0x6b9(未收录)
+
+### bus128（OP 通道，9 个活跃 ID）
+- 镜像：ACC_05/ACC_10/ACC_02/ACC_04/0x127/0x395/0x6b9（与 bus2 一致）
+- **OP 代发**：HCA_01(0x126, 20Hz)=横向 LKAS；LDW_02(0x397)=车道偏离输出
+
+### bus130（bus0 转发镜像，44 个活跃 ID，内容与 bus0 相同）
