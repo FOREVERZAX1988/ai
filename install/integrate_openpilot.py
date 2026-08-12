@@ -130,10 +130,31 @@ def render_param_line(param: dict[str, str]) -> str:
 
 
 def find_params_keys_h(root: Path) -> Path | None:
-  for rel in ("common/params_keys.h", "openpilot/common/params_keys.h"):
-    path = root / rel
+  """Resolve params_keys.h for flat or nested openpilot layouts."""
+  root = root.resolve()
+  nested = root / "openpilot"
+  source_root = nested if (nested / "common" / "params_keys.h").is_file() else root
+  candidates = [
+    source_root / "common" / "params_keys.h",
+    root / "common" / "params_keys.h",
+    root / "openpilot" / "common" / "params_keys.h",
+  ]
+  seen: set[str] = set()
+  for path in candidates:
+    key = str(path)
+    if key in seen:
+      continue
+    seen.add(key)
     if path.is_file():
       return path
+  try:
+    from ai.system.paths import openpilot_source_root
+
+    extra = openpilot_source_root() / "common" / "params_keys.h"
+    if extra.is_file():
+      return extra
+  except Exception:
+    pass
   return None
 
 
@@ -362,8 +383,12 @@ def integrate(
     if not report["params_keys"].get("ok"):
       report["ok"] = False
   elif patch_fork_params:
-    report["params_keys"] = {"ok": False, "error": "params_keys.h not found"}
-    report["ok"] = False
+    report["params_keys"] = {
+      "ok": True,
+      "skipped": True,
+      "warning": "params_keys.h not found — SpDevBeep not patched (add manually if beepd is needed)",
+      "searched_root": str(root),
+    }
   else:
     report["params_keys"] = {"ok": True, "skipped": True, "reason": "patch_fork_params=false"}
 
@@ -398,8 +423,18 @@ def integrate(
     from ai.fork.detect_fork import detect_fork
 
     report["fork"] = detect_fork(root)
+    if not report["fork"].get("ok"):
+      report["warnings"] = report.get("warnings", []) + [
+        f"fork detect: {report['fork'].get('error', 'unknown')}",
+      ]
   except Exception as exc:
-    report["fork"] = {"ok": False, "error": str(exc)}
+    report["fork"] = {
+      "ok": True,
+      "skipped": True,
+      "warning": str(exc),
+      "hint": "fork 扫描失败不影响 launch 集成；请更新 ai/ 后重试 integrate",
+    }
+    report["warnings"] = report.get("warnings", []) + [f"fork detect exception: {exc}"]
 
   if not dry_run:
     try:
@@ -459,7 +494,13 @@ def main() -> int:
       block = result.get(section)
       if not block:
         continue
-      print(f"[{section}] {json.dumps(block, ensure_ascii=False)}")
+      line = f"[{section}] {json.dumps(block, ensure_ascii=False)}"
+      try:
+        print(line)
+      except UnicodeEncodeError:
+        print(line.encode(sys.stdout.encoding or "utf-8", errors="replace").decode(
+          sys.stdout.encoding or "utf-8", errors="replace"
+        ))
     if result.get("ok"):
       print("integrate: OK")
     else:
