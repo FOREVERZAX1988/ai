@@ -44,6 +44,7 @@ MODULES = (
   "ai.tools.domains.platform.translation_tools",
   "ai.tools.domains.platform.viz_layout_tools",
   "ai.tools.domains.platform.voice_summary_tools",
+  "ai.tools.domains.platform.webui_tools",
   "ai.tools.domains.platform.workflows",
   "ai.tools.domains.platform.workspace_enrich",
   "ai.tools.domains.platform.write_pending",
