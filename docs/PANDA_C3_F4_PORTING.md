@@ -199,7 +199,7 @@ CLI 指纹工具同样读取 `pandaStates` 长度，调用 `get_fw_versions(...,
 ### 4.5 其它主仓项（可选）
 
 - `ai` 子模块 + `start_op_assistant()`：开机拉起 op助手 `:5090`（与 Panda 无直接关系，本 fork 标配）
-- `common/hardware/tici/`、`camerad` AR0231 等：C3 硬件配套，移植 Panda 时可不同步
+- `common/hardware/comma/`、`camerad` AR0231 等：C3 硬件配套，移植 Panda 时可不同步
 
 ---
 

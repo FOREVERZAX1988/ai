@@ -112,8 +112,8 @@ def is_comma_device() -> bool:
   if os.path.isfile("/TICI") or os.path.isfile("/AGNOS"):
     return True
   try:
-    from openpilot.system.hardware import TICI
-    return bool(TICI)
+    from openpilot.common.hardware import COMMA_HARDWARE
+    return bool(COMMA_HARDWARE)
   except Exception:
     return False
 
@@ -130,7 +130,7 @@ def routes_dir() -> str:
   if is_comma_device():
     return "/data/media/0/realdata"
   try:
-    from openpilot.system.hardware.hw import Paths
+    from openpilot.common.hardware.hw import Paths
     return Paths.log_root()
   except Exception:
     pass
