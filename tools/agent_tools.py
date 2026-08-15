@@ -72,6 +72,14 @@ TOOL_META: dict[str, dict[str, Any]] = {
   "diagnose_mads_lateral": {"label": "MADS横向/LKAS排查", "group": "read", "default_enabled": True, "driving": True},
   "get_osm_status": {"label": "OSM 地图状态", "group": "read", "default_enabled": True, "driving": True},
   "list_osm_regions": {"label": "OSM 区域列表", "group": "read", "default_enabled": True, "driving": True},
+  "webui_health_check": {"label": "WebUI 健康检查", "group": "read", "default_enabled": True, "driving": True},
+  "webui_service_status": {"label": "WebUI 服务状态", "group": "read", "default_enabled": True, "driving": True},
+  "webui_package_info": {"label": "WebUI 版本与文档", "group": "read", "default_enabled": True, "driving": True},
+  "webui_qa_checklist": {"label": "WebUI 验收清单", "group": "read", "default_enabled": True, "driving": True},
+  "webui_report_template": {"label": "WebUI 验收报告模板", "group": "read", "default_enabled": True, "driving": True},
+  "webui_apply_dev_preset": {"label": "WebUI Dev 预设", "group": "read", "default_enabled": True, "driving": False, "pc_only": True},
+  "webui_list_dev_presets": {"label": "WebUI Dev 预设列表", "group": "read", "default_enabled": True, "driving": False, "pc_only": True},
+  "webui_onboarding_status": {"label": "WebUI 引导状态", "group": "read", "default_enabled": True, "driving": True},
   "list_scheduled_tasks": {"label": "定时任务列表", "group": "read", "default_enabled": True, "driving": True},
   "list_knowledge_docs": {"label": "知识库列表", "group": "read", "default_enabled": True, "driving": True},
   "cabana_explain_signal": {"label": "CAN 信号解释", "group": "read", "default_enabled": True, "driving": True},
@@ -230,6 +238,14 @@ def build_tool_schemas() -> list[dict[str, Any]]:
     {"type": "function", "function": {"name": "trigger_osm_download", "description": "Start OSM map database download (offroad, WiFi).", "parameters": {"type": "object", "properties": {"confirm": {"type": "boolean"}}, "required": ["confirm"]}}},
     {"type": "function", "function": {"name": "delete_osm_maps", "description": "Delete all downloaded OSM maps.", "parameters": {"type": "object", "properties": {"confirm": {"type": "boolean"}}, "required": ["confirm"]}}},
     {"type": "function", "function": {"name": "cancel_osm_download", "description": "Cancel in-progress OSM map download.", "parameters": {"type": "object", "properties": {"confirm": {"type": "boolean"}}, "required": []}}},
+    {"type": "function", "function": {"name": "webui_health_check", "description": "HTTP health check for op Web UI (:5080): port, bootstrap, state, model overlay. Use before vehicle QA.", "parameters": {"type": "object", "properties": {"host": {"type": "string", "description": "Default 127.0.0.1; use device LAN IP from PC."}, "port": {"type": "integer"}, "cache_bust": {"type": "string", "description": "Query ?v= for browser cache, e.g. 77"}}, "required": []}}},
+    {"type": "function", "function": {"name": "webui_service_status", "description": "Check if webui.webuid is listening on port 5080 and list PIDs.", "parameters": {"type": "object", "properties": {"host": {"type": "string"}, "port": {"type": "integer"}}, "required": []}}},
+    {"type": "function", "function": {"name": "webui_package_info", "description": "Read webui/VERSION and doc paths for GUI alignment handoff.", "parameters": {"type": "object", "properties": {}, "required": []}}},
+    {"type": "function", "function": {"name": "webui_qa_checklist", "description": "Load structured QA checklist from webui/docs (vehicle|pc|handoff).", "parameters": {"type": "object", "properties": {"scope": {"type": "string", "enum": ["vehicle", "pc", "handoff"]}}, "required": []}}},
+    {"type": "function", "function": {"name": "webui_report_template", "description": "Markdown template for vehicle WebUI acceptance report to hand off to developers.", "parameters": {"type": "object", "properties": {}, "required": []}}},
+    {"type": "function", "function": {"name": "webui_apply_dev_preset", "description": "POST PC dev preset (onroad_overlay, confidence_low, etc.). Only when WEBUI_DEV_PC=1.", "parameters": {"type": "object", "properties": {"preset": {"type": "string"}, "host": {"type": "string"}, "port": {"type": "integer"}}, "required": ["preset"]}}},
+    {"type": "function", "function": {"name": "webui_list_dev_presets", "description": "List PC dev simulation presets for WebUI polish testing.", "parameters": {"type": "object", "properties": {}, "required": []}}},
+    {"type": "function", "function": {"name": "webui_onboarding_status", "description": "Check terms/training onboarding completion (HasAcceptedTerms, CompletedTrainingVersion).", "parameters": {"type": "object", "properties": {}, "required": []}}},
     {"type": "function", "function": {"name": "select_car_platform", "description": "Alias: set CarPlatformBundle platform (empty=auto). Stationary only.", "parameters": {"type": "object", "properties": {"model": {"type": "string"}, "confirm": {"type": "boolean"}}, "required": ["model", "confirm"]}}},
     {"type": "function", "function": {"name": "write_params", "description": "Write Params while stationary. JSON object key->value. Optional regression guard via route_before/route_after.", "parameters": {"type": "object", "properties": {"params": {"type": "object", "additionalProperties": True}, "confirm": {"type": "boolean", "description": "Must be true to apply."}, "route_before": {"type": "string"}, "route_after": {"type": "string"}, "skip_regression_check": {"type": "boolean"}}, "required": ["params", "confirm"]}}},
     {"type": "function", "function": {"name": "apply_tune_preset", "description": "Apply a named tune preset while stationary.", "parameters": {"type": "object", "properties": {"preset_id": {"type": "string"}, "confirm": {"type": "boolean"}, "route_before": {"type": "string"}, "route_after": {"type": "string"}, "skip_regression_check": {"type": "boolean"}}, "required": ["preset_id", "confirm"]}}},
@@ -774,6 +790,49 @@ def make_handlers(
       return {"ok": True, "needs_confirmation": True, "hint": "Set confirm=true to cancel OSM download."}
     from ai.tools.osm_tools import cancel_osm_download
     return cancel_osm_download(p)
+
+  def h_webui_health_check(args):
+    from ai.tools.webui_tools import webui_health_check
+    return webui_health_check(
+      str(args.get("host") or "127.0.0.1"),
+      int(args.get("port") or 5080),
+      str(args.get("cache_bust") or ""),
+    )
+
+  def h_webui_service_status(args):
+    from ai.tools.webui_tools import webui_service_status
+    return webui_service_status(
+      str(args.get("host") or "127.0.0.1"),
+      int(args.get("port") or 5080),
+    )
+
+  def h_webui_package_info(_a):
+    from ai.tools.webui_tools import webui_package_info
+    return webui_package_info()
+
+  def h_webui_qa_checklist(args):
+    from ai.tools.webui_tools import webui_qa_checklist
+    return webui_qa_checklist(str(args.get("scope") or "vehicle"))
+
+  def h_webui_report_template(_a):
+    from ai.tools.webui_tools import webui_report_template
+    return webui_report_template()
+
+  def h_webui_apply_dev_preset(args):
+    from ai.tools.webui_tools import webui_apply_dev_preset
+    return webui_apply_dev_preset(
+      str(args.get("preset") or ""),
+      str(args.get("host") or "127.0.0.1"),
+      int(args.get("port") or 5080),
+    )
+
+  def h_webui_list_dev_presets(_a):
+    from ai.tools.webui_tools import webui_list_dev_presets
+    return webui_list_dev_presets()
+
+  def h_webui_onboarding_status(_a):
+    from ai.tools.webui_tools import webui_onboarding_status
+    return webui_onboarding_status()
 
   def h_get_agent_memory(_a):
     return get_memory(p)
@@ -1582,6 +1641,14 @@ def make_handlers(
     "trigger_osm_download": h_trigger_osm_download,
     "delete_osm_maps": h_delete_osm_maps,
     "cancel_osm_download": h_cancel_osm_download,
+    "webui_health_check": h_webui_health_check,
+    "webui_service_status": h_webui_service_status,
+    "webui_package_info": h_webui_package_info,
+    "webui_qa_checklist": h_webui_qa_checklist,
+    "webui_report_template": h_webui_report_template,
+    "webui_apply_dev_preset": h_webui_apply_dev_preset,
+    "webui_list_dev_presets": h_webui_list_dev_presets,
+    "webui_onboarding_status": h_webui_onboarding_status,
     "get_agent_memory": h_get_agent_memory,
     "update_agent_memory": h_update_agent_memory,
     "list_scheduled_tasks": h_list_scheduled_tasks,

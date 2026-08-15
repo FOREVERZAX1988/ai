@@ -1,5 +1,5 @@
 {
-  "version": 31,
+  "version": 33,
   "skills": [
     {"id": "safety-policy", "name": "安全边界", "description": "告诉 AI 什么时候只能看、什么时候可以改参数", "path": "safety-policy/SKILL.md", "default_enabled": true, "requires_tools": []},
     {"id": "memory-protocol", "name": "记忆习惯", "description": "让 AI 记住你的车型、常用设置和备注", "path": "memory-protocol/SKILL.md", "default_enabled": true, "requires_tools": ["update_agent_memory", "get_agent_memory", "search_memory_semantic", "append_daily_memory", "update_workspace_file", "update_user_profile"]},
@@ -54,6 +54,8 @@
     {"id": "konik-vs-comma", "name": "Konik vs Comma", "description": "云配对选型对比", "path": "konik-vs-comma/SKILL.md", "default_enabled": true, "requires_tools": ["konik_connect_status", "comma_auth_status", "network_diagnostics", "konik_connect_pipeline"]},
     {"id": "git-pr-workflow", "name": "Git / Pull Request", "description": "本地改代码 → 提交推送 → 创建/审阅 PR", "path": "git-pr-workflow/SKILL.md", "default_enabled": true, "requires_tools": ["git_status", "git_diff", "git_commit", "git_push", "github_actions_auth_status", "set_github_actions_pat", "publish_changes", "discover_publish_units", "set_forge_token", "forge_auth_status", "discover_issue_templates", "create_issue", "report_issue", "git_publish_pull_request", "list_github_pull_requests", "get_github_pull_request", "review_github_pull_request", "merge_github_pull_request", "auto_review_pull_request", "report_bug_and_publish_pr", "generate_adaptation_pr_draft", "wait_github_workflow", "list_github_workflow_runs"]},
     {"id": "ai-web-bugfix", "name": "Web Bug → PR", "description": "op助手 Web 反馈 → 结构化 Bug PR（mouxangithub/ai）", "path": "ai-web-bugfix/SKILL.md", "default_enabled": true, "requires_tools": ["report_bug_and_publish_pr", "report_issue", "create_issue", "git_publish_pull_request", "git_status", "git_diff", "github_actions_auth_status", "get_github_pull_request", "list_github_pull_requests"]},
-    {"id": "ai-web-feedback", "name": "反馈 → Issue", "description": "用户建议 / 未修复 bug → GitHub/Gitee Issue", "path": "ai-web-feedback/SKILL.md", "default_enabled": true, "requires_tools": ["discover_issue_templates", "report_issue", "create_issue", "forge_auth_status"]}
+    {"id": "ai-web-feedback", "name": "反馈 → Issue", "description": "用户建议 / 未修复 bug → GitHub/Gitee Issue", "path": "ai-web-feedback/SKILL.md", "default_enabled": true, "requires_tools": ["discover_issue_templates", "report_issue", "create_issue", "forge_auth_status"]},
+    {"id": "webui-vehicle-qa", "name": "WebUI 上车验收", "description": "对照 scrcpy 真机画面验收 overlay / HUD / 设置（P0 必须上车）", "path": "webui-vehicle-qa/SKILL.md", "default_enabled": true, "requires_tools": ["webui_health_check", "webui_service_status", "webui_package_info", "webui_qa_checklist", "webui_report_template", "webui_onboarding_status", "get_vehicle_state", "read_onroad_events"]},
+    {"id": "webui-development", "name": "WebUI PC 开发", "description": "PC 预览、Dev 预设、健康检查与开发交接", "path": "webui-development/SKILL.md", "default_enabled": true, "requires_tools": ["webui_health_check", "webui_service_status", "webui_package_info", "webui_qa_checklist", "webui_apply_dev_preset", "webui_list_dev_presets", "webui_onboarding_status", "get_host_environment", "get_build_info"]}
   ]
 }

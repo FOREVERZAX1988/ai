@@ -11,5 +11,6 @@ Markdown 技能包，供 op助手在系统 prompt 中加载领域知识。
 - **GitHub Runner / prebuilt CI**：`../docs/GITHUB_RUNNER.md` + 技能 `github-runner/`
 - **CP 迁移对照**：`carrot-legacy/` + 内置 RAG（`tools/rag_seed.py`）
 - **车辆适配**：`vehicle-adaptation/`（指纹、DBC、草稿导出）
+- **WebUI 验收 / 开发**：`webui-vehicle-qa/`、`webui-development/` + `../docs/WEBUI_QA.md` + `webui/docs/OP_ASSISTANT_HANDOFF.md`
 
 新增技能：新建 `<id>/SKILL.md`，在 `registry.json` 登记即可。

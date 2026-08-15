@@ -277,6 +277,26 @@ WORKFLOWS: dict[str, dict[str, Any]] = {
       "auto_review_pull_request 发评论；仅当 head 为 ai/* 分支、CI 绿、用户明确要求时才 merge_github_pull_request。"
     ),
   },
+  "webui_vehicle_qa": {
+    "name": "WebUI 上车验收",
+    "mode": "execute",
+    "steps": [
+      "webui_package_info",
+      "webui_service_status",
+      "webui_health_check(cache_bust=78)",
+      "webui_qa_checklist(scope=vehicle)",
+      "P0: 与 scrcpy 对照 overlay（车道/路径/前车）",
+      "P1: HUD 告警、扭矩、置信度球",
+      "P2: 设置面板抽样",
+      "webui_report_template → 结构化报告",
+    ],
+    "prompt": (
+      "执行 WebUI 上车验收：先 webui_health_check 确认 :5080 与 API 正常；"
+      "加载 webui_qa_checklist(vehicle)；P0 overlay 必须与 scrcpy 真机画面对照（唯一必须上车项）；"
+      "行驶中只读不写 Param；最后用 webui_report_template 输出 pass/fail 报告给开发者。"
+      "交接文档：webui/docs/OP_ASSISTANT_HANDOFF.md"
+    ),
+  },
 }
 
 

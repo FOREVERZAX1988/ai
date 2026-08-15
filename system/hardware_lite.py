@@ -1,7 +1,7 @@
 """Comma device Lite hardware variant — detection and AI param policy.
 
 Lite = comma three (``tici`` / C3) without I2C audio amp @ bus 0 / 0x10.
-Matches ``set_lite_hw()`` in ``launch_chffrplus.sh`` (``tici`` only, not ``tizi``).
+Matches ``set_lite_hw()`` in ``launch_chffrplus.sh`` (``tici`` / C3 only, not ``tizi`` C3X).
 When ``LITE=1``: no micd/soundd/dmonitoring*; use ``beepd`` + ``SpDevBeep`` for feedback.
 C4 (``mici``) has no amp chip but is **not** the Lite variant (different product line).
 Not the same as PrimeType.LITE (subscription tier).
@@ -70,11 +70,7 @@ def _probe_amp_missing() -> bool | None:
 
 
 def _devicetree_has_tici() -> bool:
-  try:
-    with open("/sys/firmware/devicetree/base/model", "rb") as f:
-      return b"tici" in f.read()
-  except OSError:
-    return False
+  return _comma_device_slug() == "tici"
 
 
 def detect_lite_hw() -> bool | None:
