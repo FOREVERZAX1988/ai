@@ -15,19 +15,21 @@ C2 检测：`ai/system/comma_host.py`（Android `getprop`、根目录 `d2` 标�
 
 ## Panda / Pandad（C3+）
 
+当前 **sunnypilot master** 使用统一布局：`panda/` + `openpilot/selfdrive/pandad`（无 `panda_tici` / `pandad_tici` 分裂目录）。
+
 | 产品 | `device_type` | 内部 panda MCU | `panda_backend` | `pandad_process` | `pandad_module` |
 |------|---------------|----------------|-----------------|------------------|-----------------|
-| comma three（**C3**） | `tici` | F4 (DOS) | `panda_tici`† | `pandad_tici`† | `selfdrive.pandad_tici.pandad`† |
+| comma three（**C3**） | `tici` | F4 (DOS) | `panda` | `pandad` | `selfdrive.pandad.pandad` |
 | comma threeX（**C3X**） | `tizi` | H7 | `panda` | `pandad` | `selfdrive.pandad.pandad` |
 | comma four（**C4**） | `mici` | H7 | `panda` | `pandad` | `selfdrive.pandad.pandad` |
 
-† 仅当仓库中 **同时** 存在 `panda_tici` 与 `selfdrive/pandad_tici` 时使用；缺任一则 F4 也回退 `panda` + `pandad`。
+遗留 split 布局（仅当仓库中 **同时** 存在 `panda_tici` 与 `selfdrive/pandad_tici` 时）由 `ai/system/panda_stack.py` 自动检测并回退。
 
 **常见误区（已纠正）：**
 
-- C3X **不是** F4；C3X（`tizi`）与 C4（`mici`）同为 H7 / `TICI_TRES`，使用 `panda` + `pandad`。
-- C3（`tici` / F4）在 tici 栈存在时用 **`pandad_tici` 进程**，但 **F4 固件文件来自 `panda/`**，不是 `panda_tici/`（详见 [`PANDA_FLASH.md`](PANDA_FLASH.md)）。
-- **红熊（H7）** 外接由 `panda_tici` 自动刷机；**黑熊 / DOS（F4）** 不自动刷，用 `recover_dos_panda`。
+- C3X **不是** F4；C3X（`tizi`）与 C4（`mici`）同为 H7 / `TICI_TRES`。
+- C3（`tici` / F4）在统一布局下由 `pandad` 直启 C++ 快速路径（单内部 F4）；固件来自 `panda/board/obj/panda.bin.signed`。
+- **红熊（H7）** 外接由 `pandad` 自动刷机；**黑熊 / DOS（F4）** 不自动刷，用 `recover_dos_panda`。
 
 ## sunnypilot C3 DOS 固件（必读）
 
@@ -35,7 +37,7 @@ C2 检测：`ai/system/comma_host.py`（Android `getprop`、根目录 `d2` 标�
 |-------|----------|----------|----------|
 | 内置 DOS (F4) | `panda/board/obj/panda.bin.signed` | 否（DOS 快速路径） | `recover_dos_panda(internal=true)` |
 | 外接黑熊 (F4) | 同上 | 否 | `recover_dos_panda(external=true)` |
-| 外接红熊 (H7) | `panda_tici/board/obj/panda*.bin.signed` | 是（`pandad_tici`） | 一般不需手动 |
+| 外接红熊 (H7) | `panda/board/obj/panda.bin.signed`（H7 变体） | 是（`pandad`） | 一般不需手动 |
 
 CLI：`ai/scripts/recover_dos_panda.py`；op 助手技能：`c3-dos-panda`。
 
@@ -66,8 +68,8 @@ CLI：`ai/scripts/recover_dos_panda.py`；op 助手技能：`c3-dos-panda`。
 - CAN 采集、DataFlash 导出、UDS 提取前会 `stop_manager_and_pandad()`，**只杀当前设备对应的 pandad 模块**，不会 `pkill pandad` 误伤另一变体。
 - `tsk_restart_pandad` / 设置页「重启 pandad」：按 `pandad_module` 实际选择（可能为 `pandad` 或 `pandad_tici`）。
 - PC 开发（非 AGNOS）上 TSK 为 `dry_run`，无真实 panda；`panda_backend` 默认为 `panda`。
-- 刷 F4 固件后：建议 `rebuild_pandad_tici` + reboot（`updated` 可能删除编译产物）。
-- **C3 DOS + 外接红熊（F4 + H7 双 USB）**：需 `pandad_tici` 同时打开两只设备；详见 [`PANDA_FLASH.md`](PANDA_FLASH.md)「异构双 Panda」。
+- 刷 F4 固件后：建议 `ai/scripts/rebuild_pandad.sh` + reboot（`updated` 可能删除编译产物）。
+- **C3 DOS + 外接红熊（F4 + H7 双 USB）**：需 `pandad` 同时打开两只设备；详见 [`PANDA_FLASH.md`](PANDA_FLASH.md)「异构双 Panda」。
 
 ## 相关文档
 

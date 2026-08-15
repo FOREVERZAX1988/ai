@@ -48,6 +48,7 @@
 | [FORK_AND_COMMUNITY.md](FORK_AND_COMMUNITY.md) | Fork 与 Wiki RAG |
 | [SESSION_SYNC.md](SESSION_SYNC.md) | 会话同步（`core/sync/hub.py`） |
 | [UPSTREAM_SYNC.md](UPSTREAM_SYNC.md) | 上游同步 |
+| [WEBUI_QA.md](WEBUI_QA.md) | **WebUI** 上车验收与 op助手工具 |
 | [../dev/README.md](../dev/README.md) | PC 预览与测试 |
 
 ## GitHub
