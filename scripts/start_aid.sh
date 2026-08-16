@@ -3,9 +3,10 @@
 set -euo pipefail
 ROOT="${OPENPILOT_ROOT:-/data/openpilot}"
 VENV_SITE="/usr/local/venv/lib/python3.12/site-packages"
+PYDEPS="$ROOT/.pydeps"
 PY=python3.12
 command -v "$PY" >/dev/null 2>&1 || PY=python3
-export PYTHONPATH="$ROOT:$VENV_SITE${PYTHONPATH:+:$PYTHONPATH}"
+export PYTHONPATH="$ROOT:$VENV_SITE${PYDEPS:+:$PYDEPS}${PYTHONPATH:+:$PYTHONPATH}"
 
 SO="$ROOT/openpilot/common/params_pyx.so"
 [ -f "$SO" ] || SO="$ROOT/common/params_pyx.so"
