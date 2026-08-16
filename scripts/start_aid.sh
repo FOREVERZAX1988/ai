@@ -11,8 +11,7 @@ export PYTHONPATH="$ROOT:$VENV_SITE${PYDEPS:+:$PYDEPS}${PYTHONPATH:+:$PYTHONPATH
 SO="$ROOT/openpilot/common/params_pyx.so"
 [ -f "$SO" ] || SO="$ROOT/common/params_pyx.so"
 if [ ! -f "$SO" ]; then
-  echo "params_pyx.so not found — run: cd $ROOT/system/manager && ./build.py" >&2
-  exit 1
+  echo "params_pyx.so not found — run: cd $ROOT/system/manager && ./build.py (aid HTTP will still start)" >&2
 fi
 
 cd "$ROOT"
