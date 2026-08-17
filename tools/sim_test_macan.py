@@ -42,6 +42,27 @@ def run_unittest(target: str, desc: str, timeout: int = 300) -> bool:
     return r.returncode == 0
 
 
+def run_boot_smoke() -> bool:
+    """启动冒烟：import 全模块 + AST 未定义名称检查（抓循环导入/运行期 NameError）"""
+    print(f"\n{'='*60}\n▶ 启动冒烟测试（import 全模块 + AST 未定义名称检查）\n{'='*60}")
+    script = os.path.join(OPENPILOT_ROOT, "ai", "tools", "boot_smoke_test.py")
+    cmd = [sys.executable, script]
+    try:
+        r = subprocess.run(cmd, cwd=OPENPILOT_ROOT, timeout=300, capture_output=True, text=True)
+    except subprocess.TimeoutExpired:
+        print("  ⏱️ 启动冒烟超时，视为失败")
+        return False
+    out = (r.stdout or "") + (r.stderr or "")
+    for line in out.splitlines():
+        if any(k in line for k in ("🎉", "❌", "⚠️", "import 失败", "AST:", "启动冒烟")):
+            print("  ", line)
+    if r.returncode != 0:
+        print("  ❌ 启动冒烟失败（详见 boot_smoke_test.py 输出）")
+    else:
+        print("  ✅ 启动冒烟通过")
+    return r.returncode == 0
+
+
 def main() -> int:
     # 平台检测（允许在 PC 上通过 OPENPILOT_ROOT 覆盖）
     root = os.environ.get("OPENPILOT_ROOT", OPENPILOT_ROOT)
@@ -63,7 +84,8 @@ def main() -> int:
          "按键事件-按钮状态跟踪器"),
     ]
 
-    ok = True
+    ok = run_boot_smoke()
+
     for target, desc in results:
         try:
             passed = run_unittest(target, desc)
