@@ -273,3 +273,27 @@ def webui_onboarding_status() -> dict[str, Any]:
     return onboarding_status()
   except Exception as exc:
     return {"ok": False, "error": str(exc), "completed": True}
+
+
+def webui_headless_status(host: str = "127.0.0.1", port: int = _DEFAULT_PORT) -> dict[str, Any]:
+  """Read WebuiHeadlessMode / effective headless state from WebUI API."""
+  base = f"http://{host}:{port}"
+  res = _http_json(f"{base}/api/opui/headless-mode")
+  if not res.get("ok"):
+    return {
+      "ok": False,
+      "error": res.get("error", "headless-mode request failed"),
+      "hint": "Ensure webui.webuid is running on :5080",
+    }
+  data = res.get("data") if isinstance(res.get("data"), dict) else {}
+  return {
+    "ok": bool(data.get("ok", True)),
+    "host": host,
+    "port": port,
+    "mode": data.get("mode"),
+    "effective_headless": data.get("effective_headless"),
+    "has_builtin_display": data.get("has_builtin_display"),
+    "can_turn_off": data.get("can_turn_off"),
+    "doc": "ai/docs/HEADLESS_WEBUI.md",
+    "skill": "headless-webui",
+  }

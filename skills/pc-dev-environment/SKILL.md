@@ -18,6 +18,7 @@
 - 用户手册：`release/ci/README.md`
 - 触发编译：推 `master-c3` 或 Actions → `build.yaml`
 - 车机安装产物：`git reset --hard origin/master-c3-prebuilt` + 确认 `prebuilt` 文件
+- **推送代码**：`GIT_LFS_SKIP_PUSH=1`（op助手 `git_push` 已自动设置）；见 `ai/docs/GIT_LFS.md`
 
 ## 知识库
 

@@ -13,7 +13,8 @@
 ## 步骤
 
 1. `webui_package_info` — 版本与文档路径
-2. `webui_onboarding_status` — 若未完成引导，提示用户先完成条款/训练
+2. `webui_headless_status` — 无屏设备确认 effective_headless
+3. `webui_onboarding_status` — 若未完成引导，提示用户先完成条款/训练
 3. `webui_service_status` — 端口与 PID
 4. `webui_health_check(cache_bust=78)` — bootstrap / state / overlay
 5. `webui_qa_checklist(scope=vehicle)` — P0/P1/P2

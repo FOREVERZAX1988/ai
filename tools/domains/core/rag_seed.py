@@ -227,6 +227,40 @@ manager 离路且电压>9V、非计量网络时 systemctl 启停；github_runner
 
 禁忌：勿把 panda.bin.signed 放进 ai。勿用 panda_tici/H7 固件刷 F4。外接红熊 H7 由 pandad 自动刷 panda_h7.bin.signed。""",
   },
+  {
+    "id": "builtin_git_lfs_fork",
+    "title": "Git LFS：fork 拉取与不推送",
+    "tags": ["git", "lfs", "push", "fork", "faq"],
+    "refresh": True,
+    "text": """本 fork LFS 策略：
+- 拉取：.lfsconfig → GitLab sunnypilot-new-lfs（git lfs pull）
+- 推送：不向 LFS 上传；git push 时 GIT_LFS_SKIP_PUSH=1
+- op助手 git_push / git_publish_pull_request 已自动设置 GIT_LFS_SKIP_PUSH=1
+- OpFont/training 图片在 .gitattributes 排除 LFS，走普通 Git
+
+推送前：git lfs push --dry-run origin HEAD 应为 0 对象。
+失败 Unprocessable entity → 设 GIT_LFS_SKIP_PUSH=1 或 git config lfs.allowincompletepush true
+
+文档 ai/docs/GIT_LFS.md；技能 git-lfs-fork。""",
+  },
+  {
+    "id": "builtin_headless_webui",
+    "title": "无屏模式与 WebUI 操作",
+    "tags": ["headless", "webui", "c3", "agnos", "wifi", "faq"],
+    "refresh": True,
+    "text": """无屏 C3：原生 ui 不启动，WebUI :5080 为主界面，op助手 :5090。
+
+检测：OPENPILOT_HEADLESS=1；或 launch 脚本无触摸中断；Param WebuiHeadlessMode auto|on|off；API GET /api/opui/headless-mode。
+
+无屏必知：AGNOS 升级走 WebUI Software→AGNOS 或 SSH agnos.py；manager 错误在 /tmp/manager_last_error.txt。
+
+WebUI 15 设置面板：device network sunnylink toggles software models steering cruise visuals display osm trips vehicle firehose developer。
+
+实时：WebSocket ws://IP:5080/ws/opui（state/home/panel/put_param）。
+
+op助手工具：webui_health_check webui_headless_status webui_service_status；技能 headless-webui。
+完整 API：ai/docs/HEADLESS_WEBUI.md""",
+  },
   *load_json_builtin_docs(),
   *COMMA_DOCS_RAG,
   *SECOC_RAG,
