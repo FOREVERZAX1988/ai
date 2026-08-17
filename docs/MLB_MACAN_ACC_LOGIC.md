@@ -1,0 +1,130 @@
+# Macan MK1 (MLB) 原厂 ACC 工作逻辑 — 全链路解析
+
+> 来源：route `00000004--915ebf086f--0..25`（2026-08-09 08:00，26 段约 65 分钟）
+> 模式：**原厂 ACC 纵向 + openpilot 横向**（无 ECU 锁死，纯原厂纵向行为）
+> 方法：逐帧 rlog 解码（bus2/bus0/bus128 交叉验证）+ DBC(vw_mlb.dbc) 位级解析
+> 适用：Porsche Macan MK1 / VW MLB 平台纵向适配、ACC 信号因果判定
+
+---
+
+## 1. 总线拓扑与报文归属（源头判定）
+
+| 总线 | 角色 | 关键报文 |
+|------|------|---------|
+| bus0 | 动力底盘（PT） | Motor_01(0x80), Kombi_01(0x30b), LS_01(0x10b), ESP_04(0x308) |
+| bus1 | 车身舒适 | — |
+| bus2 | **驾驶辅助（原厂 ACC 雷达）** | **ACC_02(0x30c), ACC_04(0x324), ACC_05(0x10d), ACC_10(0x117), 0x127** |
+| bus128 | OP 代发/转发镜像 | 同批 ACC 报文（**与 bus2 字节 100% 相同 → 纯转发**）；HCA_01(0x126) 仅在此 → **OP 代发横向** |
+| bus130 | bus0 镜像 | 同 bus0 |
+
+**关键证据**：bus128 上的 ACC_02/04/05/10 与 bus2 逐字节一致（seg0-7 共 3000/3000 全匹配）→ 本 route 中 OP 未代发任何纵向报文，bus128 是 panda fwd_hook 的转发镜像。HCA_01(0x126) 只出现在 bus128（OP 输出）→ 横向由 OP 控制。
+
+**ACC_01(0x109) 在全部 26 段中不存在** → 确认 Macan 原厂总线无 ACC_01（Q5 车主分支代发 ACC_01 是奥迪需求，Macan 代发即凭空插入）。
+
+## 2. 报文角色：源 / 果 / 执行
+
+### 源头（输入）
+- **LS_01 (0x10b, bus0)**：拨杆输入。
+  - 主开关=bit12, 取消(AB)=bit13, Limiter=bit15, **SET=bit16**, **速度+=bit17**, 速度-=bit18, RESUME=bit19, 距离调节=bit20|2
+  - **Macan 特性：SET 键与速度+同键，按下时 bit16+bit17 同时置位**（奥迪不会；OP 解析时若把 bit17 单独当 accelCruise 事件会误判 → resumeBlocked 假象，见 §5）
+- 雷达内部状态（ACC_05.Status / ACC_02.Wunsch 是雷达算出的"果"，不是用户直接输入）
+
+### 果（雷达→ECU 的请求）
+- **ACC_05 (0x10d, bus2, ~20Hz) = 纵向控制请求核心**（发给发动机/变速箱/ESP）：
+
+| 信号 | 位 | 实测含义 |
+|------|-----|---------|
+| Status_ACC | 57\|3 | 0=关闭, 2=待机(主开关ON未激活), 3=激活(巡航/跟车稳态), 4=激活(加速/超车段) |
+| Freigabe_Momentenanf (FM) | 12\|1 | 扭矩请求使能（激活时=1；减速时=0） |
+| Freigabe_Verzanf (FV) | 13\|1 | 减速请求使能（减速时=1；**与 FM 互斥切换**） |
+| Momentenanforderung (Mom) | 16\|10 | 扭矩请求值 0-1021（跟随车速/前车动态调节） |
+| zul_Regelabw | 26\|6 ×0.024 | 允许调节偏差（实测恒 0） |
+| Verz_anf (Verz) | 32\|11 ×0.005-7.22 | 减速请求 m/s²（减速时 -1 ~ -2.2） |
+| Loeseanforderung | 43\|1 | 解除请求 |
+| ax_Getriebe (axG) | 48\|9 ×0.024-2.016 | 变速箱加速度请求（减速时=-1） |
+| Vorbefuellung_Bremsanlage (VorB) | 47\|1 | **制动预充**（减速时=1，为真实制动做准备） |
+| Anhalten | 62\|1 | 停车请求（本 route 未触发） |
+| KD_Fehler | 63\|1 | **恒 1 = 正常**（DBC 命名误导，勿当故障） |
+| ACC_Getriebestellung_P | 14\|1 | P 挡标志 |
+| limitierte_Anfahrdyn | 15\|1 | 起步动态限制 |
+
+- **ACC_02 (0x30c, bus2, ~10Hz) = 显示报文**（→仪表/HUD）：Wunschgeschw(12\|10 ×0.32=设定速度), Prim(22\|2), Abstandsindex(24\|10=距离指数), Zeitluecke(37\|3=时间间隔), Texte_Primaeranz(48\|7), erreicht(55\|1), StatusAnz(61\|3)
+- **ACC_04 (0x324, bus2, ~10Hz) = 辅助显示**：Geschw_Zielfahrzeug(40\|10 ×0.32=**目标车速度**, 无目标=327.36), Warnhinweis(35\|1), Texte 等（详见知识库 `vw_mlb_acc04_text_mapping`）
+- **ACC_10 (0x117)**：紧急制动/预碰撞（AWV/ANB），非常规控制
+- **0x127 (bus2, DBC 未收录)**：雷达环境标记报文，60s 内仅 2 次变化（b1/b2 变化与目标切换相关），非控制核心
+
+### 执行反馈（ECU→总线）
+- **Motor_01 (0x80, bus0)**：MO_Mom_o_ex(12\|10)=**外部扭矩请求（≈ACC_05.Mom 同值跟随）**, MO_Mom_m_ex(22\|10)=实际输出扭矩, MO_Mom_Fahrerwunsch(52\|10)=驾驶员请求
+  - 稳态巡航实测：ACC_05.Mom ≈ o_ex ≈ m_ex ≈ Fwunsch（**请求→执行 1:1，无丢包**）
+
+## 3. 激活时序（seg6 @412.5s 实测）
+
+```
+LS_01: SET=1, +=1（Macan 同键同置位）         ← 唯一源头（用户输入）
+  → ACC_02.Wunschgeschw: 327→65 km/h          ← 果：设定速度写入显示
+  → ACC_05.Status_ACC: 2→3, FM: 0→1           ← 果：待机→激活+扭矩使能
+  → ACC_05.Momentenanforderung: 0→35→116      ← 果：扭矩请求爬升
+  → cruiseState.enabled: 0→1, vEgo 61.7→65+   ← 果：整车执行
+```
+
+激活前雷达已在持续跟踪前车（ACC_04.ZielV 跟随前车、ACC_02.Abstand 随距离变化）但 Mom=0 无请求 → **雷达感知 ≠ ACC 控制，激活是状态机门控的**。
+
+## 4. 减速切换机制（seg7 @439.9s，核心）
+
+背景：巡航 65km/h，前车靠近（Abstand 327→95，ZielV 69→63）。200ms 内完成模式切换：
+
+```
+FM 1→0 + Mom 87→0        ← 先关扭矩通道
+FV 0→1 + Verz 0→-1       ← 再开减速通道（互斥）
+axG 0→-1                 ← 变速箱减速请求
+VorB 0→1                 ← 制动预充（准备液压制动）
+→ 发动机 o_ex 88→10（扭矩卸载），vEgo 64.3→61.2
+```
+
+**要点**：原厂 ACC 的加速/保持走 **Mom 扭矩请求**，减速走 **Verz/axG 减速请求 + VorB 预充**，两通道通过 FM/FV 互斥切换，绝不混用。**模拟原厂必须复刻这套状态切换**（OP 纵向要同时驱动 FM/FV/Mom/Verz/axG/VorB 的一致性）。
+
+## 5. SET / 取消语义（实测）
+
+- **未激活时按 SET**：Wunsch 重置为**当前车速**（seg12：残留 59 → 33 @32km/h），非恢复上次设定
+- **激活后按 SET+**：每次 **+1 km/h**（seg7：65→66→67→68，每次按键）
+- 取消（AB 拨杆）：Status→2（待机）、FM→0（实测 seg12）
+- **对 OP 的坑**：Macan SET 按下时 bit16+bit17 同置位，OP carstate 若把 bit17 映射为 accelCruise 事件 → selfdrived 视为 resume → vCruise 异常 → UI 提示"Press Set to Engage"（resumeBlocked 假象）。正确做法：SET 优先解释，bit17 仅作速度+处理或忽略同帧的 bit16 冲突。
+
+## 6. 状态机（Status_ACC）
+
+| Status | 显示状态 | 场景 | 特征 |
+|--------|---------|------|------|
+| 0 | — | 关闭 | seg1 点火初期 |
+| 2 | Anz=2 | 待机（主开关 ON，未激活） | FM=0, Mom=0, Wunsch 保留上次值 |
+| 3 | Anz=3, Prim=1 | 激活-巡航/跟车稳态 | FM=1, Mom 动态 65-130 |
+| 4 | Anz=4, Prim=0 | 激活-加速/超车段 | Mom 升高, o_ex 峰值 149 |
+
+## 7. 已知功能局限（原厂行为，非 bug）
+
+- 不识别/不制动静止目标
+- 红绿灯、弯道不减速（无地图感知）
+- 低速蠕行（<30km/h）仍可跟车（seg12 Mom 9-43）
+
+## 8. 对 OP 纵向适配的启示（含历史教训）
+
+1. **bus128 = 转发镜像** → OP 完全不碰 ACC_05 时车辆 100% 原厂行为（本 route 证明无冲突）
+2. **不要代发 ACC_01**：Macan 原厂无此报文（Q5 fork 教训）
+3. **不碰 ACC_04**：之前屏蔽+代发导致 ECU 锁死（历史验证）
+4. **代发 ACC_05 需完整模拟**：FM/FV 互斥切换 + Mom/Verz/axG/VorB 同步 + Status 状态机 + counter/checksum（vw_mlb.dbc 有 CRC/checksum 定义）
+5. **HCA_01(0x126)** 是 OP 横向代发通道，本 route 全程代发无冲突（原厂 ACC 与 OP LKAS 共存 OK）
+6. 发动机请求链路已验证：ACC_05.Mom → Motor_01.o_ex → m_ex → 实际车速（可作 OP 纵向闭环的参照基准）
+
+## 9. 参考路线段
+
+- seg6: 首次激活（SET 65）
+- seg7: 全程巡航 + 最强减速（Verz=-2.21）+ SET 逐级 +1
+- seg8: 跟车巡航（ZielV 44-54）
+- seg9: 多次拨杆调整
+- seg12: 低速跟车 + 取消（AB=8）
+- seg20: 95km/h 高速巡航 + 减速（Verz=-0.80）
+- seg21: 两次启停
+
+## 10. 附：关键位定义速查（vw_mlb.dbc 交叉验证）
+
+- ACC_05 = 269 = 0x10d；ACC_02 = 780 = 0x30c；ACC_04 = 804 = 0x324；ACC_10 = 279 = 0x117；LS_01 = 267 = 0x10b；Motor_01 = 128 = 0x80；HCA_01 = 294 = 0x126
+- 所有 ACC 报文含 CHECKSUM(0|8) + COUNTER(8|4)；ACC_05 checksum 算法见 vw_mlb.dbc

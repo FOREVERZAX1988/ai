@@ -2,13 +2,20 @@
 
 from __future__ import annotations
 
+import os
 import unittest
 from unittest import mock
 
-from ai import version_info as vi
+from ai.infra import version as vi
 
 
 class TestVersionInfo(unittest.TestCase):
+  def test_package_paths(self):
+    info = vi.package_info()
+    self.assertTrue(str(info["install_script"]).endswith("ai/install/install.sh".replace("/", os.sep)))
+    self.assertTrue((vi.AI_DIR / "install" / "install.sh").is_file())
+    self.assertTrue((vi.AI_DIR / "VERSION").is_file())
+
   def test_read_version(self):
     v = vi.read_version()
     self.assertRegex(v, r"^\d+\.\d+\.\d+")

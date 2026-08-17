@@ -2,11 +2,20 @@
 
 from __future__ import annotations
 
+import os
 import re
 import subprocess
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
+
+
+def _git_push_env() -> dict[str, str]:
+  env = os.environ.copy()
+  skip = env.get("GIT_LFS_SKIP_PUSH", "").strip().lower()
+  if skip not in ("0", "false", "no"):
+    env["GIT_LFS_SKIP_PUSH"] = "1"
+  return env
 
 
 def _run_git(root: Path, args: list[str], *, timeout: int = 30) -> dict[str, Any]:
@@ -17,6 +26,7 @@ def _run_git(root: Path, args: list[str], *, timeout: int = 30) -> dict[str, Any
       text=True,
       timeout=timeout,
       check=False,
+      env=_git_push_env(),
     )
     return {
       "ok": proc.returncode == 0,

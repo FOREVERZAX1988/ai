@@ -25,12 +25,12 @@ curl -fsSL https://raw.githubusercontent.com/mouxangithub/ai/main/install/instal
 | 1. 检测 `ai/` | 见下文「已有 ai 目录」 |
 | 2. Git | 克隆或 `git pull` 到 `$OPENPILOT_ROOT/ai` |
 | 3. **ai 配置** | `ai_*` 写入 `/data/ai/config.json`，**不修改** `params_keys.h`，无需编译 |
-| 4. **可选 fork Param** | 若缺失则补齐 `SpDevBeep`（beepd 蜂鸣，需 fork 已编译进 `params_pyx.so` 或自行 scons） |
+| 4. **可选 fork Param** | 若缺失则补齐 `SpDevBeep`（beepd 蜂鸣，需已编译进 `libparams_c.so` 或旧版 `params_pyx.so`） |
 | 5. **自动改写 `launch_chffrplus.sh`** | 若无 `start_op_assistant`，注入启动 `ai.aid` 的函数与看门狗 |
 
 以上第 3–5 步由 `install/integrate_openpilot.py` 执行，**每次安装/更新后都会跑一遍**（默认 `--skip-compile`）。
 
-预编译 fork 无 SConstruct 也可安装：只要已有 `params_pyx.so` 即可读写 openpilot 调参项；`ai_*` 不依赖编译。
+预编译 fork 无 SConstruct 也可安装：只要已有 `libparams_c.so`（新 sunnypilot）或 `params_pyx.so`（旧 fork）即可读写 openpilot 调参项；`ai_*` 不依赖编译。
 
 ## 已有 `ai/` 目录时怎么办
 

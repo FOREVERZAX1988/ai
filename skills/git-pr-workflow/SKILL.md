@@ -15,6 +15,7 @@
 1. **离路**（写操作）
 2. **Git push 凭据**已配置
 3. **GitHub PAT**（`ai_github_actions_pat`）— `github_actions_auth_status` 检查
+4. **LFS 推送**：本 fork **不上传 LFS**；`git_push` / `git_publish_pull_request` 自动 `GIT_LFS_SKIP_PUSH=1`（见 `git-lfs-fork` 技能、`ai/docs/GIT_LFS.md`）。推送前可 `git lfs push --dry-run origin HEAD` 确认为 0 对象。
 
 ## 发布 PR（推荐）
 
@@ -52,3 +53,4 @@ PR 创建后可在 PC 用 `wait_github_workflow` 等 CI；与 `github-runner` �
 - 行驶中 commit/push/merge
 - 未经确认合并到主分支
 - 输出 PAT 或私钥
+- 未经用户要求向 LFS 远端上传（勿设 `GIT_LFS_SKIP_PUSH=0`）

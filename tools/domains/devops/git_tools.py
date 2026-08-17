@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
 from typing import Any
 
@@ -17,6 +18,15 @@ def _git_root():
   return resolve_repo_root(current_git_repo_target())
 
 
+def _git_push_env() -> dict[str, str]:
+  """Fork 默认不向 LFS 远端上传；显式 GIT_LFS_SKIP_PUSH=0 可恢复上传。"""
+  env = os.environ.copy()
+  skip = env.get("GIT_LFS_SKIP_PUSH", "").strip().lower()
+  if skip not in ("0", "false", "no"):
+    env["GIT_LFS_SKIP_PUSH"] = "1"
+  return env
+
+
 def _git(args: list[str], *, timeout: int = 120) -> dict[str, Any]:
   root = _git_root()
   try:
@@ -25,6 +35,7 @@ def _git(args: list[str], *, timeout: int = 120) -> dict[str, Any]:
       capture_output=True,
       text=True,
       timeout=timeout,
+      env=_git_push_env(),
     )
     out = (proc.stdout or "").strip()
     err = (proc.stderr or "").strip()

@@ -207,8 +207,17 @@ def batch_route_summary(*, limit: int = 5) -> dict[str, Any]:
   try:
     for name in os.listdir(ROUTES_DIR):
       p = os.path.join(ROUTES_DIR, name)
-      if os.path.isdir(p) and "|" in name:
-        names.append((name, os.path.getmtime(p)))
+      if not os.path.isdir(p):
+        continue
+      # 兼容标准(dongle|date--time)与本机(--)两种 route 命名
+      if "|" not in name and "--" not in name:
+        continue
+      # 必须含日志: 标准布局在 0/ 子目录, 本机布局直接在目录内
+      if not (os.path.isdir(os.path.join(p, "0"))
+              or os.path.isfile(os.path.join(p, "qlog")) or os.path.isfile(os.path.join(p, "qlog.zst"))
+              or os.path.isfile(os.path.join(p, "rlog")) or os.path.isfile(os.path.join(p, "rlog.zst"))):
+        continue
+      names.append((name, os.path.getmtime(p)))
   except OSError as e:
     return {"ok": False, "error": str(e)}
 
@@ -217,7 +226,7 @@ def batch_route_summary(*, limit: int = 5) -> dict[str, Any]:
   for name, mtime in names[: max(1, min(limit, 20))]:
     folder = name.split("|")[-1] if "|" in name else name
     summary = analyze_route_summary(folder)
-    signals = plotjuggler_data_summary(f"{name}/0", max_messages=3000)
+    signals = plotjuggler_data_summary(folder, max_messages=3000)
     v_ego = None
     if signals.get("ok"):
       cs = (signals.get("signal_summary") or {}).get("carState", {})

@@ -16,7 +16,7 @@
 
 | 服务 | 端口 | 说明 |
 |------|------|------|
-| Dashy | 5088 | 行车设置 UI，保持独立 |
+| **WebUI** | **5080** | 行车设置 UI（含无屏模式）；TLS 见 `HEADLESS_WEBUI.md` |
 | **op 助手 + TSK** | **5090** | 同一 `aid`：聊天 + 设置 → SecOC + `/api/tsk/*` |
 
 顶层 **`tsk/` 目录已删除**；唯一代码位置为 **`ai/tsk/`**。
@@ -26,8 +26,8 @@
 `launch_chffrplus.sh`（节选）：
 
 1. 准备 `/cache/tsk` 等目录  
-2. `cd system/manager && ./build.py`（无 `prebuilt` 时）— 编译 `params_pyx` 等原生模块  
-3. `python3.12 -m ai.aid`（`PYTHONPATH` 含 openpilot 根 + venv site-packages）  
+2. `cd openpilot/system/manager && ./build.py`（无 `prebuilt` 时）— 编译 `libparams_c.so` 等原生模块  
+3. `python3.12 -m ai.aid`（`PYTHONPATH` 含 openpilot 根 + venv + `.pydeps`）  
 4. 看门狗每 45s 检查 aid 是否存活  
 5. 启动 openpilot manager  
 
@@ -70,11 +70,11 @@ TSK 后台循环写入 Param **`Offroad_NoFirmware`**（manager 启动时会清�
 
 | 产品 | `device_type` | 内部 panda MCU | `panda_backend` | `pandad` 进程 | F4 固件路径 |
 |------|---------------|----------------|-----------------|---------------|-------------|
-| comma three（C3） | `tici` | F4 (DOS) | `panda_tici`† | `pandad_tici`† | `panda/board/obj/panda.bin.signed` |
+| comma three（C3） | `tici` | F4 (DOS) | `panda` | `pandad` | `panda/board/obj/panda.bin.signed` |
 | comma threeX（C3X） | `tizi` | H7 | `panda` | `pandad` | — |
 | comma four（C4） | `mici` | H7 | `panda` | `pandad` | — |
 
-† tici 栈存在时；**F4 固件文件仍来自 `panda/`**，见 [`PANDA_FLASH.md`](PANDA_FLASH.md)。
+**sunnypilot master** 使用统一 `panda/` + `selfdrive/pandad`；仅当仓库仍存在 `panda_tici`/`pandad_tici` 分裂目录时，`ai/system/panda_stack.py` 才回退到 legacy 栈。见 [`COMMA_DEVICES.md`](COMMA_DEVICES.md)。
 
 检测顺序：`TICI_DOS` / `TICI_TRES` 环境变量 → `/persist/sp_dev_panda_mcu_type`（或 legacy `dp_dev_panda_mcu_type`）→ devicetree `device_type`（tici→DOS，tizi/mici→TRES）→ 查询 panda MCU。
 

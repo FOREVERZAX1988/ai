@@ -9,6 +9,7 @@ import threading
 from pathlib import Path
 from typing import Any
 
+from ai.common.op_params import import_openpilot_params
 from ai.common.params import ITEMS
 from ai.system.paths import is_comma_device, openpilot_root
 
@@ -143,8 +144,7 @@ class AiConfigStore:
 
   def _migrate_from_params_api(self, data: dict[str, str]) -> None:
     try:
-      from openpilot.common.params_pyx import UnknownKeyName
-      from openpilot.common.params import Params
+      Params, UnknownKeyName = import_openpilot_params()
     except Exception:
       return
     p = Params()
@@ -179,8 +179,7 @@ class AiConfigStore:
         except OSError:
           pass
     try:
-      from openpilot.common.params_pyx import UnknownKeyName
-      from openpilot.common.params import Params
+      Params, UnknownKeyName = import_openpilot_params()
     except Exception:
       return
     p = Params()
