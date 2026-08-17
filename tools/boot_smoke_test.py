@@ -153,6 +153,48 @@ def _function_locals(node) -> set[str]:
     return local
 
 
+def i18n_check(root: str) -> list[str]:
+    """events / mici UI 硬编码中文检查（排除注释与 docstring）：
+    英文 msgid + po 翻译是汉化体系，硬编码中文会破坏语言切换"""
+    files = [
+        "openpilot/selfdrive/selfdrived/events.py",
+        "openpilot/sunnypilot/selfdrive/selfdrived/events.py",
+        "openpilot/sunnypilot/selfdrive/selfdrived/events_base.py",
+        "openpilot/selfdrive/ui/mici",
+    ]
+    issues = []
+    for rel in files:
+        path = os.path.join(root, rel)
+        if not os.path.exists(path):
+            continue
+        py_files = []
+        if os.path.isdir(path):
+            for dp, _, fs in os.walk(path):
+                for f in fs:
+                    if f.endswith(".py"):
+                        py_files.append(os.path.join(dp, f))
+        else:
+            py_files = [path]
+        for fp in py_files:
+            try:
+                tree = ast.parse(open(fp, encoding="utf-8").read())
+            except Exception:
+                continue
+            parents = {}
+            for n in ast.walk(tree):
+                for c in ast.iter_child_nodes(n):
+                    parents[c] = n
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Constant) and isinstance(node.value, str) and node.value:
+                    # 独立语句字符串（Expr）= 注释/docstring，非 UI 文本，豁免
+                    if isinstance(parents.get(node), ast.Expr):
+                        continue
+                    if any('\u4e00' <= c <= '\u9fff' for c in node.value):
+                        relp = os.path.relpath(fp, root)
+                        issues.append(f"  {relp}: 硬编码中文 \"{node.value[:25]}\"")
+    return issues
+
+
 def ast_check(path: str) -> list[str]:
     try:
         with open(path, encoding="utf-8") as f:
@@ -247,13 +289,19 @@ def main() -> int:
         except Exception as e:
             print(f"  ⚠️ {m} 跳过（{e}）")
 
+    i18n_issues = i18n_check(root)
+    if i18n_issues:
+        print("\n  ❌ i18n: 硬编码中文（应走 po 翻译）")
+        for i in i18n_issues:
+            print(i)
+
     print("\n" + "=" * 60)
-    if not import_fail and not ast_fail:
-        print(f"🎉 启动冒烟通过：{len(modules)} 模块 import 无硬错 + AST 无未定义名称"
+    if not import_fail and not ast_fail and not i18n_issues:
+        print(f"🎉 启动冒烟通过：{len(modules)} 模块 import 无硬错 + AST 无未定义名称 + 无硬编码中文"
               + (f"（{len(import_warn)} 个可选进程缺依赖已跳过）" if import_warn else ""))
         return 0
     else:
-        print(f"❌ 启动冒烟失败：import 硬错 {len(import_fail)}，AST {len(ast_fail)}")
+        print(f"❌ 启动冒烟失败：import 硬错 {len(import_fail)}，AST {len(ast_fail)}，i18n {len(i18n_issues)}")
         return 1
 
 
