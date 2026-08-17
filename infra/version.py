@@ -11,7 +11,8 @@ import urllib.request
 from pathlib import Path
 from typing import Any
 
-AI_DIR = Path(__file__).resolve().parent
+INFRA_DIR = Path(__file__).resolve().parent
+AI_DIR = INFRA_DIR.parent
 VERSION_FILE = AI_DIR / "VERSION"
 INSTALL_DIR = AI_DIR / "install"
 UPDATE_SCRIPT = INSTALL_DIR / "update.sh"

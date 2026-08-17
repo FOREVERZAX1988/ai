@@ -12,6 +12,12 @@
    - 若还要管 CI：`actions:read`（已有 workflow 工具）
 3. 配置：`set_github_actions_pat(token=..., confirm=true)`（写入 `config.json`）
 
+## Git LFS（fork 推送）
+
+本 fork **从 GitLab 拉 LFS、不向 LFS 上传**。`git_push` / `git_publish_pull_request` 自动设置 `GIT_LFS_SKIP_PUSH=1`。
+
+详见 [GIT_LFS.md](./GIT_LFS.md)；技能 `git-lfs-fork`。推送前建议：`git lfs push --dry-run origin HEAD`（应为 0 对象）。
+
 ## 核心工具
 
 | 工具 | 作用 |

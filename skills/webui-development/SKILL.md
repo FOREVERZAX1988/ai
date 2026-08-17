@@ -6,15 +6,18 @@
 
 ## 步骤
 
-1. `get_host_environment` — 确认 PC / 车机
+1. `get_host_environment` — 确认 PC / 车机 / 无屏
 2. `webui_package_info` — VERSION、`?v=78`
-3. `webui_service_status` — :5080 是否监听
-4. `webui_health_check(cache_bust=78)` — API 是否正常
-5. `webui_list_dev_presets` — 可用 Dev 预设列表
-6. PC only：`webui_apply_dev_preset(preset=onroad_overlay)` 等
-7. `webui_onboarding_status` — 条款/训练是否完成
-8. `webui_qa_checklist(scope=pc)` — PC 可测 v78 抛光项
-9. 上车前指向 `webui-vehicle-qa` 与 `OP_ASSISTANT_HANDOFF.md`
+3. `webui_headless_status` — 无屏时确认 `effective_headless`
+4. `webui_service_status` — :5080 是否监听
+5. `webui_health_check(cache_bust=78)` — API 是否正常
+6. `webui_list_dev_presets` — 可用 Dev 预设列表
+7. PC only：`webui_apply_dev_preset(preset=onroad_overlay)` 等
+8. `webui_onboarding_status` — 条款/训练是否完成
+9. `webui_qa_checklist(scope=pc)` — PC 可测 v78 抛光项
+10. 上车前指向 `webui-vehicle-qa` 与 `OP_ASSISTANT_HANDOFF.md`
+
+无屏车机：见技能 `headless-webui` 与 `ai/docs/HEADLESS_WEBUI.md`。
 
 ## Dev 预设（PC）
 

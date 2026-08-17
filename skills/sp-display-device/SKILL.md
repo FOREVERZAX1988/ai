@@ -6,6 +6,8 @@
 
 键：`OnroadScreenOffBrightness`、`OnroadScreenOffTimer`、`InteractivityTimeout`、`Brightness`
 
+无屏设备：原生 `ui` 不运行，亮度/熄屏请引导用户用 **WebUI → Display** 或 Param；见 `WebuiHeadlessMode` 与技能 `headless-webui`。
+
 ## 设备 / 开发者
 
 `get_device_settings` / `set_device_settings`

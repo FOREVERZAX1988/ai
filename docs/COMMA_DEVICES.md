@@ -119,3 +119,25 @@ CLI：`ai/scripts/recover_dos_panda.py`；op 助手技能：`c3-dos-panda`。
 - `sp-device-lite` — 硬件识别与 SpDevBeep
 - `engage-troubleshooting` — Lite 无 DM/声音时的排障顺序
 - `c3-dos-panda` — C3 DOS/黑熊/红熊多 Panda 刷机与 NO PANDA 恢复
+
+## 无屏模式（Headless，无内置触摸屏）
+
+与 **Lite** 不同：无屏指 **没有可工作的内置面板/触控**，原生 `ui` 进程不启动，**WebUI (:5080)** 为主界面。
+
+| 检测 / 控制 | 说明 |
+|-------------|------|
+| `launch_chffrplus.sh` `is_headless_boot` | `OPENPILOT_HEADLESS=1` 或无触摸中断 → 无屏启动 |
+| `HARDWARE.has_builtin_display()` | 综合 `OPENPILOT_HEADLESS`、`WebuiHeadlessMode`、硬件探测 |
+| Param `WebuiHeadlessMode` | `auto` / `on` / `off`（WebUI 与 manager 共用） |
+| WebUI API | `GET/PUT /api/opui/headless-mode` |
+
+### 行为差异
+
+| 项 | 有屏 | 无屏 |
+|----|------|------|
+| 原生 `ui` | 开 | **关** |
+| 设置/OTA/AGNOS | 屏或 WebUI | **WebUI**（AGNOS 图形 updater 不自动跑） |
+| manager 崩溃 UI | TextWindow | `/tmp/manager_last_error.txt` |
+| `IsDriverViewEnabled` | 用户可开 | 启动时强制清除 |
+
+op助手：`webui_headless_status`、`get_host_environment`；技能 **`headless-webui`**；文档 **`ai/docs/HEADLESS_WEBUI.md`**。

@@ -31,6 +31,7 @@
 |------|------|
 | [ISSUES.md](ISSUES.md) | Issue 提交 |
 | [GIT_PR.md](GIT_PR.md) | 发 PR |
+| [GIT_LFS.md](GIT_LFS.md) | **Git LFS** 拉取/推送策略（`GIT_LFS_SKIP_PUSH`） |
 | [PUBLISH.md](PUBLISH.md) | 多平台发布 |
 | [PR_AUTOMATION.md](PR_AUTOMATION.md) | CI 自动审阅 |
 
@@ -49,6 +50,7 @@
 | [SESSION_SYNC.md](SESSION_SYNC.md) | 会话同步（`core/sync/hub.py`） |
 | [UPSTREAM_SYNC.md](UPSTREAM_SYNC.md) | 上游同步 |
 | [WEBUI_QA.md](WEBUI_QA.md) | **WebUI** 上车验收与 op助手工具 |
+| [HEADLESS_WEBUI.md](HEADLESS_WEBUI.md) | **无屏模式**与 WebUI 全功能/API |
 | [../dev/README.md](../dev/README.md) | PC 预览与测试 |
 
 ## GitHub

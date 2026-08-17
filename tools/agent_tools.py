@@ -80,6 +80,7 @@ TOOL_META: dict[str, dict[str, Any]] = {
   "webui_apply_dev_preset": {"label": "WebUI Dev 预设", "group": "read", "default_enabled": True, "driving": False, "pc_only": True},
   "webui_list_dev_presets": {"label": "WebUI Dev 预设列表", "group": "read", "default_enabled": True, "driving": False, "pc_only": True},
   "webui_onboarding_status": {"label": "WebUI 引导状态", "group": "read", "default_enabled": True, "driving": True},
+  "webui_headless_status": {"label": "WebUI 无屏模式", "group": "read", "default_enabled": True, "driving": True},
   "list_scheduled_tasks": {"label": "定时任务列表", "group": "read", "default_enabled": True, "driving": True},
   "list_knowledge_docs": {"label": "知识库列表", "group": "read", "default_enabled": True, "driving": True},
   "cabana_explain_signal": {"label": "CAN 信号解释", "group": "read", "default_enabled": True, "driving": True},
@@ -246,6 +247,7 @@ def build_tool_schemas() -> list[dict[str, Any]]:
     {"type": "function", "function": {"name": "webui_apply_dev_preset", "description": "POST PC dev preset (onroad_overlay, confidence_low, etc.). Only when WEBUI_DEV_PC=1.", "parameters": {"type": "object", "properties": {"preset": {"type": "string"}, "host": {"type": "string"}, "port": {"type": "integer"}}, "required": ["preset"]}}},
     {"type": "function", "function": {"name": "webui_list_dev_presets", "description": "List PC dev simulation presets for WebUI polish testing.", "parameters": {"type": "object", "properties": {}, "required": []}}},
     {"type": "function", "function": {"name": "webui_onboarding_status", "description": "Check terms/training onboarding completion (HasAcceptedTerms, CompletedTrainingVersion).", "parameters": {"type": "object", "properties": {}, "required": []}}},
+    {"type": "function", "function": {"name": "webui_headless_status", "description": "Read WebuiHeadlessMode: auto/on/off, effective_headless, has_builtin_display. Use for headless C3 WebUI setup.", "parameters": {"type": "object", "properties": {"host": {"type": "string"}, "port": {"type": "integer"}}, "required": []}}},
     {"type": "function", "function": {"name": "select_car_platform", "description": "Alias: set CarPlatformBundle platform (empty=auto). Stationary only.", "parameters": {"type": "object", "properties": {"model": {"type": "string"}, "confirm": {"type": "boolean"}}, "required": ["model", "confirm"]}}},
     {"type": "function", "function": {"name": "write_params", "description": "Write Params while stationary. JSON object key->value. Optional regression guard via route_before/route_after.", "parameters": {"type": "object", "properties": {"params": {"type": "object", "additionalProperties": True}, "confirm": {"type": "boolean", "description": "Must be true to apply."}, "route_before": {"type": "string"}, "route_after": {"type": "string"}, "skip_regression_check": {"type": "boolean"}}, "required": ["params", "confirm"]}}},
     {"type": "function", "function": {"name": "apply_tune_preset", "description": "Apply a named tune preset while stationary.", "parameters": {"type": "object", "properties": {"preset_id": {"type": "string"}, "confirm": {"type": "boolean"}, "route_before": {"type": "string"}, "route_after": {"type": "string"}, "skip_regression_check": {"type": "boolean"}}, "required": ["preset_id", "confirm"]}}},
@@ -833,6 +835,13 @@ def make_handlers(
   def h_webui_onboarding_status(_a):
     from ai.tools.webui_tools import webui_onboarding_status
     return webui_onboarding_status()
+
+  def h_webui_headless_status(args):
+    from ai.tools.webui_tools import webui_headless_status
+    return webui_headless_status(
+      str(args.get("host") or "127.0.0.1"),
+      int(args.get("port") or 5080),
+    )
 
   def h_get_agent_memory(_a):
     return get_memory(p)
@@ -1649,6 +1658,7 @@ def make_handlers(
     "webui_apply_dev_preset": h_webui_apply_dev_preset,
     "webui_list_dev_presets": h_webui_list_dev_presets,
     "webui_onboarding_status": h_webui_onboarding_status,
+    "webui_headless_status": h_webui_headless_status,
     "get_agent_memory": h_get_agent_memory,
     "update_agent_memory": h_update_agent_memory,
     "list_scheduled_tasks": h_list_scheduled_tasks,

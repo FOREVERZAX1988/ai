@@ -42,8 +42,22 @@ START_OP_ASSISTANT_FN = r'''  start_op_assistant() {
     local aid_py=python3.12
     command -v "$aid_py" >/dev/null 2>&1 || aid_py=python3
     local venv_site="/usr/local/venv/lib/python3.12/site-packages"
+    local pydeps="$root/.pydeps"
     local py_path="$root"
-    [ -d "$venv_site" ] && py_path="$root:$venv_site"
+    [ -d "$venv_site" ] && py_path="$py_path:$venv_site"
+    [ -d "$pydeps" ] && py_path="$py_path:$pydeps"
+    if ! PYTHONPATH="$py_path" "$aid_py" -c "import aiohttp" 2>/dev/null; then
+      if [ -d "$pydeps" ] || mkdir -p "$pydeps" 2>/dev/null; then
+        if ! "$aid_py" -c "import pip" 2>/dev/null; then
+          curl -fsSL https://bootstrap.pypa.io/get-pip.py -o /tmp/get-pip.py 2>/dev/null && \
+            "$aid_py" /tmp/get-pip.py --target="$pydeps" --no-warn-script-location >> /tmp/aid.log 2>&1 || true
+        fi
+        PYTHONPATH="$py_path" "$aid_py" -m pip install --target="$pydeps" aiohttp >> /tmp/aid.log 2>&1 || true
+        py_path="$root"
+        [ -d "$venv_site" ] && py_path="$py_path:$venv_site"
+        py_path="$py_path:$pydeps"
+      fi
+    fi
     if pgrep -f "[p]ython.* -m ai\.aid" >/dev/null 2>&1; then
       return 0
     fi
@@ -198,7 +212,9 @@ def patch_params_keys_h(path: Path, params: dict[str, dict[str, str]], *, dry_ru
 def _upgrade_start_op_assistant(content: str) -> tuple[str, bool]:
   if LAUNCH_MARKER not in content:
     return content, False
-  if "params_pyx.so missing" not in content and '[ ! -f "$root/ai/aid.py" ]' in content:
+  if ".pydeps" in content:
+    return content, False
+  if '[ ! -f "$root/ai/aid.py" ]' not in content:
     return content, False
   pattern = r"  start_op_assistant\(\) \{.*?^\  \}"
   new_fn = START_OP_ASSISTANT_FN.rstrip()
@@ -266,12 +282,11 @@ def patch_launch_script(path: Path, *, dry_run: bool = False) -> dict[str, Any]:
   return {"ok": True, "path": str(path), "backup": str(backup), "changed": True}
 
 
-def find_params_pyx_so(root: Path) -> Path | None:
-  for rel in ("common/params_pyx.so", "openpilot/common/params_pyx.so"):
-    path = root / rel
-    if path.is_file():
-      return path
-  return None
+from ai.common.op_params import (
+  detect_params_native_kind,
+  find_params_native_so,
+  scons_native_targets,
+)
 
 
 def _run(cmd: list[str], *, cwd: Path, timeout: int = 600) -> dict[str, Any]:
@@ -290,8 +305,8 @@ def _run(cmd: list[str], *, cwd: Path, timeout: int = 600) -> dict[str, Any]:
   return {"ok": proc.returncode == 0, "cmd": cmd, "exit_code": proc.returncode, "output": out[-8000:]}
 
 
-def compile_params_pyx(root: Path, *, force: bool = False) -> dict[str, Any]:
-  existing = find_params_pyx_so(root)
+def compile_params_native(root: Path, *, force: bool = False) -> dict[str, Any]:
+  existing = find_params_native_so(root)
   prebuilt = (root / "prebuilt").is_file()
   sconstruct = (root / "SConstruct").is_file()
   common_sconscript = (
@@ -303,18 +318,19 @@ def compile_params_pyx(root: Path, *, force: bool = False) -> dict[str, Any]:
     return {
       "ok": True,
       "skipped": True,
-      "reason": "params_pyx.so already exists",
+      "reason": "Params native library already exists",
       "so_path": str(existing),
     }
 
   attempts: list[dict[str, Any]] = []
 
   if shutil.which("scons") and sconstruct:
-    for target in ("common/params_pyx.so", "openpilot/common/params_pyx.so"):
+    kind = detect_params_native_kind(root)
+    for target in scons_native_targets(kind):
       for args in (["scons", "-j4", target], ["scons", "-j1", target], ["scons", target]):
         result = _run(args, cwd=root)
         attempts.append(result)
-        so = find_params_pyx_so(root)
+        so = find_params_native_so(root)
         if result["ok"] and so:
           return {"ok": True, "method": " ".join(args), "so_path": str(so), "attempts": attempts}
         if so and not force:
@@ -326,27 +342,33 @@ def compile_params_pyx(root: Path, *, force: bool = False) -> dict[str, Any]:
   if build_py.is_file() and not prebuilt:
     result = _run([sys.executable, str(build_py)], cwd=build_py.parent, timeout=1800)
     attempts.append(result)
-    so = find_params_pyx_so(root)
+    so = find_params_native_so(root)
     if so:
       return {"ok": True, "method": "system/manager/build.py", "so_path": str(so), "attempts": attempts}
 
-  so = find_params_pyx_so(root)
+  so = find_params_native_so(root)
   if so:
     return {
       "ok": True,
       "skipped": True,
-      "reason": "using existing params_pyx.so (no rebuild)",
+      "reason": "using existing Params native library (no rebuild)",
       "so_path": str(so),
       "attempts": attempts,
     }
 
+  kind = detect_params_native_kind(root)
+  lib_hint = "libparams_c.so" if kind != "params_pyx" else "params_pyx.so"
   hint = (
-    "无法编译 params_pyx.so："
+    f"无法编译 {lib_hint}："
     + ("检测到 prebuilt 发行版且无 SConstruct。" if prebuilt and not sconstruct else "")
     + ("缺少 common/SConscript。" if not common_sconscript else "")
-    + " 请在有编译环境的 PC 上运行: cd $OPENPILOT_ROOT && scons -j4 common/params_pyx.so"
+    + f" 请在有编译环境的机器上运行: cd $OPENPILOT_ROOT && scons -j4 {scons_native_targets(kind)[0]}"
+    + " 或: cd openpilot/system/manager && ./build.py"
   )
   return {"ok": False, "error": hint, "attempts": attempts, "prebuilt": prebuilt}
+
+
+compile_params_pyx = compile_params_native
 
 
 def integrate(
@@ -412,7 +434,7 @@ def integrate(
     }
     if fork_keys_changed and not dry_run:
       report["compile"]["warning"] = (
-        "SpDevBeep was added to params_keys.h — rebuild params_pyx.so on a machine with scons if beepd toggle is needed"
+        "SpDevBeep was added to params_keys.h — rebuild Params native lib (libparams_c.so or params_pyx.so) if beepd toggle is needed"
       )
   else:
     report["compile"] = compile_params_pyx(root, force=force_compile or fork_keys_changed)
@@ -452,8 +474,8 @@ def main() -> int:
   parser.add_argument("--root", type=Path, default=None, help="openpilot root (default: OPENPILOT_ROOT or parent of ai/)")
   parser.add_argument("--ai-dir", type=Path, default=None, help="ai package dir")
   parser.add_argument("--dry-run", action="store_true")
-  parser.add_argument("--skip-compile", action="store_true", default=True, help="Skip params_pyx compile (default)")
-  parser.add_argument("--compile", dest="skip_compile", action="store_false", help="Attempt params_pyx.so compile")
+  parser.add_argument("--skip-compile", action="store_true", default=True, help="Skip Params native lib compile (default)")
+  parser.add_argument("--compile", dest="skip_compile", action="store_false", help="Attempt libparams_c.so / params_pyx.so compile")
   parser.add_argument("--force-compile", action="store_true")
   parser.add_argument("--no-patch-fork-params", action="store_true", help="Do not patch SpDevBeep into params_keys.h")
   parser.add_argument("--json", action="store_true", dest="as_json")
