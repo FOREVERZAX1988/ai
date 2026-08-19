@@ -7,9 +7,11 @@ const SessionStore = (() => {
   const LEGACY_KEY2 = 'openpilot-op-assistant-v2';
   const LEGACY_KEY3 = 'openpilot-op-ai-chat-v1';
   const MAX_SESSIONS = 50;
+  const MAX_MESSAGES_PER_SESSION = 200;
 
   let sessions = [];
   let activeId = null;
+  let isDraft = false;
   let draftChatRoute = null;
   let defaultChatRouteProvider = null;
 
@@ -90,6 +92,10 @@ const SessionStore = (() => {
   }
 
   function resolveActiveId() {
+    if (isDraft) {
+      activeId = null;
+      return;
+    }
     const valid = activeId && sessions.some((s) => s.id === activeId && sessionHasContent(s));
     if (!valid) {
       activeId = sessions.find(sessionHasContent)?.id ?? null;
@@ -196,6 +202,7 @@ const SessionStore = (() => {
       return;
     }
     if (!sessions.some((s) => s.id === id)) return;
+    isDraft = false;
     activeId = id;
   }
 
@@ -217,6 +224,7 @@ const SessionStore = (() => {
       draftChatRoute = null;
     }
     sessions.unshift(session);
+    isDraft = false;
     activeId = id;
     while (sessions.length > MAX_SESSIONS) sessions.pop();
     return session;
@@ -231,7 +239,12 @@ const SessionStore = (() => {
 
   function startDraft() {
     activeId = null;
+    isDraft = true;
     draftChatRoute = resolveDefaultChatRoute();
+  }
+
+  function isDraftMode() {
+    return isDraft;
   }
 
   function remove(id) {
@@ -245,7 +258,7 @@ const SessionStore = (() => {
   function updateMessages(id, messages, title) {
     const s = sessions.find((x) => x.id === id);
     if (!s) return;
-    s.messages = messages;
+    s.messages = Array.isArray(messages) ? messages.slice(-MAX_MESSAGES_PER_SESSION) : messages;
     s.updatedAt = Date.now();
     if (title) s.title = title.slice(0, 60);
     else {
@@ -305,22 +318,48 @@ const SessionStore = (() => {
     return true;
   }
 
-  function importMerged(nextSessions, nextActiveId) {
-    const cleaned = (Array.isArray(nextSessions) ? nextSessions : [])
+  function dedupeSessionsList(list) {
+    if (typeof SessionSync !== 'undefined' && typeof SessionSync.dedupeSessionList === 'function') {
+      return SessionSync.dedupeSessionList(list);
+    }
+    const byId = new Map();
+    for (const s of list || []) {
+      if (!s?.id) continue;
+      if (!byId.has(s.id)) byId.set(s.id, s);
+    }
+    return [...byId.values()];
+  }
+
+  function importMerged(nextSessions, nextActiveId, opts = {}) {
+    const draft = opts.draft === true || isDraft;
+    const preserveJobIds = opts.preserveJobIds instanceof Set ? opts.preserveJobIds : new Set();
+    const prevById = new Map(sessions.map((s) => [s.id, s]));
+    let cleaned = (Array.isArray(nextSessions) ? nextSessions : [])
       .filter(sessionHasContent)
       .map((s) => {
+        const prev = prevById.get(s.id);
+        const keepJobId = preserveJobIds.has(s.id) && (s.activeJobId || prev?.activeJobId);
         const { activeJobId: _drop, ...rest } = s;
         return {
           ...rest,
+          ...(keepJobId ? { activeJobId: s.activeJobId || prev.activeJobId } : {}),
           createdAt: sessionCreatedAt(s),
           messages: dedupeTrailingAssistants(s.messages),
         };
       })
       .slice(0, MAX_SESSIONS);
+    cleaned = dedupeSessionsList(cleaned);
     sessions = cleaned;
-    if (nextActiveId && sessions.some((s) => s.id === nextActiveId)) {
+    if (draft) {
+      activeId = null;
+      isDraft = true;
+    } else if (nextActiveId && sessions.some((s) => s.id === nextActiveId)) {
+      isDraft = false;
       activeId = nextActiveId;
+    } else if (nextActiveId == null && opts.allowNullActive) {
+      activeId = null;
     } else {
+      isDraft = false;
       activeId = sessions[0]?.id ?? null;
     }
     resolveActiveId();
@@ -338,6 +377,7 @@ const SessionStore = (() => {
     createSession,
     ensureSessionOnSend,
     startDraft,
+    isDraftMode,
     remove,
     updateMessages,
     setMode,
@@ -347,6 +387,7 @@ const SessionStore = (() => {
     clearActiveJobId,
     importMerged,
     patchSession,
+    dedupeTrailingAssistants,
     sessionHasContent,
     sessionCreatedAt,
     getById,
@@ -355,5 +396,7 @@ const SessionStore = (() => {
     getDraftChatRoute,
     setDraftChatRoute,
     get activeId() { return activeId; },
+    MAX_SESSIONS,
+    MAX_MESSAGES_PER_SESSION,
   };
 })();

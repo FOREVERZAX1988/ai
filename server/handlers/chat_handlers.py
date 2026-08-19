@@ -75,6 +75,14 @@ def _prepare_chat_run(body: dict[str, Any]) -> dict[str, Any]:
   if agent and tools:
     tools = filter_tools_for_agent(tools, agent)
 
+  from ai.tools.deferred_loading import apply_deferred_filter, session_key as defer_session_key
+  if tools:
+    sk = defer_session_key(
+      str(body.get("sessionId") or body.get("session_id") or ""),
+      str(body.get("jobId") or body.get("_job_id") or ""),
+    )
+    tools = apply_deferred_filter(tools, sk, _PARAMS)
+
   orchestration_plan = None
   if route.agent_id == orchestrator_id() and route.reason == "default":
     plan = detect_orchestration_plan(

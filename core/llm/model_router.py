@@ -149,7 +149,9 @@ def resolve_chat_config_chain(
   """Primary config followed by fallback profiles from model hub."""
   del workflow_id, user_text
   from ai.core.llm.model_accounts import resolve_chat_chain_with_route
-  return resolve_chat_chain_with_route(params, base, chat_route=_chat_route_from_body(body))
+  from ai.common.model_tier import reorder_chain_for_tier, tier_from_body
+  chain = resolve_chat_chain_with_route(params, base, chat_route=_chat_route_from_body(body))
+  return reorder_chain_for_tier(chain, tier_from_body(body, params))
 
 
 async def chat_completion_with_failover(

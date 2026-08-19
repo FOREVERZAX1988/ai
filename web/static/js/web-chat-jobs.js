@@ -130,7 +130,7 @@ const ChatJobs = (() => {
       deps.renderSessionList?.();
       deps.updateComposerSendBtn?.();
       if (deps.SessionStore?.activeId === sessionId) {
-        deps.renderStoredMessages?.({ force: true });
+        deps.renderStoredMessages?.({ force: true, forceScroll: true });
       }
       return false;
     } catch {
@@ -290,9 +290,10 @@ const ChatJobs = (() => {
         if (!ctx.thinkingStarted) {
           ctx.thinkingStarted = true;
           ui.thinking?.classList.remove('hidden');
+          deps.setDetailsCollapsed?.(ui.thinking, false);
           if (ui.thinkingLabel) ui.thinkingLabel.textContent = deps.t('thinkingActive', 'Thinking…');
         }
-        if (ui.thinkingBody) ui.thinkingBody.textContent = assistantMessage.reasoning_content;
+        if (ui.thinkingBody) renderThinkingContent(ui.thinkingBody, assistantMessage.reasoning_content);
         deps.scrollToBottom?.();
       }
     }
@@ -308,7 +309,7 @@ const ChatJobs = (() => {
       if (visible && ui) {
         deps.hideAssistantLoading?.(ui);
         if (ctx.thinkingStarted) {
-          ui.thinking?.classList.add('collapsed');
+          deps.setDetailsCollapsed?.(ui.thinking, true);
           if (ui.thinkingLabel) ui.thinkingLabel.textContent = deps.t('thinking', 'Thinking');
         }
         if (clean) scheduleMarkdownRender(ui, clean, ctx);
@@ -327,13 +328,16 @@ const ChatJobs = (() => {
       if (visible && ui) {
         deps.hideAssistantLoading?.(ui);
         if (ctx.thinkingStarted) {
-          ui.thinking?.classList.add('collapsed');
+          deps.setDetailsCollapsed?.(ui.thinking, true);
           if (ui.thinkingLabel) ui.thinkingLabel.textContent = deps.t('thinking', 'Thinking');
         } else {
           ui.thinking?.classList.add('hidden');
         }
         ui.toolsBlock?.classList.remove('hidden');
-        deps.renderToolCall?.(ui.toolsList, data.id, data.name, data.arguments, null, data.agentId || data.agent_id);
+        deps.setDetailsCollapsed?.(ui.toolsBlock, true);
+        deps.renderToolCall?.(ui.toolsList, data.id, data.name, data.arguments, null, data.agentId || data.agent_id, {
+          subagent: !!data.subagent,
+        });
         deps.updateToolCallsSummary?.(ui.toolsBlock);
       }
     }
@@ -362,7 +366,8 @@ const ChatJobs = (() => {
     }
 
     if (data.type === 'usage' && visible && ui) {
-      deps.renderUsage?.(ui.wrapper, data.usage);
+      assistantMessage.usage = data.usage;
+      deps.renderUsage?.(ui, data.usage);
       if (deps.els?.settingsSidebar?.classList.contains('open')) deps.loadUsage?.();
       if (typeof OfficePanel !== 'undefined' && OfficePanel.isOpen()) {
         OfficePanel.setUsageTokens(data.usage?.total_tokens || 0);
@@ -370,7 +375,11 @@ const ChatJobs = (() => {
     }
 
     if (data.type === 'trace' && data.message) {
-      console.debug(`[chat trace ${data.round ?? '?'}]`, data.message);
+      if (visible && ui) {
+        deps.appendTraceLine?.(ui, data.message, data.round);
+      } else {
+        console.debug(`[chat trace ${data.round ?? '?'}]`, data.message);
+      }
     }
 
     if (data.type === 'done') {
@@ -381,7 +390,8 @@ const ChatJobs = (() => {
         deps.hideAssistantLoading?.(ui);
         deps.syncThinkingBlock?.(ui, assistantMessage);
         flushMarkdownRender(ui, assistantMessage.content, ctx);
-        if (data.resolvedModel) deps.setMessageModelTag?.(ui.actionsBar, data.resolvedModel);
+        if (data.resolvedModel) deps.setMessageModelTag?.(ui, data.resolvedModel);
+        deps.renderMessageFooter?.(ui, { usage: assistantMessage.usage, resolvedModel: data.resolvedModel });
       }
       if (data.resolvedModel && visible) deps.updateModelBadge?.(data.resolvedModel);
     }
@@ -693,6 +703,10 @@ const ChatJobs = (() => {
         ...queueExtras,
       };
       if (chatRoute) body.chatRoute = chatRoute;
+      if (typeof WorkbuddyPanel !== 'undefined') {
+        const tier = WorkbuddyPanel.getModelTier?.();
+        if (tier && tier !== 'auto') body.modelTier = tier;
+      }
 
       const { data: startData } = await deps.api('POST', '/api/ai/chat/jobs', body);
 
@@ -762,23 +776,38 @@ const ChatJobs = (() => {
     if (existingCtx?._pollActive) return;
 
     const messages = deps.getSessionMessages?.(sessionId) || deps.getCurrentMessages?.() || [];
-    const last = messages[messages.length - 1];
-    let ui;
-    let assistantMessage;
-    let skipEventReplay = false;
     const serverAssistant = initialData?.assistant
       ? deps.normalizeStoredMessage({ role: 'assistant', ...initialData.assistant })
       : null;
 
+    let ui = deps.resolveAttachAssistantUi?.(messages, sessionId);
+    if (!ui) {
+      const verified = await verifySessionJobId(sessionId);
+      if (!verified) return;
+      ui = deps.resolveAttachAssistantUi?.(messages, sessionId);
+      if (!ui && deps.SessionStore?.getActiveJobId(sessionId)) {
+        const lastMsg = messages[messages.length - 1];
+        if (lastMsg?.role === 'user') {
+          ui = deps.appendAssistantMessage?.({ withLoading: true });
+        } else {
+          ui = deps.getLastAssistantUi?.();
+          if (ui?.wrapper?.isConnected) deps.markLiveStreamUi?.(ui);
+        }
+      }
+      if (!ui) return;
+    }
+
+    let assistantMessage;
+    const last = messages[messages.length - 1];
+    let skipEventReplay = false;
+
     if (last?.role === 'assistant' && deps.assistantMessageHasContent?.(last)) {
-      ui = deps.getLiveStreamUi?.() || deps.getLastAssistantUi?.() || deps.appendAssistantMessage();
       assistantMessage = serverAssistant && deps.assistantMessageHasContent?.(serverAssistant)
         ? serverAssistant
         : deps.normalizeStoredMessage({ ...last });
       deps.hydrateAssistantUi?.(ui, assistantMessage);
       skipEventReplay = true;
     } else if (last?.role === 'user') {
-      ui = deps.getLiveStreamUi?.() || deps.appendAssistantMessage();
       if (!deps.getLiveStreamUi?.()) deps.showAssistantLoading(ui);
       assistantMessage = {
         role: 'assistant',
@@ -791,7 +820,6 @@ const ChatJobs = (() => {
       };
       if (initialData?.assistant) deps.hydrateAssistantUi?.(ui, assistantMessage);
     } else if (last?.role === 'assistant') {
-      ui = deps.getLiveStreamUi?.() || deps.appendAssistantMessage();
       if (!deps.getLiveStreamUi?.()) deps.showAssistantLoading(ui);
       assistantMessage = {
         role: 'assistant',
@@ -892,7 +920,7 @@ const ChatJobs = (() => {
         deps.commitAssistantMessage?.(sessionId, doneMsg);
       }
       deps.SessionStore.clearActiveJobId(sessionId);
-      deps.renderStoredMessages?.({ force: true });
+      deps.renderStoredMessages?.({ force: true, forceScroll: true });
       deps.syncSessionsToDevice?.().catch(() => {});
       deps.updateComposerSendBtn?.();
       return;
@@ -970,6 +998,15 @@ const ChatJobs = (() => {
     deps.updateComposerSendBtn?.();
   }
 
+  function detachInactiveStreamUis() {
+    const activeId = deps.SessionStore?.activeId;
+    for (const ctx of contexts.values()) {
+      if (!ctx || ctx.sessionId === activeId) continue;
+      if (ctx.ui?.wrapper) delete ctx.ui.wrapper.dataset.liveStream;
+      ctx.ui = null;
+    }
+  }
+
   return {
     init,
     stream,
@@ -993,5 +1030,6 @@ const ChatJobs = (() => {
     resumePolling,
     recoverStuckStreams,
     resumeActiveJobs,
+    detachInactiveStreamUis,
   };
 })();

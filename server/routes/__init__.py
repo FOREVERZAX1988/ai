@@ -4,6 +4,7 @@ from aiohttp import web
 
 from ai.server.handlers import api as h
 from ai.server.handlers import phase2 as phase2_handlers
+from ai.server.handlers import harness_handlers
 from ai.server.routes.agents import register_agent_routes
 
 
@@ -95,6 +96,17 @@ def register_routes(app: web.Application, *, json_response) -> None:
   app.router.add_get("/api/ai/platform/evolution", phase2_handlers.api_platform_evolution)
   app.router.add_post("/api/ai/platform/evolution", phase2_handlers.api_platform_evolution)
   app.router.add_post("/api/ai/scheduler/nl", phase2_handlers.api_scheduler_nl)
+  app.router.add_get("/api/ai/harness/config", harness_handlers.api_harness_config)
+  app.router.add_post("/api/ai/harness/config", harness_handlers.api_harness_config)
+  app.router.add_get("/api/ai/audit", harness_handlers.api_audit_trail)
+  app.router.add_get("/api/ai/transcript", harness_handlers.api_transcript)
+  app.router.add_get("/api/ai/transcript/recover", harness_handlers.api_transcript)
+  app.router.add_get("/api/ai/usage/summary", harness_handlers.api_usage_summary)
+  app.router.add_get("/api/ai/profile/sync", harness_handlers.api_profile_sync)
+  app.router.add_post("/api/ai/profile/sync", harness_handlers.api_profile_sync)
+  app.router.add_get("/api/ai/workflows/custom", harness_handlers.api_workflows_custom)
+  app.router.add_put("/api/ai/workflows/custom", harness_handlers.api_workflows_custom)
+  app.router.add_post("/api/ai/workflows/custom", harness_handlers.api_workflows_custom)
   from ai.server.handlers import consumer as consumer_handlers
   app.router.add_get("/api/ai/consumer/wizards", consumer_handlers.api_consumer_wizards)
   app.router.add_get("/api/ai/consumer/wizards/{wizard_id}/start", consumer_handlers.api_consumer_wizard_start)

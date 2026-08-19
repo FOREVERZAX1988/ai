@@ -441,6 +441,36 @@ ITEMS = [
     "default": "",
   },
   {
+    "key": "ai_deferred_tools",
+    "flags": "PERSISTENT",
+    "param_type": "BOOL",
+    "default": True,
+  },
+  {
+    "key": "ai_externalize_results",
+    "flags": "PERSISTENT",
+    "param_type": "BOOL",
+    "default": True,
+  },
+  {
+    "key": "ai_externalize_threshold",
+    "flags": "PERSISTENT",
+    "param_type": "STRING",
+    "default": "8192",
+  },
+  {
+    "key": "ai_model_tier",
+    "flags": "PERSISTENT",
+    "param_type": "STRING",
+    "default": "auto",
+  },
+  {
+    "key": "ai_profile_sync_manifest",
+    "flags": "PERSISTENT",
+    "param_type": "STRING",
+    "default": "",
+  },
+  {
     "key": "ai_skills_enabled",
     "flags": "PERSISTENT",
     "param_type": "STRING",

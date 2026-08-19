@@ -6,9 +6,12 @@
   <title>OP 助手</title>
   <link rel="icon" type="image/svg+xml" href="/static/img/favicon.svg">
   <link rel="stylesheet" href="/static/vendor/markdown-it/highlight-github-dark.min.css">
-  <link rel="stylesheet" href="/static/css/ai.css?v=20260806p">
+  <link rel="stylesheet" href="/static/css/ai.css?v=20260820j">
+  <link rel="stylesheet" href="/static/css/openclaw-chat.css?v=20260820j">
   <link rel="stylesheet" href="/static/css/office-panel.css?v=20260730s">
   <link rel="stylesheet" href="/static/css/canvas-panel.css?v=20260723e">
+  <link rel="stylesheet" href="/static/css/composer-context-meter.css?v=20260819b">
+  <link rel="stylesheet" href="/static/css/workbuddy-panel.css?v=20260819e">
   <link rel="stylesheet" href="/static/css/cabana-panel.css?v=20260730k">
   <link rel="stylesheet" href="/static/vendor/uplot/uPlot.min.css">
   <link rel="stylesheet" href="/static/vendor/xterm/xterm.css?v=20260722i">
@@ -134,6 +137,11 @@
         <section class="chat-layout" id="chatLayout">
           <div class="chat-thread">
           <div class="messages" id="messages"></div>
+          <div class="chat-jump-anchor" aria-hidden="true">
+            <button type="button" id="jumpToBottomBtn" class="btn icon jump-to-bottom hidden" aria-hidden="true">
+              <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 5v14M5 12l7 7 7-7"/></svg>
+            </button>
+          </div>
           <div class="composer-wrap">
             <div class="composer-attachments hidden" id="composerAttachments"></div>
             <div class="composer-slash-menu hidden" id="composerSlashMenu" role="listbox" aria-label="Slash commands">
@@ -144,9 +152,6 @@
               <p class="composer-slash-label" id="composerMentionLabel" data-i18n="mentionAddContext">添加上下文</p>
               <div class="composer-slash-list" id="composerMentionList"></div>
             </div>
-            <button type="button" id="jumpToBottomBtn" class="btn icon jump-to-bottom hidden" aria-hidden="true">
-              <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 5v14M5 12l7 7 7-7"/></svg>
-            </button>
             <form class="composer-card" id="composer">
               <div class="composer-edit-banner hidden" id="composerEditBanner">
                 <span id="composerEditBannerText" data-i18n="editingMessage">正在编辑消息</span>
@@ -159,6 +164,15 @@
                 <div class="session-model-picker" id="sessionModelPicker">
                   <button type="button" class="session-model-picker-btn unset" id="sessionModelPickerBtn" aria-haspopup="listbox" aria-expanded="false">—</button>
                   <div class="session-model-picker-menu hidden" id="sessionModelPickerMenu" role="listbox"></div>
+                </div>
+                <div class="composer-tier-picker" id="composerTierPicker">
+                  <button type="button" class="composer-tier-btn" id="modelTierBtn" aria-haspopup="listbox" aria-expanded="false" title="模型档位">自动</button>
+                  <div class="composer-tier-menu hidden" id="modelTierMenu" role="listbox" aria-label="模型档位">
+                    <button type="button" class="composer-tier-option" data-tier="auto">自动</button>
+                    <button type="button" class="composer-tier-option" data-tier="lite">轻量</button>
+                    <button type="button" class="composer-tier-option" data-tier="default">标准</button>
+                    <button type="button" class="composer-tier-option" data-tier="craft">深度</button>
+                  </div>
                 </div>
                 <div class="composer-hint-wrap">
                   <button type="button" id="composerHintBtn" class="btn icon composer-hint-btn" aria-describedby="composerHintTooltip">
@@ -528,6 +542,13 @@
         <div class="settings-pane" id="paneScheduler" role="tabpanel">
           <p class="settings-pane-lead" id="schedulerPaneDesc">定时只读巡检（日志、用量、调优快照）</p>
           <section class="settings-card">
+            <header class="settings-card-head"><h3 class="settings-card-title" id="schedulerBoardTitle">任务黑板</h3></header>
+            <div class="settings-card-body platform-pane-body">
+              <p class="field-hint" id="schedulerBoardDesc">定时任务执行状态一览（最近运行结果）。</p>
+              <div id="schedulerTaskBoard" class="scheduler-task-board"></div>
+            </div>
+          </section>
+          <section class="settings-card">
             <header class="settings-card-head"><h3 class="settings-card-title" id="schedulerListTitle">已添加任务</h3></header>
             <div class="settings-card-body settings-card-body-flush">
               <div id="schedulerTaskList" class="scheduler-list"></div>
@@ -737,6 +758,99 @@
               </div>
               <div id="platformTuneCompareStatus" class="field-hint" hidden></div>
               <div id="platformTuneCompareResult" class="tune-ab-result" hidden></div>
+            </div>
+          </section>
+          <section class="settings-card">
+            <header class="settings-card-head"><h3 class="settings-card-title" id="platformWorkflowTitle">工作流编辑器</h3></header>
+            <div class="settings-card-body platform-pane-body">
+              <p class="field-hint" id="platformWorkflowDesc">自定义工作流步骤与 Prompt，与内置工作流合并使用。</p>
+              <div class="platform-toolbar platform-toolbar-secondary">
+                <button type="button" id="workflowEditorAdd" class="btn small primary">添加工作流</button>
+                <button type="button" id="workflowEditorReload" class="btn small">刷新</button>
+              </div>
+              <div id="workflowEditorList" class="workflow-editor-list"></div>
+              <div id="workflowEditorPane" class="workflow-editor-pane"></div>
+            </div>
+          </section>
+          <section class="settings-card">
+            <header class="settings-card-head"><h3 class="settings-card-title" id="platformProfileSyncTitle">Profile 同步</h3></header>
+            <div class="settings-card-body platform-pane-body">
+              <p class="field-hint" id="platformProfileSyncDesc">导出/导入偏好 manifest（Harness、专员、车型档案），用于换机或另一台设备合并。</p>
+              <div id="platformProfileSyncStatus" class="field-hint"></div>
+              <textarea id="platformProfileSyncJson" rows="5" class="platform-editor" placeholder='{"version":1,"sections":{...}}'></textarea>
+              <div class="platform-toolbar platform-toolbar-secondary">
+                <select id="platformProfileSyncMode" class="toolbar-select">
+                  <option value="merge">合并</option>
+                  <option value="replace">覆盖</option>
+                </select>
+                <button type="button" id="platformProfileSyncExport" class="btn small">导出</button>
+                <button type="button" id="platformProfileSyncImport" class="btn small primary">应用</button>
+              </div>
+            </div>
+          </section>
+          <section class="settings-card">
+            <header class="settings-card-head"><h3 class="settings-card-title" id="platformTranscriptTitle">会话 Transcript</h3></header>
+            <div class="settings-card-body platform-pane-body">
+              <p class="field-hint" id="platformTranscriptDesc">JSONL 事件流，用于崩溃恢复与调试。</p>
+              <div class="platform-toolbar platform-toolbar-secondary">
+                <button type="button" id="platformTranscriptRefresh" class="btn small">刷新</button>
+                <button type="button" id="platformTranscriptRecover" class="btn small primary">恢复当前会话</button>
+              </div>
+              <div id="platformTranscriptList" class="platform-list transcript-list"></div>
+            </div>
+          </section>
+          <section class="settings-card">
+            <header class="settings-card-head"><h3 class="settings-card-title" id="platformUsageSqlTitle">用量汇总 (SQLite)</h3></header>
+            <div class="settings-card-body platform-pane-body">
+              <div id="platformUsageSummary" class="platform-list"></div>
+            </div>
+          </section>
+          <section class="settings-card">
+            <header class="settings-card-head"><h3 class="settings-card-title" id="platformHarnessTitle">Harness 引擎</h3></header>
+            <div class="settings-card-body platform-debug-body">
+              <p class="field-hint" id="platformHarnessDesc">WorkBuddy 风格运行时开关：延迟加载工具、大结果外部化、模型档位。</p>
+              <label class="platform-check-row"><input type="checkbox" id="harnessDeferredToggle"> <span id="harnessDeferredLabel">延迟加载工具 (ToolSearch)</span></label>
+              <label class="platform-check-row"><input type="checkbox" id="harnessExternalizeToggle"> <span id="harnessExternalizeLabel">大结果外部化</span></label>
+              <label class="field platform-harness-threshold">
+                <span class="field-label" id="harnessThresholdLabel">外部化阈值 (bytes)</span>
+                <input type="number" id="harnessExternalizeThreshold" min="1024" max="512000" step="1024" value="8192">
+              </label>
+              <label class="field">
+                <span class="field-label" id="harnessModelTierLabel">默认模型档位</span>
+                <select id="harnessModelTier">
+                  <option value="auto">自动</option>
+                  <option value="lite">轻量</option>
+                  <option value="default">标准</option>
+                  <option value="craft">深度</option>
+                </select>
+              </label>
+              <div class="platform-toolbar platform-toolbar-secondary">
+                <button type="button" id="harnessConfigSave" class="btn small primary">保存 Harness 设置</button>
+              </div>
+            </div>
+          </section>
+          <section class="settings-card">
+            <header class="settings-card-head">
+              <h3 class="settings-card-title" id="platformExpertsTitle">专员管理</h3>
+            </header>
+            <div class="settings-card-body platform-pane-body">
+              <p class="field-hint" id="platformExpertsDesc">启用或禁用多专员编排中的专家。禁用后 OP 主调度不会委派给该专员。</p>
+              <div id="platformExpertsList" class="platform-list"></div>
+            </div>
+          </section>
+          <section class="settings-card">
+            <header class="settings-card-head">
+              <h3 class="settings-card-title" id="platformAuditTitle">工具审计链</h3>
+              <span class="dev-count-badge" id="platformAuditChainBadge">—</span>
+            </header>
+            <div class="settings-card-body platform-pane-body">
+              <p class="field-hint" id="platformAuditDesc">SHA256 哈希链审计日志，可验证工具调用未被篡改。</p>
+              <div class="platform-toolbar platform-toolbar-secondary">
+                <button type="button" id="platformAuditRefresh" class="btn small">刷新</button>
+                <button type="button" id="platformAuditVerify" class="btn small">验证链</button>
+              </div>
+              <div id="platformAuditStatus" class="field-hint"></div>
+              <ul class="dev-item-list" id="platformAuditList"></ul>
             </div>
           </section>
           <section class="settings-card">
@@ -1426,11 +1540,11 @@
   <script src="/static/vendor/markdown-it/markdown-it-tasklists.bundle.js"></script>
   <script src="/static/vendor/markdown-it/purify.min.js"></script>
   <script src="/static/vendor/markdown-it/highlight.min.js"></script>
-  <script src="/static/js/markdown.js?v=20260730q"></script>
-  <script src="/static/js/sessions.js?v=20260722k"></script>
+  <script src="/static/js/markdown.js?v=20260820d"></script>
+  <script src="/static/js/sessions.js?v=20260820k"></script>
   <script src="/static/vendor/xterm/xterm.js?v=20260722i"></script>
   <script src="/static/vendor/xterm/addon-fit.js?v=20260722i"></script>
-  <script src="/static/js/session-sync.js?v=20260722k"></script>
+  <script src="/static/js/session-sync.js?v=20260820k"></script>
   <script src="/static/js/model-combobox.js?v=20260722j"></script>
   <script src="/static/js/local-prefs.js?v=20260806b"></script>
   <script src="/static/js/quick-actions.js?v=20260715h"></script>
@@ -1443,7 +1557,7 @@
   <script src="/static/js/composer-context-meter.js?v=20260807a"></script>
   <script src="/static/js/composer-mention.js?v=20260806t"></script>
   <script src="/static/js/message-feedback.js?v=20260806q"></script>
-  <script src="/static/js/web-chat-jobs.js?v=20260806m"></script>
+  <script src="/static/js/web-chat-jobs.js?v=20260820j"></script>
   <script src="/static/js/web-api.js?v=20260730t"></script>
   <script src="/static/js/ui-busy.js?v=20260728a"></script>
   <script src="/static/js/web-config.js?v=20260722h"></script>
@@ -1467,8 +1581,11 @@
   <script src="/static/js/office-panel.js?v=20260730s"></script>
   <script src="/static/js/command-queue.js?v=20260723k"></script>
   <script src="/static/js/canvas-panel.js?v=20260723a"></script>
+  <script src="/static/js/workbuddy-panel.js?v=20260819e"></script>
+  <script src="/static/js/workflow-editor.js?v=20260819d"></script>
+  <script src="/static/js/transcript-recovery.js?v=20260819g"></script>
   <script src="/static/js/terminal-panel.js?v=20260723e"></script>
-  <script src="/static/js/ai.js?v=20260806t"></script>
+  <script src="/static/js/ai.js?v=20260820k"></script>
   <script src="/static/vendor/uplot/uPlot.iife.min.js"></script>
   <script src="/static/js/cabana-panel.js?v=20260804a"></script>
 </body>

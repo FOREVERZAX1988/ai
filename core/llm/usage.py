@@ -125,11 +125,25 @@ def record_usage(
   provider: str = "",
   model: str = "",
   source: str = "chat",
+  session_id: str = "",
+  job_id: str = "",
 ) -> None:
   try:
     _record_usage_to_key(
       params, USAGE_KEY, usage, provider=provider, model=model, source=source,
     )
+    try:
+      from ai.tools.domains.platform.harness_db import record_usage_event
+      record_usage_event(
+        provider=provider,
+        model=model,
+        source=source,
+        usage=usage,
+        session_id=session_id,
+        job_id=job_id,
+      )
+    except Exception:
+      pass
   except Exception as e:
     cloudlog.error(f"usage_log: failed to record usage: {e}")
 

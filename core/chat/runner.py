@@ -18,6 +18,13 @@ from ai.system.admin import is_admin_mode
 from ai.selfdrive.state import StateReader
 from ai.tools.memory_store import format_memory_prompt
 from ai.tools.workflows import workflow_system_prompt
+from ai.common.prompt_budget import PromptBudget
+from ai.tools.deferred_loading import (
+  handle_load_tool,
+  handle_search_tools,
+  resolve_active_tools,
+  session_key as deferred_session_key,
+)
 from ai.tools.agent_tools import execute_tool_async
 from ai.core.llm.usage import record_usage
 from ai.agents.prompts import agent_system_prompt
@@ -89,19 +96,19 @@ async def build_chat_messages(
     body=body,
   )
 
-  system_parts: list[str] = []
-  if config.system_prompt:
-    system_parts.append(config.system_prompt)
-  else:
-    system_parts.append(
-      "You are a helpful assistant for the openpilot driving assistant running on the device. "
-      "You have full access to read/write openpilot files, params, shell, and diagnostics. "
-      "You must never send steering, brake, or throttle commands."
-    )
+  budget = PromptBudget.for_model(getattr(config, "model", "") or "", params)
+  labeled_parts: list[tuple[str, str, int, int]] = []
+
+  base_prompt = config.system_prompt or (
+    "You are a helpful assistant for the openpilot driving assistant running on the device. "
+    "You have full access to read/write openpilot files, params, shell, and diagnostics. "
+    "You must never send steering, brake, or throttle commands."
+  )
+  labeled_parts.append(("base", base_prompt, budget.system_max, 100))
 
   agent_prompt = agent_system_prompt(agent_id, route_data) if agent_id else ""
   if agent_prompt:
-    system_parts.append(agent_prompt)
+    labeled_parts.append(("agent", agent_prompt, 800, 90))
 
   skills_block = get_skills_prompt(
     params,
@@ -110,13 +117,13 @@ async def build_chat_messages(
     query=last_user_text,
   )
   if skills_block:
-    system_parts.append(skills_block)
+    labeled_parts.append(("skills", skills_block, budget.skills_max, 80))
 
   try:
     from ai.tools.skill_learning import learned_skills_prompt
     learned = learned_skills_prompt(params)
     if learned:
-      system_parts.append(learned)
+      labeled_parts.append(("learned_skills", learned, 600, 70))
   except Exception:
     pass
 
@@ -124,86 +131,105 @@ async def build_chat_messages(
     from ai.tools.memory_protocol import memory_protocol_prompt_block
     proto = memory_protocol_prompt_block()
     if proto:
-      system_parts.append(proto)
+      labeled_parts.append(("memory_protocol", proto, 500, 95))
   except Exception:
     pass
 
+  workspace_blocks: list[str] = []
   try:
     from ai.core.wspace.store import workspace_prompt_blocks
-    for block in workspace_prompt_blocks():
-      system_parts.append(block)
+    workspace_blocks = list(workspace_prompt_blocks())
   except Exception:
     pass
+  if workspace_blocks:
+    labeled_parts.append(("workspace", "\n\n".join(workspace_blocks), 1200, 75))
 
   try:
     from ai.tools.daily_memory import build_daily_memory_prompt_block
     daily_block = build_daily_memory_prompt_block()
     if daily_block:
-      system_parts.append(daily_block)
+      labeled_parts.append(("daily_memory", daily_block, 800, 72))
   except Exception:
     pass
 
   try:
     from ai.fork.fork_prompt import fork_context_prompt_block
-
     fork_block = fork_context_prompt_block()
     if fork_block:
-      system_parts.append(fork_block)
+      labeled_parts.append(("fork", fork_block, 600, 60))
   except Exception:
     pass
 
   wf_prompt = workflow_system_prompt(workflow_id) if workflow_id else ""
   if wf_prompt:
-    system_parts.append(wf_prompt)
+    labeled_parts.append(("workflow", wf_prompt, budget.workflow_max, 85))
 
   consumer_mode = bool(body.get("consumerMode") or body.get("consumer_mode"))
   if consumer_mode:
-    system_parts.append(
+    labeled_parts.append((
+      "consumer",
       "# OP 车主模式\n"
       "用户是不懂编程、不懂汽修的普通车主。请全程使用通俗中文，避免参数代号堆砌；"
       "每次改设置前先用大白话解释「改什么、为什么、有什么感觉变化」，并等待用户在界面确认。"
       "禁止未经确认直接 write_params(confirm=true)。"
-      "可用 consumer_lexicon 含义：跟车距离、变道风格、加减速舒适度等。"
-    )
+      "可用 consumer_lexicon 含义：跟车距离、变道风格、加减速舒适度等。",
+      600,
+      88,
+    ))
 
   memory_block = format_memory_prompt(params)
   if memory_block:
-    system_parts.append(memory_block)
+    labeled_parts.append(("memory", memory_block, budget.memory_max, 78))
 
   try:
     from ai.tools.workspace_enrich import enrichment_prompt_block
     enrich = enrichment_prompt_block(params)
     if enrich:
-      system_parts.append(enrich)
+      labeled_parts.append(("enrichment", enrich, 500, 65))
   except Exception:
     pass
 
-  system_parts.append(
+  labeled_parts.append((
+    "knowledge_hint",
     "Knowledge base: do not assume prior doc context. When you need manuals, wiki, or saved notes, "
     "call search_knowledge_base with your own query and limit (repeat with different queries if needed). "
-    "Use list_knowledge_docs to see what is indexed."
-  )
-
-  system_parts.append(
+    "Use list_knowledge_docs to see what is indexed.",
+    300,
+    50,
+  ))
+  labeled_parts.append((
+    "tool_hint",
     "Use available tools proactively to diagnose and complete the task without asking for step-by-step confirmation. "
-    "Proceed with writes and diagnostics as needed."
-  )
-  system_parts.append(
+    "Proceed with writes and diagnostics as needed. "
+    "For specialized tools not in your list, call search_tools then load_tool first.",
+    250,
+    45,
+  ))
+  labeled_parts.append((
+    "memory_mandatory",
     "Memory protocol (mandatory): if the user shared durable preferences, vehicle facts, tuning outcomes, "
     "or workflow steps worth reusing, you MUST call append_daily_memory, update_workspace_file (memory/user), "
     "and/or update_agent_memory before finishing — do not only promise to remember. "
-    "When workspace_health reports sparse files, enrich USER.md / MEMORY.md from the conversation."
-  )
+    "When workspace_health reports sparse files, enrich USER.md / MEMORY.md from the conversation.",
+    350,
+    55,
+  ))
   if is_admin_mode(params):
-    system_parts.append(
+    labeled_parts.append((
+      "admin",
       "Open mode (ai_admin_mode=1): all tools and writes are allowed at any time. "
       "Use read_file/write_file/list_directory/run_shell_command freely on openpilot + AGNOS paths. "
-      "The ONLY hard rule: never send steering/brake/throttle/actuator commands."
-    )
+      "The ONLY hard rule: never send steering/brake/throttle/actuator commands.",
+      300,
+      40,
+    ))
 
   if body.get("includeState", True):
     state = get_state_reader().update(timeout=0)
-    system_parts.append(state.summary_line())
+    labeled_parts.append(("vehicle_state", state.summary_line(), 200, 30))
+
+  system_parts, budget_report = budget.assemble_system_parts(labeled_parts)
+  body["_prompt_budget"] = budget_report
 
   system_msg = {"role": "system", "content": "\n\n".join(system_parts)}
   return config, [system_msg] + messages
@@ -226,6 +252,20 @@ async def run_chat_loop(
     from ai.server.deps import read_ai_config
     config = read_ai_config(params)
 
+  session_id = str(body.get("sessionId") or body.get("session_id") or "").strip()
+  job_id = str(body.get("_job_id") or body.get("jobId") or "").strip()
+
+  _orig_emit = emit
+
+  async def emit(event: dict[str, Any]) -> None:
+    if session_id:
+      try:
+        from ai.tools.domains.platform.transcript_store import append_event
+        append_event(session_id, event, job_id=job_id)
+      except Exception:
+        pass
+    await _orig_emit(event)
+
   available_tool_names = None
   if tools:
     available_tool_names = {t.get("function", {}).get("name", "") for t in tools}
@@ -241,8 +281,7 @@ async def run_chat_loop(
 
   route_data = body.get("_agent_route") or {}
   agent_id = str(route_data.get("agent_id") or route_data.get("agentId") or "op").strip()
-  session_id = str(body.get("sessionId") or body.get("session_id") or "").strip()
-  job_id = str(body.get("_job_id") or body.get("jobId") or "").strip()
+  defer_key = deferred_session_key(session_id, job_id)
 
   if not body.get("_skip_handoff"):
     handoff = {**route_data, "type": "agent_handoff"}
@@ -250,15 +289,21 @@ async def run_chat_loop(
     await _emit_with_office(emit, handoff)
     await _emit_with_office(emit, {"type": "agent_office", "office": office})
 
+  budget_report = body.get("_prompt_budget")
+  if budget_report:
+    await emit({"type": "prompt_budget", "budget": budget_report})
+
   def _check_cancel() -> None:
     if is_cancelled and is_cancelled():
       raise ChatCancelled()
 
   total_usage: dict[str, Any] | None = None
   handlers = get_tool_handlers()
+  all_tools = tools
 
   for _round in range(max_tool_rounds):
     _check_cancel()
+    active_tools = resolve_active_tools(all_tools, defer_key, params) if all_tools else None
     if body.get("trace"):
       await emit({
         "type": "trace",
@@ -280,7 +325,7 @@ async def run_chat_loop(
     assistant_reasoning = ""
 
     async for chunk, active_cfg in chat_completion_with_failover(
-      config, params, chat_messages, tools=tools, body=body,
+      config, params, chat_messages, tools=active_tools, body=body,
     ):
       config = active_cfg
       _check_cancel()
@@ -366,9 +411,28 @@ async def run_chat_loop(
       })
       if hook_ctx.get("block"):
         result = {"ok": False, "error": hook_ctx.get("reason") or "Tool blocked by hook"}
+      elif name == "search_tools":
+        try:
+          args = json.loads(arguments) if arguments else {}
+        except json.JSONDecodeError:
+          args = {}
+        result = handle_search_tools(args, session_id=session_id, job_id=job_id)
+      elif name == "load_tool":
+        try:
+          args = json.loads(arguments) if arguments else {}
+        except json.JSONDecodeError:
+          args = {}
+        result = handle_load_tool(args, session_id=session_id, job_id=job_id)
       else:
         result = await execute_tool_async(handlers, name, arguments)
-      hook_ctx = await run_hooks("after_tool_call", {**hook_ctx, "result": result})
+      hook_ctx = await run_hooks("after_tool_call", {
+        **hook_ctx,
+        "result": result,
+        "session_id": session_id,
+        "name": name,
+        "body": {**body, "_params": params},
+      })
+      result = hook_ctx.get("result", result)
       if artifact := hook_ctx.get("canvas_artifact"):
         await emit({"type": "canvas", "artifact": artifact, "sessionId": session_id})
       ok = bool(result.get("ok", True)) if isinstance(result, dict) else True
@@ -395,6 +459,8 @@ async def run_chat_loop(
       provider=config.provider,
       model=config.model,
       source="chat",
+      session_id=session_id,
+      job_id=job_id,
     )
     await emit({"type": "usage", "usage": total_usage})
 

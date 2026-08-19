@@ -136,6 +136,15 @@ async def index(request: web.Request) -> web.Response:
 
 
 @web.middleware
+async def static_dev_cache_middleware(request: web.Request, handler):
+  resp = await handler(request)
+  path = request.path or ""
+  if path.startswith("/static/") and path.rsplit(".", 1)[-1] in ("js", "css", "mjs"):
+    resp.headers["Cache-Control"] = "no-cache, must-revalidate"
+  return resp
+
+
+@web.middleware
 async def error_middleware(request: web.Request, handler):
   try:
     return await handler(request)
@@ -162,7 +171,7 @@ def create_app() -> web.Application:
 
   # Chat jobs send full message history + tool_results; default 1MB is too small.
   app = web.Application(
-    middlewares=[error_middleware, ai_auth_middleware],
+    middlewares=[static_dev_cache_middleware, error_middleware, ai_auth_middleware],
     client_max_size=32 * 1024 * 1024,
   )
   app["params"] = _PARAMS

@@ -429,5 +429,45 @@ const ComposerContextMeter = (() => {
     render();
   }
 
-  return { mount, refresh, computeState };
+  function applyServerBudget(budget) {
+    if (!budget || !root) return;
+    const total = Number(budget.total_window) || 128000;
+    const system = Number(budget.system_tokens) || 0;
+    const pct = total > 0 ? Math.min(100, (system / total) * 100) : 0;
+    if (panelPctEl) panelPctEl.textContent = `${pct.toFixed(1)}%`;
+    if (panelUsedEl) {
+      panelUsedEl.textContent = `System ${fmtTokens(system)} / ${fmtTokens(total)}`;
+    }
+    if (pctEl) pctEl.textContent = `${Math.round(pct)}%`;
+    if (ringFg) {
+      const offset = RING_C * (1 - Math.min(1, pct / 100));
+      ringFg.style.strokeDasharray = `${RING_C}`;
+      ringFg.style.strokeDashoffset = `${offset}`;
+    }
+    if (barEl && Array.isArray(budget.blocks) && listEl) {
+      barEl.innerHTML = '';
+      listEl.innerHTML = '';
+      const colors = ['#7dd87a', '#e8a44a', '#b794f6', '#e879a9', '#38bdf8', '#4ecdc4', '#6ba4f5'];
+      budget.blocks.forEach((b, i) => {
+        const share = total > 0 ? (b.tokens / total) * 100 : 0;
+        if (share > 0.05) {
+          const seg = document.createElement('span');
+          seg.className = 'composer-context-bar-seg';
+          seg.style.width = `${Math.max(share, 0.4)}%`;
+          seg.style.background = colors[i % colors.length];
+          barEl.appendChild(seg);
+        }
+        const row = document.createElement('div');
+        row.className = 'composer-context-row';
+        row.innerHTML = `
+          <span class="composer-context-dot" style="background:${colors[i % colors.length]}"></span>
+          <span class="composer-context-row-label">${b.label || 'block'}</span>
+          <span class="composer-context-row-pct">${fmtTokens(b.tokens)}${b.truncated ? ' ✂' : ''}</span>
+        `;
+        listEl.appendChild(row);
+      });
+    }
+  }
+
+  return { mount, refresh, computeState, applyServerBudget };
 })();

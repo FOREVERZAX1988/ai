@@ -12,8 +12,8 @@ from openpilot.common.params import Params
 from ai.common.storage import read_param, write_param
 
 SESSIONS_KEY = "ai_web_sessions"
-MAX_SESSIONS = 30
-MAX_MESSAGES_PER_SESSION = 100
+MAX_SESSIONS = 50
+MAX_MESSAGES_PER_SESSION = 200
 _SESSION_WRITE_LOCK = threading.Lock()
 _STATE_VERSION = 0
 _LOAD_CACHE: tuple[int, dict[str, Any]] | None = None
@@ -30,6 +30,13 @@ def session_state_version() -> int:
   return _STATE_VERSION
 
 
+def _sync_state_version_from_data(data: dict[str, Any]) -> None:
+  global _STATE_VERSION
+  persisted = int(data.get("stateVersion") or data.get("savedAt") or 0)
+  if persisted > _STATE_VERSION:
+    _STATE_VERSION = persisted
+
+
 def _load(params: Params) -> dict[str, Any]:
   global _LOAD_CACHE
   try:
@@ -44,6 +51,7 @@ def _load(params: Params) -> dict[str, Any]:
     data = json.loads(raw)
     if not isinstance(data, dict):
       return {"sessions": [], "activeId": None}
+    _sync_state_version_from_data(data)
     _LOAD_CACHE = (version_hint, data)
     return data
   except Exception:
@@ -186,11 +194,17 @@ def get_sessions(params: Params | None = None, *, compact: bool = False) -> dict
 def save_sessions(params: Params, payload: dict[str, Any]) -> dict[str, Any]:
   global _STATE_VERSION
   with _SESSION_WRITE_LOCK:
+    existing = _load(params)
+    _sync_state_version_from_data(existing)
     sessions = payload.get("sessions") or []
     if not isinstance(sessions, list):
       return {"ok": False, "error": "sessions must be a list"}
     trimmed = []
+    seen_ids: set[str] = set()
     for s in sessions[:MAX_SESSIONS]:
+      sid = str(s.get("id") or "").strip()
+      if sid and sid in seen_ids:
+        continue
       msgs = (s.get("messages") or [])[-MAX_MESSAGES_PER_SESSION:]
       if not msgs:
         continue
@@ -208,8 +222,13 @@ def save_sessions(params: Params, payload: dict[str, Any]) -> dict[str, Any]:
       if not _session_has_content(entry):
         continue
       trimmed.append(entry)
+      if sid:
+        seen_ids.add(sid)
     trimmed.sort(key=_session_created_at, reverse=True)
-    active_id = payload.get("activeId")
+    if "activeId" in payload:
+      active_id = payload.get("activeId")
+    else:
+      active_id = existing.get("activeId")
     if active_id and not any(s.get("id") == active_id for s in trimmed):
       active_id = trimmed[0].get("id") if trimmed else None
     data = {

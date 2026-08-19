@@ -124,10 +124,24 @@ async def run_chat_with_agents(
     collected: list[str] = []
 
     async def sub_emit(event: dict[str, Any]) -> None:
-      if event.get("type") == "content":
+      etype = event.get("type")
+      aid = route_dict.get("agent_id") or route_dict.get("agentId") or ""
+      if etype == "content":
         collected.append(event.get("delta") or "")
         return
-      if event.get("type") == "reasoning":
+      if etype in ("reasoning", "tool_call_delta"):
+        return
+      if etype in ("tool_call", "tool_result"):
+        await emit({
+          **event,
+          "subagent": True,
+          "collapsed": True,
+          "agentId": aid,
+        })
+        return
+      if etype in ("agent_handoff", "agent_status", "agent_office", "agent_done"):
+        return
+      if etype == "prompt_budget":
         return
       await emit(event)
 
