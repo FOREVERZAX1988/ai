@@ -165,8 +165,13 @@ function initChatJobs() {
     updateModelBadge,
     setMessageModelTag,
     clearLiveStreamChrome,
+    setDetailsCollapsed,
+    renderMessageFooter,
+    appendTraceLine,
+    isChatTraceEnabled,
     getLiveStreamUi,
     getLastAssistantUi,
+    resolveAttachAssistantUi,
     stripLeakedToolCalls,
     renderMarkdownContent,
     hydrateAssistantUi,
@@ -254,6 +259,9 @@ function currentActiveAgentId() {
 const MAX_IMAGES_PER_MESSAGE = 9;
 const MAX_IMAGE_DIMENSION = 1280;
 const JPEG_QUALITY = 0.82;
+const CHAT_SCROLL_PIN_THRESHOLD = 120;
+
+const OP_COMMA_LOGO_SVG = `<svg viewBox="0 0 24 42" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path fill-rule="evenodd" clip-rule="evenodd" d="M3.2265 42C3.2265 41.0282 3.15054 40.2141 3.26228 39.4294C3.3099 39.0948 3.70043 38.7365 4.01893 38.5344C5.57173 37.5489 7.25857 36.7621 8.70427 35.6319C13.387 31.9708 16.1628 27.1512 16.3145 20.8905C16.3574 19.1128 15.7039 18.6687 14.2108 19.3612C9.90092 21.3604 5.26623 20.1883 2.79277 16.4731C0.0953566 12.421 0.475192 7.0259 3.70716 3.4862C7.83541 -1.03482 14.6281 -1.1701 19.3123 3.14764C22.1182 5.73404 23.4514 9.07362 23.7839 12.8722C24.8985 25.598 18.5156 36.0872 6.89848 40.695C5.74875 41.1508 4.56975 41.5252 3.2265 42Z" fill="currentColor"/></svg>`;
 
 let pendingImages = [];
 let pendingFileRefs = [];
@@ -295,14 +303,23 @@ function applyDataI18n() {
     if (el.id === 'cabanaMetaBar') return;
     const key = el.dataset.i18n;
     if (!key) return;
-    const val = t(key);
+    const fallback = (el.textContent || '').trim() || el.getAttribute('aria-label') || '';
+    const val = t(key, fallback);
     const attr = el.dataset.i18nAttr;
     if (attr) el.setAttribute(attr, val);
-    else el.textContent = val;
+    else if (val) el.textContent = val;
   });
   document.querySelectorAll('[data-i18n-placeholder]').forEach((el) => {
     const key = el.dataset.i18nPlaceholder;
     if (key) el.placeholder = t(key);
+  });
+  document.querySelectorAll('[data-i18n-title]').forEach((el) => {
+    const key = el.dataset.i18nTitle;
+    if (key) {
+      const val = t(key);
+      el.title = val;
+      if (!el.getAttribute('aria-label')) el.setAttribute('aria-label', val);
+    }
   });
 }
 
@@ -651,39 +668,60 @@ function getCurrentMessages() {
 }
 
 function sessionsForSync() {
+  const maxMsgs = SessionStore.MAX_MESSAGES_PER_SESSION || 200;
   return SessionStore.listWithContent().map((s) => {
     const { activeJobId: _drop, ...rest } = s;
-    return rest;
+    const msgs = Array.isArray(rest.messages) ? rest.messages.slice(-maxMsgs) : [];
+    return { ...rest, messages: msgs };
   });
+}
+
+function buildSessionSyncPayload() {
+  const sessions = sessionsForSync();
+  const payload = { sessions };
+  if (!isDraftSessionView()) {
+    const activeId = sessions.length && SessionStore.activeId && sessions.some((s) => s.id === SessionStore.activeId)
+      ? SessionStore.activeId
+      : (sessions[0]?.id ?? null);
+    payload.activeId = sessions.length ? activeId : null;
+  }
+  return payload;
 }
 
 function saveCurrentMessages(messages) {
   const session = SessionStore.getActive();
   if (!session) return;
-  SessionStore.updateMessages(session.id, messages.slice(-200));
+  const maxMsgs = SessionStore.MAX_MESSAGES_PER_SESSION || 200;
+  SessionStore.updateMessages(session.id, messages.slice(-maxMsgs));
   if (typeof SessionSync !== 'undefined') SessionSync.markLocalDirty();
   renderSessionList();
   scheduleSessionSync();
 }
 
 let _sessionSyncTimer = null;
+let _sessionSyncRetryCount = 0;
+const SESSION_SYNC_MAX_RETRY = 6;
+
 function scheduleSessionSync() {
   if (_suppressSessionPush) return;
   clearTimeout(_sessionSyncTimer);
+  _sessionSyncRetryCount = 0;
   _sessionSyncTimer = setTimeout(syncSessionsToDevice, 400);
+}
+
+function scheduleSessionSyncRetry() {
+  _sessionSyncRetryCount += 1;
+  if (_sessionSyncRetryCount > SESSION_SYNC_MAX_RETRY) return;
+  const delay = Math.min(400 * (2 ** (_sessionSyncRetryCount - 1)), 30000);
+  clearTimeout(_sessionSyncTimer);
+  _sessionSyncTimer = setTimeout(syncSessionsToDevice, delay);
 }
 
 function flushSessionSyncOnUnload() {
   clearTimeout(_sessionSyncTimer);
-  const sessions = sessionsForSync();
-  if (!sessions.length) return;
-  const activeId = sessions.length && SessionStore.activeId && sessions.some((s) => s.id === SessionStore.activeId)
-    ? SessionStore.activeId
-    : (sessions[0]?.id ?? null);
-  const body = JSON.stringify({
-    sessions,
-    activeId: sessions.length ? activeId : null,
-  });
+  const payload = buildSessionSyncPayload();
+  if (!payload.sessions.length) return;
+  const body = JSON.stringify(payload);
   try {
     fetch('/api/ai/sessions', {
       method: 'POST',
@@ -695,22 +733,30 @@ function flushSessionSyncOnUnload() {
 }
 
 async function syncSessionsToDevice() {
-  const sessions = sessionsForSync();
-  const activeId = sessions.length && SessionStore.activeId && sessions.some((s) => s.id === SessionStore.activeId)
-    ? SessionStore.activeId
-    : (sessions[0]?.id ?? null);
+  const payload = buildSessionSyncPayload();
   try {
-    const { data } = await api('POST', '/api/ai/sessions', {
-      sessions,
-      activeId: sessions.length ? activeId : null,
-    });
+    const { data } = await api('POST', '/api/ai/sessions', payload);
     if (data?.ok) {
       if (typeof SessionSync !== 'undefined') {
         SessionSync.setServerSyncMeta(data);
         SessionSync.clearLocalDirty();
       }
+      _sessionSyncRetryCount = 0;
+    } else {
+      scheduleSessionSyncRetry();
     }
-  } catch {}
+  } catch {
+    scheduleSessionSyncRetry();
+  }
+}
+
+function getProtectedSessionIds() {
+  const ids = new Set();
+  if (isLocallyStreaming() && SessionStore.activeId) ids.add(SessionStore.activeId);
+  for (const s of SessionStore.listWithContent()) {
+    if (isSessionJobRunning(s.id)) ids.add(s.id);
+  }
+  return ids;
 }
 
 function mergeSessionRecords(remoteSessions, localSessions, opts = {}) {
@@ -728,16 +774,7 @@ function mergeSessionRecords(remoteSessions, localSessions, opts = {}) {
 async function applyRemoteSessionsData(data) {
   if (!data?.ok) return false;
 
-  if (typeof SessionSync !== 'undefined' && SessionSync.shouldSkipRemoteMerge({
-    data,
-    isLocallyStreaming,
-    hasActiveChatJob: () => {
-      for (const s of SessionStore.listWithContent()) {
-        if (isSessionJobRunning(s.id)) return true;
-      }
-      return false;
-    },
-  })) {
+  if (typeof SessionSync !== 'undefined' && SessionSync.shouldSkipRemoteMerge({ data })) {
     return false;
   }
 
@@ -751,16 +788,17 @@ async function applyRemoteSessionsData(data) {
     .filter((s) => SessionStore.sessionHasContent(s));
   const localSessions = SessionStore.listWithContent();
   const localHasContent = localSessions.length > 0;
+  const protectedSessionIds = getProtectedSessionIds();
 
   const remoteAuthoritative = typeof SessionSync !== 'undefined'
     && SessionSync.shouldTakeRemoteAuthoritative(data)
-    && !isLocallyStreaming()
-    && !SessionStore.listWithContent().some((s) => isSessionJobRunning(s.id));
+    && !isLocallyStreaming();
 
   let merged = [];
   if (remoteSessions.length || localSessions.length) {
     merged = mergeSessionRecords(remoteSessions, localSessions, {
       remoteAuthoritative,
+      protectedSessionIds,
     });
   }
 
@@ -769,17 +807,23 @@ async function applyRemoteSessionsData(data) {
     return false;
   }
 
-  const activeId = typeof SessionSync !== 'undefined'
-    ? SessionSync.pickActiveId({
-      merged,
-      data,
-      localHasContent,
-      remoteSessions,
-      localActiveBefore,
-    })
-    : merged[0].id;
+  const activeId = (pinnedActiveSessionId && merged.some((s) => s.id === pinnedActiveSessionId))
+    ? pinnedActiveSessionId
+    : (isDraftSessionView()
+      ? null
+      : (typeof SessionSync !== 'undefined'
+        ? SessionSync.pickActiveId({
+          merged,
+          data,
+          localHasContent,
+          localActiveBefore,
+        })
+        : merged[0].id));
 
-  SessionStore.importMerged(merged, activeId);
+  SessionStore.importMerged(merged, activeId, {
+    draft: isDraftSessionView(),
+    preserveJobIds: protectedSessionIds,
+  });
   if (typeof SessionSync !== 'undefined') SessionSync.setServerSyncMeta(data);
   _gatewayHydrated = true;
 
@@ -802,6 +846,15 @@ async function loadSessionDetail(sessionId) {
   if (!data?.ok || !data.session) return false;
   SessionStore.patchSession(sessionId, data.session);
   return true;
+}
+
+async function ensureSessionMessagesLoaded(sessionId) {
+  if (!sessionId) return false;
+  const session = SessionStore.getById(sessionId);
+  if (!session) return false;
+  if ((session.messages || []).length) return true;
+  if (!session.hasContent && !(Number(session.messageCount) > 0)) return false;
+  return loadSessionDetail(sessionId);
 }
 
 async function loadSessionsFromDevice() {
@@ -828,13 +881,21 @@ async function refreshSessionViewFromRemote() {
   const sessionsChanged = await loadSessionsFromDevice();
   const configChanged = await pullConfigFromDevice();
   renderSessionList();
+  if (pinnedActiveSessionId) return;
   if (isSessionStreaming(SessionStore.activeId)) {
     updateLiveAssistantFromSession();
     return;
   }
   const gainedRemote = !hadLocalSessions && SessionStore.listWithContent().length > 0;
   if (sessionsChanged || configChanged || gainedRemote) {
-    renderStoredMessages();
+    if (isDraftSessionView()) {
+      renderSessionList();
+      return;
+    }
+    const activeId = SessionStore.activeId;
+    if (activeId) await ensureSessionMessagesLoaded(activeId);
+    if (pinnedActiveSessionId) return;
+    renderStoredMessages({ force: true });
     await syncActiveSessionStreaming();
   }
 }
@@ -910,6 +971,11 @@ function startSyncWebSocket() {
 
 async function handleSyncWsSessions(data) {
   if (typeof SessionSync !== 'undefined') SessionSync.setServerSyncMeta(data);
+  if (isDraftSessionView()) {
+    await applyRemoteSessionsData(data);
+    renderSessionList();
+    return;
+  }
   const locallyAttached = SessionStore.listWithContent().some((s) => isSessionJobRunning(s.id));
   const changed = await applyRemoteSessionsData(data);
   renderSessionList();
@@ -918,7 +984,7 @@ async function handleSyncWsSessions(data) {
     return;
   }
   if (changed) {
-    renderStoredMessages();
+    renderStoredMessages({ force: true });
     await syncActiveSessionStreaming();
   }
 }
@@ -1456,6 +1522,11 @@ function isChatUiLocked() {
 }
 
 let sessionSwitchGeneration = 0;
+let pinnedActiveSessionId = null;
+
+function isDraftSessionView() {
+  return typeof SessionStore.isDraftMode === 'function' && SessionStore.isDraftMode();
+}
 
 function getLiveStreamUi() {
   const live = els.messages?.querySelector('.assistant-wrapper[data-live-stream="1"]');
@@ -1464,20 +1535,77 @@ function getLiveStreamUi() {
 }
 
 function reconcileStreamUi(ctx) {
-  if (!ctx) return null;
+  if (!ctx?.isVisible?.()) return ctx?.ui ?? null;
   if (ctx.ui?.wrapper?.isConnected) return ctx.ui;
   const live = getLiveStreamUi();
   if (live?.wrapper?.isConnected) {
     ctx.ui = live;
     return live;
   }
-  const last = getLastAssistantUi();
-  if (last?.wrapper?.isConnected) {
-    ctx.ui = last;
-    markLiveStreamUi(last);
-    return last;
+  const existing = getLastAssistantUi();
+  if (existing?.wrapper?.isConnected) {
+    markLiveStreamUi(existing);
+    ctx.ui = existing;
+    return existing;
   }
-  return ctx.ui;
+  const messages = getCurrentMessages();
+  const last = messages[messages.length - 1];
+  if (last?.role !== 'user') return ctx?.ui ?? null;
+  const ui = appendAssistantMessage({ withLoading: true });
+  markLiveStreamUi(ui);
+  ctx.ui = ui;
+  return ui;
+}
+
+function resolveAttachAssistantUi(messages, sessionId) {
+  if (SessionStore.activeId !== sessionId) return null;
+  if (!SessionStore.getActiveJobId(sessionId)) return null;
+
+  const live = getLiveStreamUi();
+  if (live?.wrapper?.isConnected) return live;
+
+  const last = messages[messages.length - 1];
+  const prev = messages[messages.length - 2];
+
+  if (last?.role === 'user') {
+    return appendAssistantMessage({ withLoading: true });
+  }
+
+  if (last?.role === 'assistant' && prev?.role === 'user') {
+    const existing = getLastAssistantUi();
+    if (existing?.wrapper?.isConnected) return existing;
+    return appendAssistantMessage({ withLoading: !assistantMessageHasContent(last) });
+  }
+
+  return null;
+}
+
+async function copyTextToClipboard(text) {
+  const value = String(text || '');
+  if (!value) return false;
+  if (navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(value);
+      return true;
+    } catch {
+      /* fall through */
+    }
+  }
+  const ta = document.createElement('textarea');
+  ta.value = value;
+  ta.setAttribute('readonly', '');
+  ta.style.position = 'fixed';
+  ta.style.left = '-9999px';
+  document.body.appendChild(ta);
+  ta.select();
+  let ok = false;
+  try {
+    ok = document.execCommand('copy');
+  } catch {
+    ok = false;
+  }
+  document.body.removeChild(ta);
+  return ok;
 }
 
 function assistantMessageHasContent(msg) {
@@ -1493,14 +1621,37 @@ function assistantMessageHasContent(msg) {
 
 function hideAssistantLoading(ui) {
   if (!ui) return;
-  const nodes = [];
-  if (ui.loading) nodes.push(ui.loading);
-  ui.wrapper?.querySelectorAll('.assistant-loading').forEach((el) => nodes.push(el));
-  for (const el of nodes) {
-    el.classList.add('hidden');
-    el.remove();
-  }
+  ui.wrapper?.querySelectorAll('.assistant-loading').forEach((el) => el.remove());
   ui.loading = null;
+  if (!ui.thinking) return;
+  const hasReasoning = Boolean(String(ui.thinkingBody?.textContent || '').trim());
+  ui.thinkingWaitingDots?.classList.add('hidden');
+  ui.thinking.classList.remove('is-activity-waiting');
+  if (!hasReasoning) ui.thinking.classList.add('hidden');
+}
+
+function renderThinkingContent(el, text) {
+  if (!el) return;
+  const raw = String(text || '').trim();
+  if (!raw) {
+    el.innerHTML = '';
+    return;
+  }
+  el.classList.add('chat-thinking');
+  const mdText = (typeof Markdown !== 'undefined' && typeof Markdown.formatReasoningMarkdown === 'function')
+    ? Markdown.formatReasoningMarkdown(raw)
+    : raw;
+  if (typeof Markdown !== 'undefined' && typeof Markdown.renderToElement === 'function') {
+    Markdown.renderToElement(el, mdText, { streaming: false, cursor: false });
+  } else {
+    el.textContent = raw;
+  }
+}
+
+function setDetailsCollapsed(el, collapsed) {
+  if (!el) return;
+  if (el.tagName === 'DETAILS') el.open = !collapsed;
+  else el.classList.toggle('collapsed', collapsed);
 }
 
 function syncThinkingBlock(ui, msg) {
@@ -1511,9 +1662,10 @@ function syncThinkingBlock(ui, msg) {
     return;
   }
   hideAssistantLoading(ui);
-  ui.thinking.classList.remove('hidden');
-  ui.thinking.classList.add('collapsed');
-  if (ui.thinkingBody) ui.thinkingBody.textContent = msg.reasoning_content;
+  ui.thinking.classList.remove('hidden', 'is-activity-waiting');
+  ui.thinkingWaitingDots?.classList.add('hidden');
+  setDetailsCollapsed(ui.thinking, true);
+  if (ui.thinkingBody) renderThinkingContent(ui.thinkingBody, msg.reasoning_content);
   if (ui.thinkingLabel) ui.thinkingLabel.textContent = t('thinking', 'Thinking');
 }
 
@@ -1526,18 +1678,16 @@ function clearLiveStreamChrome(ui) {
 }
 
 function showAssistantLoading(ui) {
-  if (!ui?.wrapper) return;
-  if (!ui.loading) {
-    ui.loading = ui.wrapper.querySelector('.assistant-loading');
-  }
-  if (!ui.loading) {
-    const loading = document.createElement('div');
-    loading.className = 'assistant-loading';
-    loading.innerHTML = `<span class="typing-dots" aria-hidden="true"><span></span><span></span><span></span></span><span class="typing-label">${t('assistantLoading', '正在思考…')}</span>`;
-    ui.wrapper.insertBefore(loading, ui.wrapper.firstChild);
-    ui.loading = loading;
-  }
-  ui.loading.classList.remove('hidden');
+  if (!ui?.thinking) return;
+  const hasReasoning = Boolean(String(ui.thinkingBody?.textContent || '').trim());
+  if (hasReasoning) return;
+  hideAssistantLoading(ui);
+  ui.thinking.classList.remove('hidden');
+  ui.thinking.classList.add('is-activity-waiting');
+  setDetailsCollapsed(ui.thinking, true);
+  if (ui.thinkingLabel) ui.thinkingLabel.textContent = t('assistantLoading', '正在思考…');
+  ui.thinkingWaitingDots?.classList.remove('hidden');
+  if (ui.thinkingBody) ui.thinkingBody.innerHTML = '';
 }
 
 function endChatStream(sessionId) {
@@ -1555,21 +1705,57 @@ function endChatStream(sessionId) {
   }
 }
 
+function isChatTraceEnabled() {
+  return !!(typeof LocalPrefs !== 'undefined' && LocalPrefs.getChatDebugPrefs?.().trace);
+}
+
+function updateTraceSummary(traceBlock) {
+  const list = traceBlock?.querySelector('.chat-trace-list');
+  const countEl = traceBlock?.querySelector('.trace-count');
+  const count = list?.querySelectorAll('.assistant-trace-line').length || 0;
+  if (countEl) countEl.textContent = count ? `(${count})` : '';
+  if (count) traceBlock?.classList.remove('hidden');
+  else traceBlock?.classList.add('hidden');
+}
+
+function appendTraceLine(ui, message, round) {
+  if (!ui?.traceBlock || !isChatTraceEnabled()) return;
+  const list = ui.traceList || ui.traceBlock.querySelector('.chat-trace-list');
+  if (!list) return;
+  const line = document.createElement('div');
+  line.className = 'assistant-trace-line';
+  const prefix = round != null ? `[${round}] ` : '';
+  line.textContent = `${prefix}${String(message || '')}`;
+  list.appendChild(line);
+  setDetailsCollapsed(ui.traceBlock, true);
+  updateTraceSummary(ui.traceBlock);
+}
+
 function wrapperToAssistantUi(wrapper) {
-  const thinking = wrapper.querySelector('.thinking-block');
-  const agentCallsBlock = wrapper.querySelector('.agent-calls-block');
-  const toolsBlock = wrapper.querySelector('.tool-calls-block');
+  const bubble = wrapper.querySelector('.chat-bubble') || wrapper;
+  const thinking = bubble.querySelector('.chat-thinking-collapse, .thinking-block');
+  const agentCallsBlock = bubble.querySelector('.chat-activity-collapse, .agent-calls-block');
+  const toolsBlock = bubble.querySelector('.chat-tools-collapse, .tool-calls-block');
+  const traceBlock = bubble.querySelector('.chat-trace-collapse');
+  const turn = wrapper.closest('.message-turn');
   return {
     wrapper,
-    loading: wrapper.querySelector('.assistant-loading'),
+    turn,
+    bubble,
+    loading: null,
     thinking,
     thinkingLabel: thinking?.querySelector('.thinking-label'),
-    thinkingBody: thinking?.querySelector('.thinking-body'),
+    thinkingBody: thinking?.querySelector('.thinking-body, .chat-thinking'),
+    thinkingWaitingDots: thinking?.querySelector('.thinking-waiting-dots'),
     agentCallsBlock,
-    agentCallsList: agentCallsBlock?.querySelector('.agent-calls-list'),
+    agentCallsList: agentCallsBlock?.querySelector('.chat-activity-list, .agent-calls-list'),
     toolsBlock,
-    toolsList: toolsBlock?.querySelector('.tool-calls-list'),
-    content: wrapper.querySelector('.message.assistant'),
+    toolsList: toolsBlock?.querySelector('.chat-tools-list, .tool-calls-list'),
+    traceBlock,
+    traceList: traceBlock?.querySelector('.chat-trace-list'),
+    content: bubble.querySelector('.chat-bubble > .chat-text.message.assistant, .chat-bubble > .chat-text, .chat-text.message.assistant'),
+    footer: bubble.querySelector('.chat-group-footer'),
+    actionsBar: turn?.querySelector('.message-actions-bar'),
   };
 }
 
@@ -1623,46 +1809,63 @@ async function navigateToSessionHit(hit) {
 
 function switchSession(id) {
   const gen = ++sessionSwitchGeneration;
+  pinnedActiveSessionId = id;
   cancelEditUserMessage();
   SessionStore.setActive(id);
-  const session = SessionStore.getActive();
   refreshModelBadgeForSession();
   if (typeof SessionModelPicker !== 'undefined') SessionModelPicker.refresh();
   updateComposerSendBtn();
-  if (els.messages) els.messages.innerHTML = '';
-  const needsDetail = session?.hasContent && !(session.messages || []).length;
-  const finishSwitch = () => {
-    if (gen !== sessionSwitchGeneration) return;
-    loadSessionMode();
-    renderStoredMessages({ force: true });
-    renderSessionList();
-    if (typeof ChatJobs !== 'undefined') {
-      ChatJobs.verifySessionJobId(id)
-        .then(() => {
-          if (gen !== sessionSwitchGeneration) return;
-          return syncActiveSessionStreaming();
-        })
-        .catch(() => {});
+  if (els.messages) clearMessagesPreservingJump();
+  if (typeof ChatJobs !== 'undefined') ChatJobs.detachInactiveStreamUis?.();
+
+  const finishSwitch = async () => {
+    try {
+      if (gen !== sessionSwitchGeneration) return;
+      if (SessionStore.activeId !== id) SessionStore.setActive(id);
+      loadSessionMode();
+      await ensureSessionMessagesLoaded(id);
+      if (gen !== sessionSwitchGeneration) return;
+      if (SessionStore.activeId !== id) SessionStore.setActive(id);
+      renderStoredMessages({ force: true, forceScroll: true, switchGen: gen, sessionId: id });
+      renderSessionList();
+      if (typeof ChatJobs !== 'undefined') {
+        await ChatJobs.verifySessionJobId(id);
+        if (gen !== sessionSwitchGeneration) return;
+        await syncActiveSessionStreaming();
+      }
+      if (gen !== sessionSwitchGeneration) return;
+      if (typeof CanvasPanel !== 'undefined') CanvasPanel.loadSession(id).catch(() => {});
+      closeSessionsDrawer();
+    } finally {
+      if (pinnedActiveSessionId === id) pinnedActiveSessionId = null;
     }
-    if (typeof CanvasPanel !== 'undefined') CanvasPanel.loadSession(id).catch(() => {});
-    closeSessionsDrawer();
   };
-  if (needsDetail) {
-    loadSessionDetail(id).then(finishSwitch).catch(finishSwitch);
-  } else {
-    finishSwitch();
-  }
+
+  finishSwitch().catch(() => {
+    if (pinnedActiveSessionId === id) pinnedActiveSessionId = null;
+  });
   renderSessionList();
   scheduleSessionSync();
 }
 
 function createNewSession() {
+  ++sessionSwitchGeneration;
+  pinnedActiveSessionId = null;
   cancelEditUserMessage();
   SessionStore.startDraft();
+  const before = SessionStore.listWithContent();
+  const deduped = typeof SessionSync !== 'undefined' && SessionSync.dedupeSessionList
+    ? SessionSync.dedupeSessionList(before)
+    : before;
+  if (deduped.length < before.length) {
+    SessionStore.importMerged(deduped, null, { draft: true });
+    scheduleSessionSync();
+  }
   refreshModelBadgeForSession();
   if (typeof SessionModelPicker !== 'undefined') SessionModelPicker.refresh();
   updateComposerSendBtn();
-  renderStoredMessages();
+  clearMessagesPreservingJump();
+  renderStoredMessages({ force: true, draft: true });
   renderSessionList();
   closeSessionsDrawer();
 }
@@ -1674,27 +1877,10 @@ function formatResolvedModelLabel(model) {
   return raw.length > 28 ? `${raw.slice(0, 26)}…` : raw;
 }
 
-function setMessageModelTag(metaEl, resolvedModel) {
-  if (typeof ChatModelTag !== 'undefined') {
-    ChatModelTag.setMessageModelTag(metaEl, resolvedModel);
-    return;
-  }
-  if (!metaEl) return;
-  const label = formatResolvedModelLabel(resolvedModel);
-  let tag = metaEl.querySelector('.message-model-tag');
-  if (!tag) {
-    tag = document.createElement('span');
-    tag.className = 'message-model-tag hidden';
-    metaEl.insertBefore(tag, metaEl.firstChild);
-  }
-  if (!label) {
-    tag.classList.add('hidden');
-    tag.textContent = '';
-    return;
-  }
-  tag.classList.remove('hidden');
-  tag.textContent = label;
-  tag.title = String(resolvedModel);
+function setMessageModelTag(ui, resolvedModel) {
+  if (!ui) return;
+  ui._resolvedModel = resolvedModel;
+  renderMessageFooter(ui, { resolvedModel, usage: ui._usage });
 }
 
 function hubPrimaryChatRoute() {
@@ -1769,7 +1955,7 @@ function deleteSession(id) {
     SessionStore.startDraft();
   }
   loadSessionMode();
-  renderStoredMessages();
+  renderStoredMessages({ force: true });
   renderSessionList();
   scheduleSessionSync();
 }
@@ -1881,7 +2067,10 @@ function activateSettingsTab(name) {
   document.getElementById(paneId)?.classList.add('active');
   syncSettingsSaveBar(tabName);
   tab.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' });
-  if (tabName === 'scheduler') loadSchedulerPanel();
+  if (tabName === 'scheduler') {
+    loadSchedulerPanel();
+    if (typeof WorkbuddyPanel !== 'undefined') WorkbuddyPanel.onSettingsOpen('scheduler');
+  }
   if (tabName === 'dev') {
     renderDevPane();
     if (typeof CanvasPanel !== 'undefined') {
@@ -1894,6 +2083,9 @@ function activateSettingsTab(name) {
   if (tabName === 'model') loadUsage();
   if (tabName === 'platform' && typeof PlatformPanel !== 'undefined') {
     PlatformPanel.onSettingsOpen('platform');
+  }
+  if (tabName === 'platform' && typeof WorkbuddyPanel !== 'undefined') {
+    WorkbuddyPanel.onSettingsOpen('platform');
   }
 }
 
@@ -2748,28 +2940,39 @@ function stripLeakedToolCalls(text) {
 }
 
 function createAgentCallsBlock() {
-  const block = document.createElement('div');
-  block.className = 'agent-calls-block collapsed hidden';
+  const block = document.createElement('details');
+  block.className = 'chat-activity-collapse hidden';
   block.innerHTML = `
-    <div class="agent-calls-header">
+    <summary>
       <span class="agent-icon">🧭</span>
       <span class="agent-calls-label">${t('agentCalls', '专员调用')}</span>
       <span class="agent-calls-count"></span>
-      <span class="chevron">▶</span>
-    </div>
-    <div class="agent-calls-list"></div>
+      <span class="chat-activity-summary__names agent-calls-summary hidden"></span>
+    </summary>
+    <div class="chat-activity-list agent-calls-list"></div>
   `;
-  block.querySelector('.agent-calls-header').addEventListener('click', () => {
-    block.classList.toggle('collapsed');
-  });
   return block;
 }
 
 function updateAgentCallsSummary(block) {
   if (!block) return;
-  const count = block.querySelectorAll('.agent-call').length;
+  const count = block.querySelectorAll('.chat-activity-item, .agent-call').length;
   const countEl = block.querySelector('.agent-calls-count');
   if (countEl) countEl.textContent = count ? `(${count})` : '';
+  const summaryEl = block.querySelector('.agent-calls-summary, .chat-activity-summary__names');
+  if (summaryEl) {
+    const titles = [...block.querySelectorAll('.agent-call-title, .chat-activity-item strong')].map((el) => el.textContent.trim()).filter(Boolean);
+    if (!titles.length) {
+      summaryEl.textContent = '';
+      summaryEl.classList.add('hidden');
+    } else if (titles.length <= 2) {
+      summaryEl.textContent = titles.join(' · ');
+      summaryEl.classList.remove('hidden');
+    } else {
+      summaryEl.textContent = `${titles.slice(0, 2).join(' · ')} +${titles.length - 2}`;
+      summaryEl.classList.remove('hidden');
+    }
+  }
   if (count) block.classList.remove('hidden');
 }
 
@@ -2780,21 +2983,11 @@ function renderAgentCallItem(list, event) {
   const aid = event.agentId || event.agent_id || 'op';
   const meta = typeof OfficePanel !== 'undefined' ? OfficePanel.agentMeta(aid) : { icon: '🤖', name: aid };
   const div = document.createElement('div');
-  div.className = 'agent-call collapsed';
+  div.className = 'chat-activity-item';
   div.dataset.agentEventId = id;
   const title = event.title || meta.name || aid;
-  const body = event.body || '';
-  div.innerHTML = `
-    <div class="agent-call-header">
-      <span class="agent-call-icon">${event.icon || meta.icon || '🤖'}</span>
-      <span class="agent-call-title">${escapeHtml(title)}</span>
-      <span class="chevron">▶</span>
-    </div>
-    <div class="agent-call-body">${body ? escapeHtml(body) : ''}</div>
-  `;
-  div.querySelector('.agent-call-header').addEventListener('click', () => {
-    div.classList.toggle('collapsed');
-  });
+  const body = event.body ? `<div class="chat-activity-detail">${escapeHtml(event.body)}</div>` : '';
+  div.innerHTML = `<span>${event.icon || meta.icon || '🤖'}</span> <strong class="agent-call-title">${escapeHtml(title)}</strong>${body}`;
   list.appendChild(div);
   scrollToBottom();
 }
@@ -2941,14 +3134,7 @@ function createMessageActionsBar(role) {
     left.appendChild(createMessageActionBtn('dislike', t('feedbackDown', 'Bad response')));
     left.appendChild(createMessageActionBtn('speak', t('speakMessage', 'Read aloud')));
     left.appendChild(createMessageActionBtn('regenerate', t('regenerate', 'Regenerate')));
-
-    const right = document.createElement('div');
-    right.className = 'message-actions-right';
-    const tag = document.createElement('span');
-    tag.className = 'message-model-tag hidden';
-    right.appendChild(tag);
     bar.appendChild(left);
-    bar.appendChild(right);
     return bar;
   }
 
@@ -2957,7 +3143,32 @@ function createMessageActionsBar(role) {
 }
 
 function getMessageTurnContentEl(turn) {
-  return turn?.querySelector('.message.assistant.md-content, .message.assistant.chat-text, .message-text');
+  if (!turn) return null;
+  return turn.querySelector('.chat-bubble > .chat-text.message.assistant')
+    || turn.querySelector('.chat-bubble > .chat-text.user-text')
+    || turn.querySelector('.chat-bubble > .chat-text')
+    || turn.querySelector('.message-text');
+}
+
+function getMessageTurnCopyText(turn) {
+  const el = getMessageTurnContentEl(turn);
+  const domText = el?.innerText?.trim() || el?.textContent?.trim() || '';
+  if (domText) return domText;
+
+  const msgIdx = parseInt(turn?.dataset?.msgIdx, 10);
+  if (!Number.isFinite(msgIdx) || msgIdx < 0) return '';
+
+  const msg = getCurrentMessages()[msgIdx];
+  if (!msg) return '';
+  if (typeof msg.content === 'string') return stripLeakedToolCalls(msg.content).trim();
+  if (Array.isArray(msg.content)) {
+    return msg.content
+      .filter((p) => p?.type === 'text')
+      .map((p) => String(p.text || '').trim())
+      .filter(Boolean)
+      .join('\n');
+  }
+  return '';
 }
 
 function stopMessageSpeech() {
@@ -2985,7 +3196,7 @@ function speakMessageFromTurn(turn, btn) {
     showToast(t('ttsWhileDriving', 'Avoid speech playback while driving'), 'warning');
     return;
   }
-  const text = getMessageTurnContentEl(turn)?.innerText?.trim() || '';
+  const text = getMessageTurnCopyText(turn);
   if (!text) return;
 
   if (btn?.classList.contains('is-speaking')) {
@@ -3040,10 +3251,18 @@ function appendUserMessage(content, { scroll = true, msgIdx = null, fileRefs = [
   turn.className = 'message-turn user-turn msg-in';
   if (msgIdx != null) turn.dataset.msgIdx = String(msgIdx);
 
-  const div = createMessageElement('user');
+  const chatGroup = document.createElement('div');
+  chatGroup.className = 'chat-group user';
+
+  const groupMessages = document.createElement('div');
+  groupMessages.className = 'chat-group-messages';
+
+  const bubble = document.createElement('div');
+  bubble.className = 'chat-bubble user-bubble message user';
+
   const text = messageText(content);
   const images = messageImages(content);
-  renderMessageImages(div, images);
+  renderMessageImages(bubble, images);
   const refs = fileRefs?.length ? fileRefs : [];
   if (refs.length) {
     const filesEl = document.createElement('div');
@@ -3055,18 +3274,24 @@ function appendUserMessage(content, { scroll = true, msgIdx = null, fileRefs = [
       chip.title = ref.path || '';
       filesEl.appendChild(chip);
     }
-    div.appendChild(filesEl);
+    bubble.appendChild(filesEl);
   }
   if (text) {
     const textEl = document.createElement('div');
-    textEl.className = 'message-text';
-    textEl.textContent = text;
-    div.appendChild(textEl);
+    textEl.className = 'message-text md-content user-text';
+    if (typeof Markdown !== 'undefined' && typeof Markdown.renderToElement === 'function') {
+      Markdown.renderToElement(textEl, text, { streaming: false, cursor: false });
+    } else {
+      textEl.textContent = text;
+    }
+    bubble.appendChild(textEl);
   }
 
-  turn.appendChild(div);
-  turn.appendChild(createMessageActionsBar('user'));
-  els.messages.appendChild(turn);
+  groupMessages.appendChild(bubble);
+  groupMessages.appendChild(createMessageActionsBar('user'));
+  chatGroup.appendChild(groupMessages);
+  turn.appendChild(chatGroup);
+  appendToMessages(turn);
   if (scroll) scrollToBottom({ force: true });
   return turn;
 }
@@ -3136,75 +3361,116 @@ function appendAssistantMessage({ withLoading = true } = {}) {
   const wrapper = document.createElement('div');
   wrapper.className = 'message assistant-wrapper';
 
-  let loading = null;
-  if (withLoading) {
-    loading = document.createElement('div');
-    loading.className = 'assistant-loading';
-    loading.innerHTML = `<span class="typing-dots" aria-hidden="true"><span></span><span></span><span></span></span><span class="typing-label">${t('assistantLoading', '正在思考…')}</span>`;
-    wrapper.appendChild(loading);
-  }
+  const chatGroup = document.createElement('div');
+  chatGroup.className = 'chat-group assistant';
 
-  const thinking = document.createElement('div');
-  thinking.className = 'thinking-block collapsed hidden';
-  thinking.innerHTML = `<div class="thinking-header"><span class="thinking-icon">🧠</span><span class="thinking-label">${t('thinking', 'Thinking')}</span><span class="chevron">▶</span></div><div class="thinking-body"></div>`;
-  thinking.querySelector('.thinking-header').addEventListener('click', () => {
-    thinking.classList.toggle('collapsed');
-  });
+  const avatar = document.createElement('div');
+  avatar.className = 'chat-avatar brand-mark sm';
+  avatar.setAttribute('aria-hidden', 'true');
+  avatar.innerHTML = OP_COMMA_LOGO_SVG;
+
+  const groupMessages = document.createElement('div');
+  groupMessages.className = 'chat-group-messages';
+
+  const bubble = document.createElement('div');
+  bubble.className = 'chat-bubble assistant-bubble';
+
+  const thinking = document.createElement('details');
+  thinking.className = 'chat-thinking-collapse hidden';
+  thinking.innerHTML = `<summary><span class="thinking-icon">🧠</span><span class="thinking-label">${t('thinking', 'Thinking')}</span><span class="thinking-waiting-dots typing-dots hidden" aria-hidden="true"><span></span><span></span><span></span></span></summary><div class="chat-thinking thinking-body"></div>`;
 
   const agentCallsBlock = createAgentCallsBlock();
   const agentCallsList = agentCallsBlock.querySelector('.agent-calls-list');
 
-  const content = document.createElement('div');
-  content.className = 'message assistant md-content chat-text';
-
-  const toolsBlock = document.createElement('div');
-  toolsBlock.className = 'tool-calls-block collapsed hidden';
+  const toolsBlock = document.createElement('details');
+  toolsBlock.className = 'chat-tools-collapse hidden';
+  toolsBlock.open = false;
   toolsBlock.innerHTML = `
-    <div class="tool-calls-header">
-      <span class="tool-icon">🔧</span>
+    <summary class="chat-tools-summary">
+      <span class="tool-icon">⚡</span>
       <span class="tool-calls-label">${t('toolCalls', 'Tool calls')}</span>
       <span class="tool-calls-count"></span>
-      <span class="chevron">▶</span>
-    </div>
-    <div class="tool-calls-list"></div>
+      <span class="chat-tools-summary__names tool-calls-summary hidden"></span>
+    </summary>
+    <div class="chat-tools-list tool-calls-list"></div>
   `;
-  toolsBlock.querySelector('.tool-calls-header').addEventListener('click', () => {
-    toolsBlock.classList.toggle('collapsed');
-  });
 
   const toolsList = toolsBlock.querySelector('.tool-calls-list');
 
-  wrapper.appendChild(thinking);
-  wrapper.appendChild(agentCallsBlock);
-  wrapper.appendChild(toolsBlock);
-  wrapper.appendChild(content);
+  const traceBlock = document.createElement('details');
+  traceBlock.className = 'chat-trace-collapse hidden';
+  traceBlock.open = false;
+  traceBlock.innerHTML = `
+    <summary class="chat-trace-summary">
+      <span class="trace-icon">📍</span>
+      <span class="trace-label">${t('traceLog', 'Trace')}</span>
+      <span class="trace-count"></span>
+    </summary>
+    <div class="chat-trace-list assistant-trace"></div>
+  `;
+
+  const content = document.createElement('div');
+  content.className = 'chat-text md-content message assistant';
+
+  const footer = document.createElement('div');
+  footer.className = 'chat-group-footer hidden';
+  footer.innerHTML = '<span class="msg-meta"></span>';
+
+  bubble.appendChild(thinking);
+  bubble.appendChild(agentCallsBlock);
+  bubble.appendChild(toolsBlock);
+  bubble.appendChild(traceBlock);
+  bubble.appendChild(content);
+  bubble.appendChild(footer);
 
   const actionsBar = createMessageActionsBar('assistant');
   actionsBar.classList.add('is-pending');
 
+  groupMessages.appendChild(bubble);
+  groupMessages.appendChild(actionsBar);
+  chatGroup.appendChild(avatar);
+  chatGroup.appendChild(groupMessages);
+  wrapper.appendChild(chatGroup);
+
   turn.appendChild(wrapper);
-  turn.appendChild(actionsBar);
-  els.messages.appendChild(turn);
+  appendToMessages(turn);
   scrollToBottom();
-  return {
+  const ui = {
     turn,
     actionsBar,
     wrapper,
-    loading,
+    bubble,
+    loading: null,
     thinking,
     thinkingLabel: thinking.querySelector('.thinking-label'),
     thinkingBody: thinking.querySelector('.thinking-body'),
+    thinkingWaitingDots: thinking.querySelector('.thinking-waiting-dots'),
     agentCallsBlock,
     agentCallsList,
     toolsBlock,
     toolsList,
+    traceBlock,
+    traceList: traceBlock.querySelector('.chat-trace-list'),
     content,
+    footer,
   };
+  if (withLoading) showAssistantLoading(ui);
+  return ui;
 }
 
-const CHAT_SCROLL_PIN_THRESHOLD = 96;
+function clearMessagesPreservingJump() {
+  if (!els.messages) return;
+  els.messages.innerHTML = '';
+}
+
+function appendToMessages(el) {
+  if (!els.messages || !el) return;
+  els.messages.appendChild(el);
+}
+
 let chatScrollPinned = true;
 let _chatScrollPinRaf = null;
+let _suppressScrollPinUpdate = 0;
 
 function isChatNearBottom(el = els.messages) {
   if (!el) return true;
@@ -3223,6 +3489,7 @@ function updateJumpToBottomButton() {
 }
 
 function onMessagesScroll() {
+  if (_suppressScrollPinUpdate > 0) return;
   if (_chatScrollPinRaf) return;
   _chatScrollPinRaf = requestAnimationFrame(() => {
     _chatScrollPinRaf = null;
@@ -3264,9 +3531,16 @@ function scrollToBottom({ force = false } = {}) {
     updateJumpToBottomButton();
     return;
   }
+  _suppressScrollPinUpdate += 1;
+  const prevBehavior = el.style.scrollBehavior;
+  el.style.scrollBehavior = 'auto';
   el.scrollTop = el.scrollHeight;
-  if (force) chatScrollPinned = true;
-  updateJumpToBottomButton();
+  el.style.scrollBehavior = prevBehavior;
+  requestAnimationFrame(() => {
+    _suppressScrollPinUpdate = Math.max(0, _suppressScrollPinUpdate - 1);
+    chatScrollPinned = force ? true : isChatNearBottom();
+    updateJumpToBottomButton();
+  });
 }
 
 function jumpToBottom() {
@@ -4129,21 +4403,23 @@ function savePartialAssistant(sessionId, assistantMessage) {
   } else {
     msgs.push(partial);
   }
-  SessionStore.updateMessages(sessionId, msgs.slice(-200));
+  const maxMsgs = SessionStore.MAX_MESSAGES_PER_SESSION || 200;
+  SessionStore.updateMessages(sessionId, msgs.slice(-maxMsgs));
   if (typeof SessionSync !== 'undefined') SessionSync.markLocalDirty();
   scheduleSessionSync();
-  if (SessionStore.activeId === sessionId && !isChatUiLocked()) {
-    renderStoredMessages();
-  }
 }
 
 function hydrateAssistantUi(ui, assistantMessage) {
   const text = stripLeakedToolCalls(messageText(assistantMessage.content) || assistantMessage.content || '');
   syncThinkingBlock(ui, assistantMessage);
   hydrateAgentEvents(ui, assistantMessage.agent_events);
+  if (ui.agentCallsBlock && !ui.agentCallsBlock.classList.contains('hidden')) {
+    setDetailsCollapsed(ui.agentCallsBlock, true);
+  }
   if (assistantMessage.tool_calls?.length) {
     hideAssistantLoading(ui);
     ui.toolsBlock.classList.remove('hidden');
+    setDetailsCollapsed(ui.toolsBlock, true);
     for (const tc of assistantMessage.tool_calls) {
       const fn = tc.function || {};
       renderToolCall(
@@ -4165,6 +4441,7 @@ function hydrateAssistantUi(ui, assistantMessage) {
   } else if (assistantMessageHasContent(assistantMessage)) {
     hideAssistantLoading(ui);
   }
+  renderMessageFooter(ui, { usage: assistantMessage.usage, resolvedModel: assistantMessage.resolvedModel });
 }
 
 function commitAssistantMessage(sessionId, assistantMessage) {
@@ -4178,7 +4455,8 @@ function commitAssistantMessage(sessionId, assistantMessage) {
   } else {
     msgs.push(normalized);
   }
-  SessionStore.updateMessages(sessionId, msgs.slice(-200));
+  const maxMsgs = SessionStore.MAX_MESSAGES_PER_SESSION || 200;
+  SessionStore.updateMessages(sessionId, msgs.slice(-maxMsgs));
   if (typeof SessionSync !== 'undefined') SessionSync.markLocalDirty();
   scheduleSessionSync();
   if (SessionStore.activeId === sessionId) {
@@ -4208,9 +4486,10 @@ function finishAssistant(ui, assistantMessage, sessionId) {
   } else {
     ui.content.textContent = '';
   }
-  ui.wrapper?.querySelector('.assistant-trace')?.remove();
   if (ui?.wrapper) delete ui.wrapper.dataset.liveStream;
-  setMessageModelTag(ui.actionsBar, assistantMessage.resolvedModel);
+  setMessageModelTag(ui, assistantMessage.resolvedModel);
+  renderMessageFooter(ui, { usage: assistantMessage.usage, resolvedModel: assistantMessage.resolvedModel });
+  setDetailsCollapsed(ui.toolsBlock, true);
   const history = getCurrentMessages();
   const assistantIdx = history.length - 1;
   if (history[assistantIdx]?.role === 'assistant') {
@@ -4225,15 +4504,31 @@ function finishAssistant(ui, assistantMessage, sessionId) {
 }
 
 function updateToolCallsSummary(toolsBlock) {
-  const list = toolsBlock.querySelector('.tool-calls-list');
-  const count = list.querySelectorAll('.tool-call').length;
+  const list = toolsBlock?.querySelector('.chat-tools-list, .tool-calls-list');
+  if (!list || !toolsBlock) return;
+  const count = list.querySelectorAll('.chat-tool-msg-collapse, .tool-call').length;
   const countEl = toolsBlock.querySelector('.tool-calls-count');
   if (countEl) {
     countEl.textContent = count ? `(${count})` : '';
   }
+  const summaryEl = toolsBlock.querySelector('.tool-calls-summary, .chat-tools-summary__names');
+  if (summaryEl) {
+    const names = [...list.querySelectorAll('.chat-tool-row__name, .tool-name')].map((el) => el.textContent.trim()).filter(Boolean);
+    if (!names.length) {
+      summaryEl.textContent = '';
+      summaryEl.classList.add('hidden');
+    } else if (names.length <= 2) {
+      summaryEl.textContent = names.join(', ');
+      summaryEl.classList.remove('hidden');
+    } else {
+      summaryEl.textContent = `${names.slice(0, 2).join(', ')} +${names.length - 2}`;
+      summaryEl.classList.remove('hidden');
+    }
+  }
+  if (count) toolsBlock.classList.remove('hidden');
 }
 
-function renderToolCall(container, id, name, args, result, agentId) {
+function renderToolCall(container, id, name, args, result, agentId, opts = {}) {
   const existing = container.querySelector(`[data-tool-id="${id}"]`);
   if (existing) {
     if (result !== undefined && result !== null) {
@@ -4243,36 +4538,38 @@ function renderToolCall(container, id, name, args, result, agentId) {
   }
   const aid = agentId || currentActiveAgentId() || 'op';
   const meta = typeof OfficePanel !== 'undefined' ? OfficePanel.agentMeta(aid) : null;
-  const tag = meta && aid !== 'op'
+  const agentTag = meta && aid !== 'op'
     ? `<span class="tool-agent-tag">${meta.icon} ${escapeHtml(meta.name)}</span>`
     : '';
-  const div = document.createElement('div');
-  div.className = 'tool-call collapsed';
+  const subTag = opts.subagent ? '<span class="tool-subagent-tag">子专员</span>' : '';
+  const hasResult = result !== undefined && result !== null;
+  const statusCls = hasResult ? (result?.ok === false ? 'err' : 'ok') : 'run';
+  const statusText = hasResult ? (result?.ok === false ? '✗' : '✓') : '…';
+
+  const div = document.createElement('details');
+  div.className = 'chat-tool-msg-collapse';
   div.dataset.toolId = id;
+  div.open = opts.expanded === true;
   div.innerHTML = `
-    <div class="tool-call-header">${tag}<span class="tool-icon">🔧</span><span class="tool-name">${escapeHtml(name)}</span><span class="chevron">▶</span></div>
-    <div class="tool-call-body">
+    <summary>
+      ${agentTag}${subTag}
+      <code class="chat-tool-row__name tool-name">${escapeHtml(name)}</code>
+      <span class="chat-tool-row__status tool-status ${statusCls}">${statusText}</span>
+    </summary>
+    <div class="chat-tool-msg-body">
       <div class="tool-section"><label>${t('toolArgs', 'Arguments')}</label><pre class="tool-args"></pre></div>
-      <div class="tool-section tool-result-section${result !== undefined && result !== null ? '' : ' hidden'}"><label>${t('toolResult', 'Result')}</label><pre class="tool-result"></pre></div>
+      <div class="tool-section tool-result-section${hasResult ? '' : ' hidden'}"><label>${t('toolResult', 'Result')}</label><pre class="tool-result"></pre></div>
     </div>
   `;
   div.querySelector('.tool-args').textContent = formatJson(args);
-  if (result !== undefined && result !== null) {
+  if (hasResult) {
     if (result.ui_card?.type === 'tsk') {
+      container.appendChild(div);
       updateToolCallResult(container, id, result);
       return;
     }
     div.querySelector('.tool-result').textContent = formatJson(result);
   }
-  div.querySelector('.tool-call-header').addEventListener('click', () => {
-    const wasCollapsed = div.classList.contains('collapsed');
-    div.classList.toggle('collapsed');
-    if (wasCollapsed) {
-      requestAnimationFrame(() => {
-        div.querySelector('.tool-call-body')?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-      });
-    }
-  });
   container.appendChild(div);
   scrollToBottom();
 }
@@ -4290,10 +4587,16 @@ function updateToolCallResult(container, id, result) {
   stopTskPoll(id);
   const section = div.querySelector('.tool-result-section');
   const pre = div.querySelector('.tool-result');
-  section.classList.remove('hidden');
+  const status = div.querySelector('.chat-tool-row__status, .tool-status');
+  section?.classList.remove('hidden');
   pre?.classList.remove('hidden');
   div.querySelector('.tsk-progress-card')?.remove();
   if (pre) pre.textContent = formatJson(result);
+  if (status) {
+    status.textContent = result?.ok === false ? '✗' : '✓';
+    status.classList.remove('run', 'ok', 'err');
+    status.classList.add(result?.ok === false ? 'err' : 'ok');
+  }
   scrollToBottom();
 }
 
@@ -4346,13 +4649,51 @@ function stopTskPoll(id) {
   tskPollers.delete(id);
 }
 
-function renderUsage(wrapper, usage) {
-  let el = wrapper.querySelector('.usage-badge');
-  if (!el) {
+function renderMessageFooter(ui, { usage, resolvedModel } = {}) {
+  const footer = ui?.footer || ui?.bubble?.querySelector('.chat-group-footer');
+  const meta = footer?.querySelector('.msg-meta');
+  if (!footer || !meta) return;
+  if (usage) ui._usage = usage;
+  if (resolvedModel) ui._resolvedModel = resolvedModel;
+  const parts = [];
+  const modelLabel = formatResolvedModelLabel(resolvedModel ?? ui._resolvedModel);
+  if (modelLabel) {
+    const rawModel = String(resolvedModel ?? ui._resolvedModel ?? '');
+    parts.push(`<span class="msg-meta__model" title="${escapeHtml(rawModel)}">${escapeHtml(modelLabel)}</span>`);
+  }
+  const u = usage || ui._usage;
+  if (u) {
+    const pt = u.prompt_tokens || 0;
+    const ct = u.completion_tokens || 0;
+    const total = u.total_tokens || (pt + ct);
+    if (total) parts.push(`<span class="msg-meta__tokens">${pt} ↑ ${ct} ↓</span>`);
+  }
+  if (!parts.length) {
+    footer.classList.add('hidden');
+    meta.innerHTML = '';
+    return;
+  }
+  footer.classList.remove('hidden');
+  meta.innerHTML = parts.join('');
+}
+
+function renderUsage(target, usage) {
+  if (target?.footer || target?.bubble || target?.content) {
+    renderMessageFooter(target, { usage });
+    return;
+  }
+  const root = target?.closest?.('.assistant-wrapper') || target;
+  if (root?.classList?.contains('assistant-wrapper') || root?.querySelector?.('.chat-bubble')) {
+    renderMessageFooter(wrapperToAssistantUi(root), { usage });
+    return;
+  }
+  let el = target?.querySelector?.('.usage-badge');
+  if (!el && target?.appendChild) {
     el = document.createElement('div');
     el.className = 'usage-badge';
-    wrapper.appendChild(el);
+    target.appendChild(el);
   }
+  if (!el) return;
   const pt = usage.prompt_tokens || 0;
   const ct = usage.completion_tokens || 0;
   el.textContent = `${pt} ↑ / ${ct} ↓`;
@@ -7519,14 +7860,17 @@ function renderAssistantFromHistory(msg) {
   const ui = appendAssistantMessage({ withLoading: false });
   if (msg.reasoning_content) {
     ui.thinking.classList.remove('hidden');
-    ui.thinkingBody.textContent = msg.reasoning_content;
-    ui.thinking.classList.add('collapsed');
+    renderThinkingContent(ui.thinkingBody, msg.reasoning_content);
+    setDetailsCollapsed(ui.thinking, true);
   }
   hydrateAgentEvents(ui, msg.agent_events);
+  if (ui.agentCallsBlock && !ui.agentCallsBlock.classList.contains('hidden')) {
+    setDetailsCollapsed(ui.agentCallsBlock, true);
+  }
   const toolResults = msg.tool_results || {};
   if (msg.tool_calls?.length) {
     ui.toolsBlock.classList.remove('hidden');
-    ui.toolsBlock.classList.add('collapsed');
+    setDetailsCollapsed(ui.toolsBlock, true);
     for (const tc of msg.tool_calls) {
       const id = tc.id;
       const fn = tc.function || {};
@@ -7541,7 +7885,8 @@ function renderAssistantFromHistory(msg) {
     ui.content.textContent = t('noResponse', 'No response');
   }
   ui.actionsBar?.classList.remove('is-pending');
-  setMessageModelTag(ui.actionsBar, msg.resolvedModel);
+  setMessageModelTag(ui, msg.resolvedModel);
+  renderMessageFooter(ui, { usage: msg.usage, resolvedModel: msg.resolvedModel });
   return ui.turn;
 }
 
@@ -7578,9 +7923,9 @@ function renderWelcomePanel() {
     grid.appendChild(card);
   }
 
-  els.messages.appendChild(hero);
-  els.messages.appendChild(banner);
-  els.messages.appendChild(grid);
+  appendToMessages(hero);
+  appendToMessages(banner);
+  appendToMessages(grid);
   syncMessagesLayoutMode();
 }
 
@@ -7597,8 +7942,18 @@ async function runQuickAction(action) {
 
 function renderStoredMessages(opts = {}) {
   if (!opts.force && isChatUiLocked()) return;
-  const history = getCurrentMessages();
-  els.messages.innerHTML = '';
+  const isDraft = opts.draft === true || isDraftSessionView();
+  const sessionId = opts.sessionId ?? SessionStore.activeId;
+  const switchGen = opts.switchGen;
+  if (switchGen != null && switchGen !== sessionSwitchGeneration) return;
+  if (!isDraft && (!sessionId || SessionStore.activeId !== sessionId)) return;
+
+  const rawHistory = isDraft ? [] : getCurrentMessages();
+  const history = typeof SessionStore.dedupeTrailingAssistants === 'function'
+    ? SessionStore.dedupeTrailingAssistants(rawHistory)
+    : rawHistory;
+
+  clearMessagesPreservingJump();
   for (let i = 0; i < history.length; i += 1) {
     const msg = history[i];
     if (msg.role === 'user') {
@@ -7615,11 +7970,17 @@ function renderStoredMessages(opts = {}) {
       }
     }
   }
+  if (!isDraft) {
+    if (switchGen != null && switchGen !== sessionSwitchGeneration) return;
+    if (SessionStore.activeId !== sessionId) return;
+  }
+
   if (!hasVisibleChatHistory(history)) {
     renderWelcomePanel();
   }
   syncMessagesLayoutMode();
-  scrollToBottom({ force: true });
+  if (opts.forceScroll) scrollToBottom({ force: true });
+  else scrollToBottom();
   refreshContextMeter();
 }
 
@@ -7635,6 +7996,9 @@ function onLangChange() {
   }
   if (typeof CabanaPanel !== 'undefined') {
     CabanaPanel.refresh();
+  }
+  if (typeof WorkbuddyPanel !== 'undefined') {
+    WorkbuddyPanel.onLangChange?.();
   }
   if (typeof MessageFeedback !== 'undefined') MessageFeedback.refreshTranslations();
   if (typeof ComposerMention !== 'undefined') ComposerMention.refreshTranslations();
@@ -7660,15 +8024,19 @@ function bindMessageActions() {
     const msgIdx = parseInt(turn.dataset.msgIdx, 10);
 
     if (action === 'copy') {
-      const text = getMessageTurnContentEl(turn)?.innerText?.trim() || '';
-      if (!text) return;
-      const done = () => {
+      const text = getMessageTurnCopyText(turn);
+      if (!text) {
+        showToast(t('copyFailed', 'Nothing to copy'), 'warning');
+        return;
+      }
+      copyTextToClipboard(text).then((ok) => {
+        if (!ok) {
+          showToast(t('copyFailed', 'Copy failed'), 'warning');
+          return;
+        }
         btn.classList.add('copied');
         setTimeout(() => btn.classList.remove('copied'), 1400);
-      };
-      if (navigator.clipboard?.writeText) {
-        navigator.clipboard.writeText(text).then(done).catch(() => {});
-      }
+      });
       return;
     }
 
@@ -7998,6 +8366,15 @@ function waitForSyncHello(timeoutMs = 6000) {
 async function init() {
   SessionStore.init({ getDefaultChatRoute: hubPrimaryChatRoute });
   initChatJobs();
+  if (typeof WorkbuddyPanel !== 'undefined') {
+    WorkbuddyPanel.init({ api, showToast });
+  }
+  if (typeof WorkflowEditor !== 'undefined') {
+    WorkflowEditor.init({ api });
+  }
+  if (typeof TranscriptRecovery !== 'undefined') {
+    TranscriptRecovery.init({ api });
+  }
   if (typeof PlatformPanel !== 'undefined') {
     PlatformPanel.init({ api, showToast });
     PlatformPanel.bindFilePicker?.('onboardingBackupFile', 'onboardingBackupFileName', 'onboardingBackupPick');
@@ -8146,7 +8523,7 @@ async function init() {
 
   loadSessionMode();
   renderSessionList();
-  renderStoredMessages();
+  renderStoredMessages({ force: true, forceScroll: true });
   updateModelBadgeFromSaved();
 
   await dismissAppSplash();
@@ -8156,7 +8533,7 @@ async function init() {
   loadBootstrap()
     .then(() => {
       renderSessionList();
-      renderStoredMessages();
+      renderStoredMessages({ force: true, forceScroll: true });
       updateModelBadgeFromSaved();
       if (typeof ChatJobs !== 'undefined') ChatJobs.recoverStuckStreams?.().catch(() => {});
     })

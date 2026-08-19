@@ -92,7 +92,22 @@ const multilineTable = `| 禁止事项 | 说明 |
 - 🔍 搜索 |`;
 check('multiline table cell', Markdown.render(multilineTable), (h) => h.includes('<table') && h.includes('无根据的方案') && !h.includes('<p>|'));
 
+const userGluedRows = '### 查询结果\n\n| 项目 | 返回值 |\n| 车速 vEgo | 0.0km/h |\n| 是否启用 enabled | false || 点火 ignition | false || 车型指纹 | 空 |';
+check('glued rows on one line', Markdown.render(userGluedRows), (h) => h.includes('<table') && h.includes('点火 ignition') && !h.includes('<p>|'));
+
+const dashHeader = '| 项目 | 返回值 | ------ | --------- |\n| 车速 vEgo | 0.0km/h | | |';
+check('dash cells stripped from header', Markdown.render(dashHeader), (h) => {
+  const head = (h.match(/<thead>[\s\S]*?<\/thead>/) || [''])[0];
+  return h.includes('<table') && head.includes('项目') && !head.includes('<th>------</th>') && (head.match(/<th>/g) || []).length === 2;
+});
+
 const capability = '基于你当前的PC开发环境, 我整理一下我能做的全部事项：——\n\n🪄 核心能力总览\n\n1️⃣ 车辆诊断 (实车接入时)\n- 读取方向盘转角\n\n2️⃣ 调参与优化';
 check('emoji section headers', Markdown.render(capability), (h) => h.includes('<p>') && h.includes('<hr') && h.includes('<h3') && h.includes('核心能力总览') && h.includes('<h4') && h.includes('车辆诊断') && !h.includes('——'));
+
+const diag3 = '### 诊断结论\n\n| 组件 | 返回值 | 说明 |\n| --- | --- | --- |\n| StateReader | 报错 | 无法读取 |';
+check('3-col table viewport wrapper', Markdown.render(diag3), (h) => h.includes('markdown-table') && h.includes('markdown-table__viewport') && !h.includes('md-table-wrap'));
+
+const lonePipe = '| StateReader | Params (carFingerprint等) |';
+check('lone pipe row becomes table', Markdown.render(lonePipe), (h) => h.includes('<table') && h.includes('StateReader') && !h.includes('<p>|'));
 
 process.exit(failed ? 1 : 0);

@@ -33,8 +33,9 @@ const SessionSync = (() => {
     localDirtyVersion = 0;
   }
 
-  function isLocallyDirty(withinMs = 4000) {
-    return localDirtyVersion > 0 && (Date.now() - lastLocalMutationAt) < withinMs;
+  /** True until POST succeeds and clearLocalDirty() is called. */
+  function isLocallyDirty() {
+    return localDirtyVersion > 0;
   }
 
   function messagesContentScore(msgs) {
@@ -87,43 +88,114 @@ const SessionSync = (() => {
     return remoteV > serverStateVersion;
   }
 
-  function mergeSessionRecords(remoteSessions, localSessions, sessionHasContent, opts = {}) {
-    if (opts.remoteAuthoritative && remoteSessions.length) {
-      const normalized = remoteSessions
-        .filter((s) => sessionHasContent(s))
-        .map((s) => {
-          const { activeJobId: _drop, ...rest } = s;
-          return {
-            ...rest,
-            mode: s.mode || 'chat',
-            messages: Array.isArray(s.messages) ? s.messages : [],
-            createdAt: sessionCreatedAt(s),
-            updatedAt: Number(s.updatedAt) || 0,
-          };
-        });
-      return sortSessionsByCreated(normalized);
-    }
-    const byId = new Map();
-    const normalize = (s) => ({
+  function pickBetterSession(a, b) {
+    const aScore = messagesContentScore(a?.messages);
+    const bScore = messagesContentScore(b?.messages);
+    if (aScore !== bScore) return aScore > bScore ? a : b;
+    return (Number(a?.updatedAt) || 0) >= (Number(b?.updatedAt) || 0) ? a : b;
+  }
+
+  function normalizeSession(s) {
+    return {
       ...s,
       mode: s.mode || 'chat',
       messages: Array.isArray(s.messages) ? s.messages : [],
       createdAt: sessionCreatedAt(s),
       updatedAt: Number(s.updatedAt) || 0,
-    });
+    };
+  }
+
+  function sessionFromLocalPrefer(local, remote) {
+    const localN = normalizeSession(local);
+    return {
+      ...localN,
+      activeJobId: local.activeJobId || null,
+      title: String(localN.title || remote?.title || '').trim() || localN.title,
+      updatedAt: Math.max(localN.updatedAt, Number(remote?.updatedAt) || 0),
+      chatRoute: localN.chatRoute || remote?.chatRoute,
+      chatRoutePins: localN.chatRoutePins || remote?.chatRoutePins,
+    };
+  }
+
+  /** Dedupe by session id only (never merge different ids). */
+  function dedupeSessionList(sessions) {
+    const byId = new Map();
+    for (const s of sessions || []) {
+      if (!s?.id) continue;
+      const prev = byId.get(s.id);
+      byId.set(s.id, prev ? pickBetterSession(prev, s) : s);
+    }
+    return sortSessionsByCreated([...byId.values()]);
+  }
+
+  function mergeSessionRecords(remoteSessions, localSessions, sessionHasContent, opts = {}) {
+    const protectedIds = opts.protectedSessionIds instanceof Set ? opts.protectedSessionIds : new Set();
+    const localById = new Map(
+      (Array.isArray(localSessions) ? localSessions : []).map((s) => [s.id, s]),
+    );
+
+    if (opts.remoteAuthoritative && remoteSessions.length) {
+      const remoteIds = new Set();
+      const normalized = remoteSessions
+        .filter((s) => sessionHasContent(s))
+        .map((s) => {
+          remoteIds.add(s.id);
+          const local = localById.get(s.id);
+          if (protectedIds.has(s.id) && local) {
+            return sessionFromLocalPrefer(local, s);
+          }
+          const { activeJobId: remoteJob, ...rest } = s;
+          const remoteMsgs = Array.isArray(s.messages) ? s.messages : [];
+          const localMsgs = Array.isArray(local?.messages) ? local.messages : [];
+          const messages = pickSessionMessages(
+            { messages: remoteMsgs, updatedAt: s.updatedAt || 0 },
+            { messages: localMsgs, updatedAt: local?.updatedAt || 0 },
+          );
+          const keepJobId = protectedIds.has(s.id)
+            ? (local?.activeJobId || remoteJob || null)
+            : (local?.activeJobId || null);
+          return {
+            ...rest,
+            mode: s.mode || 'chat',
+            messages,
+            title: String(s.title || '').trim() || local?.title || s.title,
+            createdAt: sessionCreatedAt(s),
+            updatedAt: Math.max(Number(s.updatedAt) || 0, Number(local?.updatedAt) || 0),
+            ...(keepJobId ? { activeJobId: keepJobId } : {}),
+            chatRoute: local?.chatRoute || s.chatRoute,
+            chatRoutePins: local?.chatRoutePins || s.chatRoutePins,
+          };
+        });
+
+      for (const ls of localSessions) {
+        if (!ls?.id || remoteIds.has(ls.id) || !sessionHasContent(ls)) continue;
+        normalized.push(protectedIds.has(ls.id) ? sessionFromLocalPrefer(ls, null) : normalizeSession(ls));
+      }
+      return dedupeSessionList(normalized);
+    }
+
+    const byId = new Map();
 
     for (const rs of remoteSessions) {
-      const n = normalize(rs);
+      const n = normalizeSession(rs);
       if (!sessionHasContent(n)) continue;
+      if (protectedIds.has(rs.id) && localById.has(rs.id)) {
+        byId.set(rs.id, sessionFromLocalPrefer(localById.get(rs.id), rs));
+        continue;
+      }
       byId.set(rs.id, n);
     }
 
     for (const ls of localSessions) {
-      const n = normalize(ls);
+      const n = normalizeSession(ls);
       if (!sessionHasContent(n)) continue;
+      if (protectedIds.has(ls.id)) {
+        byId.set(ls.id, sessionFromLocalPrefer(ls, byId.get(ls.id)));
+        continue;
+      }
       const prev = byId.get(ls.id);
       if (!prev) {
-        byId.set(ls.id, n);
+        byId.set(ls.id, { ...n, activeJobId: ls.activeJobId || null });
         continue;
       }
 
@@ -145,7 +217,7 @@ const SessionSync = (() => {
         title: preferLocalMeta && ls.title ? ls.title : (prev.title || ls.title),
         createdAt: sessionCreatedAt(preferLocalMeta ? ls : prev),
         updatedAt: Math.max(ls.updatedAt || 0, prev.updatedAt || 0),
-        activeJobId: ls.activeJobId || null,
+        activeJobId: ls.activeJobId || prev.activeJobId || null,
         chatRoute: preferLocalMeta ? (ls.chatRoute || prev.chatRoute) : (prev.chatRoute || ls.chatRoute),
         chatRoutePins: preferLocalMeta
           ? (ls.chatRoutePins || prev.chatRoutePins)
@@ -153,14 +225,11 @@ const SessionSync = (() => {
       });
     }
 
-    return sortSessionsByCreated([...byId.values()]);
+    return dedupeSessionList(sortSessionsByCreated([...byId.values()]));
   }
 
   function shouldSkipRemoteMerge(ctx) {
-    const { data, isLocallyStreaming, hasActiveChatJob } = ctx;
-    if (typeof isLocallyStreaming === 'function' && isLocallyStreaming()) return true;
-    if (typeof hasActiveChatJob === 'function' && hasActiveChatJob()) return true;
-
+    const { data } = ctx;
     const remoteSavedAt = Number(data?.savedAt) || 0;
     if (isLocallyDirty() && remoteSavedAt <= serverSavedAt) return true;
     return false;
@@ -170,12 +239,9 @@ const SessionSync = (() => {
     merged,
     data,
     localHasContent,
-    remoteSessions,
     localActiveBefore,
   }) {
-    const remoteSavedAt = Number(data?.savedAt) || 0;
-
-    if (!localHasContent && remoteSessions.length) {
+    if (!localHasContent && merged.length) {
       return data.activeId && merged.some((s) => s.id === data.activeId)
         ? data.activeId
         : merged[0].id;
@@ -183,13 +249,10 @@ const SessionSync = (() => {
     if (localActiveBefore && merged.some((s) => s.id === localActiveBefore)) {
       return localActiveBefore;
     }
-    if (remoteSavedAt > serverSavedAt && data.activeId && merged.some((s) => s.id === data.activeId)) {
-      return data.activeId;
-    }
     if (data.activeId && merged.some((s) => s.id === data.activeId)) {
       return data.activeId;
     }
-    return merged[0].id;
+    return merged[0]?.id ?? null;
   }
 
   return {
@@ -201,6 +264,7 @@ const SessionSync = (() => {
     isLocallyDirty,
     pickSessionMessages,
     mergeSessionRecords,
+    dedupeSessionList,
     shouldSkipRemoteMerge,
     pickActiveId,
     shouldTakeRemoteAuthoritative,

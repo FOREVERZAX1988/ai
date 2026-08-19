@@ -57,9 +57,22 @@ async def _hook_audit_tool(ctx: dict[str, Any]) -> dict[str, Any] | None:
   from openpilot.common.swaglog import cloudlog
   name = ctx.get("name", "")
   agent = ctx.get("agent_id", "")
+  session_id = str(ctx.get("session_id") or "")
   result = ctx.get("result")
   ok = bool(result.get("ok", True)) if isinstance(result, dict) else True
   cloudlog.info(f"aid: tool {name} agent={agent} ok={ok}")
+  try:
+    from ai.tools.domains.platform.audit_store import record_audit
+    record_audit(
+      action="tool_call",
+      tool=name,
+      ok=ok,
+      detail={"agent_id": agent},
+      session_id=session_id,
+      agent_id=agent,
+    )
+  except Exception:
+    pass
   try:
     from ai.core.runtime.sidecar_hub import publish_tool_event
     await publish_tool_event({
@@ -67,7 +80,7 @@ async def _hook_audit_tool(ctx: dict[str, Any]) -> dict[str, Any] | None:
       "name": name,
       "agentId": agent,
       "ok": ok,
-      "sessionId": ctx.get("session_id", ""),
+      "sessionId": session_id,
     })
   except Exception:
     pass
@@ -105,8 +118,38 @@ async def _hook_canvas_from_result(ctx: dict[str, Any]) -> dict[str, Any] | None
   return None
 
 
+async def _hook_permission(ctx: dict[str, Any]) -> dict[str, Any] | None:
+  from ai.hooks.permissions import evaluate_tool_permission
+  return await evaluate_tool_permission(ctx)
+
+
+async def _hook_externalize_result(ctx: dict[str, Any]) -> dict[str, Any] | None:
+  result = ctx.get("result")
+  if result is None:
+    return None
+  try:
+    from ai.tools.result_externalize import externalize_if_needed
+    body = ctx.get("body") or {}
+    params = body.get("_params")
+    compact, artifact = externalize_if_needed(
+      result,
+      session_id=str(ctx.get("session_id") or ""),
+      tool_name=str(ctx.get("name") or ""),
+      params=params,
+    )
+    if compact is not result:
+      ctx["result"] = compact
+    if artifact:
+      ctx["canvas_artifact"] = artifact
+  except Exception:
+    pass
+  return None
+
+
 def register_builtin_hooks() -> None:
   register_hook("before_tool_call", _hook_driving_tool_guard, priority=100)
+  register_hook("before_tool_call", _hook_permission, priority=90)
   register_hook("before_tool_call", _hook_tool_start_sidecar, priority=50)
+  register_hook("after_tool_call", _hook_externalize_result, priority=15)
   register_hook("after_tool_call", _hook_audit_tool, priority=10)
   register_hook("after_tool_call", _hook_canvas_from_result, priority=5)

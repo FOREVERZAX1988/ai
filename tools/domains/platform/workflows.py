@@ -305,6 +305,11 @@ def get_workflow(workflow_id: str) -> dict[str, Any] | None:
 
 
 def list_workflows() -> list[dict[str, Any]]:
+  try:
+    from ai.tools.domains.platform.workflow_custom import list_all_workflows
+    return list_all_workflows()
+  except Exception:
+    pass
   return [
     {"id": wid, "name": w["name"], "mode": w.get("mode", "execute"), "steps": w.get("steps", [])}
     for wid, w in WORKFLOWS.items()
@@ -312,6 +317,13 @@ def list_workflows() -> list[dict[str, Any]]:
 
 
 def workflow_system_prompt(workflow_id: str) -> str:
+  try:
+    from ai.tools.domains.platform.workflow_custom import merged_system_prompt
+    merged = merged_system_prompt(workflow_id)
+    if merged:
+      return merged
+  except Exception:
+    pass
   w = WORKFLOWS.get(workflow_id)
   if not w:
     return ""

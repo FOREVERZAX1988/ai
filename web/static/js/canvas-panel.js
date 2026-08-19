@@ -4,7 +4,6 @@
 const CanvasPanel = (() => {
   let listEl = null;
   let filterEl = null;
-  const bySession = new Map();
   let activeFilter = 'all';
 
   function ensureDom() {
@@ -21,11 +20,11 @@ const CanvasPanel = (() => {
 
   function addArtifact(sessionId, artifact) {
     if (!artifact) return;
+    if (typeof ArtifactStore !== 'undefined') {
+      ArtifactStore.add(sessionId, artifact);
+    }
     const sid = sessionId || '__global__';
-    const items = bySession.get(sid) || [];
-    items.unshift(artifact);
-    bySession.set(sid, items.slice(0, 30));
-    updateBadge(items.length);
+    updateBadge(typeof ArtifactStore !== 'undefined' ? ArtifactStore.list(sid).length : 0);
     render(sessionId);
   }
 
@@ -60,13 +59,13 @@ const CanvasPanel = (() => {
     ensureDom();
     if (!listEl) return;
     const sid = sessionId || (typeof SessionStore !== 'undefined' ? SessionStore.activeId : '');
-    let items = bySession.get(sid) || [];
+    let items = typeof ArtifactStore !== 'undefined' ? ArtifactStore.list(sid) : [];
     if (activeFilter !== 'all') {
       items = items.filter((a) => (a.kind || '') === activeFilter);
     }
     if (!items.length) {
       listEl.innerHTML = '<p class="canvas-empty">暂无可视化输出</p>';
-      updateBadge((bySession.get(sid) || []).length);
+      updateBadge((typeof ArtifactStore !== 'undefined' ? ArtifactStore.list(sid) : items).length);
       return;
     }
     listEl.innerHTML = items.map((a) => {
@@ -96,7 +95,7 @@ const CanvasPanel = (() => {
         URL.revokeObjectURL(a.href);
       });
     });
-    updateBadge((bySession.get(sid) || []).length);
+    updateBadge(typeof ArtifactStore !== 'undefined' ? ArtifactStore.list(sid).length : items.length);
   }
 
   function escapeHtml(s) {
@@ -104,10 +103,14 @@ const CanvasPanel = (() => {
   }
 
   async function loadSession(sessionId) {
-    if (!sessionId || typeof api !== 'function') return;
-    const { data } = await api('GET', `/api/ai/canvas?sessionId=${encodeURIComponent(sessionId)}&limit=30`);
+    if (!sessionId) return;
+    const apiFn = typeof api === 'function' ? api : (typeof WebApi !== 'undefined' ? WebApi.api : null);
+    if (!apiFn) return;
+    const { data } = await apiFn('GET', `/api/ai/canvas?sessionId=${encodeURIComponent(sessionId)}&limit=30`);
     if (!data?.ok) return;
-    bySession.set(sessionId, data.artifacts || []);
+    if (typeof ArtifactStore !== 'undefined') {
+      ArtifactStore.setSession(sessionId, data.artifacts || []);
+    }
     updateBadge((data.artifacts || []).length);
     render(sessionId);
   }

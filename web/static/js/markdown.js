@@ -68,14 +68,22 @@
     return out.join('\n');
   }
 
+  /** Split multiple table rows glued on one line (`... | false || 点火 | ...`). */
   function splitGluedPipeRows(line) {
     let s = String(line || '');
     if (!s.includes('|')) return s;
-    s = s.replace(/\|{3,}/g, '|\n|');
-    s = s.replace(/\|\|(?=\s*[-:]{3,})/g, '|\n|');
-    s = s.replace(/\|\|(?=[^|\s-])/g, '|\n|');
-    s = s.replace(/(\|[^|\n]+\|)\s+(?=\|)/g, '$1\n');
+    if (s.includes('||')) {
+      s = s.replace(/\|\s*\|(?=\s*[^\s|:\-])/g, '|\n|');
+    }
+    // One-line tables only: "|row| |---|---| |row2|" — never split normal "| a | b |" rows.
+    if (!s.includes('\n') && /\|[-:]{3,}/.test(s)) {
+      s = s.replace(/\|\s+(\|[-:\s|]+\|)/g, '|\n$1');
+    }
     return s;
+  }
+
+  function isDashCell(text) {
+    return /^[-:]{2,}$/.test(String(text || '').trim());
   }
 
   function isTableSepLine(line) {
@@ -162,10 +170,330 @@
     return /\|[^|\n]+\|/.test(text) || /^\s*[^|\n]+\s+\|/m.test(text);
   }
 
+  function isKvValueHeader(text) {
+    return /^(当前值|详情|值|说明|状态|内容|结果)$/u.test(String(text || '').trim());
+  }
+
+  function isPlaceholderTableRow(line) {
+    const cells = parseTableRow(line);
+    if (cells.length < 2) return false;
+    return cells.every((c) => {
+      const t = c.trim();
+      return !t || /^\.{2,}$|^…+$|^[—\-－―]+$/u.test(t);
+    });
+  }
+
+  function dropPlaceholderTableRows(markdown) {
+    return String(markdown).split('\n').filter((line) => {
+      const trimmed = line.trim();
+      if (!isCompleteTableRow(trimmed)) return true;
+      return !isPlaceholderTableRow(trimmed);
+    }).join('\n');
+  }
+
+  function repairOrphanKvHeader(markdown) {
+    const lines = String(markdown).split('\n');
+    const out = [];
+    for (let i = 0; i < lines.length; i++) {
+      const trimmed = lines[i].trim();
+      const next = (lines[i + 1] || '').trim();
+      if (isCompleteTableRow(trimmed)) {
+        const cells = parseTableRow(trimmed);
+        if (cells.length === 1 && cells[0] && isKvValueHeader(next)) {
+          out.push(`| ${cells[0]} | ${next} |`);
+          i += 1;
+          continue;
+        }
+        if (cells.length === 2 && cells[0] && !cells[1] && isKvValueHeader(next)) {
+          out.push(`| ${cells[0]} | ${next} |`);
+          i += 1;
+          continue;
+        }
+      }
+      if (!trimmed.includes('|') && isKvValueHeader(trimmed) && out.length) {
+        const prev = out[out.length - 1].trim();
+        if (isCompleteTableRow(prev)) {
+          const prevCells = parseTableRow(prev);
+          if (prevCells.length === 1 && prevCells[0]) {
+            out[out.length - 1] = `| ${prevCells[0]} | ${trimmed} |`;
+            continue;
+          }
+          if (prevCells.length === 2 && prevCells[0] && !prevCells[1]) {
+            out[out.length - 1] = `| ${prevCells[0]} | ${trimmed} |`;
+            continue;
+          }
+        }
+      }
+      out.push(lines[i]);
+    }
+    return out.join('\n');
+  }
+
   function repairTrailingEmDash(markdown) {
     return String(markdown)
       .replace(/[：:]\s*[—\-―－]{2,}\s*$/gm, ':\n\n<hr>\n')
       .replace(/^\s*[—\-―－]{2,}\s*$/gm, '<hr>\n');
+  }
+
+  function splitGluedKvCell(text) {
+    const t = String(text || '').trim();
+    if (!t) return null;
+    const m = t.match(/^(.+?)\s+(null|true|false|-?\d+(?:\.\d+)?(?:\s*(?:km\/h|km|m\/s|%))?)$/i);
+    if (m) return [m[1].trim(), m[2].trim()];
+    const parts = t.split(/\s{2,}/).map((p) => p.trim()).filter(Boolean);
+    if (parts.length === 2) return parts;
+    return null;
+  }
+
+  function normalizeTableColumnCounts(markdown) {
+    const lines = String(markdown).split('\n');
+    const out = [];
+    let i = 0;
+    while (i < lines.length) {
+      if (!isTableBlockStart(lines, i)) {
+        out.push(lines[i]);
+        i += 1;
+        continue;
+      }
+      const headerCols = parseTableRow(lines[i].trim()).length;
+      out.push(lines[i]);
+      i += 1;
+      if (i < lines.length && isTableSepLine(lines[i].trim())) {
+        out.push(lines[i]);
+        i += 1;
+      }
+      while (i < lines.length) {
+        const raw = lines[i];
+        const trimmed = raw.trim();
+        if (!trimmed) {
+          out.push('');
+          i += 1;
+          break;
+        }
+        if (isTableBlockStart(lines, i)) break;
+        if (!trimmed.includes('|')) {
+          const parts = trimmed.split(/\s{2,}|\t+/).map((p) => p.trim()).filter(Boolean);
+          if (parts.length >= 2 && headerCols >= 2) {
+            while (parts.length < headerCols) parts.push('');
+            out.push(`| ${parts.slice(0, headerCols).join(' | ')} |`);
+            i += 1;
+            continue;
+          }
+          out.push(raw);
+          i += 1;
+          break;
+        }
+        let cells = parseTableRow(trimmed);
+        if (cells.length === 1 && headerCols >= 2) {
+          const split = splitGluedKvCell(cells[0]);
+          if (split) cells = split;
+        }
+        while (cells.length < headerCols) cells.push('');
+        if (cells.length > headerCols) cells = cells.slice(0, headerCols);
+        out.push(`| ${cells.join(' | ')} |`);
+        i += 1;
+      }
+    }
+    return out.join('\n');
+  }
+
+  function tableColCountFromHtml(inner) {
+    const firstRow = String(inner || '').match(/<tr[^>]*>([\s\S]*?)<\/tr>/i);
+    if (!firstRow) return 0;
+    return (firstRow[1].match(/<t[hd][^>]*>/gi) || []).length;
+  }
+
+  function isKvTableHtml(inner) {
+    const colCount = tableColCountFromHtml(inner);
+    if (colCount !== 2) return false;
+    const rows = String(inner || '').match(/<tr[^>]*>[\s\S]*?<\/tr>/gi) || [];
+    return rows.length > 0 && rows.every((row) => (row.match(/<t[hd][^>]*>/gi) || []).length === 2);
+  }
+
+  function wrapMarkdownTables(html) {
+    let s = String(html);
+    s = s.replace(
+      /<div class="md-table-wrap">\s*<table class="md-table([^"]*)">([\s\S]*?)<\/table>\s*<\/div>/gi,
+      (_, cls, inner) => {
+        const kv = cls.includes('md-kv-table') || isKvTableHtml(inner) ? ' md-kv-table' : '';
+        return `<div class="markdown-table${kv}"><div class="markdown-table__viewport"><table class="md-table${cls}${kv ? ' md-kv-table' : ''}">${inner}</table></div></div>`;
+      },
+    );
+    // Bare tables from markdown-it without custom wrapper
+    s = s.replace(
+      /<table(?![^>]*class="[^"]*md-table)([^>]*)>([\s\S]*?)<\/table>/gi,
+      (_, attrs, inner) => {
+        const kv = isKvTableHtml(inner) ? ' md-kv-table' : '';
+        return `<div class="markdown-table${kv}"><div class="markdown-table__viewport"><table class="md-table${kv}"${attrs}>${inner}</table></div></div>`;
+      },
+    );
+    return s;
+  }
+
+  function formatReasoningMarkdown(text) {
+    const lines = String(text || '').trim().split('\n').filter(Boolean);
+    if (!lines.length) return '';
+    return `_Reasoning:_\n\n${lines.map((line) => `_${line.replace(/^[-*]\s+/, '')}_`).join('\n')}`;
+  }
+  function compactRowCells(cells) {
+    const trimmed = cells.map((c) => String(c || '').trim());
+    if (trimmed.length && trimmed.every(isDashCell)) return [];
+    const withoutDash = trimmed.filter((c) => c && !isDashCell(c));
+    if (withoutDash.length >= 2 && withoutDash.length < trimmed.length) return withoutDash;
+    const nonEmpty = trimmed.filter(Boolean);
+    if (nonEmpty.length >= 2 && nonEmpty.length < trimmed.length) return nonEmpty;
+    return trimmed;
+  }
+
+  function collapseTableBlocks(markdown) {
+    const lines = String(markdown).split('\n');
+    const out = [];
+    let i = 0;
+    while (i < lines.length) {
+      const trimmed = (lines[i] || '').trim();
+      if (!isTableBlockStart(lines, i)) {
+        out.push(lines[i]);
+        i += 1;
+        continue;
+      }
+      let headerCells = compactRowCells(parseTableRow(trimmed));
+      if (!headerCells.length) {
+        out.push(lines[i]);
+        i += 1;
+        continue;
+      }
+      while (headerCells.length && !headerCells[headerCells.length - 1]) headerCells.pop();
+      const colCount = Math.max(2, headerCells.length);
+      out.push(`| ${headerCells.slice(0, colCount).join(' | ')} |`);
+      i += 1;
+      if (i < lines.length && isTableSepLine(lines[i].trim())) {
+        out.push(`| ${Array(colCount).fill('---').join(' | ')} |`);
+        i += 1;
+      }
+      while (i < lines.length) {
+        const rowTrim = lines[i].trim();
+        if (!rowTrim) break;
+        if (isTableBlockStart(lines, i)) break;
+        if (!isCompleteTableRow(rowTrim) && !isTableSepLine(rowTrim)) break;
+        if (isTableSepLine(rowTrim)) {
+          i += 1;
+          continue;
+        }
+        let cells = compactRowCells(parseTableRow(rowTrim));
+        if (!cells.length) {
+          i += 1;
+          continue;
+        }
+        while (cells.length && !cells[cells.length - 1]) cells.pop();
+        if (cells.length > colCount) {
+          const head = cells.slice(0, colCount - 1);
+          const tail = cells.slice(colCount - 1).filter(Boolean).join(' ');
+          cells = [...head, tail];
+        }
+        while (cells.length < colCount) cells.push('');
+        out.push(`| ${cells.slice(0, colCount).join(' | ')} |`);
+        i += 1;
+      }
+      out.push('');
+    }
+    return out.join('\n');
+  }
+
+  function repairMissingTableSeparators(markdown) {
+    const lines = String(markdown).split('\n');
+    const out = [];
+    for (let i = 0; i < lines.length; i++) {
+      const trimmed = lines[i].trim();
+      out.push(lines[i]);
+      if (!isCompleteTableRow(trimmed)) continue;
+      const next = (lines[i + 1] || '').trim();
+      if (!next || isTableSepLine(next) || !isCompleteTableRow(next)) continue;
+      const prev = (out.length >= 2 ? out[out.length - 2] : '').trim();
+      if (isCompleteTableRow(prev) || isTableSepLine(prev)) continue;
+      const cols = parseTableRow(trimmed).length;
+      if (cols >= 2) out.push(`| ${Array(cols).fill('---').join(' | ')} |`);
+    }
+    return out.join('\n');
+  }
+
+  /** Ensure blank line before pipe tables (markdown-it GFM requirement). */
+  function ensureTableBlockSpacing(markdown) {
+    return String(markdown)
+      .replace(/([^\n|])\n(\|[^|\n]+\|)/g, '$1\n\n$2')
+      .replace(/(\n#{1,4}[^\n]+)\n(\|)/g, '$1\n\n$2');
+  }
+
+  function tagKvTables(html) {
+    return String(html).replace(
+      /<div class="md-table-wrap">\s*<table class="md-table([^"]*)">([\s\S]*?)<\/table>\s*<\/div>/gi,
+      (block, cls, inner) => {
+        if (isKvTableHtml(inner)) {
+          return block.replace('class="md-table', 'class="md-table md-kv-table');
+        }
+        return block;
+      },
+    );
+  }
+
+  /** Turn consecutive pipe-only lines (no GFM separator) into proper tables. */
+  function repairLoosePipeTableRows(markdown) {
+    const lines = String(markdown).split('\n');
+    const out = [];
+    let i = 0;
+    while (i < lines.length) {
+      const trimmed = (lines[i] || '').trim();
+      if (!isCompleteTableRow(trimmed) || isTableBlockStart(lines, i)) {
+        out.push(lines[i]);
+        i += 1;
+        continue;
+      }
+      const rows = [];
+      let j = i;
+      while (j < lines.length) {
+        const t = (lines[j] || '').trim();
+        if (!t) break;
+        if (isTableBlockStart(lines, j)) break;
+        if (!isCompleteTableRow(t) || isTableSepLine(t)) break;
+        let cells = compactRowCells(parseTableRow(t));
+        if (cells.length === 3 && !cells[1]) cells = [cells[0], cells[2]];
+        if (cells.length >= 2) rows.push(cells);
+        j += 1;
+      }
+      if (rows.length >= 1) {
+        const cols = Math.max(...rows.map((r) => r.length));
+        const headers = cols === 2
+          ? ['项目', '返回值']
+          : cols === 3
+            ? ['项目', '返回值', '说明']
+            : Array.from({ length: cols }, (_, idx) => `列${idx + 1}`);
+        out.push(`| ${headers.slice(0, cols).join(' | ')} |`);
+        out.push(`| ${Array(cols).fill('---').join(' | ')} |`);
+        for (const row of rows) {
+          const cells = [...row];
+          while (cells.length < cols) cells.push('');
+          out.push(`| ${cells.slice(0, cols).join(' | ')} |`);
+        }
+        out.push('');
+        i = j;
+        continue;
+      }
+      out.push(lines[i]);
+      i += 1;
+    }
+    return out.join('\n');
+  }
+
+  function repairStreamingTail(markdown) {
+    let s = String(markdown || '');
+    const fenceCount = (s.match(/```/g) || []).length;
+    if (fenceCount % 2 === 1) s += '\n```';
+    const lines = s.split('\n');
+    const last = lines[lines.length - 1] || '';
+    if (last.includes('|') && !last.trim().endsWith('|') && !last.trim().startsWith('```')) {
+      lines[lines.length - 1] = `${last.trim()} |`;
+      s = lines.join('\n');
+    }
+    return s;
   }
 
   function promoteChatSectionHeadlines(markdown) {
@@ -179,17 +507,15 @@
     }).join('\n');
   }
 
-  /** OpenClaw-style minimal normalize + op助手 table repairs. */
+  /** OpenClaw-style: minimal normalize — preserve block structure for GFM tables. */
   function normalizeMarkdownInput(markdown) {
     let s = String(markdown || '').replace(/\r\n/g, '\n');
     if (!s.trim()) return '';
 
     s = repairTrailingEmDash(s);
 
-    // ###Title — anywhere in the string (###基础状态|...)
     s = s.replace(/(#{1,6})([^\s#\n|])/g, '$1 $2');
     s = s.replace(/([^\n#])\s*(#{1,3}\s+)/g, '$1\n\n$2');
-    // ### Section|项目|值| — header glued to table (no space before |)
     s = s.replace(/(#{1,3}\s+)([^|\n]+?)(\|)/g, '$1$2\n\n$3');
     s = s.replace(/^([^|\n#][^|\n]{0,120}?)\s+(\|[^|\n]+\|)/gm, '$1\n\n$2');
 
@@ -199,10 +525,12 @@
     }
     s = lines.join('\n');
 
-    s = repairFragmentedTableRows(s);
-    s = repairSeparatorLines(s);
     s = repairDashSeparatedTables(s);
-    s = s.replace(/^\s*(-{3,})\s*\|\s*(-{3,})\s*$/gm, '| --- | --- |');
+    s = repairMissingTableSeparators(s);
+    s = repairFragmentedTableRows(s);
+    s = collapseTableBlocks(s);
+    s = repairSeparatorLines(s);
+    s = ensureTableBlockSpacing(s);
     s = s.replace(/^(#{1,3}\s+[^\n]+)\n(\|)/gm, '$1\n\n$2');
     s = promoteChatSectionHeadlines(s);
 
@@ -410,8 +738,10 @@
     });
   }
 
-  function renderMarkdownHtml(markdown) {
-    const input = normalizeMarkdownInput(markdown);
+  function renderMarkdownHtml(markdown, options) {
+    const streaming = Boolean(options && options.streaming);
+    let input = normalizeMarkdownInput(markdown);
+    if (streaming) input = repairStreamingTail(input);
     if (!input.trim()) return '';
 
     const md = getMarkdownIt();
@@ -419,27 +749,32 @@
       try {
         let html = sanitizeHtml(md.render(input));
         if (looksLikeMarkdownTable(input) && !html.includes('<table')) {
-          html = sanitizeHtml(renderLite(input));
+          const loose = repairLoosePipeTableRows(input);
+          if (loose !== input) {
+            html = sanitizeHtml(md.render(ensureTableBlockSpacing(loose)));
+          } else {
+            html = sanitizeHtml(renderLite(input));
+          }
         }
-        return html;
+        return wrapMarkdownTables(tagKvTables(html));
       } catch (err) {
         console.warn('[markdown] markdown-it failed, using lite renderer:', err);
       }
     }
-    return sanitizeHtml(renderLite(input));
+    return wrapMarkdownTables(tagKvTables(sanitizeHtml(renderLite(input))));
   }
 
   function render(markdown) {
     return renderMarkdownHtml(markdown);
   }
 
-  function renderNormalized(markdown) {
-    return renderMarkdownHtml(markdown);
+  function renderNormalized(markdown, options) {
+    return renderMarkdownHtml(markdown, options);
   }
 
-  /** Stream updates re-render the full normalized document (OpenClaw finish + ClawPanel simplicity). */
+  /** Stream: normalize + repair tail, then render. */
   function toStreamingHtml(markdown) {
-    return renderNormalized(markdown);
+    return renderNormalized(markdown, { streaming: true });
   }
 
   function findStableStreamingMarkdownBoundary(markdown) {
@@ -456,7 +791,7 @@
       return;
     }
     el.classList.add('md-content', 'chat-text');
-    let html = renderNormalized(text);
+    let html = renderNormalized(text, { streaming });
     if (streaming && options?.cursor !== false) {
       html += '<span class="md-stream-cursor" aria-hidden="true">▊</span>';
     }
@@ -495,7 +830,9 @@
     renderToElement,
     toStreamingHtml,
     findStableStreamingMarkdownBoundary,
+    formatReasoningMarkdown,
     bindCopyButtons,
+    VERSION: '20260820d',
   };
 
   if (typeof document !== 'undefined') {

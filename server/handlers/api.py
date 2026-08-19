@@ -13,3 +13,4 @@ from ai.server.handlers.fork_handlers import *  # noqa: F403
 from ai.server.handlers.publish_handlers import *  # noqa: F403
 from ai.server.handlers.misc_handlers import *  # noqa: F403
 from ai.server.handlers.feedback_handlers import *  # noqa: F403
+from ai.server.handlers.harness_handlers import *  # noqa: F403
