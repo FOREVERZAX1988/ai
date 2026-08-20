@@ -22,11 +22,11 @@ import os
 OPENPILOT_ROOT = "/data/openpilot"
 
 
-def run_unittest(target: str, desc: str, timeout: int = 300) -> bool:
-    """用 unittest 方式跑一个测试类/模块，返回是否通过"""
+def run_unittest(target: str, desc: str, timeout: int = 300, cwd: str | None = None) -> bool:
+    """用 unittest 方式跑一个测试类/模块，返回是否通过（cwd 默认主仓根；opendbc 测试传 opendbc_repo）"""
     print(f"\n{'='*60}\n▶ {desc}\n   target: {target}\n{'='*60}")
     cmd = [sys.executable, "-m", "unittest", target, "-v"]
-    r = subprocess.run(cmd, cwd=OPENPILOT_ROOT, timeout=timeout,
+    r = subprocess.run(cmd, cwd=cwd or OPENPILOT_ROOT, timeout=timeout,
                        capture_output=True, text=True)
     out = (r.stdout or "") + (r.stderr or "")
     # 打印关键行
@@ -82,13 +82,16 @@ def main() -> int:
          "按键事件-自定义巡航（智能巡航按钮管理）"),
         ("openpilot.sunnypilot.selfdrive.selfdrived.tests.test_button_state_tracker",
          "按键事件-按钮状态跟踪器"),
+        ("opendbc.car.volkswagen.tests.test_macan_mlb",
+         "Macan 纵向帧级回归（ACC_05 帧输出断言：停车保持/踩油门/SnG/减速/加速/撤力）"),
     ]
 
     ok = run_boot_smoke()
 
     for target, desc in results:
         try:
-            passed = run_unittest(target, desc)
+            cwd = os.path.join(root, "opendbc_repo") if target.startswith("opendbc.") else root
+            passed = run_unittest(target, desc, cwd=cwd)
         except subprocess.TimeoutExpired:
             print(f"  ⏱️ 超时（{target}），视为失败")
             passed = False
