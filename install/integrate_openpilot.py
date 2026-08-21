@@ -42,7 +42,7 @@ START_OP_ASSISTANT_FN = r'''  start_op_assistant() {
     local aid_py=python3.12
     command -v "$aid_py" >/dev/null 2>&1 || aid_py=python3
     local venv_site="/usr/local/venv/lib/python3.12/site-packages"
-    local pydeps="$root/.pydeps"
+    local pydeps="/data/.pydeps"
     local py_path="$root"
     [ -d "$venv_site" ] && py_path="$py_path:$venv_site"
     [ -d "$pydeps" ] && py_path="$py_path:$pydeps"
@@ -230,6 +230,11 @@ def _upgrade_start_op_assistant(content: str) -> tuple[str, bool]:
 
 def patch_launch_script(path: Path, *, dry_run: bool = False) -> dict[str, Any]:
   content = path.read_text(encoding="utf-8")
+
+  # New-style launch script already auto-starts ai via keep_alive; skip legacy patch.
+  if "keep_alive aid" in content and LAUNCH_MARKER not in content:
+    return {"ok": True, "path": str(path), "changed": False, "note": "new-style launch script already starts ai via keep_alive"}
+
   upgraded, was_upgraded = _upgrade_start_op_assistant(content)
   if was_upgraded:
     if dry_run:
