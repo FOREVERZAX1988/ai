@@ -45,8 +45,14 @@ def _is_tune_key(key: str) -> bool:
 
 def _read_device_log(params: Params, *, lines: int = 80) -> tuple[str, str]:
   """Return (text, source). Tries dp_dev_last_log then /data/log/latest.log."""
-  raw = params.get("dp_dev_last_log")
-  text = raw.decode(errors="replace") if isinstance(raw, bytes) else str(raw or "")
+  try:
+    raw = params.get("dp_dev_last_log")
+    text = raw.decode(errors="replace") if isinstance(raw, bytes) else str(raw or "")
+  except Exception:
+    # 本机从未写入 dp_dev_last_log（遗留引用），Params.get 抛 UnknownKeyName ——
+    # 保护后回退到 swaglog（2026-08-22 修复 read_manager_log/grep_log 断连）
+    raw = None
+    text = ""
   if text.strip():
     return text, "dp_dev_last_log"
   from ai.system.shell import run_command
