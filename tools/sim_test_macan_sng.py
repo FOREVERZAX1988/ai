@@ -41,7 +41,7 @@ def make_cc(enabled=True, accel=0.5):
 
 class Out:
   """模拟 carstate 实例的 .out（capnp CarStateOut 的 duck-type）"""
-  def __init__(self, v_ego=0.0, standstill=True, gas=False, brake=False, gear_shifter=None):
+  def __init__(self, v_ego=0.0, standstill=True, gas=False, brake=False, gear_shifter=None, stock_lead_distance=0):
     self.vEgo = v_ego
     self.standstill = standstill
     self.gasPressed = gas
@@ -51,13 +51,14 @@ class Out:
 
 class MockCS:
   """模拟 carstate 实例（carcontroller 实际收到的是 carstate 实例，不是纯 capnp）"""
-  def __init__(self, v_ego=0.0, standstill=True, gas=False, brake=False, gear_shifter=None):
+  def __init__(self, v_ego=0.0, standstill=True, gas=False, brake=False, gear_shifter=None, stock_lead_distance=0):
     self.out = Out(v_ego, standstill, gas, brake, gear_shifter)
     self.gra_stock_values = dict(GRA_STOCK)
+    self.stock_lead_distance = stock_lead_distance  # v3: 原厂雷达Abstandsindex
 
 
-def make_cs(v_ego=0.0, standstill=True, gas=False, brake=False, gear_shifter=None):
-  return MockCS(v_ego, standstill, gas, brake, gear_shifter)
+def make_cs(v_ego=0.0, standstill=True, gas=False, brake=False, gear_shifter=None, stock_lead_distance=0):
+  return MockCS(v_ego, standstill, gas, brake, gear_shifter, stock_lead_distance)
 
 
 def make_ctrl(CP=None, CP_SP=None):
@@ -102,10 +103,10 @@ def run():
   ccs = FakeCCS()
   check("关：enabled 标志位为 False", ctrl_off.enabled is False, f"got {ctrl_off.enabled}")
 
-  sends = ctrl_off.create_stop_and_go(ccs, None, 2, make_cc(enabled=True, accel=0.5), make_cs(standstill=True), 100)
+  sends = ctrl_off.create_stop_and_go(ccs, None, 2, make_cc(enabled=True, accel=0.5), make_cs(standstill=True, stock_lead_distance=300), 100)
   check("关：standstill+accel>0.15 不代发 RESUME", len(sends) == 0, f"got {len(sends)}")
 
-  sends = ctrl_off.create_stop_and_go(ccs, None, 2, make_cc(enabled=False, accel=0.5), make_cs(standstill=True), 100)
+  sends = ctrl_off.create_stop_and_go(ccs, None, 2, make_cc(enabled=False, accel=0.5), make_cs(standstill=True, stock_lead_distance=300), 100)
   check("关：enabled=False 也不代发", len(sends) == 0)
 
   # ---------- 场景组2：开关开启（MacanStartStop=1） ----------
@@ -118,7 +119,7 @@ def run():
   # 2.1 正常触发：连续5帧 enabled + standstill + accel>0.15 + 无干预 → 代发 RESUME
   sends = []
   for f in range(200, 205):
-    sends = ctrl_on.create_stop_and_go(ccs, None, 2, make_cc(enabled=True, accel=0.5), make_cs(standstill=True), f)
+    sends = ctrl_on.create_stop_and_go(ccs, None, 2, make_cc(enabled=True, accel=0.5), make_cs(standstill=True, stock_lead_distance=300), f)
   check("开：连续5帧起步条件满足 → 代发 RESUME 1帧", len(sends) == 1, f"got {len(sends)}")
   if sends:
     addr, bus, vals, _ = sends[0]
@@ -126,21 +127,21 @@ def run():
     check("开：resume 信号置位", vals["resume"] is True)
 
   # 2.2 OP 未启用 → 不代发
-  sends = ctrl_on.create_stop_and_go(ccs, None, 2, make_cc(enabled=False, accel=0.5), make_cs(standstill=True), 205)
+  sends = ctrl_on.create_stop_and_go(ccs, None, 2, make_cc(enabled=False, accel=0.5), make_cs(standstill=True, stock_lead_distance=300), 205)
   check("开：CC.enabled=False 不代发", len(sends) == 0)
 
   # 2.3 模型未放行（accel<=0.15）→ 不代发
-  sends = ctrl_on.create_stop_and_go(ccs, None, 2, make_cc(enabled=True, accel=0.1), make_cs(standstill=True), 206)
+  sends = ctrl_on.create_stop_and_go(ccs, None, 2, make_cc(enabled=True, accel=0.1), make_cs(standstill=True, stock_lead_distance=300), 206)
   check("开：accel=0.1(≤0.15) 不代发（红灯/前车未动）", len(sends) == 0, f"got {len(sends)}")
 
   # 2.4 行驶中（非standstill）→ 不代发
-  sends = ctrl_on.create_stop_and_go(ccs, None, 2, make_cc(enabled=True, accel=0.5), make_cs(v_ego=5.0, standstill=False), 207)
+  sends = ctrl_on.create_stop_and_go(ccs, None, 2, make_cc(enabled=True, accel=0.5), make_cs(v_ego=5.0, standstill=False, stock_lead_distance=300), 207)
   check("开：行驶中(vEgo=5)不代发", len(sends) == 0)
 
   # 2.5 驾驶员踩油门/刹车 → 不代发（安全兜底）
-  sends = ctrl_on.create_stop_and_go(ccs, None, 2, make_cc(enabled=True, accel=0.5), make_cs(standstill=True, gas=True), 208)
+  sends = ctrl_on.create_stop_and_go(ccs, None, 2, make_cc(enabled=True, accel=0.5), make_cs(standstill=True, gas=True, stock_lead_distance=300), 208)
   check("开：踩油门时绝不代发（驾驶员优先）", len(sends) == 0, f"got {len(sends)}")
-  sends = ctrl_on.create_stop_and_go(ccs, None, 2, make_cc(enabled=True, accel=0.5), make_cs(standstill=True, brake=True), 209)
+  sends = ctrl_on.create_stop_and_go(ccs, None, 2, make_cc(enabled=True, accel=0.5), make_cs(standstill=True, brake=True, stock_lead_distance=300), 209)
   check("开：踩刹车时绝不代发", len(sends) == 0)
 
   # 2.6 防抖：连续发送上限（0.2s @100Hz = 20帧），超限后停止
@@ -148,7 +149,7 @@ def run():
   ctrl_loop = make_ctrl(CP_SP=CP_SP)
   sent = 0
   for frame in range(0, 60):
-    sends = ctrl_loop.create_stop_and_go(ccs, None, 2, make_cc(enabled=True, accel=0.5), make_cs(standstill=True), frame)
+    sends = ctrl_loop.create_stop_and_go(ccs, None, 2, make_cc(enabled=True, accel=0.5), make_cs(standstill=True, stock_lead_distance=300), frame)
     sent += len(sends)
   check(f"防抖：60帧内共发送 {sent} 帧（上限应为 {_RESUME_MAX_FRAMES}）", sent == _RESUME_MAX_FRAMES, f"got {sent}")
 
@@ -156,11 +157,11 @@ def run():
   print("\n【场景组2c】重置验证：车动起来后可再次触发")
   ctrl_reset = make_ctrl(CP_SP=CP_SP)
   for f in range(1, 6):
-    ctrl_reset.create_stop_and_go(ccs, None, 2, make_cc(enabled=True, accel=0.5), make_cs(standstill=True), f)
-  ctrl_reset.create_stop_and_go(ccs, None, 2, make_cc(enabled=True, accel=0.5), make_cs(v_ego=2.0, standstill=False), 6)
+    ctrl_reset.create_stop_and_go(ccs, None, 2, make_cc(enabled=True, accel=0.5), make_cs(standstill=True, stock_lead_distance=300), f)
+  ctrl_reset.create_stop_and_go(ccs, None, 2, make_cc(enabled=True, accel=0.5), make_cs(v_ego=2.0, standstill=False, stock_lead_distance=300), 6)
   sends = []
   for f in range(7, 12):
-    sends = ctrl_reset.create_stop_and_go(ccs, None, 2, make_cc(enabled=True, accel=0.5), make_cs(standstill=True), f)
+    sends = ctrl_reset.create_stop_and_go(ccs, None, 2, make_cc(enabled=True, accel=0.5), make_cs(standstill=True, stock_lead_distance=300), f)
   check("重置：行驶后再次停车可再次触发", len(sends) == 1, f"got {len(sends)}")
 
   # 2.8 挡位限制：非前进挡（P/R/N）不代发，前进挡（D/S/M）正常
@@ -179,7 +180,7 @@ def run():
     sends = []
     for f in range(1000, 1005):
       sends = ctrl_g.create_stop_and_go(ccs, None, 2, make_cc(enabled=True, accel=0.5),
-                                        make_cs(standstill=True, gear_shifter=gear), f)
+                                        make_cs(standstill=True, gear_shifter=gear, stock_lead_distance=300), f)
     ok = len(sends) == expect_send
     check(f"{name}：{'代发' if expect_send else '不代发'} RESUME", ok, f"got {len(sends)}")
 
@@ -188,13 +189,28 @@ def run():
   sends = []
   for f in range(1100, 1105):
     sends = ctrl_pd.create_stop_and_go(ccs, None, 2, make_cc(enabled=True, accel=0.5),
-                                       make_cs(standstill=True, gear_shifter=GS.park), f)
+                                       make_cs(standstill=True, gear_shifter=GS.park, stock_lead_distance=300), f)
   check("P挡：5帧不代发且计数清零", len(sends) == 0)
   sends = []
   for f in range(1105, 1110):
     sends = ctrl_pd.create_stop_and_go(ccs, None, 2, make_cc(enabled=True, accel=0.5),
-                                       make_cs(standstill=True, gear_shifter=GS.drive), f)
+                                       make_cs(standstill=True, gear_shifter=GS.drive, stock_lead_distance=300), f)
   check("P挡后回D挡：5帧确认后触发", len(sends) == 1, f"got {len(sends)}")
+
+  # 2.11 v3新增：起步需原厂雷达ab>0（前车被雷达捕捉），视觉不代发起步
+  print("\n【场景组2f】v3起步确认：原厂雷达ab>0才代发")
+  ctrl_v3 = make_ctrl(CP_SP=CP_SP)
+  sends = []
+  for f in range(2000, 2005):
+    sends = ctrl_v3.create_stop_and_go(ccs, None, 2, make_cc(enabled=True, accel=0.5),
+                                       make_cs(standstill=True, stock_lead_distance=0), f)
+  check("v3：原厂ab=0(前车静止/雷达过滤) 不代发RESUME", len(sends) == 0, f"got {len(sends)}")
+  ctrl_v3b = make_ctrl(CP_SP=CP_SP)
+  sends = []
+  for f in range(2010, 2015):
+    sends = ctrl_v3b.create_stop_and_go(ccs, None, 2, make_cc(enabled=True, accel=0.5),
+                                        make_cs(standstill=True, stock_lead_distance=300), f)
+  check("v3：原厂ab=300(雷达捕捉前车) → 代发RESUME", len(sends) == 1, f"got {len(sends)}")
 
   # 2.10 非 Macan（其他VW）即使开关开也不触发
   print("\n【场景组2d】平台过滤：仅 Macan(MLB) 生效")
