@@ -62,11 +62,25 @@ def make_cs(v_ego=0.0, standstill=True, gas=False, brake=False, gear_shifter=Non
   return MockCS(v_ego, standstill, gas, brake, gear_shifter, stock_lead_distance, acc05_stock_status)
 
 
-def make_ctrl(CP=None, CP_SP=None):
+class FakeParams:
+  """模拟 Params：get_bool 返回可配置 dict（测试距离开关开/关两种状态）"""
+  def __init__(self, values: dict):
+    self.values = values
+
+  def get_bool(self, key: str) -> bool:
+    return self.values.get(key, False)
+
+
+def make_ctrl(CP=None, CP_SP=None, params_dict: dict | None = None):
   """隔离真实 Params（设备上 MacanStartStop 真实值会污染 enabled 判定）：
-  让 init 内 Params() 抛异常 → enabled 保持 flags 判定（对应测试环境无 Params 可达）。"""
+  - params_dict=None：让 Params() 抛异常 → _mp=None → 距离开关取默认(True)
+  - params_dict=dict：提供 FakeParams（测试 SnG/距离开关 开/关状态）"""
   import openpilot.common.params as params_mod
-  with mock.patch.object(params_mod, "Params", side_effect=Exception("test isolation")):
+  if params_dict is None:
+    with mock.patch.object(params_mod, "Params", side_effect=Exception("test isolation")):
+      return SnGCarController(CP if CP is not None else make_car_params(),
+                              CP_SP if CP_SP is not None else structs.CarParamsSP())
+  with mock.patch.object(params_mod, "Params", return_value=FakeParams(params_dict)):
     return SnGCarController(CP if CP is not None else make_car_params(),
                             CP_SP if CP_SP is not None else structs.CarParamsSP())
 
@@ -199,19 +213,33 @@ def run():
   check("P挡后回D挡：5帧确认后触发", len(sends) == 1, f"got {len(sends)}")
 
   # 2.11 v3新增：起步需原厂雷达ab>0（前车被雷达捕捉），视觉不代发起步
-  print("\n【场景组2f】v3起步确认：原厂雷达ab>0才代发")
-  ctrl_v3 = make_ctrl(CP_SP=CP_SP)
+  print("\n【场景组2f】起步安全距离开关（MacanStartStopDistance）")
+  # 距离开（默认）：需雷达/视觉确认前车才起步（防误起步）
+  ctrl_d_on = make_ctrl(CP_SP=CP_SP, params_dict={"MacanStartStop": True, "MacanStartStopDistance": True})
+  check("距离开：enabled=True（SnG开+距离开）", ctrl_d_on.enabled is True)
   sends = []
   for f in range(2000, 2005):
-    sends = ctrl_v3.create_stop_and_go(ccs, None, 2, make_cc(enabled=True, accel=0.5),
-                                       make_cs(standstill=True, stock_lead_distance=0), f)
-  check("v3：原厂ab=0(前车静止/雷达过滤) 不代发RESUME", len(sends) == 0, f"got {len(sends)}")
-  ctrl_v3b = make_ctrl(CP_SP=CP_SP)
+    sends = ctrl_d_on.create_stop_and_go(ccs, None, 2, make_cc(enabled=True, accel=0.5),
+                                         make_cs(standstill=True, stock_lead_distance=0), f)
+  check("距离开：ab=0无视觉(静止/雷达过滤) → 不代发", len(sends) == 0, f"got {len(sends)}")
   sends = []
   for f in range(2010, 2015):
-    sends = ctrl_v3b.create_stop_and_go(ccs, None, 2, make_cc(enabled=True, accel=0.5),
-                                        make_cs(standstill=True, stock_lead_distance=300), f)
-  check("v3：原厂ab=300(雷达捕捉前车) → 代发RESUME", len(sends) == 1, f"got {len(sends)}")
+    sends = ctrl_d_on.create_stop_and_go(ccs, None, 2, make_cc(enabled=True, accel=0.5),
+                                         make_cs(standstill=True, stock_lead_distance=300), f)
+  check("距离开：ab=300(雷达捕捉前车) → 代发", len(sends) == 1, f"got {len(sends)}")
+  # 距离关（V1 纯意图）：无需雷达/视觉，拥堵防加塞
+  ctrl_d_off = make_ctrl(CP_SP=CP_SP, params_dict={"MacanStartStop": True, "MacanStartStopDistance": False})
+  check("距离关：enabled=True（SnG开+距离关）", ctrl_d_off.enabled is True)
+  sends = []
+  for f in range(2020, 2025):
+    sends = ctrl_d_off.create_stop_and_go(ccs, None, 2, make_cc(enabled=True, accel=0.5),
+                                          make_cs(standstill=True, stock_lead_distance=0), f)
+  check("距离关(V1)：ab=0无视觉 → 代发（纯意图起步）", len(sends) == 1, f"got {len(sends)}")
+  sends = []
+  for f in range(2030, 2035):
+    sends = ctrl_d_off.create_stop_and_go(ccs, None, 2, make_cc(enabled=True, accel=0.5),
+                                          make_cs(standstill=True, stock_lead_distance=0), f)
+  check("距离关(V1)：无任何前车信号 → 仍代发", len(sends) == 1, f"got {len(sends)}")
 
   # 2.12 v4新增：原厂ACC必须active（bus2 ACC_05 st=3）才代发RESUME——刚上车/未激活不代发
   print("\n【场景组2g】v4原厂ACC激活确认：st==3才代发")
