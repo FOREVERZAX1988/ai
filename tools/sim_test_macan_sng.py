@@ -41,7 +41,7 @@ def make_cc(enabled=True, accel=0.5):
 
 class Out:
   """模拟 carstate 实例的 .out（capnp CarStateOut 的 duck-type）"""
-  def __init__(self, v_ego=0.0, standstill=True, gas=False, brake=False, gear_shifter=None, stock_lead_distance=0):
+  def __init__(self, v_ego=0.0, standstill=True, gas=False, brake=False, gear_shifter=None, stock_lead_distance=0, acc05_stock_status=3):
     self.vEgo = v_ego
     self.standstill = standstill
     self.gasPressed = gas
@@ -51,14 +51,15 @@ class Out:
 
 class MockCS:
   """模拟 carstate 实例（carcontroller 实际收到的是 carstate 实例，不是纯 capnp）"""
-  def __init__(self, v_ego=0.0, standstill=True, gas=False, brake=False, gear_shifter=None, stock_lead_distance=0):
+  def __init__(self, v_ego=0.0, standstill=True, gas=False, brake=False, gear_shifter=None, stock_lead_distance=0, acc05_stock_status=3):
     self.out = Out(v_ego, standstill, gas, brake, gear_shifter)
     self.gra_stock_values = dict(GRA_STOCK)
     self.stock_lead_distance = stock_lead_distance  # v3: 原厂雷达Abstandsindex
+    self.acc05_stock_status = acc05_stock_status  # v4: 原厂ACC_Status(3=active)
 
 
-def make_cs(v_ego=0.0, standstill=True, gas=False, brake=False, gear_shifter=None, stock_lead_distance=0):
-  return MockCS(v_ego, standstill, gas, brake, gear_shifter, stock_lead_distance)
+def make_cs(v_ego=0.0, standstill=True, gas=False, brake=False, gear_shifter=None, stock_lead_distance=0, acc05_stock_status=3):
+  return MockCS(v_ego, standstill, gas, brake, gear_shifter, stock_lead_distance, acc05_stock_status)
 
 
 def make_ctrl(CP=None, CP_SP=None):
@@ -211,6 +212,21 @@ def run():
     sends = ctrl_v3b.create_stop_and_go(ccs, None, 2, make_cc(enabled=True, accel=0.5),
                                         make_cs(standstill=True, stock_lead_distance=300), f)
   check("v3：原厂ab=300(雷达捕捉前车) → 代发RESUME", len(sends) == 1, f"got {len(sends)}")
+
+  # 2.12 v4新增：原厂ACC必须active（bus2 ACC_05 st=3）才代发RESUME——刚上车/未激活不代发
+  print("\n【场景组2g】v4原厂ACC激活确认：st==3才代发")
+  ctrl_v4 = make_ctrl(CP_SP=CP_SP)
+  sends = []
+  for f in range(2100, 2105):
+    sends = ctrl_v4.create_stop_and_go(ccs, None, 2, make_cc(enabled=True, accel=0.5),
+                                       make_cs(standstill=True, stock_lead_distance=300, acc05_stock_status=2), f)
+  check("v4：原厂st=2(ACC未激活/刚上车) 不代发RESUME", len(sends) == 0, f"got {len(sends)}")
+  ctrl_v4b = make_ctrl(CP_SP=CP_SP)
+  sends = []
+  for f in range(2110, 2115):
+    sends = ctrl_v4b.create_stop_and_go(ccs, None, 2, make_cc(enabled=True, accel=0.5),
+                                        make_cs(standstill=True, stock_lead_distance=300, acc05_stock_status=3), f)
+  check("v4：原厂st=3(ACC active停车保持) → 代发RESUME", len(sends) == 1, f"got {len(sends)}")
 
   # 2.10 非 Macan（其他VW）即使开关开也不触发
   print("\n【场景组2d】平台过滤：仅 Macan(MLB) 生效")
