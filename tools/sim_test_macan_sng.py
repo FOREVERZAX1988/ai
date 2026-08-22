@@ -63,12 +63,18 @@ def make_cs(v_ego=0.0, standstill=True, gas=False, brake=False, gear_shifter=Non
 
 
 class FakeParams:
-  """模拟 Params：get_bool 返回可配置 dict（测试距离开关开/关两种状态）"""
+  """模拟 Params：get_bool/get 返回可配置 dict（测试起步距离 0/3/5/10 等状态）"""
   def __init__(self, values: dict):
     self.values = values
 
   def get_bool(self, key: str) -> bool:
     return self.values.get(key, False)
+
+  def get(self, key: str, return_default: bool = False):
+    v = self.values.get(key)
+    if v is None:
+      return None
+    return v
 
 
 def make_ctrl(CP=None, CP_SP=None, params_dict: dict | None = None):
@@ -213,33 +219,40 @@ def run():
   check("P挡后回D挡：5帧确认后触发", len(sends) == 1, f"got {len(sends)}")
 
   # 2.11 v3新增：起步需原厂雷达ab>0（前车被雷达捕捉），视觉不代发起步
-  print("\n【场景组2f】起步安全距离开关（MacanStartStopDistance）")
-  # 距离开（默认）：需雷达/视觉确认前车才起步（防误起步）
-  ctrl_d_on = make_ctrl(CP_SP=CP_SP, params_dict={"MacanStartStop": True, "MacanStartStopDistance": True})
-  check("距离开：enabled=True（SnG开+距离开）", ctrl_d_on.enabled is True)
+  print("\n【场景组2f】起步安全距离可调（MacanStartStopDistance 米：0=Off / 3 / 5 / 10）")
+  # 默认 5 米：ab=0 无视觉 → 不代发（0m < 5m）；ab=300 → 代发（300*0.0424=12.7m > 5m）
+  ctrl_d5 = make_ctrl(CP_SP=CP_SP, params_dict={"MacanStartStop": True, "MacanStartStopDistance": "5"})
+  check("默认5米：enabled=True", ctrl_d5.enabled is True)
   sends = []
   for f in range(2000, 2005):
-    sends = ctrl_d_on.create_stop_and_go(ccs, None, 2, make_cc(enabled=True, accel=0.5),
-                                         make_cs(standstill=True, stock_lead_distance=0), f)
-  check("距离开：ab=0无视觉(静止/雷达过滤) → 不代发", len(sends) == 0, f"got {len(sends)}")
+    sends = ctrl_d5.create_stop_and_go(ccs, None, 2, make_cc(enabled=True, accel=0.5),
+                                       make_cs(standstill=True, stock_lead_distance=0), f)
+  check("5米：ab=0无视觉(0m<5m) → 不代发", len(sends) == 0, f"got {len(sends)}")
   sends = []
   for f in range(2010, 2015):
-    sends = ctrl_d_on.create_stop_and_go(ccs, None, 2, make_cc(enabled=True, accel=0.5),
-                                         make_cs(standstill=True, stock_lead_distance=300), f)
-  check("距离开：ab=300(雷达捕捉前车) → 代发", len(sends) == 1, f"got {len(sends)}")
-  # 距离关（V1 纯意图）：无需雷达/视觉，拥堵防加塞
-  ctrl_d_off = make_ctrl(CP_SP=CP_SP, params_dict={"MacanStartStop": True, "MacanStartStopDistance": False})
-  check("距离关：enabled=True（SnG开+距离关）", ctrl_d_off.enabled is True)
+    sends = ctrl_d5.create_stop_and_go(ccs, None, 2, make_cc(enabled=True, accel=0.5),
+                                       make_cs(standstill=True, stock_lead_distance=300), f)
+  check("5米：ab=300(12.7m>5m) → 代发", len(sends) == 1, f"got {len(sends)}")
+  # 3 米：ab=70(2.97m<3m) 不代发；ab=80(3.4m>3m) 代发
+  ctrl_d3 = make_ctrl(CP_SP=CP_SP, params_dict={"MacanStartStop": True, "MacanStartStopDistance": "3"})
   sends = []
   for f in range(2020, 2025):
-    sends = ctrl_d_off.create_stop_and_go(ccs, None, 2, make_cc(enabled=True, accel=0.5),
-                                          make_cs(standstill=True, stock_lead_distance=0), f)
-  check("距离关(V1)：ab=0无视觉 → 代发（纯意图起步）", len(sends) == 1, f"got {len(sends)}")
+    sends = ctrl_d3.create_stop_and_go(ccs, None, 2, make_cc(enabled=True, accel=0.5),
+                                       make_cs(standstill=True, stock_lead_distance=70), f)
+  check("3米：ab=70(2.97m<3m) → 不代发", len(sends) == 0, f"got {len(sends)}")
   sends = []
   for f in range(2030, 2035):
-    sends = ctrl_d_off.create_stop_and_go(ccs, None, 2, make_cc(enabled=True, accel=0.5),
-                                          make_cs(standstill=True, stock_lead_distance=0), f)
-  check("距离关(V1)：无任何前车信号 → 仍代发", len(sends) == 1, f"got {len(sends)}")
+    sends = ctrl_d3.create_stop_and_go(ccs, None, 2, make_cc(enabled=True, accel=0.5),
+                                       make_cs(standstill=True, stock_lead_distance=80), f)
+  check("3米：ab=80(3.4m>3m) → 代发", len(sends) == 1, f"got {len(sends)}")
+  # 0=Off（V1 纯意图）：ab=0 无视觉也代发（拥堵防加塞）
+  ctrl_d0 = make_ctrl(CP_SP=CP_SP, params_dict={"MacanStartStop": True, "MacanStartStopDistance": "0"})
+  check("0米(Off)：enabled=True（SnG开）", ctrl_d0.enabled is True)
+  sends = []
+  for f in range(2040, 2045):
+    sends = ctrl_d0.create_stop_and_go(ccs, None, 2, make_cc(enabled=True, accel=0.5),
+                                       make_cs(standstill=True, stock_lead_distance=0), f)
+  check("0米(V1)：ab=0无视觉 → 代发（纯意图起步）", len(sends) == 1, f"got {len(sends)}")
 
   # 2.12 v4新增：原厂ACC必须active（bus2 ACC_05 st=3）才代发RESUME——刚上车/未激活不代发
   print("\n【场景组2g】v4原厂ACC激活确认：st==3才代发")
