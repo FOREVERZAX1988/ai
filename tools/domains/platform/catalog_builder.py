@@ -9,10 +9,10 @@ from pathlib import Path
 from typing import Any
 
 from ai.common.sp_param_aliases import DP_TO_SP_PARAM_ALIASES
-from ai.system.paths import find_repo_file, source_path
+from ai.system.paths import find_repo_file, openpilot_root, source_path
 
-_OP_ROOT = Path(__file__).resolve().parents[2]
-_STATIC = Path(__file__).resolve().parent.parent / "skills" / "params_catalog.json"
+_OP_ROOT = openpilot_root()
+_STATIC = Path(__file__).resolve().parents[3] / "skills" / "params_catalog.json"
 _SP_UI_ROOTS = (
   source_path("selfdrive", "ui", "sunnypilot"),
   source_path("system", "ui", "sunnypilot"),

@@ -7,6 +7,7 @@ Params or sends control commands.
 
 from __future__ import annotations
 
+import sys
 import time
 from dataclasses import asdict, dataclass
 from typing import Any
@@ -15,10 +16,27 @@ from openpilot.common.params import Params
 from openpilot.common.swaglog import cloudlog
 
 
-try:
-  from cereal import messaging
-except ImportError:
-  messaging = None  # type: ignore
+def _import_cereal_messaging():
+  """Import cereal.messaging; on nested repos the launcher may omit the
+  openpilot source root from PYTHONPATH — heal by inserting it once."""
+  try:
+    from cereal import messaging
+    return messaging
+  except ImportError:
+    try:
+      from ai.system.paths import openpilot_source_root
+      src_root = str(openpilot_source_root())
+      if src_root and src_root not in sys.path:
+        sys.path.insert(0, src_root)
+      from cereal import messaging
+      cloudlog.info(f"aid: cereal imported after adding {src_root} to sys.path")
+      return messaging
+    except Exception as e:
+      cloudlog.warning(f"aid: cereal.messaging unavailable ({e})")
+      return None
+
+
+messaging = _import_cereal_messaging()
 
 
 @dataclass
@@ -259,20 +277,32 @@ class StateReader:
     self._sm: Any = None
     self._healthy = False
     self._services: list[str] = []
+    self._init_error = ""
+    self._try_init()
+
+  def _try_init(self) -> bool:
+    global messaging
     if messaging is None:
-      cloudlog.warning("aid: cereal.messaging not available (state reader disabled)")
-      return
+      messaging = _import_cereal_messaging()
+    if messaging is None:
+      return False
     try:
       self._sm = messaging.SubMaster(self._SERVICES)
       self._sm.update(0)
       self._services = list(self._sm.sock.keys())
       self._healthy = True
+      self._init_error = ""
+      cloudlog.info("aid: StateReader initialized (services ok)")
+      return True
     except Exception as e:
+      self._init_error = str(e)
       cloudlog.error(f"aid: StateReader initialization failed: {e}")
+      return False
 
   def update(self, timeout: int = 0) -> VehicleState:
     if not self._healthy or self._sm is None:
-      return self._default_state()
+      if not self._try_init():
+        return self._default_state()
     try:
       self._sm.update(timeout)
       return self.snapshot()

@@ -42,6 +42,7 @@ def get_state_reader() -> StateReader:
       _STATE_READER._sm = None
       _STATE_READER._healthy = False
       _STATE_READER._services = []
+      _STATE_READER._init_error = "fallback stub" 
   return _STATE_READER
 
 
