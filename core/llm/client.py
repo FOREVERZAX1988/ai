@@ -7,7 +7,7 @@ Streams content, reasoning_content, tool_calls, and usage.
 
 import json
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any, AsyncIterator, Literal
 
 import aiohttp
@@ -65,6 +65,7 @@ class AIConfig:
   max_tokens: int = 4096
   thinking_enabled: bool = True
   thinking_keep: str = ""
+  stream: bool = True
 
   @property
   def endpoint(self) -> str:
@@ -150,6 +151,7 @@ def load_config_from_params(params: Any) -> AIConfig:
       max_tokens=_param_to_int(read_param(params, "ai_max_tokens"), 4096),
       thinking_enabled=_param_to_bool(read_param(params, "ai_thinking_enabled"), True),
       thinking_keep=_param_to_str(read_param(params, "ai_thinking_keep")),
+      stream=_param_to_bool(read_param(params, "ai_stream"), True),
     )
   except Exception as e:
     import warnings
@@ -318,7 +320,7 @@ def _build_payload(
   payload: dict[str, Any] = {
     "model": config.model,
     "messages": _sanitize_messages(config, msgs),
-    "stream": True,
+    "stream": config.stream,
   }
 
   if tools:
@@ -343,6 +345,23 @@ def _build_payload(
   _apply_thinking_payload(payload, config, thinking_mode)
 
   return payload
+
+
+def _extract_non_stream_delta(data: dict[str, Any]) -> ChatChunk:
+  """Extract a ChatChunk from a non-streaming chat completion response."""
+  chunk = ChatChunk()
+  choices = data.get("choices", [])
+  if not choices:
+    chunk.usage = data.get("usage")
+    return chunk
+  choice = choices[0]
+  msg = choice.get("message", {}) or {}
+  chunk.reasoning_content = msg.get("reasoning_content") or ""
+  chunk.content = msg.get("content") or ""
+  if msg.get("tool_calls"):
+    chunk.tool_calls = msg["tool_calls"]
+  chunk.usage = choice.get("usage") or data.get("usage")
+  return chunk
 
 
 def _extract_delta(data: dict[str, Any]) -> ChatChunk:
@@ -404,6 +423,23 @@ async def _stream_chat_completion(
   payload = _build_payload(config, messages, tools, temperature, max_tokens, thinking_mode=thinking_mode)
 
   timeout = aiohttp.ClientTimeout(total=timeout_total, connect=15)
+  if not config.stream:
+    # 非流式：一次性请求并解析完整 JSON，规避 SSE 分块在部分网关/代理下
+    # 传输不完整（TransferEncodingError / Response payload is not completed）的问题。
+    try:
+      async with aiohttp.ClientSession(timeout=timeout) as session:
+        async with session.post(url, headers=headers, json=payload) as resp:
+          if resp.status != 200:
+            text = await resp.text()
+            yield ChatChunk(error=f"API error {resp.status}: {text[:500]}")
+            return
+          data = await resp.json()
+          yield _extract_non_stream_delta(data)
+    except aiohttp.ClientError as e:
+      yield ChatChunk(error=f"Network error: {e}")
+    except Exception as e:
+      yield ChatChunk(error=f"Unexpected error: {e}")
+    return
   try:
     async with aiohttp.ClientSession(timeout=timeout) as session:
       async with session.post(url, headers=headers, json=payload) as resp:
@@ -536,6 +572,7 @@ def merge_config_from_body(saved: AIConfig, body: dict[str, Any] | None) -> AICo
     max_tokens=saved.max_tokens,
     thinking_enabled=saved.thinking_enabled,
     thinking_keep=saved.thinking_keep,
+    stream=body.get("stream") if isinstance(body.get("stream"), bool) else saved.stream,
   )
 
 
@@ -609,4 +646,50 @@ async def test_connection(config: AIConfig) -> dict[str, Any]:
     "model_available": found,
     "models_count": len(models),
     "message": "Connection OK" if found else f"Connected but model '{config.model}' not found in available models.",
+  }
+
+
+async def probe_stream_support(config: AIConfig) -> dict[str, Any]:
+  """用最小请求分别以 stream=True / stream=False 探测端点，返回可用性与推荐值。
+
+  用于「流式响应 (Stream)」开关的自动探测：方舟/部分网关对 SSE 分块支持不完整时，
+  流式请求会报 "Response payload is not completed: TransferEncodingError"，
+  此时应推荐关闭 Stream（非流式请求不会走 SSE 分块）。
+  """
+  import time
+
+  messages = [{"role": "user", "content": "ping"}]
+  results: dict[str, dict[str, Any]] = {}
+  for label, use_stream in (("stream", True), ("nonStream", False)):
+    probe_cfg = replace(config, stream=use_stream)
+    t0 = time.monotonic()
+    try:
+      _, _, error = await chat_completion_collect(
+        probe_cfg, messages, max_tokens=8, timeout_total=30,
+      )
+      latency_ms = int((time.monotonic() - t0) * 1000)
+      results[label] = {"ok": not error, "latencyMs": latency_ms, "error": error}
+    except Exception as e:  # noqa: BLE001
+      results[label] = {"ok": False, "latencyMs": None, "error": str(e)}
+
+  s = results.get("stream", {})
+  ns = results.get("nonStream", {})
+  if s.get("ok") and ns.get("ok"):
+    recommendation, reason = "stream", "两种模式均可用；流式首字延迟更低、交互更流畅，建议保持开启。"
+  elif not s.get("ok") and ns.get("ok"):
+    recommendation, reason = (
+      "nonStream",
+      "流式响应失败（常见于代理/网关对 SSE 分块处理不完整，典型报错 TransferEncodingError / "
+      "Response payload is not completed）；非流式正常，建议关闭 Stream。",
+    )
+  elif s.get("ok") and not ns.get("ok"):
+    recommendation, reason = "stream", "非流式失败而流式正常，建议保持开启 Stream。"
+  else:
+    recommendation, reason = None, "两种模式均失败，请先检查网络连接、API 密钥与服务商状态。"
+
+  return {
+    "ok": True,
+    "results": results,
+    "recommendation": recommendation,
+    "reason": reason,
   }

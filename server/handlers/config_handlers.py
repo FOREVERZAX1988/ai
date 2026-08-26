@@ -135,6 +135,7 @@ async def api_get_config(request: web.Request) -> web.Response:
       "maxTokens": config.max_tokens,
       "thinkingEnabled": config.thinking_enabled,
       "thinkingKeep": config.thinking_keep,
+      "stream": config.stream,
       "timezone": read_ai_timezone_name(_PARAMS),
       "configured": config.is_configured,
       "configureError": config.configuration_error,
@@ -222,6 +223,7 @@ async def api_post_config(request: web.Request) -> web.Response:
     _put("ai_wiki_max_files_per_repo", body.get("wikiMaxFilesPerRepo"))
     _put("ai_thinking_enabled", body.get("thinkingEnabled"))
     _put("ai_thinking_keep", body.get("thinkingKeep"))
+    _put("ai_stream", body.get("stream"))
     tz = body.get("timezone")
     if tz is not None and str(tz).strip():
       _put("ai_timezone", str(tz).strip())
@@ -419,3 +421,31 @@ async def api_onboarding_complete(request: web.Request) -> web.Response:
     })
   except Exception as e:
     return _json_response({"ok": False, "error": str(e)}, status=500)
+
+
+async def api_probe_stream(request: web.Request) -> web.Response:
+  """用当前配置分别以 stream=True / stream=False 发送最小请求，返回推荐值。
+
+  用途：模型配置页「流式响应 (Stream)」开关的自动探测——当代理/网关对 SSE
+  分块支持不完整时，流式请求报 TransferEncodingError，应推荐关闭 Stream。
+  """
+  try:
+    saved = _read_ai_config()
+    body = None
+    if request.method == "POST":
+      try:
+        body = await request.json()
+      except json.JSONDecodeError:
+        return _json_response({"ok": False, "error": "Invalid JSON body."}, status=400)
+    config, account_id = _resolve_hub_account_config(saved, body)
+    if config is None:
+      return _json_response({"ok": False, "error": "账户不存在，请先保存账户或重新填写 API 密钥"}, status=404)
+    if not config.api_key:
+      return _json_response({"ok": False, "error": "请填写 API 密钥"}, status=400)
+
+    from ai.core.llm.client import probe_stream_support
+    result = await probe_stream_support(config)
+    return _json_response(result)
+  except Exception as e:
+    cloudlog.error(f"aid: api_probe_stream error: {e}")
+    return _json_response({"ok": False, "error": f"Internal error: {e}"}, status=500)

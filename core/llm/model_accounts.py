@@ -315,6 +315,7 @@ def account_to_config(account: dict[str, Any], model: str, *, base: AIConfig | N
     max_tokens=base.max_tokens,
     thinking_enabled=base.thinking_enabled,
     thinking_keep=base.thinking_keep,
+    stream=base.stream,
   )
 
 

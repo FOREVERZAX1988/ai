@@ -5088,6 +5088,7 @@ function getConfigPayload() {
     evolutionCandidates: parseInt(els.evolutionCandidatesInput?.value, 10) || 3,
     thinkingEnabled: els.thinkingToggle.checked,
     thinkingKeep: '',
+    stream: !!els.streamToggle?.checked,
     timezone: els.timezoneSelect?.value || 'Asia/Shanghai',
     modelHub: getModelHubPayload(),
     modelFallbacks: typeof FallbackModels !== 'undefined' ? FallbackModels.getRows() : [],
@@ -5206,6 +5207,81 @@ function bindConfigPersistence() {
     const evt = field.tagName === 'SELECT' || field.type === 'checkbox' ? 'change' : 'input';
     field.addEventListener(evt, () => scheduleEmbeddingSave());
   }
+  if (els.streamToggle) {
+    els.streamToggle.addEventListener('change', async () => {
+      const value = !!els.streamToggle.checked;
+      configSaveState = 'dirty';
+      try {
+        const { data } = await api('POST', '/api/ai/config', { stream: value });
+        if (data?.ok) {
+          savedConfig = { ...savedConfig, stream: value };
+          configSaveState = 'saved';
+          LocalPrefs.clearConfigDraft();
+          showToast(value ? 'Stream 已开启' : 'Stream 已关闭', 'success');
+        } else {
+          showToast(data?.error || '保存失败', 'error');
+          els.streamToggle.checked = savedConfig?.stream !== false;
+        }
+      } catch (e) {
+        showToast(String(e?.message || e), 'error');
+        els.streamToggle.checked = savedConfig?.stream !== false;
+      }
+    });
+  }
+  if (els.probeStreamBtn) {
+    els.probeStreamBtn.addEventListener('click', () => runProbeStream());
+  }
+}
+
+async function runProbeStream() {
+  const btn = els.probeStreamBtn;
+  const out = els.probeStreamResult;
+  if (!btn || btn.disabled) return;
+  btn.disabled = true;
+  const original = btn.textContent;
+  btn.textContent = '探测中…';
+  if (out) out.textContent = '';
+  try {
+    const { data } = await api('POST', '/api/ai/probe_stream', null, { timeoutMs: 90000 });
+    if (!data?.ok) {
+      if (out) out.textContent = data?.error || '探测失败';
+      return;
+    }
+    const r = data.results || {};
+    const s = r.stream || {};
+    const ns = r.nonStream || {};
+    const fmt = (x) => x.ok
+      ? `✓ ${x.latencyMs ?? '?'}ms`
+      : `✗ ${String(x.error || '失败').slice(0, 100)}`;
+    const recMap = { stream: '开启', nonStream: '关闭' };
+    // 探测实际使用模型中心主路由模型；从 savedConfig 还原展示，避免歧义
+    const hub = savedConfig?.modelHub && typeof savedConfig.modelHub === 'object' ? savedConfig.modelHub : {};
+    const primary = hub.primary || {};
+    const acc = (hub.accounts || []).find((a) => a.id === primary.accountId);
+    const testedTxt = primary.model
+      ? `测试模型: ${acc?.label || acc?.provider || savedConfig?.provider || '?'} / ${primary.model}`
+      : '';
+    const lines = [
+      testedTxt,
+      `Stream: ${fmt(s)}`,
+      `非流式: ${fmt(ns)}`,
+      `推荐：${recMap[data.recommendation] || '无法判断'} — ${data.reason || ''}`,
+    ];
+    if (out) out.textContent = lines.join(' ｜ ');
+    if (data.recommendation === 'nonStream' || data.recommendation === 'stream') {
+      const target = data.recommendation === 'stream';
+      if (els.streamToggle && els.streamToggle.checked !== target) {
+        els.streamToggle.checked = target;
+        els.streamToggle.dispatchEvent(new Event('change'));
+      }
+      if (out) out.textContent += '（已按推荐设置，可手动调整）';
+    }
+  } catch (e) {
+    if (out) out.textContent = String(e?.message || e);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = original;
+  }
 }
 
 function reconcileConfigDraft(serverConfig) {
@@ -5213,7 +5289,7 @@ function reconcileConfigDraft(serverConfig) {
   if (!draft || !serverConfig) return false;
   const keys = [
     'provider', 'model', 'baseUrl', 'systemPrompt',
-    'thinkingEnabled', 'embeddingMode', 'embeddingProvider', 'embeddingModel', 'embeddingBaseUrl',
+    'thinkingEnabled', 'stream', 'embeddingMode', 'embeddingProvider', 'embeddingModel', 'embeddingBaseUrl',
   ];
   const differs = keys.some((k) => {
     const d = draft[k];
@@ -5444,6 +5520,7 @@ function applyConfigToForm(c) {
   if (els.ragSearchLimitInput) els.ragSearchLimitInput.value = c.ragSearchLimit ?? 20;
   if (els.evolutionCandidatesInput) els.evolutionCandidatesInput.value = c.evolutionCandidates ?? 3;
   els.thinkingToggle.checked = !!c.thinkingEnabled;
+  if (els.streamToggle) els.streamToggle.checked = c.stream !== false;
   if (els.timezoneSelect) {
     renderTimezoneSelect(c.timezone || 'Asia/Shanghai');
   }

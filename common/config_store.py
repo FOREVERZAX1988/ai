@@ -18,6 +18,7 @@ _EXTRA_DEFAULTS: dict[str, dict[str, str]] = {
   "ai_embedding_usage_log": {"param_type": "STRING", "default": ""},
   "ai_param_watchlist": {"param_type": "STRING", "default": ""},
   "ai_param_watchlist_baseline": {"param_type": "STRING", "default": ""},
+  "ai_stream": {"param_type": "STRING", "default": "1"},
 }
 
 _LEGACY_GITHUB_PAT_PARAM = "GithubActionsPat"

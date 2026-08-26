@@ -435,6 +435,20 @@
             <label class="field hidden" id="baseUrlField"><input type="text" id="baseUrlInput"></label>
           </div>
 
+          <section class="settings-card settings-card-compact" id="streamSection">
+            <header class="settings-card-head">
+              <h3 class="settings-card-title" id="streamSectionTitle">流式响应 (Stream)</h3>
+            </header>
+            <div class="settings-card-body">
+              <label class="field switch-row"><span id="streamLabel">启用流式响应</span><label class="switch"><input type="checkbox" id="streamToggle" checked><span class="slider"></span></label></label>
+              <p class="field-hint" id="streamHint">流式响应边生成边显示，首字延迟更低；若出现 “Response payload is not completed / TransferEncodingError” 报错，说明当前服务商或网关对 SSE 分块支持不完整，建议关闭 Stream。</p>
+              <div class="field-row">
+                <button type="button" id="probeStreamBtn" class="btn ghost small">自动探测推荐值</button>
+                <span class="field-hint" id="probeStreamResult"></span>
+              </div>
+            </div>
+          </section>
+
           <section class="settings-card settings-card-compact" id="usageSection">
             <header class="settings-card-head settings-card-head-row">
               <div>
