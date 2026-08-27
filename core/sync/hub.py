@@ -157,17 +157,25 @@ async def notify_chat_event(
 
 
 async def notify_chat_status(job_id: str, session_id: str, job: dict[str, Any]) -> None:
-  await HUB.broadcast({
+  # chat_status schema: error/resolvedModel/assistant 均非 required 且类型为
+  # string/object —— None 值会触发 ws schema validation 失败（
+  # "expected string" 刷屏），导致状态消息被拒发、前端报 Unexpected error。
+  # 因此 None 字段不放入消息，仅发送有值的字段。
+  msg: dict[str, Any] = {
     "type": "chat_status",
     "jobId": job_id,
     "sessionId": session_id,
     "status": job.get("status"),
-    "assistant": job.get("assistant"),
-    "error": job.get("error"),
-    "resolvedModel": job.get("resolvedModel"),
     "nextSince": job.get("eventSeq"),
     "runId": job_id,
-  })
+  }
+  if job.get("assistant") is not None:
+    msg["assistant"] = job["assistant"]
+  if job.get("error") is not None:
+    msg["error"] = str(job["error"])
+  if job.get("resolvedModel") is not None:
+    msg["resolvedModel"] = str(job["resolvedModel"])
+  await HUB.broadcast(msg)
 
 
 async def broadcast_office() -> None:
