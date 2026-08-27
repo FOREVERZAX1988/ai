@@ -212,6 +212,9 @@ const ModelHub = (() => {
         ? t('modelHubThinkingOff', '直出')
         : t('modelHubThinkingOn', '思考'));
     }
+    if (row.stream === false) {
+      badges.push(t('modelHubNonStream', '非流式'));
+    }
     return {
       model: row.model,
       provider: accountDisplayName(acc),
@@ -406,6 +409,17 @@ const ModelHub = (() => {
             </label>
           </label>
           <p class="field-hint model-hub-route-thinking-hint" id="modelHubRouteThinkingHint">${escapeHtml(t('modelHubThinkingHint', '思考模型可开启深度推理；非思考模型可忽略此项。'))}</p>
+          <label class="field switch-row model-hub-route-stream-row" id="modelHubRouteStreamRow">
+            <span class="field-label">${escapeHtml(t('modelHubStream', '流式响应 (Stream)'))}</span>
+            <label class="switch">
+              <input type="checkbox" id="modelHubRouteStream" checked>
+              <span class="slider"></span>
+            </label>
+          </label>
+          <div class="field-row model-hub-route-stream-row" id="modelHubRouteStreamProbeRow">
+            <button type="button" class="btn small ghost" id="modelHubRouteProbeStream">${escapeHtml(t('probeStream', '自动探测推荐值'))}</button>
+            <span class="field-hint" id="modelHubRouteStreamResult"></span>
+          </div>
           </div>
           <p class="field-hint">${escapeHtml(t('modelHubRouteModalHint', '留空或 0 表示使用内置默认值。'))}</p>
           <p class="model-hub-status hidden pending" id="modelHubRouteStatus"></p>
@@ -431,6 +445,7 @@ const ModelHub = (() => {
       syncRouteModalThinkingVisibility();
     });
     el.querySelector('#modelHubRouteThinking')?.addEventListener('change', syncRouteModalThinkingVisibility);
+    el.querySelector('#modelHubRouteProbeStream')?.addEventListener('click', () => probeRouteStreamFromModal());
     routeModal = el;
     return el;
   }
@@ -469,6 +484,8 @@ const ModelHub = (() => {
     routeModal.querySelector('.model-hub-route-advanced-fields')?.classList.toggle('hidden', isEmbed);
     routeModal.querySelector('.model-hub-route-thinking-row')?.classList.toggle('hidden', isEmbed);
     routeModal.querySelector('.model-hub-route-thinking-hint')?.classList.toggle('hidden', isEmbed);
+    routeModal.querySelector('#modelHubRouteStreamRow')?.classList.toggle('hidden', isEmbed);
+    routeModal.querySelector('#modelHubRouteStreamProbeRow')?.classList.toggle('hidden', isEmbed);
 
     routeModal.querySelector('.model-hub-route-label-field')?.classList.remove('hidden');
 
@@ -499,6 +516,12 @@ const ModelHub = (() => {
         ? row.thinkingEnabled !== false
         : (isThinkingModel(row.model) ? true : defaultThinkingEnabled);
     }
+    const streamEl = routeModal.querySelector('#modelHubRouteStream');
+    if (streamEl) {
+      streamEl.checked = row.stream !== undefined ? !!row.stream : defaultStream;
+    }
+    const streamResult = routeModal.querySelector('#modelHubRouteStreamResult');
+    if (streamResult) streamResult.textContent = '';
 
     routeModal.hidden = false;
     routeModal.classList.add('is-open');
@@ -509,6 +532,38 @@ const ModelHub = (() => {
     if (!routeModal) return;
     routeModal.hidden = true;
     routeModal.classList.remove('is-open');
+  }
+
+  async function probeRouteStreamFromModal() {
+    if (!routeModal) return;
+    const btn = routeModal.querySelector('#modelHubRouteProbeStream');
+    const out = routeModal.querySelector('#modelHubRouteStreamResult');
+    const check = routeModal.querySelector('#modelHubRouteStream');
+    if (btn) btn.disabled = true;
+    if (out) out.textContent = '';
+    setRouteModalBusy(true, t('modelHubProbing', '探测中…'));
+    try {
+      const row = readRouteModal();
+      if (!row.accountId || !row.model) {
+        if (out) out.textContent = t('modelHubProbeNeedModel', '请先选择账户和模型');
+        return;
+      }
+      const { data } = await apiFn('POST', '/api/ai/probe_stream', { accountId: row.accountId, model: row.model }, { timeoutMs: 90000 });
+      if (!data?.ok) {
+        if (out) out.textContent = data?.error || t('modelHubProbeFailed', '探测失败');
+        return;
+      }
+      const r = data.results || {};
+      const s2 = r.stream || {};
+      const ns = r.nonStream || {};
+      const fmt = (x) => (x?.ok ? `✓ ${x.latencyMs ?? '?'}ms` : `✗ ${String(x?.error || '失败').slice(0, 80)}`);
+      const rec = data.recommendation;
+      if (check) check.checked = rec !== 'nonStream';
+      if (out) out.textContent = `Stream: ${fmt(s2)} | 非流式: ${fmt(ns)} → ${rec === 'nonStream' ? t('modelHubStreamRecOff', '建议关闭') : t('modelHubStreamRecOn', '建议开启')}（已自动设置）`;
+    } finally {
+      setRouteModalBusy(false, '');
+      if (btn) btn.disabled = false;
+    }
   }
 
   function readRouteModal() {
@@ -529,6 +584,7 @@ const ModelHub = (() => {
     const topPRaw = routeModal.querySelector('#modelHubRouteTopP')?.value;
     if (topPRaw !== '' && topPRaw != null) row.topP = parseFloat(topPRaw);
     row.thinkingEnabled = !!routeModal.querySelector('#modelHubRouteThinking')?.checked;
+    row.stream = !!routeModal.querySelector('#modelHubRouteStream')?.checked;
     return row;
   }
 
@@ -591,17 +647,7 @@ const ModelHub = (() => {
               <span class="slider"></span>
             </label>
           </label>
-          <label class="field switch-row model-hub-account-stream-row">
-            <span class="field-label">${escapeHtml(t('modelHubStream', '流式响应 (Stream)'))}</span>
-            <label class="switch">
-              <input type="checkbox" id="modelHubAccountStream" checked>
-              <span class="slider"></span>
-            </label>
-          </label>
-          <div class="field-row model-hub-account-stream-row">
-            <button type="button" class="btn small ghost" id="modelHubAccountProbeStream">${escapeHtml(t('probeStream', '自动探测推荐值'))}</button>
-            <span class="field-hint" id="modelHubAccountStreamResult"></span>
-          </div>
+
           <label class="field">
             <span class="field-label">${escapeHtml(t('modelHubLabelPh', '备注名'))}</span>
             <input type="text" id="modelHubAccountLabel" placeholder="${escapeAttr(t('modelHubLabelPlaceholder', '可选，如：公司账号'))}">
@@ -656,7 +702,6 @@ const ModelHub = (() => {
     });
     el.querySelector('#modelHubAccountTest')?.addEventListener('click', () => testAccountFromModal());
     el.querySelector('#modelHubAccountFetch')?.addEventListener('click', () => fetchAccountModelsFromModal());
-    el.querySelector('#modelHubAccountProbeStream')?.addEventListener('click', () => probeAccountStreamFromModal());
     PasswordField.bind(el);
     accountModal = el;
     return el;
@@ -740,7 +785,6 @@ const ModelHub = (() => {
       || ''
     ).trim();
     accountModalDraft.enabled = !!accountModal.querySelector('#modelHubAccountEnabled')?.checked;
-    accountModalDraft.stream = !!accountModal.querySelector('#modelHubAccountStream')?.checked;
   }
 
   function openAccountModal(opts = {}) {
@@ -772,12 +816,6 @@ const ModelHub = (() => {
     accountModal.querySelector('#modelHubAccountBaseUrl').value = accountModalDraft.baseUrl || '';
     accountModal.querySelector('#modelHubAccountBaseUrlAdv').value = accountModalDraft.baseUrl || '';
     accountModal.querySelector('#modelHubAccountEnabled').checked = accountModalDraft.enabled !== false;
-    const streamCheck = accountModal.querySelector('#modelHubAccountStream');
-    if (streamCheck) {
-      streamCheck.checked = accountModalDraft.stream === undefined ? defaultStream : !!accountModalDraft.stream;
-    }
-    const streamResult = accountModal.querySelector('#modelHubAccountStreamResult');
-    if (streamResult) streamResult.textContent = '';
     updateAccountModalUrlFields();
     renderAccountModalPool();
     showAccountModalStatus('', null);
@@ -794,33 +832,6 @@ const ModelHub = (() => {
     accountModalDraft = null;
   }
 
-  async function probeAccountStreamFromModal() {
-    if (!accountModal || !accountModalDraft) return;
-    syncAccountModalDraftFromForm();
-    const btn = accountModal.querySelector('#modelHubAccountProbeStream');
-    const out = accountModal.querySelector('#modelHubAccountStreamResult');
-    const check = accountModal.querySelector('#modelHubAccountStream');
-    if (btn) btn.disabled = true;
-    if (out) out.textContent = '';
-    setAccountModalBusy(true, t('modelHubProbing', '探测中…'));
-    try {
-      const { data } = await apiFn('POST', '/api/ai/probe_stream', { accountId: accountModalDraft.id }, { timeoutMs: 90000 });
-      if (!data?.ok) {
-        if (out) out.textContent = data?.error || t('modelHubProbeFailed', '探测失败');
-        return;
-      }
-      const r = data.results || {};
-      const s = r.stream || {};
-      const ns = r.nonStream || {};
-      const fmt = (x) => (x?.ok ? `✓ ${x.latencyMs ?? '?'}ms` : `✗ ${String(x?.error || '失败').slice(0, 80)}`);
-      const rec = data.recommendation;
-      if (check) check.checked = rec !== 'nonStream';
-      if (out) out.textContent = `Stream: ${fmt(s)} | 非流式: ${fmt(ns)} → ${rec === 'nonStream' ? t('modelHubStreamRecOff', '建议关闭') : t('modelHubStreamRecOn', '建议开启')}（已自动设置）`;
-    } finally {
-      setAccountModalBusy(false, '');
-      if (btn) btn.disabled = false;
-    }
-  }
 
   function accountRequestPayload(acc, { omitAccountId = false } = {}) {
     const payload = {
@@ -1091,7 +1102,7 @@ const ModelHub = (() => {
         <span class="mh-account-dot${hasKey ? ' ok' : ''}" title="${escapeAttr(hasKey ? t('modelHubKeySet', '已配置 Key') : t('modelHubKeyMissing', '未配置 Key'))}"></span>
         <div class="mh-account-body">
           <div class="mh-account-name">${escapeHtml(accountDisplayName(acc))}</div>
-          <div class="mh-account-meta">${modelCount ? t('modelHubModelCount', '{n} 个模型', { n: modelCount }) : escapeHtml(t('modelHubPoolEmptyShort', '未拉取'))}${acc.stream === false ? ` · ${escapeHtml(t('modelHubNonStream', '非流式'))}` : ''}${acc.enabled === false ? ` · ${escapeHtml(t('modelHubDisabled', '已禁用'))}` : ''}</div>
+          <div class="mh-account-meta">${modelCount ? t('modelHubModelCount', '{n} 个模型', { n: modelCount }) : escapeHtml(t('modelHubPoolEmptyShort', '未拉取'))}${acc.enabled === false ? ` · ${escapeHtml(t('modelHubDisabled', '已禁用'))}` : ''}</div>
           ${preview ? `<div class="mh-account-preview" title="${escapeAttr(pool.join(', '))}">${escapeHtml(preview)}</div>` : ''}
         </div>
         <div class="mh-account-actions">

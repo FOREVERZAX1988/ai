@@ -38,7 +38,8 @@ def _resolve_hub_account_config(
   """Resolve model-hub test/fetch config; fall back to inline credentials if account id is stale."""
   account_id = _body_account_id(body)
   if account_id:
-    cfg = account_config_by_id(_PARAMS, account_id)
+    body_model = str((body or {}).get("model") or "").strip()
+    cfg = account_config_by_id(_PARAMS, account_id, model=body_model) if body_model else account_config_by_id(_PARAMS, account_id)
     if cfg:
       return _ensure_probe_model(cfg), account_id
     if _has_inline_hub_credentials(body):

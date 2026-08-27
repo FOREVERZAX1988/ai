@@ -354,6 +354,11 @@ def route_to_config(
   if "thinkingEnabled" in route or "thinking_enabled" in route:
     raw_think = route.get("thinkingEnabled", route.get("thinking_enabled"))
     cfg.thinking_enabled = raw_think is not False and str(raw_think).lower() not in ("0", "false", "no", "off")
+  # 2026-08-27: 路由级 stream 优先（模型粒度）；未设置时 account_to_config 已回退账号/全局
+  if "stream" in route:
+    raw_stream = route.get("stream")
+    if raw_stream is not None:
+      cfg.stream = raw_stream is not False and str(raw_stream).lower() not in ("0", "false", "no", "off")
   return cfg
 
 
@@ -395,6 +400,11 @@ def _sanitize_route(item: dict[str, Any], existing: dict[str, Any] | None = None
   elif "thinkingEnabled" in prev or "thinking_enabled" in prev:
     raw_think = prev.get("thinkingEnabled", prev.get("thinking_enabled"))
     row["thinkingEnabled"] = raw_think is not False and str(raw_think).lower() not in ("0", "false", "no", "off")
+  # 2026-08-27: 路由级流式开关（模型粒度；None=未设置，跟随账号→全局）
+  if "stream" in item or "stream" in prev:
+    raw_stream = item.get("stream") if "stream" in item else prev.get("stream")
+    if raw_stream is not None:
+      row["stream"] = raw_stream is not False and str(raw_stream).lower() not in ("0", "false", "no", "off")
   return row
 
 
@@ -773,6 +783,23 @@ def account_config_by_id(params: Params, account_id: str) -> AIConfig | None:
   primary = hub.get("primary") if isinstance(hub.get("primary"), dict) else None
   if primary and str(primary.get("accountId")) == account_id:
     model = str(primary.get("model") or "")
+  if not model and acc.get("models"):
+    model = str(acc["models"][0])
+  base = load_config_from_params(params)
+  return account_to_config(acc, model, base=base)
+
+
+def _account_config_by_id_model(params: Params, account_id: str, model: str = "") -> AIConfig | None:
+  """account_config_by_id 支持显式 model（probe 用精确模型测量）。"""
+  hub = load_model_hub(params)
+  acc = _account_map(hub).get(account_id)
+  if not acc:
+    return None
+  model = str(model or "").strip()
+  if not model:
+    primary = hub.get("primary") if isinstance(hub.get("primary"), dict) else None
+    if primary and str(primary.get("accountId")) == account_id:
+      model = str(primary.get("model") or "")
   if not model and acc.get("models"):
     model = str(acc["models"][0])
   base = load_config_from_params(params)
