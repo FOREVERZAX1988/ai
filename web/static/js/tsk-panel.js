@@ -157,18 +157,31 @@ const TskPanel = (() => {
     }
   }
 
-  async function fetchJson(url) {
-    const res = await fetchWithTimeout(url, { cache: 'no-store' });
+  // Long-running operations (panda flash, firmware build) need a much larger
+  // timeout than the 15s default. Pass an explicit `timeoutMs` per call site
+  // when invoking `postJson` / `fetchJson` to avoid spurious AbortErrors.
+  const FETCH_TIMEOUT_MS_DEFAULT = 15000;
+  const FETCH_TIMEOUT_MS_FLASH = 5 * 60 * 1000; // 5 min — full F4/H7 flash + verify
+  const FETCH_TIMEOUT_MS_BUILD = 10 * 60 * 1000; // 10 min — scons can be slow on first run
+
+  async function fetchJson(url, opts = {}) {
+    const timeoutMs = opts.timeoutMs ?? FETCH_TIMEOUT_MS_DEFAULT;
+    const res = await fetchWithTimeout(url, { cache: 'no-store' }, timeoutMs);
     return readJsonResponse(res);
   }
 
-  async function postJson(url, payload = {}) {
-    const res = await fetchWithTimeout(url, {
-      method: 'POST',
-      cache: 'no-store',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
+  async function postJson(url, payload = {}, opts = {}) {
+    const timeoutMs = opts.timeoutMs ?? FETCH_TIMEOUT_MS_DEFAULT;
+    const res = await fetchWithTimeout(
+      url,
+      {
+        method: 'POST',
+        cache: 'no-store',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      },
+      timeoutMs,
+    );
     const result = await readJsonResponse(res);
     return { response: res, result };
   }
@@ -757,7 +770,11 @@ const TskPanel = (() => {
             let flashOk = false;
             let resultBody = '';
             try {
-              const { response, result } = await postJson('/api/panda/flash', { confirm: true, all: true });
+              const { response, result } = await postJson(
+                '/api/panda/flash',
+                { confirm: true, all: true },
+                { timeoutMs: 5 * 60 * 1000 },
+              );
               if (response.status === 403 || result.onroad) {
                 resultBody = result.error || t('pandaFlashOffroadBody', '当前 onroad，请在 offroad 下刷写。');
                 logLine(resultBody, 'err');
