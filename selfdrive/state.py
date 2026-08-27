@@ -634,6 +634,7 @@ class StateReader:
               data["pandaStates"].append({
                 "ignitionLine": _safe_bool(p, "ignitionLine"),
                 "ignitionCan": _safe_bool(p, "ignitionCan"),
+                "carHarnessStatus": _safe_int(p, "carHarnessStatus"),
                 "controlsAllowed": _safe_bool(p, "controlsAllowed"),
                 "safetyModel": _safe_str(p, "safetyModel"),
                 "faultStatus": _safe_str(p, "faultStatus"),
