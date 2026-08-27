@@ -774,23 +774,8 @@ def update_account_models(
   return hub_for_api(params, mask_keys=False)
 
 
-def account_config_by_id(params: Params, account_id: str) -> AIConfig | None:
-  hub = load_model_hub(params)
-  acc = _account_map(hub).get(account_id)
-  if not acc:
-    return None
-  model = ""
-  primary = hub.get("primary") if isinstance(hub.get("primary"), dict) else None
-  if primary and str(primary.get("accountId")) == account_id:
-    model = str(primary.get("model") or "")
-  if not model and acc.get("models"):
-    model = str(acc["models"][0])
-  base = load_config_from_params(params)
-  return account_to_config(acc, model, base=base)
-
-
-def _account_config_by_id_model(params: Params, account_id: str, model: str = "") -> AIConfig | None:
-  """account_config_by_id 支持显式 model（probe 用精确模型测量）。"""
+def account_config_by_id(params: Params, account_id: str, *, model: str = "") -> AIConfig | None:
+  """按账号构造 AIConfig；model 显式传入时优先（probe 用精确模型测量），否则回退主路由/账号第一个模型。"""
   hub = load_model_hub(params)
   acc = _account_map(hub).get(account_id)
   if not acc:
