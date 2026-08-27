@@ -456,7 +456,11 @@ const ChatJobs = (() => {
     } else if (status === 'done' || status === 'error') {
       const hasContent = deps.assistantMessageHasContent?.(assistant) || status === 'error';
       if (hasContent) {
-        if (visible && ctx?.ui) {
+        if (status === 'done' && deps.mergeContinueMessage?.(sessionId, assistant)) {
+          // 2026-08-27: 续写内容已合并回原消息——清理流式 UI，重渲染显示完整消息
+          if (visible && ctx?.ui?.wrapper) ctx.ui.wrapper.remove();
+          deps.renderStoredMessages?.({ force: true, forceScroll: true });
+        } else if (visible && ctx?.ui) {
           deps.finishAssistant?.(ctx.ui, assistant, sessionId);
           if (assistant.interrupted) {
             // 2026-08-27: 中断后立即重渲染，显示「继续生成」按钮

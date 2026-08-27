@@ -149,6 +149,7 @@ function initChatJobs() {
     finishAssistant,
     endChatStream,
     commitAssistantMessage,
+    mergeContinueMessage,
     savePartialAssistant,
     renderStoredMessages,
     formatApiError,
@@ -266,6 +267,7 @@ const OP_COMMA_LOGO_SVG = `<svg viewBox="0 0 24 42" fill="none" xmlns="http://ww
 let pendingImages = [];
 let pendingFileRefs = [];
 let editingUserMsgIdx = null;
+let pendingContinueMerge = null;  // 2026-08-27: 续写自动合并目标 {sessionId, idx}
 let cabanaOpen = false;
 let secocOpen = false;
 let cabanaInited = false;
@@ -3294,10 +3296,29 @@ async function continueInterruptedMessage(assistantIdx) {
   const continuePrompt = t('continuePrompt',
     '你上一条回复因网络中断被截断。请从中断处直接继续输出剩余内容：保持格式、语言与编号连贯，不要重复任何已输出的内容，也不要复述本条指令。');
   const messages = history.slice(0, assistantIdx + 1).concat([{ role: 'user', content: continuePrompt }]);
-  saveCurrentMessages(messages);
-  renderStoredMessages();
-  syncSessionsToDevice().catch(() => {});
+  // 2026-08-27: 续写自动合并——指令消息不存历史（仅发给模型），完成时内容并回原消息
+  pendingContinueMerge = { sessionId: SessionStore.activeId, idx: assistantIdx };
   await streamAssistantResponse(messages);
+}
+
+// 2026-08-27: 续写完成 → 把续写内容合并回原中断消息（历史只留一条完整消息）
+function mergeContinueMessage(sessionId, assistant) {
+  if (!pendingContinueMerge || pendingContinueMerge.sessionId !== sessionId) return false;
+  const hasTools = (assistant.tool_calls || []).length > 0;
+  if (hasTools) { pendingContinueMerge = null; return false; }  // 有工具调用不合并，保持独立消息
+  const history = getCurrentMessages();
+  const target = history[pendingContinueMerge.idx];
+  if (!target || target.role !== 'assistant') { pendingContinueMerge = null; return false; }
+  const add = String(assistant.content || '').trim();
+  if (!add) { pendingContinueMerge = null; return false; }
+  const prev = String(target.content || '');
+  target.content = prev + (prev ? '\n\n' : '') + add;
+  delete target.interrupted;
+  delete target.partialError;
+  saveCurrentMessages(history);
+  syncSessionsToDevice().catch(() => {});
+  pendingContinueMerge = null;
+  return true;
 }
 
 function finalizeAssistantTurn(ui, msgIdx) {
