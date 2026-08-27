@@ -149,7 +149,11 @@ AI_PROVIDER_MODEL_CATALOG = {
     "Qwen/Qwen3-Embedding-8B",
     "Qwen/Qwen2-VL-Embedding",
   ],
-  "custom": [],
+  "custom": [
+    # 火山方舟 Plan/Agent 端点（/api/plan/v3）不支持 GET /models 列表，
+    # 此处静态列出当前账号已开通的 plan 模型（实测 ark-code-latest 可用）。
+    "ark-code-latest",
+  ],
 }
 
 # Embedding-only providers (separate from chat providers).

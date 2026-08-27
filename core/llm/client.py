@@ -594,6 +594,14 @@ async def list_models(config: AIConfig) -> dict[str, Any]:
       return {"ok": True, "models": catalog, "source": "catalog"}
     return {"ok": False, "error": err, "models": []}
 
+  # Plan/Agent 端点（如火山方舟 /api/plan/v3）不提供 GET /models 列表接口：
+  # 实测空响应/超时。直接回退静态目录，避免 30s 超时等待。
+  if "/plan/" in (config.endpoint or ""):
+    catalog = _catalog_models(config.provider)
+    if catalog:
+      return {"ok": True, "models": catalog, "source": "catalog"}
+    return {"ok": False, "error": "Plan endpoint does not expose model list.", "models": []}
+
   url = f"{config.endpoint}/models"
   headers = {"Authorization": f"Bearer {config.api_key}"}
   timeout = aiohttp.ClientTimeout(total=30, connect=10)
