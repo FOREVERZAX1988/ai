@@ -3117,7 +3117,7 @@ function createMessageActionBtn(action, label) {
   return btn;
 }
 
-function createMessageActionsBar(role) {
+function createMessageActionsBar(role, msg = null) {
   const bar = document.createElement('div');
   bar.className = 'message-actions-bar';
   bar.dataset.role = role;
@@ -3133,6 +3133,10 @@ function createMessageActionsBar(role) {
     left.appendChild(createMessageActionBtn('like', t('feedbackUp', 'Good response')));
     left.appendChild(createMessageActionBtn('dislike', t('feedbackDown', 'Bad response')));
     left.appendChild(createMessageActionBtn('speak', t('speakMessage', 'Read aloud')));
+    if (msg?.interrupted) {
+      // 2026-08-27: 中断消息显示「继续生成」
+      left.appendChild(createMessageActionBtn('continue', t('continueGen', '继续生成')));
+    }
     left.appendChild(createMessageActionBtn('regenerate', t('regenerate', 'Regenerate')));
     bar.appendChild(left);
     return bar;
@@ -3238,6 +3242,30 @@ async function regenerateAssistantMessage(assistantIdx) {
   renderStoredMessages();
   syncSessionsToDevice().catch(() => {});
   await streamAssistantResponse(truncated);
+}
+
+// 2026-08-27: 从断点续写中断的消息（保留已生成部分，不重新推算）
+async function continueInterruptedMessage(assistantIdx) {
+  if (isChatUiLocked()) {
+    showToast(t('regenerateWhileStreaming', 'Wait for the reply to finish'), 'warning');
+    return;
+  }
+  const history = getCurrentMessages();
+  const msg = history[assistantIdx];
+  if (!msg || msg.role !== 'assistant') return;
+  const partial = String(msg.content || '').trim();
+  if (!partial) {
+    await regenerateAssistantMessage(assistantIdx);
+    return;
+  }
+  stopMessageSpeech();
+  const continuePrompt = t('continuePrompt',
+    '你上一条回复因网络中断被截断。请从中断处直接继续输出剩余内容：保持格式、语言与编号连贯，不要重复任何已输出的内容，也不要复述本条指令。');
+  const messages = history.slice(0, assistantIdx + 1).concat([{ role: 'user', content: continuePrompt }]);
+  saveCurrentMessages(messages);
+  renderStoredMessages();
+  syncSessionsToDevice().catch(() => {});
+  await streamAssistantResponse(messages);
 }
 
 function finalizeAssistantTurn(ui, msgIdx) {
@@ -7962,6 +7990,16 @@ function renderAssistantFromHistory(msg) {
   } else if (!msg.tool_calls?.length) {
     ui.content.textContent = t('noResponse', 'No response');
   }
+  if (msg.interrupted) {
+    // 2026-08-27: 中断消息 → 提示条 + 「继续生成」按钮
+    const note = document.createElement('div');
+    note.className = 'chat-interrupt-note';
+    note.style.cssText = 'font-size:12px;opacity:.65;margin-top:6px;';
+    note.textContent = t('interruptedNote', '⚠️ 上次生成中断，已保留以上内容');
+    ui.content.appendChild(note);
+    ui.actionsBar?.querySelector('.message-actions-left')?.appendChild(
+      createMessageActionBtn('continue', t('continueGen', '继续生成')));
+  }
   ui.actionsBar?.classList.remove('is-pending');
   setMessageModelTag(ui, msg.resolvedModel);
   renderMessageFooter(ui, { usage: msg.usage, resolvedModel: msg.resolvedModel });
@@ -8133,6 +8171,13 @@ function bindMessageActions() {
 
     if (action === 'speak') {
       speakMessageFromTurn(turn, btn);
+      return;
+    }
+
+    if (action === 'continue') {
+      // 2026-08-27: 中断消息从断点续写
+      if (!Number.isFinite(msgIdx) || msgIdx < 0) return;
+      continueInterruptedMessage(msgIdx);
       return;
     }
 
