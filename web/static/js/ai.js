@@ -1610,6 +1610,18 @@ async function copyTextToClipboard(text) {
   return ok;
 }
 
+// 2026-08-27: 消息完整性判定——有结束标志(finished)或后续有 user 消息=完整；
+// 无标志且无后续（含空消息/中断/最后一条）=未完成，提供「继续生成」
+function messageLooksComplete(msg, nextMsg) {
+  if (!msg || msg.role !== 'assistant') return true;
+  if (msg.finished === true) return true;
+  if (msg.interrupted || msg.finished === false) return false;
+  const hasContent = String(msg.content || '').trim().length > 0 || (msg.tool_calls || []).length > 0;
+  if (!hasContent) return false;  // 空消息（模型未输出）→ 未完成
+  if (nextMsg && nextMsg.role === 'user') return true;  // 旧消息：后面有 user → 完整
+  return false;  // 最后一条无结束标志 → 判定未完成（用户可继续）
+}
+
 function assistantMessageHasContent(msg) {
   if (!msg) return false;
   const text = stripLeakedToolCalls(messageText(msg.content) || (typeof msg.content === 'string' ? msg.content : ''));
@@ -3293,8 +3305,11 @@ async function continueInterruptedMessage(assistantIdx) {
     return;
   }
   stopMessageSpeech();
-  const continuePrompt = t('continuePrompt',
-    '你上一条回复因网络中断被截断。请从中断处直接继续输出剩余内容：保持格式、语言与编号连贯，不要重复任何已输出的内容，也不要复述本条指令。');
+  const continuePrompt = msg.interrupted
+    ? t('continuePrompt',
+      '你上一条回复因网络中断被截断。请从中断处直接继续输出剩余内容：保持格式、语言与编号连贯，不要重复任何已输出的内容，也不要复述本条指令。')
+    : t('continuePromptFull',
+      '用户认为你上一条回复没有写完。请直接继续补充：完善细节、展开未完成的部分，保持语言和格式一致，不要重复已输出的内容。');
   const messages = history.slice(0, assistantIdx + 1).concat([{ role: 'user', content: continuePrompt }]);
   // 2026-08-27: 续写自动合并——指令消息不存历史（仅发给模型），完成时内容并回原消息
   pendingContinueMerge = { sessionId: SessionStore.activeId, idx: assistantIdx };
@@ -8015,7 +8030,7 @@ async function onChatPaste(e) {
   await addImageFiles(files);
 }
 
-function renderAssistantFromHistory(msg) {
+function renderAssistantFromHistory(msg, opts = {}) {
   const ui = appendAssistantMessage({ withLoading: false });
   if (msg.reasoning_content) {
     ui.thinking.classList.remove('hidden');
@@ -8043,12 +8058,14 @@ function renderAssistantFromHistory(msg) {
   } else if (!msg.tool_calls?.length) {
     ui.content.textContent = t('noResponse', 'No response');
   }
-  if (msg.interrupted) {
-    // 2026-08-27: 中断消息 → 提示条 + 「继续生成」按钮
+  if (!opts.isComplete) {
+    // 2026-08-27: 未检测到完成标志 → 判定未完成，提供「继续生成」
     const note = document.createElement('div');
     note.className = 'chat-interrupt-note';
     note.style.cssText = 'font-size:12px;opacity:.65;margin-top:6px;';
-    note.textContent = t('interruptedNote', '⚠️ 上次生成中断，已保留以上内容');
+    note.textContent = msg.interrupted
+      ? t('interruptedNote', '⚠️ 上次生成中断，已保留以上内容')
+      : t('incompleteNote', '⚠️ 回复未完成，可点「继续生成」');
     ui.content.appendChild(note);
     ui.actionsBar?.querySelector('.message-actions-left')?.appendChild(
       createMessageActionBtn('continue', t('continueGen', '继续生成')));
@@ -8132,7 +8149,7 @@ function renderStoredMessages(opts = {}) {
       }
     } else if (msg.role === 'assistant') {
       if (!assistantMessageHasContent(msg)) continue;
-      const turn = renderAssistantFromHistory(msg);
+      const turn = renderAssistantFromHistory(msg, { isComplete: messageLooksComplete(msg, history[i + 1]) });
       if (turn) {
         turn.dataset.msgIdx = String(i);
         MessageFeedback.updateButtons(turn, msg);

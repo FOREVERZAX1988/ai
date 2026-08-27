@@ -434,6 +434,8 @@ const ChatJobs = (() => {
       ...(payload.assistant || ctx?.assistantMessage || {}),
     });
     if (payload.resolvedModel) assistant.resolvedModel = payload.resolvedModel;
+    // 2026-08-27: 结束标志（后端 done 已设；此处兜底）
+    if (status === 'done') assistant.finished = true;
 
     if (status === 'error') {
       if (assistant.interrupted) {

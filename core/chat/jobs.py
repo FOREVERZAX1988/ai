@@ -189,6 +189,8 @@ async def start_chat_job(
             j["error"] = str(result.get("error") or "Chat failed")
           else:
             j["status"] = "done"
+            # 2026-08-27: 结束标志——前端据此判定消息完整（无标志=未完成，提供「继续生成」）
+            j["assistant"]["finished"] = True
           j["resolvedModel"] = result.get("resolvedModel")
           j["updatedAt"] = int(time.time())
         try:
