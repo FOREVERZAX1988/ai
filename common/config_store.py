@@ -70,7 +70,10 @@ class AiConfigStore:
     self._path = path or ai_config_path()
     self._schema = _build_schema()
     self._data: dict[str, str] | None = None
-    self._lock = threading.Lock()
+    # 2026-08-27: 必须 RLock——put/remove 在锁内调 _ensure_loaded（_data 为 None 时
+    # 内部再次加锁），普通 Lock 不可重入 → 进程首个操作是 put 时死锁
+    # （复现：重装后首次导入 opbak → restore 第一个 put 永久挂起 → 前端报错）
+    self._lock = threading.RLock()
     self._migrated = False
     self._save_timer: threading.Timer | None = None
     self._save_thread: threading.Thread | None = None
