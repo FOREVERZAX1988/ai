@@ -110,7 +110,9 @@ class AiConfigStore:
       with os.fdopen(fd, "w", encoding="utf-8") as f:
         f.write(payload)
         f.flush()
-        os.fsync(f.fileno())
+        # 2026-08-27：去掉 os.fsync——emmc 上对 5MB 级配置做 fsync 是秒级阻塞，
+        # 会卡死 aiohttp 事件循环（aid 无响应）。原子 rename 已保证文件完整性，
+        # 配置类数据极端断电丢失可接受。
       os.replace(tmp, self._path)
       try:
         os.chmod(self._path, 0o600)

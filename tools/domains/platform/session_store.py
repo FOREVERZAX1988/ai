@@ -14,6 +14,9 @@ from ai.common.storage import read_param, write_param
 SESSIONS_KEY = "ai_web_sessions"
 MAX_SESSIONS = 50
 MAX_MESSAGES_PER_SESSION = 200
+# 2026-08-27：体积上限（防 web_sessions 膨胀→config.json 全量写盘秒级阻塞→aid 卡死）
+MAX_SESSION_PAYLOAD_BYTES = 1_500_000  # 单 session 序列化上限 ~1.5MB
+MAX_MSG_CHARS = 100_000  # 单条消息 content 字符上限（保留首尾）
 _SESSION_WRITE_LOCK = threading.Lock()
 _STATE_VERSION = 0
 _LOAD_CACHE: tuple[int, dict[str, Any]] | None = None
@@ -206,6 +209,27 @@ def save_sessions(params: Params, payload: dict[str, Any]) -> dict[str, Any]:
       if sid and sid in seen_ids:
         continue
       msgs = (s.get("messages") or [])[-MAX_MESSAGES_PER_SESSION:]
+      # 体积截断：从最新消息往前保留，直到序列化预算耗尽（防单条消息巨大导致的膨胀）
+      budget = MAX_SESSION_PAYLOAD_BYTES
+      kept: list[dict[str, Any]] = []
+      for m in reversed(msgs):
+        try:
+          cost = len(json.dumps(m, ensure_ascii=False))
+        except Exception:
+          cost = 0
+        if budget - cost < 0:
+          break
+        budget -= cost
+        kept.append(m)
+      msgs = list(reversed(kept))
+      # 单条超长消息截断 content（保留首尾，工具输出/记忆注入经常超大）
+      for m in msgs:
+        if not isinstance(m, dict):
+          continue
+        c = m.get("content")
+        if isinstance(c, str) and len(c) > MAX_MSG_CHARS:
+          half = MAX_MSG_CHARS // 2
+          m["content"] = c[:half] + f"\n...[truncated {len(c) - MAX_MSG_CHARS} chars]...\n" + c[-half:]
       if not msgs:
         continue
       updated_at = s.get("updatedAt")
