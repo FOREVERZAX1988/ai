@@ -45,6 +45,7 @@ const ComposerContextMeter = (() => {
   let listEl = null;
   let footerEl = null;
   let compactBtn = null;
+  let exportBtn = null;
   let refreshTimer = null;
   let panelOpen = false;
 
@@ -408,6 +409,13 @@ const ComposerContextMeter = (() => {
       setPanelOpen(false);
       deps.onCompact?.();
     });
+    exportBtn?.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (exportBtn.disabled) return;
+      setPanelOpen(false);
+      deps.onExport?.();
+    });
   }
 
   function mount(selector, options = {}) {
@@ -425,6 +433,7 @@ const ComposerContextMeter = (() => {
     listEl = root.querySelector('.composer-context-list');
     footerEl = root.querySelector('.composer-context-panel-footer');
     compactBtn = root.querySelector('.composer-context-compact-btn');
+    exportBtn = root.querySelector('.composer-context-export-btn');
     bindEvents();
     render();
   }

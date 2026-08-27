@@ -3154,6 +3154,37 @@ function getMessageTurnContentEl(turn) {
     || turn.querySelector('.message-text');
 }
 
+// 2026-08-27: 导出当前会话为 Markdown（换窗口前备份记录，不丢任务线）
+function exportSessionMarkdown() {
+  const history = getCurrentMessages();
+  if (!history.length) {
+    showToast(t('exportEmpty', '没有可导出的内容'), 'warning');
+    return;
+  }
+  const lines = [`# 会话导出 ${new Date().toISOString().slice(0, 16)}`, ''];
+  for (const m of history) {
+    if (m.role === 'user') {
+      const txt = messageText(m.content) || '';
+      if (txt) lines.push('## 👤 用户', '', txt, '');
+    } else if (m.role === 'assistant') {
+      const txt = messageText(m.content) || '';
+      const hasTools = (m.tool_calls || []).length > 0;
+      if (txt) lines.push('## 🤖 助手', '', txt, '');
+      else if (hasTools) lines.push('## 🤖 助手', '', '[工具调用]', '');
+    }
+  }
+  const blob = new Blob([lines.join('\n')], { type: 'text/markdown;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `session-${new Date().toISOString().slice(0, 10)}.md`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+  showToast(t('exportDone', '会话已导出'), 'ok');
+}
+
 function getMessageTurnCopyText(turn) {
   const el = getMessageTurnContentEl(turn);
   const domText = el?.innerText?.trim() || el?.textContent?.trim() || '';
@@ -8538,6 +8569,7 @@ async function init() {
       tf,
       isBusy: () => isSessionStreaming(SessionStore.activeId),
       onCompact: () => { runManualCompact().catch(() => {}); },
+      onExport: exportSessionMarkdown,
     });
   }
   if (typeof SessionSearch !== 'undefined') {

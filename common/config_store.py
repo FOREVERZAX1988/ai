@@ -65,6 +65,7 @@ class AiConfigStore:
     self._data: dict[str, str] | None = None
     self._lock = threading.Lock()
     self._migrated = False
+    self._save_timer: threading.Timer | None = None
 
   @property
   def path(self) -> Path:
@@ -226,8 +227,36 @@ class AiConfigStore:
       self._data = data
       return data
 
+  def _schedule_save(self) -> None:
+    """2026-08-27: 去抖异步写盘——事件循环零阻塞。
+
+    长窗口时 config.json 达 5MB，同步全量写（json.dumps+原子替换）会卡死
+    aiohttp 事件循环（用户反馈"窗口大了问问题无响应"）。改为 300ms 去抖 +
+    后台线程写最新快照；多次 put 合并为一次写。内存读取始终最新。
+    """
+    with self._lock:
+      if self._save_timer is not None:
+        self._save_timer.cancel()
+      timer = threading.Timer(0.3, self._flush_save)
+      timer.daemon = True
+      self._save_timer = timer
+    timer.start()
+
+  def _flush_save(self) -> None:
+    try:
+      with self._lock:
+        data = dict(self._data or {})
+        self._save_timer = None
+      if data:
+        self._save_disk(data)
+    except Exception:
+      pass
+
   def reload(self) -> None:
     with self._lock:
+      if self._save_timer is not None:
+        self._save_timer.cancel()
+        self._save_timer = None
       self._data = None
       self._migrated = False
 
@@ -268,7 +297,7 @@ class AiConfigStore:
       data = dict(self._ensure_loaded())
       data[key] = text
       self._data = data
-      self._save_disk(data)
+    self._schedule_save()
 
   def put_bool(self, key: str, value: bool) -> None:
     self.put(key, value)
@@ -281,7 +310,7 @@ class AiConfigStore:
       if key in data:
         del data[key]
       self._data = data
-      self._save_disk(data)
+    self._schedule_save()
 
   def all_keys(self) -> list[str]:
     data = self._ensure_loaded()

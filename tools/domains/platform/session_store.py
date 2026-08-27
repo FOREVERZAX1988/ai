@@ -230,6 +230,21 @@ def save_sessions(params: Params, payload: dict[str, Any]) -> dict[str, Any]:
         if isinstance(c, str) and len(c) > MAX_MSG_CHARS:
           half = MAX_MSG_CHARS // 2
           m["content"] = c[:half] + f"\n...[truncated {len(c) - MAX_MSG_CHARS} chars]...\n" + c[-half:]
+      # 2026-08-27: 非最近消息的 tool_results 预览化（工具输出是体积大头，
+      # 预览化后窗口能容纳更多消息；对话文本完整保留，换窗口重开不丢主线索）
+      recent_from = max(0, len(msgs) - 12)
+      for i, m in enumerate(msgs):
+        if not isinstance(m, dict) or i < recent_from:
+          continue
+        tr = m.get("tool_results")
+        if not isinstance(tr, dict):
+          continue
+        for k, v in list(tr.items()):
+          if v is None:
+            continue
+          sv = v if isinstance(v, str) else json.dumps(v, ensure_ascii=False)
+          if len(sv) > 800:
+            tr[k] = sv[:800] + "\n…[truncated]"
       if not msgs:
         continue
       updated_at = s.get("updatedAt")
