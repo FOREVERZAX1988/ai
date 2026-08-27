@@ -15,9 +15,73 @@ const ModelHub = (() => {
   ];
   const MODEL_PARAM_DEFAULT_HINT = { temperature: 0.7, topP: 1.0, note: '通用建议（OpenAI 兼容惯例）' };
 
+  // 2026-08-27: OpenRouter 公共模型库（免 key，含官方默认参数 temperature/top_p）。
+  // 数据源：https://openrouter.ai/api/v1/models（机器可读，265/417 模型带 default_parameters）
+  const OR_PARAMS_CACHE_KEY = 'op_openrouter_params_v1';
+  const OR_CACHE_TTL = 7 * 24 * 3600 * 1000;
+  let openRouterCache = null;
+
+  function normalizeModelId(id) {
+    return String(id || '').toLowerCase()
+      .replace(/^[^/]+\//, '')            // 去 org 前缀: deepseek/deepseek-v4-pro -> deepseek-v4-pro
+      .replace(/^~/, '')                     // 去 ~ 前缀
+      .replace(/:(free|batch|offline|private)$/, '')  // 去变体后缀
+      .replace(/-\d{6,8}$/, '')            // 去日期后缀 -20260420
+      .replace(/-\d{4}$/, '')              // 去版本号 -0731
+      .replace(/-latest$/, '')
+      .trim();
+  }
+
+  async function fetchOpenRouterParams(force = false) {
+    let cached = null;
+    try { cached = JSON.parse(localStorage.getItem(OR_PARAMS_CACHE_KEY) || 'null'); } catch (e) { cached = null; }
+    const now = Date.now();
+    if (!force && cached && cached.fetchedAt && (now - cached.fetchedAt) < OR_CACHE_TTL) {
+      openRouterCache = cached;
+      return cached;
+    }
+    try {
+      const res = await fetch('https://openrouter.ai/api/v1/models', { headers: { Accept: 'application/json' } });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const json = await res.json();
+      const data = (json.data || []).filter((m) => m && m.id && m.default_parameters);
+      openRouterCache = { fetchedAt: now, data };
+      try { localStorage.setItem(OR_PARAMS_CACHE_KEY, JSON.stringify(openRouterCache)); } catch (e) { /* 存储满则忽略 */ }
+    } catch (e) {
+      openRouterCache = cached || { fetchedAt: 0, data: [] };
+    }
+    return openRouterCache;
+  }
+
+  function findOpenRouterHint(model) {
+    const cache = openRouterCache || { data: [] };
+    const want = normalizeModelId(model);
+    if (!want) return null;
+    let exact = null;
+    let prefix = null;
+    for (const m of cache.data) {
+      const orId = normalizeModelId(m.id);
+      if (!orId) continue;
+      if (orId === want) { exact = m; break; }
+      if (!prefix && (orId.startsWith(want) || want.startsWith(orId))) prefix = m;
+    }
+    const hit = exact || prefix;
+    if (!hit) return null;
+    const dp = hit.default_parameters || {};
+    const temp = (dp.temperature != null && dp.temperature !== '') ? Number(dp.temperature) : null;
+    const topP = (dp.top_p != null && dp.top_p !== '') ? Number(dp.top_p) : null;
+    if (temp == null && topP == null) return null;
+    const hint = { note: 'OpenRouter 收录：' + hit.id };
+    if (temp != null) hint.temperature = temp;
+    if (topP != null) hint.topP = topP;
+    return hint;
+  }
+
   function modelParamHint(model) {
     const name = String(model || '');
     if (!name.trim()) return null;
+    const or = findOpenRouterHint(name);
+    if (or) return or;
     for (const h of MODEL_PARAM_HINTS) {
       if (h.match.test(name)) return h;
     }
@@ -36,10 +100,19 @@ const ModelHub = (() => {
       row.classList.add('hidden');
       return;
     }
-    text.textContent = `推荐：Temperature ${hint.temperature} · Top P ${hint.topP}（${hint.note}；若该服务商对缺省参数报错，填入后即可使用）`;
+    const parts = [];
+    if (hint.temperature != null) parts.push('Temperature ' + hint.temperature);
+    if (hint.topP != null) parts.push('Top P ' + hint.topP);
+    if (!parts.length) {
+      row.classList.add('hidden');
+      return;
+    }
+    text.textContent = '推荐：' + parts.join(' · ') + '（' + hint.note + '；若该服务商对缺省参数报错，填入后即可使用）';
     row.classList.remove('hidden');
-    if (applyBtn) applyBtn.dataset.temp = String(hint.temperature);
-    if (applyBtn) applyBtn.dataset.topp = String(hint.topP);
+    if (applyBtn) {
+      applyBtn.dataset.temp = hint.temperature != null ? String(hint.temperature) : '';
+      applyBtn.dataset.topp = hint.topP != null ? String(hint.topP) : '';
+    }
   }
 
   let root = null;
@@ -442,6 +515,7 @@ const ModelHub = (() => {
           <p class="field-hint hidden" id="modelHubRouteParamHint">
             <span id="modelHubRouteParamHintText"></span>
             <button type="button" class="btn link small" id="modelHubRouteParamApply">填入</button>
+            <button type="button" class="btn link small" id="modelHubRouteParamRefresh" title="从 OpenRouter 更新参数库（7 天自动过期）">刷新库</button>
           </p>
           <label class="field switch-row model-hub-route-thinking-row" id="modelHubRouteThinkingRow">
             <span class="field-label">${escapeHtml(t('thinking', '思考模式'))}</span>
@@ -493,6 +567,14 @@ const ModelHub = (() => {
       if (!btn) return;
       if (btn.dataset.temp) routeModal.querySelector('#modelHubRouteTemp').value = btn.dataset.temp;
       if (btn.dataset.topp) routeModal.querySelector('#modelHubRouteTopP').value = btn.dataset.topp;
+    });
+    // 手动刷新 OpenRouter 参数库（网络失败时静默，不影响使用）
+    el.querySelector('#modelHubRouteParamRefresh')?.addEventListener('click', async () => {
+      const btn = routeModal?.querySelector('#modelHubRouteParamRefresh');
+      if (btn) btn.disabled = true;
+      await fetchOpenRouterParams(true);
+      updateRouteModalParamHint();
+      if (btn) btn.disabled = false;
     });
     routeModal = el;
     return el;
@@ -572,6 +654,8 @@ const ModelHub = (() => {
     }
     const streamResult = routeModal.querySelector('#modelHubRouteStreamResult');
     if (streamResult) streamResult.textContent = '';
+
+    fetchOpenRouterParams().then(() => updateRouteModalParamHint());
 
     routeModal.hidden = false;
     routeModal.classList.add('is-open');
