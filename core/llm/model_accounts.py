@@ -89,6 +89,12 @@ def _sanitize_account(item: dict[str, Any], *, existing: dict[str, Any] | None =
       out["modelsFetchedAt"] = int(fetched)
     except (TypeError, ValueError):
       pass
+  # 2026-08-27: 账号级流式开关（None=未设置，跟随全局 ai_stream）
+  stream = item.get("stream")
+  if stream is None and existing:
+    stream = existing.get("stream")
+  if stream is not None:
+    out["stream"] = bool(stream)
   return out
 
 
@@ -304,6 +310,9 @@ def _account_map(hub: dict[str, Any]) -> dict[str, dict[str, Any]]:
 
 def account_to_config(account: dict[str, Any], model: str, *, base: AIConfig | None = None) -> AIConfig:
   base = base or AIConfig(provider="opencode-zen", model="", api_key="")
+  # 2026-08-27: 账号级 stream 优先；未设置（None）时跟随全局 base.stream
+  acc_stream = account.get("stream")
+  stream = base.stream if acc_stream is None else bool(acc_stream)
   return AIConfig(
     provider=str(account.get("provider") or base.provider),
     model=str(model or "").strip(),
@@ -315,7 +324,7 @@ def account_to_config(account: dict[str, Any], model: str, *, base: AIConfig | N
     max_tokens=base.max_tokens,
     thinking_enabled=base.thinking_enabled,
     thinking_keep=base.thinking_keep,
-    stream=base.stream,
+    stream=stream,
   )
 
 
@@ -766,7 +775,8 @@ def account_config_by_id(params: Params, account_id: str) -> AIConfig | None:
     model = str(primary.get("model") or "")
   if not model and acc.get("models"):
     model = str(acc["models"][0])
-  return account_to_config(acc, model)
+  base = load_config_from_params(params)
+  return account_to_config(acc, model, base=base)
 
 
 def provider_needs_base_url(provider: str) -> bool:

@@ -4897,6 +4897,7 @@ function initModelCombos() {
       onSaveHub: saveModelHubToServer,
       initial: savedConfig?.modelHub,
       defaultThinkingEnabled: savedConfig?.thinkingEnabled !== false,
+      defaultStream: !!savedConfig?.stream,
     });
   } else if (typeof FallbackModels !== 'undefined') {
     FallbackModels.mount('#fallbackModelsRoot', {
