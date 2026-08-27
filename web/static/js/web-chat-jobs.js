@@ -275,10 +275,25 @@ const ChatJobs = (() => {
     if (visible) deps.handleAgentStreamEvent?.(data, ctx);
 
     if (data.type === 'error') {
-      assistantMessage.content = deps.formatApiError(data.error);
-      if (visible && ui?.content) {
-        deps.hideAssistantLoading?.(ui);
-        ui.content.textContent = assistantMessage.content;
+      const partialRaw = (ctx.rawContent || '').trim();
+      if (partialRaw) {
+        // 2026-08-27: 保留已生成部分内容并标记中断（不再覆盖为错误文本）
+        assistantMessage.content = typeof deps.stripLeakedToolCalls === 'function'
+          ? deps.stripLeakedToolCalls(ctx.rawContent)
+          : ctx.rawContent;
+        assistantMessage.interrupted = true;
+        assistantMessage.partialError = data.error || '';
+        if (visible && ui?.content) {
+          deps.hideAssistantLoading?.(ui);
+          if (ctx.thinkingStarted) deps.setDetailsCollapsed?.(ui.thinking, true);
+          scheduleMarkdownRender(ui, assistantMessage.content, ctx);
+        }
+      } else {
+        assistantMessage.content = deps.formatApiError(data.error);
+        if (visible && ui?.content) {
+          deps.hideAssistantLoading?.(ui);
+          ui.content.textContent = assistantMessage.content;
+        }
       }
       return 'error';
     }
@@ -421,7 +436,12 @@ const ChatJobs = (() => {
     if (payload.resolvedModel) assistant.resolvedModel = payload.resolvedModel;
 
     if (status === 'error') {
-      assistant.content = deps.formatApiError(payload.error || assistant.content || 'Error');
+      if (assistant.interrupted) {
+        // 2026-08-27: 已生成部分内容被保留，仅记录错误详情
+        assistant.partialError = payload.error || assistant.partialError || '';
+      } else {
+        assistant.content = deps.formatApiError(payload.error || assistant.content || 'Error');
+      }
     }
 
     if (status === 'cancelled') {
@@ -473,7 +493,11 @@ const ChatJobs = (() => {
       });
       if (payload.resolvedModel) assistant.resolvedModel = payload.resolvedModel;
       if (status === 'error') {
-        assistant.content = deps.formatApiError(payload.error || assistant.content || 'Error');
+        if (assistant.interrupted) {
+          assistant.partialError = payload.error || assistant.partialError || '';
+        } else {
+          assistant.content = deps.formatApiError(payload.error || assistant.content || 'Error');
+        }
       }
       if (deps.assistantMessageHasContent?.(assistant)) {
         deps.commitAssistantMessage?.(sessionId, assistant);

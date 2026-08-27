@@ -55,7 +55,14 @@ def _apply_event_to_assistant(assistant: dict[str, Any], event: dict[str, Any]) 
     results = assistant.setdefault("tool_results", {})
     results[event.get("id", "")] = event.get("result")
   elif et == "error":
-    assistant["content"] = event.get("error") or assistant.get("content") or ""
+    err_text = str(event.get("error") or "")
+    prev = assistant.get("content") or ""
+    if prev.strip():
+      # 2026-08-27: 保留已生成部分内容并标记中断（不再用错误文本覆盖）
+      assistant["interrupted"] = True
+      assistant["partial_error"] = err_text
+    else:
+      assistant["content"] = err_text
 
 
 def _prune_old_jobs() -> None:
