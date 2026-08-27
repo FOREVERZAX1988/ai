@@ -620,6 +620,8 @@ const ChatJobs = (() => {
       try {
         const { data } = await deps.api('GET', `/api/ai/chat/jobs/${encodeURIComponent(jobId)}?since=${since}`);
         if (!data?.ok) {
+          // 2026-08-27: job 丢失/过期——保留已生成的部分内容为中断消息（不再丢弃）
+          finalizeInterruptedByPoll(jobId, sessionId, ctx, String(data?.error || '回复中断：任务已丢失'));
           if (deps.SessionStore?.getActiveJobId(sessionId) === jobId) {
             deps.SessionStore?.clearActiveJobId(sessionId);
             if (deps.SessionStore?.activeId === sessionId) deps.endChatStream?.(sessionId);
@@ -627,6 +629,7 @@ const ChatJobs = (() => {
           finished = true;
           contexts.delete(jobId);
           deps.renderSessionList?.();
+          deps.updateComposerSendBtn?.();
           return;
         }
 
@@ -656,12 +659,38 @@ const ChatJobs = (() => {
         ctx.pollTimer = setTimeout(tick, pollDelayMs());
       } catch {
         if (!finished && !ctxCancelled(ctx)) {
+          ctx.pollFails = (ctx.pollFails || 0) + 1;
+          if (ctx.pollFails >= 5 && (ctx.rawContent || '').trim()) {
+            // 2026-08-27: 网络/服务连续异常 → 保留部分内容为中断消息（可继续生成）
+            finalizeInterruptedByPoll(jobId, sessionId, ctx, '回复中断：网络或服务连续异常');
+            finished = true;
+            contexts.delete(jobId);
+            deps.renderSessionList?.();
+            deps.updateComposerSendBtn?.();
+            return;
+          }
           ctx.pollTimer = setTimeout(tick, pollDelayMs());
         }
       }
     };
 
     tick();
+  }
+
+  // 2026-08-27: 轮询中断（job丢失/网络断）→ 保留已生成部分内容为中断消息
+  function finalizeInterruptedByPoll(jobId, sessionId, ctx, reason) {
+    const partial = (ctx.rawContent || '').trim();
+    if (!partial) return;
+    const assistant = deps.normalizeStoredMessage({
+      role: 'assistant',
+      ...(ctx.assistantMessage || {}),
+    });
+    assistant.interrupted = true;
+    assistant.partialError = reason || '回复中断';
+    deps.commitAssistantMessage?.(sessionId, assistant);
+    if (deps.SessionStore?.activeId === sessionId) {
+      deps.renderStoredMessages?.({ force: true });
+    }
   }
 
   async function stream(messages) {
