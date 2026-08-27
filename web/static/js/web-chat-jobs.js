@@ -448,13 +448,20 @@ const ChatJobs = (() => {
       if (visible && ctx?.ui?.wrapper?.isConnected && !deps.assistantMessageHasContent?.(assistant)) {
         ctx.ui.wrapper.remove();
       } else if (deps.assistantMessageHasContent?.(assistant)) {
+        // 2026-08-27: 手动停止同样视为中断（保留内容，可「继续生成」）
+        assistant.interrupted = true;
         deps.commitAssistantMessage?.(sessionId, assistant);
+        if (visible) deps.renderStoredMessages?.({ force: true });
       }
     } else if (status === 'done' || status === 'error') {
       const hasContent = deps.assistantMessageHasContent?.(assistant) || status === 'error';
       if (hasContent) {
         if (visible && ctx?.ui) {
           deps.finishAssistant?.(ctx.ui, assistant, sessionId);
+          if (assistant.interrupted) {
+            // 2026-08-27: 中断后立即重渲染，显示「继续生成」按钮
+            deps.renderStoredMessages?.({ force: true });
+          }
         } else {
           deps.commitAssistantMessage?.(sessionId, assistant);
         }
