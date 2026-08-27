@@ -4,6 +4,44 @@
 const ModelHub = (() => {
   const OPTIONAL_BASE_URL = new Set(['qwen', 'minimax', 'mimo', 'bigmodel']);
 
+  // 2026-08-27: 模型参数惯例推荐表（来源=各系列公开文档/API 惯例，非官方承诺值；
+  // /models 接口实测不返回元数据，故用系列匹配。若服务商强制校验缺省参数，可一键填入后测试）
+  const MODEL_PARAM_HINTS = [
+    { match: /deepseek/i, temperature: 1.0, topP: 1.0, note: 'DeepSeek 官方默认（temp 范围 0-2，top_p 默认 1.0）' },
+    { match: /qwen/i, temperature: 0.7, topP: 0.8, note: '通义 Qwen 系列惯例（temp 0.7 / top_p 0.8）' },
+    { match: /glm/i, temperature: 0.9, topP: 1.0, note: '智谱 GLM 系列惯例（temp 0.9 / top_p 1.0）' },
+    { match: /kimi|moonshot/i, temperature: 0.3, topP: 0.5, note: 'Kimi 官方默认（temp 0.3 / top_p 0.5）' },
+    { match: /minimax/i, temperature: 0.8, topP: 1.0, note: 'MiniMax 系列惯例（temp 0.8 / top_p 1.0）' },
+  ];
+  const MODEL_PARAM_DEFAULT_HINT = { temperature: 0.7, topP: 1.0, note: '通用建议（OpenAI 兼容惯例）' };
+
+  function modelParamHint(model) {
+    const name = String(model || '');
+    if (!name.trim()) return null;
+    for (const h of MODEL_PARAM_HINTS) {
+      if (h.match.test(name)) return h;
+    }
+    return MODEL_PARAM_DEFAULT_HINT;
+  }
+
+  function updateRouteModalParamHint() {
+    if (!routeModal) return;
+    const model = routeModalCombo?.getValue?.() || '';
+    const row = routeModal.querySelector('#modelHubRouteParamHint');
+    const text = routeModal.querySelector('#modelHubRouteParamHintText');
+    const applyBtn = routeModal.querySelector('#modelHubRouteParamApply');
+    if (!row || !text) return;
+    const hint = modelParamHint(model);
+    if (!hint || !model.trim()) {
+      row.classList.add('hidden');
+      return;
+    }
+    text.textContent = `推荐：Temperature ${hint.temperature} · Top P ${hint.topP}（${hint.note}；若该服务商对缺省参数报错，填入后即可使用）`;
+    row.classList.remove('hidden');
+    if (applyBtn) applyBtn.dataset.temp = String(hint.temperature);
+    if (applyBtn) applyBtn.dataset.topp = String(hint.topP);
+  }
+
   let root = null;
   let hub = { version: 2, accounts: [], primary: null, fallbacks: [], embeddingPrimary: null, embeddingFallbacks: [] };
   let providers = [];
@@ -401,6 +439,10 @@ const ModelHub = (() => {
               <input type="number" id="modelHubRouteTopP" min="0" max="1" step="0.05" placeholder="${escapeAttr(t('modelHubUseDefault', '默认'))}">
             </label>
           </div>
+          <p class="field-hint hidden" id="modelHubRouteParamHint">
+            <span id="modelHubRouteParamHintText"></span>
+            <button type="button" class="btn link small" id="modelHubRouteParamApply">填入</button>
+          </p>
           <label class="field switch-row model-hub-route-thinking-row" id="modelHubRouteThinkingRow">
             <span class="field-label">${escapeHtml(t('thinking', '思考模式'))}</span>
             <label class="switch">
@@ -446,6 +488,12 @@ const ModelHub = (() => {
     });
     el.querySelector('#modelHubRouteThinking')?.addEventListener('change', syncRouteModalThinkingVisibility);
     el.querySelector('#modelHubRouteProbeStream')?.addEventListener('click', () => probeRouteStreamFromModal());
+    el.querySelector('#modelHubRouteParamApply')?.addEventListener('click', () => {
+      const btn = routeModal?.querySelector('#modelHubRouteParamApply');
+      if (!btn) return;
+      if (btn.dataset.temp) routeModal.querySelector('#modelHubRouteTemp').value = btn.dataset.temp;
+      if (btn.dataset.topp) routeModal.querySelector('#modelHubRouteTopP').value = btn.dataset.topp;
+    });
     routeModal = el;
     return el;
   }
@@ -453,6 +501,7 @@ const ModelHub = (() => {
   function syncRouteModalThinkingVisibility() {
     if (!routeModal) return;
     const model = routeModalCombo?.getValue?.() || '';
+    updateRouteModalParamHint();
     const row = routeModal.querySelector('#modelHubRouteThinkingRow');
     const hint = routeModal.querySelector('#modelHubRouteThinkingHint');
     const thinking = isThinkingModel(model);
@@ -510,6 +559,7 @@ const ModelHub = (() => {
     routeModal.querySelector('#modelHubRouteMaxTokens').value = row.maxTokens > 0 ? row.maxTokens : '';
     routeModal.querySelector('#modelHubRouteTemp').value = row.temperature ?? '';
     routeModal.querySelector('#modelHubRouteTopP').value = row.topP ?? '';
+    updateRouteModalParamHint();
     const thinkEl = routeModal.querySelector('#modelHubRouteThinking');
     if (thinkEl) {
       thinkEl.checked = row.thinkingEnabled !== undefined
