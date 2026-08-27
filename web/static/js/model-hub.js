@@ -692,8 +692,13 @@ const ModelHub = (() => {
       const ns = r.nonStream || {};
       const fmt = (x) => (x?.ok ? `✓ ${x.latencyMs ?? '?'}ms` : `✗ ${String(x?.error || '失败').slice(0, 80)}`);
       const rec = data.recommendation;
-      if (check) check.checked = rec !== 'nonStream';
-      if (out) out.textContent = `Stream: ${fmt(s2)} | 非流式: ${fmt(ns)} → ${rec === 'nonStream' ? t('modelHubStreamRecOff', '建议关闭') : t('modelHubStreamRecOn', '建议开启')}（已自动设置）`;
+      if (rec === null || rec === undefined) {
+        // 两种模式均失败：不自动改开关，显示真实错误（避免误判"建议开启"）
+        if (out) out.textContent = `Stream: ${fmt(s2)} | 非流式: ${fmt(ns)} → ${t('modelHubStreamBothFail', '两种模式均失败，请检查模型名/密钥/服务商状态')}`;
+      } else {
+        if (check) check.checked = rec !== 'nonStream';
+        if (out) out.textContent = `Stream: ${fmt(s2)} | 非流式: ${fmt(ns)} → ${rec === 'nonStream' ? t('modelHubStreamRecOff', '建议关闭') : t('modelHubStreamRecOn', '建议开启')}（已自动设置）`;
+      }
     } finally {
       setRouteModalBusy(false, '');
       if (btn) btn.disabled = false;
