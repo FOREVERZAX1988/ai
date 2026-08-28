@@ -48,6 +48,29 @@ def _content_truncated(content: str) -> bool:
     return True
   return False
 
+def _content_looping(content: str) -> bool:
+  """退化循环检测（2026-08-29）：模型输出卡死特征——同一意图/短语重复多次。
+  与前端 isContentLooping 对齐。检测到循环 → 不打 finished → 前端判未完成可继续。"""
+  if not content:
+    return False
+  lines = [l.strip() for l in content.splitlines() if len(l.strip()) >= 8]
+  if len(lines) < 6:
+    return False
+  from collections import Counter
+  # 1) 相邻行相同 ≥3（连续重复）
+  adj = sum(1 for i in range(1, len(lines)) if lines[i] == lines[i - 1])
+  if adj >= 3:
+    return True
+  # 2) ≥4 行共享前15字符（同一意图变体重复——"固化工具+扫描"型卡死）
+  prefix_counts = Counter(l[:15] for l in lines)
+  if prefix_counts.most_common(1)[0][1] >= 4:
+    return True
+  # 3) 同一行出现 ≥3 次（分散重复）
+  row_counts = Counter(lines)
+  if row_counts.most_common(1)[0][1] >= 3:
+    return True
+  return False
+
 
 def _new_job_id() -> str:
   return f"job_{int(time.time() * 1000)}_{uuid.uuid4().hex[:8]}"
@@ -208,7 +231,7 @@ async def start_chat_job(
             j["status"] = "done"
             # 2026-08-27: 结束标志——前端据此判定消息完整（无标志=未完成，提供「继续生成」）
             # 空输出（模型返回空/无工具）不算完成——保持无标志，前端判未完成可继续
-            if (j["assistant"].get("content") or j["assistant"].get("tool_calls")) and not _content_truncated(j["assistant"].get("content", "")):
+            if (j["assistant"].get("content") or j["assistant"].get("tool_calls")) and not _content_truncated(j["assistant"].get("content", "")) and not _content_looping(j["assistant"].get("content", "")):
               # 2026-08-28: 内容截断（未闭合代码块/半句结尾）→ 不打 finished → 前端判未完成可继续
               j["assistant"]["finished"] = True
           j["resolvedModel"] = result.get("resolvedModel")

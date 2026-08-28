@@ -1615,6 +1615,25 @@ async function copyTextToClipboard(text) {
 // 2026-08-28: 截断特征检测——finished=true 不代表内容完整。
 // 模型输出被截断（token 用尽/流中断）但 job 正常完成时，后端仍会打 finished；
 // 前端据此识别"有结束标志但内容半截"的消息 → 判未完成 → 显示「继续生成」。
+function isContentLooping(msg) {
+  // 退化循环检测（2026-08-29）：同一意图/短语重复多次（模型输出卡死特征）
+  // 与后端 _content_looping 对齐。检测到循环 → 判定未完成 → 显示「继续生成」。
+  const text = String(msg.content || '');
+  if (!text) return false;
+  const lines = text.split('\n').map(l => l.trim()).filter(l => l.length >= 8);
+  if (lines.length < 6) return false;
+  let adj = 0;
+  for (let i = 1; i < lines.length; i++) if (lines[i] === lines[i - 1]) adj++;
+  if (adj >= 3) return true;
+  const prefixes = {};
+  for (const l of lines) { const p = l.slice(0, 15); prefixes[p] = (prefixes[p] || 0) + 1; }
+  if (Object.values(prefixes).some(c => c >= 4)) return true;
+  const counts = {};
+  for (const l of lines) counts[l] = (counts[l] || 0) + 1;
+  if (Object.values(counts).some(c => c >= 3)) return true;
+  return false;
+}
+
 function isContentTruncated(msg) {
   const text = String(msg.content || '').trim();
   if (!text) return false;
@@ -1635,7 +1654,7 @@ function messageLooksComplete(msg, nextMsg) {
   const hasContent = String(msg.content || '').trim().length > 0 || (msg.tool_calls || []).length > 0;
   if (!hasContent) return false;  // 空消息（模型未输出）→ 未完成——即使有 finished（结束标志≠有输出）
   if (msg.finished === true) {
-    if (isContentTruncated(msg)) return false;  // 有结束标志但内容截断 → 未完成（可继续生成）
+    if (isContentTruncated(msg) || isContentLooping(msg)) return false;  // 截断/循环 → 未完成（可继续生成）
     return true;
   }
   if (msg.interrupted || msg.finished === false) return false;
