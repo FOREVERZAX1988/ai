@@ -190,7 +190,9 @@ async def start_chat_job(
           else:
             j["status"] = "done"
             # 2026-08-27: 结束标志——前端据此判定消息完整（无标志=未完成，提供「继续生成」）
-            j["assistant"]["finished"] = True
+            # 空输出（模型返回空/无工具）不算完成——保持无标志，前端判未完成可继续
+            if j["assistant"].get("content") or j["assistant"].get("tool_calls"):
+              j["assistant"]["finished"] = True
           j["resolvedModel"] = result.get("resolvedModel")
           j["updatedAt"] = int(time.time())
         try:

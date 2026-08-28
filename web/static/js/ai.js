@@ -1614,10 +1614,10 @@ async function copyTextToClipboard(text) {
 // 无标志且无后续（含空消息/中断/最后一条）=未完成，提供「继续生成」
 function messageLooksComplete(msg, nextMsg) {
   if (!msg || msg.role !== 'assistant') return true;
+  const hasContent = String(msg.content || '').trim().length > 0 || (msg.tool_calls || []).length > 0;
+  if (!hasContent) return false;  // 空消息（模型未输出）→ 未完成——即使有 finished（结束标志≠有输出）
   if (msg.finished === true) return true;
   if (msg.interrupted || msg.finished === false) return false;
-  const hasContent = String(msg.content || '').trim().length > 0 || (msg.tool_calls || []).length > 0;
-  if (!hasContent) return false;  // 空消息（模型未输出）→ 未完成
   if (nextMsg && nextMsg.role === 'user') return true;  // 旧消息：后面有 user → 完整
   return false;  // 最后一条无结束标志 → 判定未完成（用户可继续）
 }
