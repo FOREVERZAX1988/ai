@@ -1612,11 +1612,32 @@ async function copyTextToClipboard(text) {
 
 // 2026-08-27: 消息完整性判定——有结束标志(finished)或后续有 user 消息=完整；
 // 无标志且无后续（含空消息/中断/最后一条）=未完成，提供「继续生成」
+// 2026-08-28: 截断特征检测——finished=true 不代表内容完整。
+// 模型输出被截断（token 用尽/流中断）但 job 正常完成时，后端仍会打 finished；
+// 前端据此识别"有结束标志但内容半截"的消息 → 判未完成 → 显示「继续生成」。
+function isContentTruncated(msg) {
+  const text = String(msg.content || '').trim();
+  if (!text) return false;
+  // 1. 未闭合代码块（``` 奇数个）
+  const fences = (text.match(/```/g) || []).length;
+  if (fences % 2 === 1) return true;
+  // 2. 以中文顿号/逗号/分号/冒号/破折号结尾（正常回复以句号/叹号/问号/换行结尾）
+  if (/[，、；：——]$/.test(text)) return true;
+  // 3. 中英文混排时以半角逗号/分号/冒号结尾且内容含中文（半句特征）
+  if (/[,;:]$/.test(text) && /[\u4e00-\u9fa5]/.test(text)) return true;
+  // 4. 以连接词结尾（半句："但是"、"因为"、"所以"等）
+  if (/[但而因所以然仍则却且与及或]$/.test(text)) return true;
+  return false;
+}
+
 function messageLooksComplete(msg, nextMsg) {
   if (!msg || msg.role !== 'assistant') return true;
   const hasContent = String(msg.content || '').trim().length > 0 || (msg.tool_calls || []).length > 0;
   if (!hasContent) return false;  // 空消息（模型未输出）→ 未完成——即使有 finished（结束标志≠有输出）
-  if (msg.finished === true) return true;
+  if (msg.finished === true) {
+    if (isContentTruncated(msg)) return false;  // 有结束标志但内容截断 → 未完成（可继续生成）
+    return true;
+  }
   if (msg.interrupted || msg.finished === false) return false;
   if (nextMsg && nextMsg.role === 'user') return true;  // 旧消息：后面有 user → 完整
   return false;  // 最后一条无结束标志 → 判定未完成（用户可继续）

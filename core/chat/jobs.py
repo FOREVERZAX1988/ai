@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 import time
 import uuid
 from typing import Any, Callable
@@ -30,6 +31,22 @@ _lock = asyncio.Lock()
 _session_lanes: dict[str, asyncio.Lock] = {}
 _idempotency: dict[str, tuple[str, int]] = {}
 _IDEMPOTENCY_TTL_SEC = 120
+
+
+def _content_truncated(content: str) -> bool:
+  """启发式截断检测：与前端 isContentTruncated 对齐（未闭合代码块/半句结尾）。"""
+  if not content:
+    return False
+  text = content.strip()
+  if text.count("```") % 2 == 1:
+    return True
+  if re.search(r"[，、；：——]$", text):
+    return True
+  if re.search(r"[,;:]$", text) and re.search(r"[\u4e00-\u9fa5]", text):
+    return True
+  if re.search(r"[但而因所以然仍则却且与及或]$", text):
+    return True
+  return False
 
 
 def _new_job_id() -> str:
@@ -191,7 +208,8 @@ async def start_chat_job(
             j["status"] = "done"
             # 2026-08-27: 结束标志——前端据此判定消息完整（无标志=未完成，提供「继续生成」）
             # 空输出（模型返回空/无工具）不算完成——保持无标志，前端判未完成可继续
-            if j["assistant"].get("content") or j["assistant"].get("tool_calls"):
+            if (j["assistant"].get("content") or j["assistant"].get("tool_calls")) and not _content_truncated(j["assistant"].get("content", "")):
+              # 2026-08-28: 内容截断（未闭合代码块/半句结尾）→ 不打 finished → 前端判未完成可继续
               j["assistant"]["finished"] = True
           j["resolvedModel"] = result.get("resolvedModel")
           j["updatedAt"] = int(time.time())
