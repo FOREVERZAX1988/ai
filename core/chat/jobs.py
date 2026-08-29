@@ -47,6 +47,9 @@ def _content_truncated(content: str) -> bool:
     return True
   if re.search(r"[但而因所以然仍则却且与及或]$", text):
     return True
+  # 2026-08-29: 中文左括号收尾（半句：引用了后续内容但被截断，如 "##数据证据（"）
+  if re.search(r"[（【]$", text) and re.search(r"[\u4e00-\u9fa5]", text):
+    return True
   return False
 
 def _content_looping(content: str) -> bool:

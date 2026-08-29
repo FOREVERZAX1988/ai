@@ -1646,6 +1646,8 @@ function isContentTruncated(msg) {
   if (/[,;:]$/.test(text) && /[\u4e00-\u9fa5]/.test(text)) return true;
   // 4. 以连接词结尾（半句："但是"、"因为"、"所以"等）
   if (/[但而因所以然仍则却且与及或]$/.test(text)) return true;
+  // 5. 以中文左括号收尾（半句：引用了后续内容但被截断，如 "##数据证据（"）
+  if (/[（【]$/.test(text) && /[\u4e00-\u9fa5]/.test(text)) return true;
   return false;
 }
 
