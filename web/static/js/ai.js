@@ -1649,16 +1649,37 @@ function isContentTruncated(msg) {
   return false;
 }
 
+function isContentMarkedComplete(msg) {
+  // 2026-08-29: 新协议——模型主动在完整回复末尾打「（完）」标识。
+  // 有标识 → 一定完整（比语法特征推断可靠：不存在"合法半截"盲区）。
+  const text = String(msg.content || '').trim();
+  if (!text) return false;
+  return /[（(]完[）)]$/.test(text);
+}
+
+function isContentTooShort(msg) {
+  // 2026-08-29: 内容过短兜底——模型忘了打（完）时，无工具调用且纯文本过短(<60字)视为未完成。
+  // 旧消息无（完）标识但内容完整(>=60字)不会误伤。
+  if ((msg.tool_calls || []).length > 0) return false;
+  const text = String(msg.content || '').trim();
+  if (!text) return false;
+  if (/[（(]完[）)]$/.test(text)) return false;
+  return text.length < 60;
+}
+
 function messageLooksComplete(msg, nextMsg) {
   if (!msg || msg.role !== 'assistant') return true;
   const hasContent = String(msg.content || '').trim().length > 0 || (msg.tool_calls || []).length > 0;
   if (!hasContent) return false;  // 空消息（模型未输出）→ 未完成——即使有 finished（结束标志≠有输出）
   if (msg.finished === true) {
-    if (isContentTruncated(msg) || isContentLooping(msg)) return false;  // 截断/循环 → 未完成（可继续生成）
+    // 2026-08-29: 新协议——有（完）标识 → 一定完整（最高优先级）
+    if (isContentMarkedComplete(msg)) return true;
+    // 降级检测：截断特征 / 退化循环 / 内容过短（模型忘打标时的兜底）
+    if (isContentTruncated(msg) || isContentLooping(msg) || isContentTooShort(msg)) return false;  // → 未完成（可继续生成）
     return true;
   }
   if (msg.interrupted || msg.finished === false) return false;
-  if (nextMsg && nextMsg.role === 'user') return true;  // 旧消息：后面有 user → 完整
+  if (nextMsg && nextMsg.role === 'user' && msg.finished === true) return true;  // 旧消息：已 finished 且有后续 → 完整（未 finished=中断/异常，仍显示「继续生成」）
   return false;  // 最后一条无结束标志 → 判定未完成（用户可继续）
 }
 
@@ -8093,8 +8114,9 @@ function renderAssistantFromHistory(msg, opts = {}) {
     updateToolCallsSummary(ui.toolsBlock);
   }
   const text = stripLeakedToolCalls(messageText(msg.content) || (typeof msg.content === 'string' ? msg.content : ''));
-  if (text) {
-    renderMarkdownContent(ui.content, text);
+  const displayText = String(text || '').replace(/\s*[（(]完[）)]\s*$/, '');  // 2026-08-29: 渲染时剥离（完）标识
+  if (displayText) {
+    renderMarkdownContent(ui.content, displayText);
   } else if (!msg.tool_calls?.length) {
     ui.content.textContent = t('noResponse', 'No response');
   }
