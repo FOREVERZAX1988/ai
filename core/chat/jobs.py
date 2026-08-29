@@ -16,6 +16,7 @@ from ai.agents.orchestrator import run_chat_with_agents
 _MAX_JOBS = 20
 _JOB_TTL_SEC = 3600
 _STUCK_WARN_SEC = 120
+_STUCK_CANCEL_SEC = 240  # 2026-08-29: 警告后仍卡 idle≥240s → 自动取消(防挂到TTL 3600s)
 _MAX_EVENTS_PER_JOB = 500
 _watchdog_task: asyncio.Task | None = None
 
@@ -391,24 +392,39 @@ def _scan_stuck_jobs() -> list[dict[str, Any]]:
 async def stuck_job_watchdog_loop() -> None:
   from openpilot.common.swaglog import cloudlog
   warned: set[str] = set()
+  cancelled: set[str] = set()
   while True:
     await asyncio.sleep(30)
     for item in _scan_stuck_jobs():
       jid = item["jobId"]
-      if jid in warned:
-        continue
-      warned.add(jid)
-      cloudlog.warning(
-        f"aid: stuck chat job {jid} session={item['sessionId']} idle={item['idleSec']}s"
-      )
-      try:
-        from ai.core.sync.hub import notify_lifecycle
-        await notify_lifecycle(jid, item["sessionId"], "stuck", item)
-      except Exception:
-        pass
+      idle = item["idleSec"]
       j = _jobs.get(jid)
       if j and j.get("status") != "running":
         warned.discard(jid)
+        cancelled.discard(jid)
+        continue
+      if jid not in warned:
+        warned.add(jid)
+        cloudlog.warning(
+          f"aid: stuck chat job {jid} session={item['sessionId']} idle={idle}s"
+        )
+        try:
+          from ai.core.sync.hub import notify_lifecycle
+          await notify_lifecycle(jid, item["sessionId"], "stuck", item)
+        except Exception:
+          pass
+      # 2026-08-29 自动取消：警告后仍卡 idle≥_STUCK_CANCEL_SEC → cancel + 通知前端
+      if jid not in cancelled and idle >= _STUCK_CANCEL_SEC:
+        cancelled.add(jid)
+        cloudlog.warning(
+          f"aid: auto-cancelling stuck job {jid} session={item['sessionId']} idle={idle}s"
+        )
+        try:
+          await cancel_job(jid)
+          from ai.core.sync.hub import notify_lifecycle
+          await notify_lifecycle(jid, item["sessionId"], "stuck_cancelled", item)
+        except Exception:
+          pass
 
 
 def ensure_stuck_watchdog() -> None:
