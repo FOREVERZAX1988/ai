@@ -53,7 +53,10 @@ def _content_looping(content: str) -> bool:
   与前端 isContentLooping 对齐。检测到循环 → 不打 finished → 前端判未完成可继续。"""
   if not content:
     return False
-  lines = [l.strip() for l in content.splitlines() if len(l.strip()) >= 8]
+  # 2026-08-29 修复：阈值 8→3。短行重复（如"执行："刷屏，仅3字符）此前被过滤，
+  # 导致循环检测失效 → 照发 finished → 前端无「继续生成」按钮。正常回复短行极少
+  # 连续重复3次以上，误判风险可接受。
+  lines = [l.strip() for l in content.splitlines() if len(l.strip()) >= 3]
   if len(lines) < 6:
     return False
   from collections import Counter
