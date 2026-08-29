@@ -16,6 +16,11 @@
 |---|---|---|
 | `corr_axg_mom_lag.py` | axG 与 mom 时序相关性（同帧+滞后窗口，标准DBC解析；修正旧 corr_axg_verz_mom.py 位序bug） | `python3 corr_axg_mom_lag.py ROUTE [--seg N] [--lagmax N]` |
 
+## 本次会话新增工具（2026-08-29 补充2）
+| 工具 | 用途 | 用法 |
+|---|---|---|
+| `scan_st6_sig.py` | st6 事件 OP帧vs原厂帧 三信号差异分析（verz/mom/axG 执行反馈矛盾定位） | `python3 scan_st6_sig.py ROUTE [--seg N M] [--window N]` |
+
 ## 常用分析工具
 - `scan_override_protocol.py` / `scan_override_neg.py` / `scan_neg_global.py`：超驰协议与负verz扫描
 - `vz_corr.py`：verz 与 aEgo/vRel 相关性分析
