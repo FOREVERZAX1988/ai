@@ -10,6 +10,7 @@ from typing import Any, Callable
 
 from openpilot.common.params import Params
 
+from ai.core.chat.detect import content_looping as _content_looping, content_truncated as _content_truncated
 from ai.core.chat.runner import ChatCancelled, run_chat_loop
 from ai.agents.orchestrator import run_chat_with_agents
 
@@ -34,49 +35,6 @@ _idempotency: dict[str, tuple[str, int]] = {}
 _IDEMPOTENCY_TTL_SEC = 120
 
 
-def _content_truncated(content: str) -> bool:
-  """启发式截断检测：与前端 isContentTruncated 对齐（未闭合代码块/半句结尾）。"""
-  if not content:
-    return False
-  text = content.strip()
-  if text.count("```") % 2 == 1:
-    return True
-  if re.search(r"[，、；：——]$", text):
-    return True
-  if re.search(r"[,;:]$", text) and re.search(r"[\u4e00-\u9fa5]", text):
-    return True
-  if re.search(r"[但而因所以然仍则却且与及或]$", text):
-    return True
-  # 2026-08-29: 中文左括号收尾（半句：引用了后续内容但被截断，如 "##数据证据（"）
-  if re.search(r"[（【]$", text) and re.search(r"[\u4e00-\u9fa5]", text):
-    return True
-  return False
-
-def _content_looping(content: str) -> bool:
-  """退化循环检测（2026-08-29）：模型输出卡死特征——同一意图/短语重复多次。
-  与前端 isContentLooping 对齐。检测到循环 → 不打 finished → 前端判未完成可继续。"""
-  if not content:
-    return False
-  # 2026-08-29 修复：阈值 8→3。短行重复（如"执行："刷屏，仅3字符）此前被过滤，
-  # 导致循环检测失效 → 照发 finished → 前端无「继续生成」按钮。正常回复短行极少
-  # 连续重复3次以上，误判风险可接受。
-  lines = [l.strip() for l in content.splitlines() if len(l.strip()) >= 3]
-  if len(lines) < 6:
-    return False
-  from collections import Counter
-  # 1) 相邻行相同 ≥3（连续重复）
-  adj = sum(1 for i in range(1, len(lines)) if lines[i] == lines[i - 1])
-  if adj >= 3:
-    return True
-  # 2) ≥4 行共享前15字符（同一意图变体重复——"固化工具+扫描"型卡死）
-  prefix_counts = Counter(l[:15] for l in lines)
-  if prefix_counts.most_common(1)[0][1] >= 4:
-    return True
-  # 3) 同一行出现 ≥3 次（分散重复）
-  row_counts = Counter(lines)
-  if row_counts.most_common(1)[0][1] >= 3:
-    return True
-  return False
 
 
 def _new_job_id() -> str:

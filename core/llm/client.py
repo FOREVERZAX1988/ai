@@ -148,7 +148,7 @@ def load_config_from_params(params: Any) -> AIConfig:
       system_prompt=_param_to_str(read_param(params, "ai_system_prompt")),
       temperature=_param_to_float(read_param(params, "ai_temperature"), 0.7),
       top_p=_param_to_float(read_param(params, "ai_top_p"), 1.0),
-      max_tokens=_param_to_int(read_param(params, "ai_max_tokens"), 4096),
+      max_tokens=_param_to_int(read_param(params, "ai_max_tokens"), 16384),
       thinking_enabled=_param_to_bool(read_param(params, "ai_thinking_enabled"), True),
       thinking_keep=_param_to_str(read_param(params, "ai_thinking_keep")),
       stream=_param_to_bool(read_param(params, "ai_stream"), True),

@@ -13,7 +13,7 @@ sys.path.insert(0, '/data/openpilot/opendbc_repo')
 
 from opendbc.car import structs
 from opendbc.sunnypilot.car.volkswagen.values_ext import VolkswagenFlagsSP
-from opendbc.sunnypilot.car.volkswagen.stop_and_go import SnGCarController, _RESUME_ACCEL_THRESHOLD, _RESUME_MAX_FRAMES
+from opendbc.sunnypilot.car.volkswagen.stop_and_go import SnGCarController, _RESUME_ACCEL_THRESHOLD, _RESUME_PULSE_FRAMES, _RESUME_COOLDOWN_FRAMES
 from unittest import mock
 
 GRA_STOCK = {
@@ -165,14 +165,23 @@ def run():
   sends = ctrl_on.create_stop_and_go(ccs, None, 2, make_cc(enabled=True, accel=0.5), make_cs(standstill=True, brake=True, stock_lead_distance=300), 209)
   check("开：踩刹车时绝不代发", len(sends) == 0)
 
-  # 2.6 防抖：连续发送上限（0.2s @100Hz = 20帧），超限后停止
-  print("\n【场景组2b】防抖验证：连续发送 ≤20 帧后停止")
+  # 2.6 防抖：脉冲锁定（180ms 单脉冲）——中间 aTarget 抖动不中断
+  print(f"\n【场景组2b】防抖验证：锁定 {_RESUME_PULSE_FRAMES*10}ms 单脉冲，aTarget 抖动不中断")
   ctrl_loop = make_ctrl(CP_SP=CP_SP)
+  sent_seq = []
   sent = 0
   for frame in range(0, 60):
-    sends = ctrl_loop.create_stop_and_go(ccs, None, 2, make_cc(enabled=True, accel=0.5), make_cs(standstill=True, stock_lead_distance=300), frame)
+    # 注入抖动：第 10-15 帧 aTarget 掉到 0.1（<0.15）——旧实现会中断脉冲成簇（毛刺根因）
+    accel = 0.1 if 10 <= frame <= 15 else 0.5
+    sends = ctrl_loop.create_stop_and_go(ccs, None, 2, make_cc(enabled=True, accel=accel),
+                                         make_cs(standstill=True, stock_lead_distance=300), frame)
     sent += len(sends)
-  check(f"防抖：60帧内共发送 {sent} 帧（上限应为 {_RESUME_MAX_FRAMES}）", sent == _RESUME_MAX_FRAMES, f"got {sent}")
+    sent_seq.append(1 if sends else 0)
+  check(f"防抖：60帧共发送 {sent} 帧（应为单脉冲 {_RESUME_PULSE_FRAMES} 帧，抖动不中断）",
+        sent == _RESUME_PULSE_FRAMES, f"got {sent}")
+  # 序列：f0-3 确认(False) → f4-21 脉冲(True×18) → f22-59 冷却(False)；抖动帧(10-15)在脉冲内不中断
+  expected = [0]*4 + [1]*_RESUME_PULSE_FRAMES + [0]*(60-4-_RESUME_PULSE_FRAMES)
+  check("脉冲连续性：4帧确认→连续18帧→冷却停止（抖动帧不中断）", sent_seq == expected, f"got {sent_seq}")
 
   # 2.7 车动起来后重置 → 可再次触发（需重新5帧确认）
   print("\n【场景组2c】重置验证：车动起来后可再次触发")
@@ -184,6 +193,23 @@ def run():
   for f in range(7, 12):
     sends = ctrl_reset.create_stop_and_go(ccs, None, 2, make_cc(enabled=True, accel=0.5), make_cs(standstill=True, stock_lead_distance=300), f)
   check("重置：行驶后再次停车可再次触发", len(sends) == 1, f"got {len(sends)}")
+
+  # 2.7b 冷却：脉冲后车未动 → 3s 冷却内不重发；车动(vEgo>0.5) → 立即解除
+  print("\n【场景组2c-2】冷却验证：脉冲后不立即重发，车动立即解除")
+  ctrl_cd = make_ctrl(CP_SP=CP_SP)
+  for f in range(1, 24):  # 4帧确认 + 18帧脉冲（f5触发，f6-22脉冲，f22末设冷却）
+    ctrl_cd.create_stop_and_go(ccs, None, 2, make_cc(enabled=True, accel=0.5),
+                               make_cs(standstill=True, stock_lead_distance=300), f)
+  sends = ctrl_cd.create_stop_and_go(ccs, None, 2, make_cc(enabled=True, accel=0.5),
+                                     make_cs(standstill=True, stock_lead_distance=300), 25)
+  check("冷却：脉冲结束后条件仍满足但不立即重发", len(sends) == 0, f"got {len(sends)}")
+  ctrl_cd.create_stop_and_go(ccs, None, 2, make_cc(enabled=True, accel=0.5),
+                             make_cs(v_ego=2.0, standstill=False, stock_lead_distance=300), 26)
+  sends = []
+  for f in range(27, 32):
+    sends = ctrl_cd.create_stop_and_go(ccs, None, 2, make_cc(enabled=True, accel=0.5),
+                                       make_cs(standstill=True, stock_lead_distance=300), f)
+  check("冷却解除：车动后再次停车可重新触发", len(sends) == 1, f"got {len(sends)}")
 
   # 2.8 挡位限制：非前进挡（P/R/N）不代发，前进挡（D/S/M）正常
   print("\n【场景组2e】挡位限制：非前进挡不代发 RESUME")

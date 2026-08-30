@@ -9,6 +9,7 @@ from typing import Any
 from openpilot.common.params import Params
 
 from ai.core.llm.client import AIConfig, expand_messages_for_api
+from ai.core.chat.detect import content_looping
 from ai.core.chat.sanitize import strip_leaked_tool_calls
 from ai.core.llm.model_router import chat_completion_with_failover, resolve_chat_config
 from ai.skills.snapshot import get_skills_prompt
@@ -323,6 +324,7 @@ async def run_chat_loop(
     pending_tool_calls: dict[int, dict[str, Any]] = {}
     assistant_content = ""
     assistant_reasoning = ""
+    _loop_check_chunks = 0  # 2026-08-29: 实时循环检测计数器（每N个chunk检查一次）
 
     async for chunk, active_cfg in chat_completion_with_failover(
       config, params, chat_messages, tools=active_tools, body=body,
@@ -345,6 +347,11 @@ async def run_chat_loop(
 
       if chunk.content:
         assistant_content += chunk.content
+        # 2026-08-29: 实时循环检测（治本——不再等 job 结束后的事后检测；检测到→立即中断）
+        _loop_check_chunks += 1
+        if _loop_check_chunks >= 8 and content_looping(assistant_content):
+          await emit({"type": "content_loop", "message": "检测到输出循环，已中断（可点击继续生成）"})
+          raise ChatCancelled()
         stripped = strip_leaked_tool_calls(chunk.content)
         if stripped:
           await emit({"type": "content", "delta": stripped})

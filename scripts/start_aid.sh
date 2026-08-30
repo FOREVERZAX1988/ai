@@ -21,13 +21,9 @@ export PYTHONPATH="$ROOT:$VENV_SITE${PYDEPS:+:$PYDEPS}${PYTHONPATH:+:$PYTHONPATH
 _params_native_ok=0
 
 for rel in \
-
   openpilot/common/libparams_c.so \
-
   common/libparams_c.so \
-
   openpilot/common/params_pyx.so \
-
   common/params_pyx.so; do
 
   if [ -f "$ROOT/$rel" ]; then

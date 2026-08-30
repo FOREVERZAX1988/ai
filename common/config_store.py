@@ -26,6 +26,7 @@ _EXTRA_DEFAULTS: dict[str, dict[str, str]] = {
   "ai_param_watchlist": {"param_type": "STRING", "default": ""},
   "ai_param_watchlist_baseline": {"param_type": "STRING", "default": ""},
   "ai_stream": {"param_type": "STRING", "default": "1"},
+  "ai_max_tokens": {"param_type": "STRING", "default": "16384"},  # 2026-08-29: 输出上限默认 16384（原默认 4096 导致长回复/多工具调用被截断）
 }
 
 _LEGACY_GITHUB_PAT_PARAM = "GithubActionsPat"

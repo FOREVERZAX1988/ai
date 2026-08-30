@@ -290,7 +290,7 @@ ITEMS = [
     "key": "ai_max_tokens",
     "flags": "PERSISTENT",
     "param_type": "STRING",
-    "default": "4096",
+    "default": "16384",  # 2026-08-29: 4096 太小 → 长回复/多工具调用输出被截断（半截回复+工具参数JSON残缺）
   },
   {
     "key": "ai_context_window",
