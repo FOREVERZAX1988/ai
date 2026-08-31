@@ -295,6 +295,37 @@ def run():
                                         make_cs(standstill=True, stock_lead_distance=300, acc05_stock_status=3), f)
   check("v4：原厂st=3(ACC active停车保持) → 代发RESUME", len(sends) == 1, f"got {len(sends)}")
 
+  # 2.13 方案B：介入镜像（st镜像 + mom/verz/axG/fv/FM/anh透传）——mlbcan 纯函数测试
+  print("\n【场景组3】方案B介入镜像：st镜像+mom/verz/axG/fv/FM/anh透传")
+  from opendbc.car.volkswagen.mlbcan import acc_control_value as acv, create_acc_accel_control as ccacc
+  class FakePacker:
+    def make_can_msg(self, name, bus, values):
+      return (name, bus, values, 0)
+  fp = FakePacker()
+  check("st镜像：原厂3+gas→3（不自己切4）", acv(True, False, True, True, 3) == 3, f"got {acv(True, False, True, True, 3)}")
+  check("st镜像：原厂4+gas→4", acv(True, False, True, True, 4) == 4, f"got {acv(True, False, True, True, 4)}")
+  check("st镜像：原厂3+无gas→3", acv(True, False, True, False, 3) == 3)
+  check("st镜像：兜底（stock_st=None）+gas→4", acv(True, False, True, True) == 4)
+  check("st镜像：原厂6（long_active应已降）→兜底3", acv(True, False, True, False, 6) == 3)
+  r = ccacc(fp, 0, 'acc', True, 0.0, 3, False, False, False, v_ego=10,
+            stock_follow=False, gas_override=True, stock_fv=False, stock_mom=0.0,
+            stock_verz=0.0, verz_follow=False, axg_comp=False, stock_axg=-1.0,
+            stock_fm=False, stock_anhalten=False)
+  vals = r[0][2]
+  check("mom透传：gas+stock_mom=0→mom==0（非巡航基线）", vals["ACC_Momentenanforderung"] == 0, f"got {vals['ACC_Momentenanforderung']}")
+  check("axG透传：stock_axg=-1.0→axG==-1.0", abs(vals["ACC_ax_Getriebe"] - (-1.0)) < 0.001, f"got {vals['ACC_ax_Getriebe']}")
+  check("verz透传：stock_verz=0→verz==0", abs(vals["ACC_Verz_anf"]) < 0.001, f"got {vals['ACC_Verz_anf']}")
+  check("fv透传：stock_fv=False→fv=0", vals["ACC_Freigabe_Verzanf"] == 0, f"got {vals['ACC_Freigabe_Verzanf']}")
+  check("FM透传：stock_fm=False→FM=0", vals["ACC_Freigabe_Momentenanf"] == 0, f"got {vals['ACC_Freigabe_Momentenanf']}")
+  check("anh透传：stock_anhalten=False→anh=0", vals["ACC_Anhalten"] == 0, f"got {vals['ACC_Anhalten']}")
+  r2 = ccacc(fp, 0, 'acc', True, 0.5, 3, False, False, False, v_ego=10,
+             stock_follow=False, gas_override=False, stock_fv=True, stock_mom=100.0,
+             stock_verz=0.0, verz_follow=False, axg_comp=False, stock_axg=0.0,
+             stock_fm=True, stock_anhalten=True)
+  vals2 = r2[0][2]
+  check("非介入：mom按OP计算（>0）", vals2["ACC_Momentenanforderung"] > 0, f"got {vals2['ACC_Momentenanforderung']}")
+  check("非介入：anh按OP（stopping=False→0）", vals2["ACC_Anhalten"] == 0, f"got {vals2['ACC_Anhalten']}")
+
   # 2.10 非 Macan（其他VW）即使开关开也不触发
   print("\n【场景组2d】平台过滤：仅 Macan(MLB) 生效")
   CP = make_car_params()
