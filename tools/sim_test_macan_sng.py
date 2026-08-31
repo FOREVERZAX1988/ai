@@ -306,7 +306,8 @@ def run():
   check("st镜像：原厂4+gas→4", acv(True, False, True, True, 4) == 4, f"got {acv(True, False, True, True, 4)}")
   check("st镜像：原厂3+无gas→3", acv(True, False, True, False, 3) == 3)
   check("st镜像：兜底（stock_st=None）+gas→4", acv(True, False, True, True) == 4)
-  check("st镜像：原厂6（long_active应已降）→兜底3", acv(True, False, True, False, 6) == 3)
+  check("st镜像：原厂6（故障/退出）→OP 2跟随（不留3/4矛盾窗口）", acv(True, False, True, False, 6) == 2, f"got {acv(True, False, True, False, 6)}")
+  check("st镜像：原厂6+gas→OP 2（不兜底4）", acv(True, False, True, True, 6) == 2, f"got {acv(True, False, True, True, 6)}")
   r = ccacc(fp, 0, 'acc', True, 0.0, 3, False, False, False, v_ego=10,
             stock_follow=False, gas_override=True, stock_fv=False, stock_mom=0.0,
             stock_verz=0.0, verz_follow=False, axg_comp=False, stock_axg=-1.0,
