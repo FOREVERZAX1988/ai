@@ -18,6 +18,8 @@ _MAX_JOBS = 20
 _JOB_TTL_SEC = 3600
 _STUCK_WARN_SEC = 120
 _STUCK_CANCEL_SEC = 240  # 2026-08-29: 警告后仍卡 idle≥240s → 自动取消(防挂到TTL 3600s)
+_RUN_WARN_SEC = 300      # 2026-09-01: 运行时长警告——循环输出持续产生事件、idle≈0，idle监控抓不住
+_RUN_MAX_SEC = 600       # 运行超时强制取消（通知前端可继续生成）
 _MAX_EVENTS_PER_JOB = 500
 _watchdog_task: asyncio.Task | None = None
 
@@ -372,6 +374,26 @@ async def stuck_job_watchdog_loop() -> None:
         try:
           from ai.core.sync.hub import notify_lifecycle
           await notify_lifecycle(jid, item["sessionId"], "stuck", item)
+        except Exception:
+          pass
+      # 2026-09-01 运行时长兜底：持续输出型循环（复读/变体重复）事件不断、idle≈0——
+      # 用 createdAt（创建时间，循环期间不更新）判定总运行时长，超限强制取消
+      run_sec = now - int(j.get("createdAt") or j.get("updatedAt") or now)
+      if jid not in warned and run_sec >= _RUN_WARN_SEC:
+        warned.add(jid)
+        cloudlog.warning(f"aid: long-running chat job {jid} session={item['sessionId']} run={run_sec}s (loop?)")
+        try:
+          from ai.core.sync.hub import notify_lifecycle
+          await notify_lifecycle(jid, item["sessionId"], "run_timeout_warn", {**item, "runSec": run_sec})
+        except Exception:
+          pass
+      if jid not in cancelled and run_sec >= _RUN_MAX_SEC:
+        cancelled.add(jid)
+        cloudlog.warning(f"aid: auto-cancelling long-running job {jid} session={item['sessionId']} run={run_sec}s")
+        try:
+          await cancel_job(jid)
+          from ai.core.sync.hub import notify_lifecycle
+          await notify_lifecycle(jid, item["sessionId"], "run_timeout", {**item, "runSec": run_sec})
         except Exception:
           pass
       # 2026-08-29 自动取消：警告后仍卡 idle≥_STUCK_CANCEL_SEC → cancel + 通知前端

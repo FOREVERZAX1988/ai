@@ -325,6 +325,7 @@ async def run_chat_loop(
     assistant_content = ""
     assistant_reasoning = ""
     _loop_check_chunks = 0  # 2026-08-29: 实时循环检测计数器（每N个chunk检查一次）
+    _loop_chunk_hist: list[str] = []  # 2026-09-01: 最近chunk归一化文本——连续复读检测
 
     async for chunk, active_cfg in chat_completion_with_failover(
       config, params, chat_messages, tools=active_tools, body=body,
@@ -349,6 +350,15 @@ async def run_chat_loop(
         assistant_content += chunk.content
         # 2026-08-29: 实时循环检测（治本——不再等 job 结束后的事后检测；检测到→立即中断）
         _loop_check_chunks += 1
+        # 2026-09-01: chunk级复读检测——最近3个chunk归一化后完全相同=流式复读（早于内容级，立即abort）
+        _norm = "".join((chunk.content or "").split())
+        if _norm:
+          _loop_chunk_hist.append(_norm)
+          if len(_loop_chunk_hist) > 6:
+            _loop_chunk_hist.pop(0)
+          if len(_loop_chunk_hist) >= 3 and len(set(_loop_chunk_hist[-3:])) == 1:
+            await emit({"type": "content_loop", "message": "检测到输出复读循环，已中断（可点击继续生成）"})
+            raise ChatCancelled()
         if _loop_check_chunks >= 8 and content_looping(assistant_content):
           await emit({"type": "content_loop", "message": "检测到输出循环，已中断（可点击继续生成）"})
           raise ChatCancelled()

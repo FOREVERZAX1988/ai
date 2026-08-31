@@ -3211,8 +3211,9 @@ function createMessageActionsBar(role, msg = null) {
     left.appendChild(createMessageActionBtn('like', t('feedbackUp', 'Good response')));
     left.appendChild(createMessageActionBtn('dislike', t('feedbackDown', 'Bad response')));
     left.appendChild(createMessageActionBtn('speak', t('speakMessage', 'Read aloud')));
-    if (msg?.interrupted) {
+    if (msg?.interrupted || !messageLooksComplete(msg, null)) {
       // 2026-08-27: 中断消息显示「继续生成」
+      // 2026-09-01: 修复——截断/循环/过短消息（无interrupted标志）此前不显示按钮
       left.appendChild(createMessageActionBtn('continue', t('continueGen', '继续生成')));
     }
     left.appendChild(createMessageActionBtn('regenerate', t('regenerate', 'Regenerate')));
@@ -3368,11 +3369,16 @@ async function continueInterruptedMessage(assistantIdx) {
     return;
   }
   stopMessageSpeech();
-  const continuePrompt = msg.interrupted
-    ? t('continuePrompt',
-      '你上一条回复因网络中断被截断。请从中断处直接继续输出剩余内容：保持格式、语言与编号连贯，不要重复任何已输出的内容，也不要复述本条指令。')
-    : t('continuePromptFull',
-      '用户认为你上一条回复没有写完。请直接继续补充：完善细节、展开未完成的部分，保持语言和格式一致，不要重复已输出的内容。');
+  // 2026-09-01: 循环消息（内容重复）→ 用重写prompt，而不是「从断点续写」——续写会让模型继续复读
+  const isLoop = typeof isContentLooping === 'function' && isContentLooping(msg);
+  const continuePrompt = isLoop
+    ? t('continuePromptLoop',
+      '你上一条回复陷入了重复输出循环（内容已作废）。请忽略之前的内容，重新完整回答用户的问题：直接给出答案，不要复述指令，不要重复任何句子或工具调用。')
+    : (msg.interrupted
+      ? t('continuePrompt',
+        '你上一条回复因网络中断被截断。请从中断处直接继续输出剩余内容：保持格式、语言与编号连贯，不要重复任何已输出的内容，也不要复述本条指令。')
+      : t('continuePromptFull',
+        '用户认为你上一条回复没有写完。请直接继续补充：完善细节、展开未完成的部分，保持语言和格式一致，不要重复已输出的内容。'));
   const messages = history.slice(0, assistantIdx + 1).concat([{ role: 'user', content: continuePrompt }]);
   // 2026-08-27: 续写自动合并——指令消息不存历史（仅发给模型），完成时内容并回原消息
   pendingContinueMerge = { sessionId: SessionStore.activeId, idx: assistantIdx };
