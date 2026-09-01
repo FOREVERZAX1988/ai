@@ -31,3 +31,8 @@
 - rlog 扫描禁止一次加载30分钟全量：按段(grep/glob)或Pool并行，超时按制度当场优化
 - 位定义以 vw_mlb.dbc BO_269 帧内信号为准（ACC_Status_ACC=57|3 非 60|3）
 - CAN消息 src 编号（Discord 权威）：0/1/2=在CAN0/1/2接收；128/129/130=发送/转发到CAN0/1/2；192/193/194=被Panda安全校验丢弃
+
+## brake_classify.py — braking输出健康度分类
+分析route里OP的减速请求(verz<0)：分类真减速/阈值抖动/其他，输出占比+健康度建议。
+用法：`python3 ai/tools/brake_classify.py 00000066 [--seg 10] [--min-frames 3] [--verbose]`
+阈值抖动>30%提示braking滞回未生效或planner噪声（对照：0066全route 40%帧/229窗口/真减速51%/阈值抖动35%——滞回修复前）。
