@@ -89,3 +89,27 @@ def content_looping(content: str) -> bool:
   if subs and subs.most_common(1)[0][1] >= 10:
     return True
   return False
+
+
+def is_tool_banter(content: str) -> bool:
+  """工具过渡语判定（2026-09-02 跨消息循环检测用）。
+
+  特征：短(<=80)、无结构内容（无#标题/代码块/表格/数字/完整句标点）——
+  即"执行中：/工具输出：/窗口数据："这类工具调用间隙的占位语。
+  正常分析轮次会含实质内容（标题/信号值/结论句），不会被误判。
+  用于 runner 跨消息检测：连续 N 轮仅输出占位语 = 模型复读循环。
+  """
+  s = (content or "").strip()
+  if not s:
+    return False
+  if len(s) > 80:
+    return False
+  if "##" in s or "```" in s:
+    return False
+  if "|" in s:
+    return False
+  if re.search(r"\d", s):
+    return False
+  if re.search(r"[。！？]", s):
+    return False
+  return True

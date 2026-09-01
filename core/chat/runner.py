@@ -9,7 +9,7 @@ from typing import Any
 from openpilot.common.params import Params
 
 from ai.core.llm.client import AIConfig, expand_messages_for_api
-from ai.core.chat.detect import content_looping
+from ai.core.chat.detect import content_looping, is_tool_banter
 from ai.core.chat.sanitize import strip_leaked_tool_calls
 from ai.core.llm.model_router import chat_completion_with_failover, resolve_chat_config
 from ai.skills.snapshot import get_skills_prompt
@@ -326,6 +326,7 @@ async def run_chat_loop(
     assistant_reasoning = ""
     _loop_check_chunks = 0  # 2026-08-29: 实时循环检测计数器（每N个chunk检查一次）
     _loop_chunk_hist: list[str] = []  # 2026-09-01: 最近chunk归一化文本——连续复读检测
+    _banter_streak = 0  # 2026-09-02: 连续「工具过渡语」轮次计数（跨消息循环检测）
 
     async for chunk, active_cfg in chat_completion_with_failover(
       config, params, chat_messages, tools=active_tools, body=body,
@@ -402,6 +403,16 @@ async def run_chat_loop(
       assistant_msg["tool_calls"] = tool_list
     chat_messages.append(assistant_msg)
 
+    # 2026-09-02 跨消息「工具过渡语循环」检测：连续6轮content仅为短占位语（无实质内容）
+    # ——模型在工具调用间隙陷入复读（每轮1-2行"执行中/工具输出"类占位），chunk级查连续相同、
+    # content级查单条循环都拦不住这种跨消息模式；abort后可点「继续生成」恢复。
+    if assistant_content and assistant_content.strip() and is_tool_banter(assistant_content):
+      _banter_streak += 1
+    else:
+      _banter_streak = 0
+    if _banter_streak >= 6:
+      await emit({"type": "content_loop", "message": "检测到工具过渡语循环（连续多轮仅输出占位语），已中断（可点击继续生成）"})
+      raise ChatCancelled()
     if not pending_tool_calls:
       break
 
