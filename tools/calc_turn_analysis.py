@@ -34,8 +34,8 @@ def bin_idx(v):
 # 00000049 高速 + 00000002 低速城市 + 00000004
 # 00000049 低速挪车段、00000002 城市段、00000004 高速段(11,13-19,45)
 _49 = sorted(glob.glob("/data/media/0/realdata/00000049--*/rlog.zst"))[2:12]
-_02 = glob.glob("/data/media/0/realdata/00000002--*--rlog.zst")[:8]
-_04_all = glob.glob("/data/media/0/realdata/00000004--*--rlog.zst")
+_02 = glob.glob("/data/media/0/realdata/00000002--*--*/rlog.zst")[:8]
+_04_all = glob.glob("/data/media/0/realdata/00000004--*--*/rlog.zst")
 _04 = [_04_all[i] for i in [11,13,14,15,16,17,18,19,45] if i < len(_04_all)]
 scan_routes = {"00000049(低速挪车)": _49, "00000002(城市)": _02, "00000004(高速)": _04}
 stats = {r: {i: {"curv": [], "eps": [], "steer": [], "v": []} for i in range(len(BINS))} for r in scan_routes}
