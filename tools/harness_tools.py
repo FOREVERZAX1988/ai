@@ -445,10 +445,8 @@ async def _h_lsp(a: dict[str, Any]) -> dict[str, Any]:
 
 async def _h_run_python_code(a: dict[str, Any]) -> dict[str, Any]:
   try:
-    from ai.sandbox.python_runner import PythonRunner
-    runner = PythonRunner(workspace_root=str(workspace_path("", mkdir=True)))
-    result = await runner.run_python(str(a.get("code", "")), timeout=int(a.get("timeout_s", 10)))
-    return result.to_dict()
+    from ai.core.tools.sandbox_hooks import run_python_via_sandbox
+    return await run_python_via_sandbox(str(a.get("code", "")), timeout=int(a.get("timeout_s", 10)), session_id=str(a.get("sessionId") or a.get("session_id") or ""), cwd=a.get("cwd"))
   except Exception as exc:
     return _error(str(exc))
 
@@ -491,15 +489,30 @@ async def _call_mcp_tool(server_id: str, tool_name: str, args: dict[str, Any]) -
   from ai.mcp.host import call_mcp_tool
   try:
     from openpilot.common.params import Params
-    return await call_mcp_tool(Params(), server_id=server_id, tool_name=tool_name, arguments=args)
+    controls = {"sessionId", "session_id", "cwd", "timeout", "timeout_s"}
+    payload = {k: v for k, v in args.items() if k not in controls}
+    return await call_mcp_tool(Params(), server_id=server_id, tool_name=tool_name, arguments=payload, session_id=str(args.get("sessionId") or args.get("session_id") or ""))
   except Exception as exc:
     return _error(str(exc))
+
+
+_mcp_handlers: dict[str, Any] = {}
+_mcp_schemas: list[dict[str, Any]] = []
 
 
 def _make_mcp_handler(server_id: str, tool_name: str):
   async def handler(args: dict[str, Any]) -> dict[str, Any]:
     return await _call_mcp_tool(server_id, tool_name, args)
   return handler
+
+
+def _validate_mcp_tool(tool: Any) -> dict[str, Any] | None:
+  if not isinstance(tool, dict) or not isinstance(tool.get("name"), str) or not tool["name"].strip():
+    return None
+  schema = tool.get("inputSchema") or {"type": "object", "properties": {}}
+  if not isinstance(schema, dict) or schema.get("type") not in (None, "object"):
+    return None
+  return {"type": "function", "function": {"name": tool["name"].strip(), "description": str(tool.get("description") or ""), "parameters": schema}}
 
 
 def register_mcp_handlers(handlers, params=None) -> None:
@@ -509,8 +522,11 @@ def register_mcp_handlers(handlers, params=None) -> None:
   registered (visible to the LLM). A ``mcp_discover`` helper tool is registered
   so an authorized server's tools can be listed on demand.
   """
+  global _mcp_handlers, _mcp_schemas
   servers = _load_mcp_servers(params)
   added: set[str] = set()
+  _mcp_handlers = {}
+  _mcp_schemas = []
   for server in servers:
     if not server.get("enabled", True):
       continue
@@ -518,17 +534,23 @@ def register_mcp_handlers(handlers, params=None) -> None:
     if not server_id:
       continue
     for tool in server.get("tools") or []:
-      name = str(tool)
-      if not name:
+      spec = tool if isinstance(tool, dict) else {"name": str(tool)}
+      valid = _validate_mcp_tool(spec)
+      if valid is None:
         continue
-      handler_name = f"mcp_{server_id}_{name}"
+      name = valid["function"]["name"]
+      handler_name = f"mcp__{server_id}__{name}"
       base = handler_name
       suffix = 1
       while handler_name in added:
         handler_name = f"{base}_{suffix}"
         suffix += 1
       added.add(handler_name)
-      handlers[handler_name] = _make_mcp_handler(server_id, name)
+      handler = _make_mcp_handler(server_id, name)
+      handlers[handler_name] = handler
+      _mcp_handlers[handler_name] = handler
+      valid["function"]["name"] = handler_name
+      _mcp_schemas.append(valid)
   if "mcp_discover" not in added:
     handlers["mcp_discover"] = _h_mcp_discover
 
@@ -540,7 +562,25 @@ async def _h_mcp_discover(a: dict[str, Any]) -> dict[str, Any]:
   try:
     from openpilot.common.params import Params
     from ai.mcp.host import discover_mcp_tools
-    return await discover_mcp_tools(Params(), server_id)
+    result = await discover_mcp_tools(Params(), server_id)
+    if not isinstance(result, dict) or not result.get("ok"):
+      return result if isinstance(result, dict) else _error("MCP discovery failed")
+    tools = result.get("tools")
+    if not isinstance(tools, list):
+      return _error("MCP discovery returned malformed tools")
+    discovered: list[dict[str, Any]] = []
+    for tool in tools:
+      spec = _validate_mcp_tool(tool)
+      if spec is None:
+        return _error("MCP discovery returned malformed tool schema")
+      name = spec["function"]["name"]
+      key = f"mcp__{server_id}__{name}"
+      handler = _make_mcp_handler(server_id, name)
+      _mcp_handlers[key] = handler
+      spec["function"]["name"] = key
+      _mcp_schemas.append(spec)
+      discovered.append(spec)
+    return {**result, "tools": discovered}
   except Exception as exc:
     return _error(str(exc))
 

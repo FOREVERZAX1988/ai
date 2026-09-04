@@ -193,6 +193,15 @@ class Agent:
     if not self.all_tools:
       return None
     try:
+      from ai.tools.harness_tools import _mcp_handlers, _mcp_schemas
+      for name, handler in _mcp_handlers.items():
+        if name not in self.pipeline._tools:
+          self.pipeline.register_primitive(name, handler)
+      known = {t.get("function", {}).get("name") for t in self.all_tools}
+      self.all_tools.extend(t for t in _mcp_schemas if t.get("function", {}).get("name") not in known)
+    except Exception:
+      pass
+    try:
       from ai.tools.deferred_loading import resolve_active_tools, session_key as deferred_session_key
       defer_key = deferred_session_key(self.session_id, self.job_id)
       return resolve_active_tools(self.all_tools, defer_key, self.params)
@@ -590,6 +599,11 @@ class Agent:
             break
     except Exception:
       pass
+    try:
+      from ai.mcp.host import close_mcp_sessions_for_session
+      await close_mcp_sessions_for_session(self.session_id)
+    except Exception:
+      pass
 
     if self.body.get("_orchestration_phase") == "specialist":
       return
@@ -657,6 +671,7 @@ class Agent:
         max_tool_rounds=self.max_tool_rounds,
         tool_timeout=self.tool_timeout,
         stream_timeout=self.stream_timeout,
+        workflow_id=str(self.body.get("workflow_id") or self.body.get("workflowId") or self.body.get("workflow") or "").strip() or None,
       )
       # Share durable log with the lower-level loop.
       loop.log.close()

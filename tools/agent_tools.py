@@ -16,7 +16,7 @@ from openpilot.common.params import Params
 
 from ai.system.safety import is_action_allowed
 from ai.system.admin import is_admin_mode
-from ai.system.shell import ALLOWED_COMMANDS, run_command, run_shell_command
+from ai.system.shell import ALLOWED_COMMANDS, run_shell_command
 from ai.tools.sp_settings import list_sp_settings
 from ai.tools.memory_store import append_note, delete_note, get_memory, update_vehicle_profile
 from ai.tools.param_write import put_param
@@ -1587,10 +1587,21 @@ def make_handlers(
     return result
 
   async def h_run_shell(args):
+    """Run shell through the same session-scoped sandbox as harness tools."""
     err = _stationary_check("shell")
     if err:
       return err
-    return await run_command(args.get("command", ""))
+    command = str(args.get("command", ""))
+    if not command.strip():
+      return {"ok": False, "error": "command required", "error_code": "INVALID_INPUT"}
+    from ai.core.tools.sandbox_hooks import run_shell_via_sandbox
+    return await run_shell_via_sandbox(
+      command,
+      timeout=min(int(args.get("timeout", 60) or 60), 300),
+      params=p,
+      session_id=str(args.get("sessionId") or ""),
+      cwd=args.get("cwd"),
+    )
 
   async def h_run_shell_command(args):
     err = _stationary_check("shell")
@@ -1601,7 +1612,7 @@ def make_handlers(
     try:
       from ai.core.tools.sandbox_hooks import run_shell_via_sandbox, sandbox_shell_enabled
       if sandbox_shell_enabled(p):
-        return await run_shell_via_sandbox(command, timeout=min(timeout, 300), params=p)
+        return await run_shell_via_sandbox(command, timeout=min(timeout, 300), params=p, session_id=str(args.get("sessionId") or args.get("session_id") or ""), cwd=args.get("cwd"))
     except Exception:
       pass
     return await run_shell_command(command, timeout=min(timeout, 300))

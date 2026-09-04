@@ -35,6 +35,7 @@ class AgentLoop:
     max_tool_rounds: int = 64,
     tool_timeout: float = 300.0,
     stream_timeout: float = 120.0,
+    workflow_id: str | None = None,
   ) -> None:
     self.session_id = session_id
     self.agent_id = agent_id
@@ -45,6 +46,7 @@ class AgentLoop:
     self.max_tool_rounds = max_tool_rounds
     self.tool_timeout = tool_timeout
     self.stream_timeout = stream_timeout
+    self.workflow_id = workflow_id
     self.state = AgentState(agent_id, session_id)
     self.log = SessionLog(session_id)
     self._driver_task: asyncio.Task[Any] | None = None
@@ -84,6 +86,19 @@ class AgentLoop:
   async def _turn(self) -> bool:
     if self.state.phase.kind != "running":
       return False
+    if self.workflow_id:
+      from ai.tools.domains.platform.workflow_graph import advance_graph_workflow, get_graph_workflow
+      if get_graph_workflow(self.workflow_id) is None:
+        error = f"graph workflow '{self.workflow_id}' not found"
+        await self.emit_event({"type": "error", "error": error})
+        self.log.append(EventType.LIFECYCLE, {"kind": "workflow_error", "workflowId": self.workflow_id, "error": error})
+        return False
+      workflow_result = advance_graph_workflow(self.workflow_id, "step")
+      if not workflow_result.get("ok"):
+        error = str(workflow_result.get("error") or "workflow advance failed")
+        await self.emit_event({"type": "error", "error": error})
+        self.log.append(EventType.LIFECYCLE, {"kind": "workflow_error", "workflowId": self.workflow_id, "error": error})
+        return False
     phase = self.state.phase.running
     turn = phase.turn + 1
     phase.turn = turn
