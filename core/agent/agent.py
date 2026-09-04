@@ -113,37 +113,83 @@ class Agent:
     self.state.cancel(CancelCause(kind, reason))
 
   def _install_spill_post_hook(self) -> None:
-    """Register a post-execute hook that externalizes oversized tool results.
+    """Register a post-execute waterfall that externalizes oversized tool results.
 
-    Mirrors ARCH D4: large dict results spill to disk and the context receives a
-    pointer; read/grep/read_file tools are skipped to avoid loops; non-dict
-    results and failures pass through unchanged.
+    Port of dsh `spill-policy`: registered as the OUTERMOST waterfall stage, so
+    it awaits ``next()`` (downstream listeners settle the result first) and then
+    bounds whatever content was accepted. Only plain-text content spills; value
+    replacements, nested (parent) calls, and read/grep tools pass through; any
+    spill failure keeps the original inline result (best-effort).
     """
     try:
-      from ai.core.tools.pipeline import PostToolDecision
+      from ai.core.tools.pipeline import ToolResult
 
       def _skip(name: str) -> bool:
         lowered = (name or "").lower()
         return lowered in ("read", "read_file", "read_file_text") or "grep" in lowered
 
-      async def _spill(exec_ctx, result: dict[str, Any]) -> Any:
+      async def _spill(exec_ctx, result: ToolResult, next_stage) -> ToolResult:
         name = getattr(exec_ctx, "name", "")
-        if not isinstance(result, dict) or result.get("ok") is False:
-          return PostToolDecision(kind="accept", result=None)
+        downstream = await next_stage()
+        # read → spill → read again loop: never spill read-family tools.
         if _skip(name):
-          return PostToolDecision(kind="accept", result=None)
-        from ai.tools.result_externalize import externalize_if_needed
-        pointer, _artifact = externalize_if_needed(
-          result,
+          return downstream
+        # Only accepted results spill; corrective/blocked decisions pass.
+        if not downstream.ok:
+          return downstream
+        # Nested composite (parent) calls skip the model-facing arm.
+        if exec_ctx.extra.get("parent") is not None:
+          return downstream
+
+        from ai.tools.result_externalize import externalize_if_needed, spill_text_if_needed
+        text = downstream.content
+        if text is None:
+          # Non-plain-text result: fall back to JSON externalization of the
+          # dict value (keeps existing behavior for structured results).
+          value = downstream.value
+          if isinstance(value, dict) and value.get("ok") is not False:
+            pointer, _artifact = externalize_if_needed(
+              value,
+              session_id=self.session_id,
+              tool_name=name,
+              params=self.params,
+            )
+            if pointer is not value:
+              return ToolResult(
+                ok=True, value=pointer, content=downstream.content,
+                block=pointer, meta=downstream.meta,
+              )
+          return downstream
+
+        replaced, ref = spill_text_if_needed(
+          text,
           session_id=self.session_id,
           tool_name=name,
+          call_id=exec_ctx.call_id,
           params=self.params,
         )
-        if pointer is not result:
-          return PostToolDecision(kind="accept", result=pointer)
-        return PostToolDecision(kind="accept", result=None)
+        if replaced is None:
+          return downstream
+        pointer = {
+          "ok": True,
+          "externalized": True,
+          "ref": ref["ref"],
+          "path": ref["path"],
+          "tool": name,
+          "size_bytes": ref["size_bytes"],
+          "summary": text[:200],
+          "preview": replaced,
+          "hint": ref["hint"],
+        }
+        return ToolResult(
+          ok=True,
+          value=pointer,
+          content=replaced,
+          block={"type": "text", "text": replaced},
+          meta=downstream.meta,
+        )
 
-      self.pipeline.add_post_hook(_spill)
+      self.pipeline.add_post_waterfall(_spill)
     except Exception as e:
       cloudlog.warning(f"aid: spill post hook install failed: {e}")
 

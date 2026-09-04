@@ -19,7 +19,7 @@
 
 | # | 差距 | dsh 基准 | ai 现状 | 状态 |
 |---|------|----------|---------|------|
-| G1 | **Spill waterfall + content-block 语义**（= U3，任务 #46） | `packages/spill/spill-policy/src/index.ts:190-231`：`await next()` waterfall、只处理 accepted plain-text、跳过 nested PTC 的 model-facing arm、dispatch-log arm、UTF-8 head/tail retention、预留 notice 字节 | `core/agent/agent.py:129-146` 简单 post hook 直接 externalize | `[未开始]` |
+| G1 | **Spill waterfall + content-block 语义**（= U3，任务 #46） | `packages/spill/spill-policy/src/index.ts:190-231`：`await next()` waterfall、只处理 accepted plain-text、跳过 nested PTC 的 model-facing arm、dispatch-log arm、UTF-8 head/tail retention、预留 notice 字节 | `core/agent/agent.py` 已注册 outermost waterfall；`tools/result_externalize.py` 提供纯文本 spill、UTF-8 head/tail、notice cap 预留；dispatch-log arm 仍待 PTC 接入 | `[部分闭合]` |
 | G2 | **Goal/Plan/Todo event projection**（= U6） | `packages/goal/goal/src/domain.ts:13-114`：`goal/change` snapshot/tombstone 事件 + replay fold + scoped emit；plan/todo 同为 tool/domain event 投影 | `goal/store.py`、`plan/store.py`、`todo/store.py` 独立 JSON 快照，replay 无法重建 | `[未开始]` |
 | G3 | **Compaction（会话压缩与 tool 结果修剪）** | dsh 有 compaction 语义：长会话上下文压缩、旧 tool 结果裁剪，保证 token 预算 | ai 无任何 compaction | `[未开始]` |
 

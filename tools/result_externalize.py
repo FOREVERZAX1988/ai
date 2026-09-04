@@ -30,7 +30,9 @@ def threshold_bytes(params: Any = None) -> int:
 
 def _results_dir(session_id: str) -> Path:
   sid = (session_id or "global").replace("/", "_").replace("\\", "_")[:64]
-  return workspace_path("tool_results", sid, mkdir=True)
+  path = workspace_path("tool_results", sid, mkdir=True)
+  path.mkdir(parents=True, exist_ok=True)
+  return path
 
 
 def _summarize(result: Any, *, max_len: int = 600) -> str:
@@ -126,3 +128,89 @@ def read_externalized(ref: str) -> dict[str, Any]:
     return {"ok": True, "ref": ref, "path": str(matches[0]), "data": data}
   except (OSError, json.JSONDecodeError) as e:
     return {"ok": False, "error": str(e)}
+
+
+# --- Spill waterfall (dsh spill-policy port) ---
+#
+# Mirrors `E:\\deepseek-harness\\packages\\spill\\spill-policy\\src\\index.ts`:
+# the model-facing post-execute arm saves the FULL plain-text result to a
+# session-scoped spill file and replaces the context copy with a bounded
+# head/tail preview plus a spill notice. Best-effort: any failure (no session,
+# save error, notice over cap) keeps the original inline content.
+
+_SPILL_NOTICE_TEMPLATE = (
+  "({omitted} Full formatted result stored at: {locator}. {hint})"
+)
+
+
+def _omitted_label(omitted_bytes: int) -> str:
+  if omitted_bytes >= 1024 * 1024:
+    return f"{omitted_bytes / 1024 / 1024:.1f} MiB omitted"
+  if omitted_bytes >= 1024:
+    return f"{omitted_bytes / 1024:.1f} KiB omitted"
+  return f"{omitted_bytes} bytes omitted"
+
+
+def _spill_notice(omitted_bytes: int, locator: str, hint: str) -> str:
+  return _SPILL_NOTICE_TEMPLATE.format(
+    omitted=_omitted_label(omitted_bytes),
+    locator=locator,
+    hint=hint,
+  )
+
+
+def spill_text_if_needed(
+  text: str,
+  *,
+  session_id: str = "",
+  tool_name: str = "",
+  call_id: str = "",
+  max_bytes: int | None = None,
+  params: Any = None,
+) -> tuple[str | None, dict[str, Any] | None]:
+  """Spill `text` and return (bounded_replacement, ref) or (None, None).
+
+  Port of dsh `spillReplacement`. Returns ``None`` (keep original) when:
+  no session owner, save fails, or the notice itself exceeds the cap.
+  """
+  if not externalize_enabled(params):
+    return None, None
+  cap = max_bytes if max_bytes is not None else threshold_bytes(params)
+  total = len(text.encode("utf-8"))
+  if total <= cap:
+    return None, None
+  if not session_id:
+    return None, None
+
+  ref_id = f"{int(time.time() * 1000)}_{uuid.uuid4().hex[:8]}"
+  path = _results_dir(session_id) / f"{tool_name or 'tool'}_{ref_id}.txt"
+  try:
+    path.write_text(text, encoding="utf-8")
+  except OSError:
+    return None, None
+
+  locator = str(path)
+  hint = "Use read_file on this path for the complete data."
+  ref = {
+    "ref": f"toolresult://{ref_id}",
+    "path": locator,
+    "tool": tool_name,
+    "call_id": call_id,
+    "size_bytes": total,
+    "hint": hint,
+  }
+
+  # Reserve the notice's byte cost INSIDE the cap so the replacement never
+  # exceeds it. Worst-case omitted count bounds the real one.
+  reserve = len(_spill_notice(total, locator, hint).encode("utf-8")) + 2  # \n\n
+  budget = max(0, cap - reserve)
+  from ai.core.tools.pipeline import truncate_content_head_tail
+  preview_text = truncate_content_head_tail(text, budget, notice="")
+  omitted = total - len(preview_text.encode("utf-8"))
+  notice = _spill_notice(omitted, locator, hint)
+  replaced = f"{preview_text}\n\n{notice}" if preview_text else notice
+  if len(replaced.encode("utf-8")) > cap:
+    # Invariant: never emit a replacement larger than the cap. The already
+    # written spill file is a harmless orphan; cleanup is deferred.
+    return None, None
+  return replaced, ref
