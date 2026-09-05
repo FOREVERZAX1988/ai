@@ -99,6 +99,11 @@ class AgentLoop:
     self.state.wake_driver()
     result = await self._run()
     while self.state.inbox.has_pending:
+      # Defensive: a state-level cancel must break the queued-turn loop too,
+      # otherwise _run() (which captures ChatCancelled and returns a dict)
+      # would spin forever on a permanently pending inbox.
+      if self.state.is_cancelled():
+        raise ChatCancelled(self.state.cancel_cause() or CancelCause(CancelCauseKind.USER, "cancelled with queued turns"))
       if is_cancelled is not None and is_cancelled():
         # An external (facade-level) cancel: the state machine itself is not
         # cancelled, so surface it as ChatCancelled here rather than starting

@@ -79,6 +79,18 @@ class RunUntilIdleTests(unittest.TestCase):
     with self.assertRaises(ChatCancelled):
       asyncio.run(scenario())
 
+  def test_state_cancel_breaks_queued_loop_without_external_hook(self) -> None:
+    """State-level cancel + pending inbox must not spin forever when the
+    caller passes no external is_cancelled hook (QA-noted defensive path)."""
+    async def scenario() -> None:
+      loop = _make_loop(["queue", "idle"])
+      from ai.core.agent.state import CancelCause, CancelCauseKind
+      loop.state.cancel(CancelCause(CancelCauseKind.USER, "test"))  # no external callback
+      await loop.run_until_idle()
+
+    with self.assertRaises(ChatCancelled):
+      asyncio.run(asyncio.wait_for(scenario(), timeout=2.0))
+
   def test_no_pending_skips_cancel_check(self) -> None:
     async def scenario() -> dict[str, Any]:
       return await _make_loop(["idle"]).run_until_idle(is_cancelled=lambda: True)
