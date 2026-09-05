@@ -7,6 +7,7 @@ import uuid
 from collections.abc import Awaitable, Callable
 from typing import Any
 
+from ai.core.session.log import EventType
 from ai.subagent.models import SubagentResult, SubagentStopReason, SubagentTask
 
 EmitFn = Callable[[dict[str, Any]], Awaitable[None]]
@@ -53,10 +54,39 @@ class SubagentRunner:
     # Dispatch through the provider registry ONLY when no custom chat runner was
     # injected; injected runners (used by tests and callers) keep priority.
     provider_fn = None
+    provider_name = getattr(task, "provider", "in-process") or "in-process"
     if runner is None:
-      provider_name = getattr(task, "provider", "in-process") or "in-process"
       from ai.subagent.providers import get_provider
       provider_fn = get_provider(provider_name)
+
+    # Depth ceiling applies to ALL dispatch paths (injected runners included):
+    # fail loud with a structured refusal rather than accepting-then-ignoring
+    # (dsh subagent seam rule). Capability matrix only guards provider
+    # dispatch, since injected runners bypass the registry entirely.
+    from ai.subagent.capabilities import validate_depth
+    rejection = validate_depth(task)
+    if rejection is not None:
+      return SubagentResult(
+        task_id=task.id,
+        ok=False,
+        stop_reason="refusal",
+        error=str(rejection),
+        error_code=rejection.code,
+        events=events,
+      )
+    if provider_fn is not None:
+      from ai.subagent.capabilities import validate_request
+      from ai.subagent.providers import get_provider_capabilities
+      rejection = validate_request(task, get_provider_capabilities(provider_name))
+      if rejection is not None:
+        return SubagentResult(
+          task_id=task.id,
+          ok=False,
+          stop_reason="refusal",
+          error=str(rejection),
+          error_code=rejection.code,
+          events=events,
+        )
 
     try:
       if provider_fn is not None:
@@ -180,11 +210,34 @@ async def run_subagent(
   is_cancelled: Callable[[], bool] | None = None,
   session_log_path: str | None = None,
   runner: SubagentRunner | None = None,
+  session_log: Any = None,
 ) -> SubagentResult:
   if isinstance(task, dict):
     task = SubagentTask.from_dict(task)
   r = runner or SubagentRunner()
-  return await r.run(
+
+  # Parent-child lineage: pair a subagent/start with a subagent/end event on
+  # the parent session log so replay can rebuild the delegation tree
+  # (dsh SubagentRunInfo vocabulary: runId/provider/depth/origin).
+  run_id = f"run-{uuid.uuid4().hex[:12]}"
+  if session_log is not None:
+    try:
+      session_log.append(
+        EventType.SUBAGENT_START,
+        {
+          "runId": run_id,
+          "provider": task.provider,
+          "taskId": task.id,
+          "childAgentId": task.agent_id,
+          "parentSessionId": getattr(session_log, "session_id", ""),
+          "delegationDepth": task.depth,
+          "origin": "spawn",
+        },
+      )
+    except Exception:
+      session_log = None  # lineage is best-effort; never block the run
+
+  result = await r.run(
     task,
     params=params,
     tools=tools,
@@ -193,3 +246,20 @@ async def run_subagent(
     is_cancelled=is_cancelled,
     session_log_path=session_log_path,
   )
+
+  if session_log is not None:
+    try:
+      session_log.append(
+        EventType.SUBAGENT_END,
+        {
+          "runId": run_id,
+          "provider": task.provider,
+          "taskId": task.id,
+          "childAgentId": task.agent_id,
+          "stopReason": result.stop_reason,
+          "ok": result.ok,
+        },
+      )
+    except Exception:
+      pass
+  return result

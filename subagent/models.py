@@ -74,6 +74,7 @@ class SubagentResult:
   structured: Any = None
   stop_reason: SubagentStopReason = "error"
   error: str = ""
+  error_code: str = ""
   events: list[dict[str, Any]] = field(default_factory=list)
 
   def to_dict(self) -> dict[str, Any]:
@@ -84,6 +85,7 @@ class SubagentResult:
       "structured": self.structured,
       "stopReason": self.stop_reason,
       "error": self.error,
+      "errorCode": self.error_code,
       "events": list(self.events),
     }
 
@@ -96,5 +98,6 @@ class SubagentResult:
       structured=data.get("structured"),
       stop_reason=str(data.get("stopReason") or data.get("stop_reason", "error")),
       error=str(data.get("error", "")),
+      error_code=str(data.get("errorCode") or data.get("error_code") or ""),
       events=list(data.get("events") or []),
     )

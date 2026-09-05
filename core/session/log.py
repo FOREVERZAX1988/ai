@@ -33,6 +33,8 @@ class EventType(StrEnum):
   PLAN_CHANGE = "plan/change"
   TODO_CHANGE = "todo/change"
   COMPACTION_PRUNE = "compaction/prune"
+  SUBAGENT_START = "subagent/start"
+  SUBAGENT_END = "subagent/end"
 
 
 class SurfaceOp(StrEnum):

@@ -104,6 +104,7 @@ class SubagentPool:
     params: Any | None = None,
     tools: list[dict[str, Any]] | None = None,
     max_tool_rounds: int | None = None,
+    session_log: Any = None,
   ) -> asyncio.Task[SubagentResult]:
     if isinstance(task, dict):
       task = SubagentTask.from_dict(task)
@@ -133,6 +134,7 @@ class SubagentPool:
           max_tool_rounds=max_tool_rounds if max_tool_rounds is not None else self.max_tool_rounds,
           emit=self.emit,
           is_cancelled=lambda: self.is_cancelled(task.id),
+          session_log=session_log,
           runner=self.runner,
         )
 
@@ -153,12 +155,14 @@ class SubagentPool:
     params: Any | None = None,
     tools: list[dict[str, Any]] | None = None,
     max_tool_rounds: int | None = None,
+    session_log: Any = None,
   ) -> SubagentResult:
     t = await self.submit(
       task,
       params=params,
       tools=tools,
       max_tool_rounds=max_tool_rounds,
+      session_log=session_log,
     )
     return await t
 
@@ -169,9 +173,10 @@ class SubagentPool:
     params: Any | None = None,
     tools: list[dict[str, Any]] | None = None,
     max_tool_rounds: int | None = None,
+    session_log: Any = None,
   ) -> list[SubagentResult]:
     submitted = await asyncio.gather(*[
-      self.submit(t, params=params, tools=tools, max_tool_rounds=max_tool_rounds)
+      self.submit(t, params=params, tools=tools, max_tool_rounds=max_tool_rounds, session_log=session_log)
       for t in tasks
     ])
     return await asyncio.gather(*submitted, return_exceptions=True)

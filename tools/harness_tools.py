@@ -309,6 +309,15 @@ def _subagent_pool():
   return get_subagent_pool()
 
 
+def _session_log_from_ctx() -> Any:
+  """Best-effort SessionLog from the pipeline session_ctx (subagent lineage)."""
+  try:
+    from ai.core.tools.pipeline import session_ctx
+    return session_ctx.get()
+  except Exception:
+    return None
+
+
 async def _h_subagent_start(a: dict[str, Any]) -> dict[str, Any]:
   try:
     pool = _subagent_pool()
@@ -319,7 +328,11 @@ async def _h_subagent_start(a: dict[str, Any]) -> dict[str, Any]:
       max_depth=int(a.get("max_depth", 3)),
       provider=str(a.get("provider", "in-process") or "in-process"),
     )
-    result = await pool.run(task, params=None, tools=None, max_tool_rounds=24)
+    if isinstance(a.get("output_schema"), dict):
+      task.output_schema = a["output_schema"]
+    if isinstance(a.get("tools"), list):
+      task.tools = [str(t) for t in a["tools"]]
+    result = await pool.run(task, params=None, tools=None, max_tool_rounds=24, session_log=_session_log_from_ctx())
     return {"ok": result.ok, "task": task.to_dict(), "result": result.to_dict()}
   except Exception as exc:
     return _error(str(exc))

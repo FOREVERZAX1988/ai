@@ -14,20 +14,32 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 from typing import Any
 
+from ai.subagent.capabilities import SubagentCapabilities
 from ai.subagent.models import SubagentResult, SubagentTask
 
 ProviderFn = Callable[..., Awaitable[SubagentResult]]
 
 _PROVIDERS: dict[str, ProviderFn] = {}
+_PROVIDER_CAPABILITIES: dict[str, SubagentCapabilities] = {}
 
 
-def register_provider(name: str, fn: ProviderFn) -> None:
-  """Register a subagent provider implementation."""
+def register_provider(
+  name: str,
+  fn: ProviderFn,
+  capabilities: SubagentCapabilities | None = None,
+) -> None:
+  """Register a subagent provider implementation with its capability matrix."""
   _PROVIDERS[name] = fn
+  _PROVIDER_CAPABILITIES[name] = capabilities or SubagentCapabilities()
 
 
 def get_provider(name: str) -> ProviderFn | None:
   return _PROVIDERS.get(name)
+
+
+def get_provider_capabilities(name: str) -> SubagentCapabilities:
+  """Declared capability matrix; unknown providers get an all-off matrix."""
+  return _PROVIDER_CAPABILITIES.get(name, SubagentCapabilities())
 
 
 def list_providers() -> list[str]:
@@ -37,8 +49,6 @@ def list_providers() -> list[str]:
 def _register_defaults() -> None:
   if "in-process" in _PROVIDERS:
     return
-
-  from ai.agents.orchestrator import run_chat_with_agents
 
   async def in_process(
     task: SubagentTask,
@@ -57,6 +67,9 @@ def _register_defaults() -> None:
     SubagentResult. ``runner`` is ignored here — this provider IS the default
     in-process execution path.
     """
+    # Imported at call time: keeps module import cheap so capability checks
+    # and registration work on hosts without the openpilot/cereal toolchain.
+    from ai.agents.orchestrator import run_chat_with_agents
     from ai.subagent.runner import SubagentRunner
     from ai.subagent.models import SubagentResult as SR
 
@@ -87,7 +100,17 @@ def _register_defaults() -> None:
     output = "".join(str(e.get("delta") or "") for e in events if e.get("type") == "content").strip()
     return SR(task_id=task.id, ok=ok, output=output, stop_reason="completed" if ok else "error", error=result.get("error", ""), events=events)
 
-  register_provider("in-process", in_process)
+  register_provider(
+    "in-process",
+    in_process,
+    SubagentCapabilities(
+      agent_options=False,
+      output_schema=True,
+      depth_limit=True,
+      tool_filter=True,
+      persona=False,
+    ),
+  )
 
 
 _register_defaults()
