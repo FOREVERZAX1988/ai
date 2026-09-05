@@ -83,6 +83,39 @@ class AgentLoop:
     finally:
       self.state.end_activity()
 
+  async def run_until_idle(
+    self,
+    *,
+    is_cancelled: Callable[[], bool] | None = None,
+  ) -> dict[str, Any]:
+    """Public iteration seam (dsh ``wakeDriver``/``whenIdle`` equivalent).
+
+    Wakes the driver and runs whole turns until the durable inbox is drained
+    and the loop returns to idle. Facade code must call this instead of the
+    private ``_run()``: an optional ``is_cancelled`` hook is consulted before
+    each queued turn, so an external cancel surfaces as ``ChatCancelled``
+    even while work remains queued.
+    """
+    self.state.wake_driver()
+    result = await self._run()
+    while self.state.inbox.has_pending:
+      if is_cancelled is not None and is_cancelled():
+        # An external (facade-level) cancel: the state machine itself is not
+        # cancelled, so surface it as ChatCancelled here rather than starting
+        # another turn with doomed work queued.
+        raise ChatCancelled(CancelCause(CancelCauseKind.USER, "cancelled between queued turns"))
+      result = await self._run()
+    return result
+
+  async def when_idle(self, *, timeout: float | None = None) -> dict[str, Any]:
+    """Resolve when no driver task is active; returns its result (or idle)."""
+    task = self._driver_task
+    if task is not None and not task.done():
+      if timeout is not None:
+        return await asyncio.wait_for(asyncio.shield(task), timeout=timeout)
+      return await task
+    return {"ok": True, "agentId": self.agent_id, "idle": True}
+
   async def _turn(self) -> bool:
     if self.state.phase.kind != "running":
       return False

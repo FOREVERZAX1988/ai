@@ -740,13 +740,12 @@ class Agent:
             wakeup=False,
           )
 
-      # Drive the initial turn explicitly, then continue only for queued
-      # follow-up work.  There must be exactly one active driver.
-      loop.state.wake_driver()
-      result: dict[str, Any] = await loop._run()
-      while loop.state.inbox.has_pending:
-        self._check_cancel()
-        result = await loop._run()
+      # Drive the session through the loop's public iteration seam (dsh
+      # wakeDriver/whenIdle semantics): wake + drain queued follow-ups.
+      # The facade must not invoke the loop's private run entry directly.
+      result: dict[str, Any] = await loop.run_until_idle(
+        is_cancelled=lambda: self.is_cancelled,
+      )
 
       if result.get("ok"):
         self._resolved_model = getattr(self.config, "model", None)
