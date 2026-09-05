@@ -400,43 +400,78 @@ def _hover_contents(item: dict[str, Any]) -> str:
 
 
 async def _h_lsp(a: dict[str, Any]) -> dict[str, Any]:
+  """Run one routed LSP query with structured errors, 60s budget and caps."""
+  from ai.lsp.errors import INVALID_RESPONSE, NO_PROVIDER, TIMEOUT, WORKSPACE_OUTSIDE, LspError
   action = str(a.get("action", ""))
   uri = str(a.get("uri", "")).strip()
   workspace_root = str(a.get("workspaceRoot") or workspace_path("", mkdir=True)).strip()
   line = int(a.get("line", 1))
   character = int(a.get("character", 1))
-  # LSP is 0-based internally; model passes 1-based UTF-16.
   line0 = max(0, line - 1)
   char0 = max(0, character - 1)
-
   if not uri:
-    return _error("lsp requires uri")
+    return LspError("lsp requires uri", INVALID_RESPONSE).to_dict()
   if action not in ("goToDefinition", "findReferences", "goToImplementation", "hover"):
-    return _error(f"unsupported lsp action: {action}")
+    return LspError(f"unsupported lsp action: {action}", INVALID_RESPONSE).to_dict()
+  try:
+    from urllib.parse import unquote, urlparse
+    from pathlib import Path
+    parsed = urlparse(uri)
+    if parsed.scheme == "file":
+      file_path = Path(unquote(parsed.path)).resolve()
+      root_path = Path(workspace_root).resolve()
+      try:
+        file_path.relative_to(root_path)
+      except ValueError:
+        return LspError("file is outside workspaceRoot", WORKSPACE_OUTSIDE, {"uri": uri, "workspaceRoot": workspace_root}).to_dict()
+  except Exception as exc:
+    return LspError("invalid LSP URI", INVALID_RESPONSE, str(exc)).to_dict()
 
   manager = get_lsp_manager()
   client = manager.get_client(workspace_root)
   if client is None:
-    return _error(f"no LSP server running for workspace '{workspace_root}'; start one via /api/ai/lsp/servers first")
-
+    return LspError(f"no LSP provider for workspace '{workspace_root}'", NO_PROVIDER, {"workspaceRoot": workspace_root}).to_dict()
   try:
     if action == "goToDefinition":
-      raw = await client.definition(uri, line0, char0)
-      return {"ok": True, "action": action, "results": [_normalize_location(x) for x in raw]}
-    if action == "findReferences":
-      raw = await client.references(uri, line0, char0)
-      return {"ok": True, "action": action, "results": [_normalize_location(x) for x in raw]}
-    if action == "goToImplementation":
-      raw = await client.implementation(uri, line0, char0)
-      return {"ok": True, "action": action, "results": [_normalize_location(x) for x in raw]}
-    if action == "hover":
-      raw = await client.hover(uri, line0, char0)
-      if not raw:
-        return {"ok": True, "action": action, "results": [], "truncated": False}
-      return {"ok": True, "action": action, "results": [{"path": uri, "line": line, "character": character, "label": "", "detail": _hover_contents(raw), "snippet": ""}]}
+      raw = await asyncio.wait_for(client.definition(uri, line0, char0), timeout=60.0)
+      if not isinstance(raw, list):
+        raise LspError("LSP definition response must be an array", INVALID_RESPONSE)
+      results = [_normalize_location(x) for x in raw]
+    elif action == "findReferences":
+      raw = await asyncio.wait_for(client.references(uri, line0, char0), timeout=60.0)
+      if not isinstance(raw, list):
+        raise LspError("LSP references response must be an array", INVALID_RESPONSE)
+      results = [_normalize_location(x) for x in raw]
+    elif action == "goToImplementation":
+      raw = await asyncio.wait_for(client.implementation(uri, line0, char0), timeout=60.0)
+      if not isinstance(raw, list):
+        raise LspError("LSP implementation response must be an array", INVALID_RESPONSE)
+      results = [_normalize_location(x) for x in raw]
+    else:
+      raw = await asyncio.wait_for(client.hover(uri, line0, char0), timeout=60.0)
+      if raw is not None and not isinstance(raw, dict):
+        raise LspError("LSP hover response must be an object or null", INVALID_RESPONSE)
+      results = [] if not raw else [{"path": uri, "line": line, "character": character, "label": "", "detail": _hover_contents(raw), "snippet": ""}]
+    truncated = len(results) > 100
+    results = results[:100]
+    payload = {"ok": True, "action": action, "results": results, "truncated": truncated}
+    import json
+    encoded = json.dumps(payload, ensure_ascii=False, default=str)
+    if len(encoded) > 65536:
+      payload["results"] = payload["results"][:max(1, len(payload["results"]) // 2)]
+      payload["truncated"] = True
+    return payload
+  except asyncio.TimeoutError:
+    return LspError("LSP query timed out after 60 seconds", TIMEOUT, {"action": action}).to_dict()
+  except asyncio.CancelledError:
+    try:
+      await manager.stop_server(workspace_root)
+    finally:
+      raise
+  except LspError as exc:
+    return exc.to_dict()
   except Exception as exc:
-    return _error(f"lsp {action} failed: {exc}")
-  return _error("unreachable")
+    return LspError(f"LSP {action} failed", INVALID_RESPONSE, str(exc)).to_dict()
 
 
 # ---------------------------------------------------------------------------
