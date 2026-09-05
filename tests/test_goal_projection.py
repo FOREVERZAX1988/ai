@@ -8,6 +8,7 @@ thread-executed handlers.
 from __future__ import annotations
 
 import asyncio
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -148,6 +149,44 @@ class PipelineSessionCtxTests(unittest.TestCase):
       )
     result = asyncio.run(run())
     self.assertTrue(result.get("ok"))
+
+
+class ResumeFoldFirstTests(unittest.TestCase):
+  """Resume reconstruction: fold-first over <domain>/change events."""
+
+  def _events(self, log: SessionLog) -> list[Any]:
+    return list(log.events)
+
+  def test_fold_first_uses_domain_events(self) -> None:
+    from ai.server.handlers.sessions_handlers import reconstruct_domain_state
+    log = SessionLog("resume-fold-test")
+    log.append_domain_event("goal", {"id": "goal-1", "objective": "fold me", "revision": 2})
+    reconstructed = reconstruct_domain_state(self._events(log))
+    self.assertEqual(reconstructed["goal"]["objective"], "fold me")
+
+  def test_tombstoned_domain_folds_to_none(self) -> None:
+    from ai.server.handlers.sessions_handlers import reconstruct_domain_state
+    log = SessionLog("resume-tomb-test")
+    log.append_domain_event("todo", {"todos": [{"content": "x"}]}, tombstone=True)
+    reconstructed = reconstruct_domain_state(self._events(log))
+    self.assertIsNone(reconstructed["todo"])
+
+  def test_legacy_heuristic_fallback(self) -> None:
+    from ai.server.handlers.sessions_handlers import reconstruct_domain_state
+    log = SessionLog("resume-legacy-test")
+    log.append(EventType.TOOL_CALL, {"callId": "c1", "name": "todo_write"})
+    log.append(EventType.TOOL_RESULT, {"tool_call_id": "c1", "content": json.dumps({"todos": [{"content": "legacy"}]})})
+    reconstructed = reconstruct_domain_state(self._events(log))
+    self.assertEqual(reconstructed["todo"], {"todos": [{"content": "legacy"}]})
+
+  def test_domain_events_win_over_legacy(self) -> None:
+    from ai.server.handlers.sessions_handlers import reconstruct_domain_state
+    log = SessionLog("resume-mixed-test")
+    log.append(EventType.TOOL_CALL, {"callId": "c1", "name": "todo_write"})
+    log.append(EventType.TOOL_RESULT, {"tool_call_id": "c1", "content": json.dumps({"todos": [{"content": "stale"}]})})
+    log.append_domain_event("todo", {"todos": [{"content": "fresh"}]})
+    reconstructed = reconstruct_domain_state(self._events(log))
+    self.assertEqual(reconstructed["todo"]["todos"][0]["content"], "fresh")
 
 
 if __name__ == "__main__":

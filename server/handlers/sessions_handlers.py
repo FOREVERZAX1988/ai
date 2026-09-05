@@ -78,6 +78,56 @@ async def api_session_repair(request: web.Request) -> web.Response:
     return _json_response({"ok": False, "error": str(e)}, status=500)
 
 
+def reconstruct_domain_state(events: list[Any]) -> dict[str, Any]:
+  """Fold-first reconstruction of goal/plan/todo from session events.
+
+  Prefers ``<domain>/change`` events produced by the G2 projection
+  (store mutations → SessionLog.append_domain_event, replayed via
+  folds.fold_domain_events). Legacy logs without domain events fall
+  back to the TOOL_CALL/TOOL_RESULT heuristic: the tool name lives on
+  TOOL_CALL while the result payload lives on TOOL_RESULT, correlated
+  by call id.
+  """
+  try:
+    from ai.core.session.folds import fold_domain_events
+    folded = fold_domain_events(events)
+  except Exception:
+    folded = {"goal": None, "plan": None, "todo": None}
+  if any(folded.get(k) is not None for k in ("goal", "plan", "todo")):
+    return folded
+
+  from ai.core.session.log import EventType
+  name_by_call: dict[str, str] = {}
+  result_by_call: dict[str, dict] = {}
+  for ev in events:
+    data = ev.data if isinstance(ev.data, dict) else {}
+    if ev.type == EventType.TOOL_CALL:
+      cid = str(data.get("callId") or "")
+      if cid:
+        name_by_call[cid] = str(data.get("name") or "")
+    elif ev.type == EventType.TOOL_RESULT:
+      cid = str(data.get("tool_call_id") or "")
+      if cid:
+        try:
+          payload = json.loads(data.get("content", "{}")) if isinstance(data.get("content"), str) else data.get("result")
+        except (json.JSONDecodeError, TypeError):
+          payload = None
+        if isinstance(payload, dict):
+          result_by_call[cid] = payload
+  reconstructed = {"goal": None, "plan": None, "todo": None}
+  for cid, name in name_by_call.items():
+    payload = result_by_call.get(cid)
+    if payload is None:
+      continue
+    if name.startswith("goal_") and payload.get("goal") is not None:
+      reconstructed["goal"] = payload["goal"]
+    elif name.startswith("plan_") and payload.get("plan") is not None:
+      reconstructed["plan"] = payload["plan"]
+    elif name.startswith("todo_") and isinstance(payload, dict):
+      reconstructed["todo"] = payload
+  return reconstructed
+
+
 async def api_session_resume(request: web.Request) -> web.Response:
   """POST /api/ai/sessions/{id}/resume - replay persisted events to rebuild context."""
   session_id = request.match_info.get("session_id", "").strip()
@@ -87,46 +137,23 @@ async def api_session_resume(request: web.Request) -> web.Response:
   if not log_path or not os.path.isfile(log_path):
     return _json_response({"ok": False, "error": "no persisted log for session"}, status=404)
   try:
-    from ai.core.session.log import EventType, SessionLog
+    from ai.core.session.log import SessionLog
     log = SessionLog(session_id, persist_path=log_path, load_persisted=True)
     replayed = len(log.events)
-    # Correlate TOOL_CALL name -> TOOL_RESULT content by call id. In the
-    # persisted shape produced by AgentLoop._step the tool name lives on
-    # TOOL_CALL, while the result payload lives on TOOL_RESULT; reconstructing
-    # from every event's own "name" field would always yield None.
-    name_by_call: dict[str, str] = {}
-    result_by_call: dict[str, dict] = {}
     interrupted = []
     call_ids: set[str] = set()
     result_ids: set[str] = set()
     for ev in log.events:
       data = ev.data if isinstance(ev.data, dict) else {}
-      if ev.type == EventType.TOOL_CALL:
+      if ev.type.value == "tool/call":
         cid = str(data.get("callId") or "")
         if cid:
           call_ids.add(cid)
-          name_by_call[cid] = str(data.get("name") or "")
-      elif ev.type == EventType.TOOL_RESULT:
+      elif ev.type.value == "tool/result":
         cid = str(data.get("tool_call_id") or "")
         if cid:
           result_ids.add(cid)
-          try:
-            payload = json.loads(data.get("content", "{}")) if isinstance(data.get("content"), str) else data.get("result")
-          except (json.JSONDecodeError, TypeError):
-            payload = None
-          if isinstance(payload, dict):
-            result_by_call[cid] = payload
-    reconstructed = {"goal": None, "plan": None, "todo": None}
-    for cid, name in name_by_call.items():
-      payload = result_by_call.get(cid)
-      if payload is None:
-        continue
-      if name.startswith("goal_") and payload.get("goal") is not None:
-        reconstructed["goal"] = payload["goal"]
-      elif name.startswith("plan_") and payload.get("plan") is not None:
-        reconstructed["plan"] = payload["plan"]
-      elif name.startswith("todo_") and isinstance(payload, dict):
-        reconstructed["todo"] = payload
+    reconstructed = reconstruct_domain_state(log.events)
     interrupted = sorted(call_ids - result_ids)
     from ai.core.session.repair import repair_session_log
     repaired_events = repair_session_log(log)
