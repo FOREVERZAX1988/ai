@@ -18,6 +18,26 @@ class PlanStore:
     self.base_dir = Path(base_dir)
     self.base_dir.mkdir(parents=True, exist_ok=True)
     self._lock = threading.Lock()
+    self._event_sink: Any = None
+
+  def set_event_sink(self, sink: Any) -> None:
+    """Bind an optional domain-event sink: sink(snapshot_dict, tombstone).
+
+    Every successful create/update/set_step_status emits a full-snapshot
+    ``plan/change`` event; delete emits a tombstone. Unbound stores keep
+    the legacy JSON-only behavior.
+    """
+    self._event_sink = sink
+
+  def _emit_domain(self, snapshot: Any, tombstone: bool = False) -> None:
+    sink = self._event_sink
+    if sink is None:
+      return
+    try:
+      sink(snapshot, tombstone)
+    except Exception:
+      # Best-effort projection; JSON store remains authoritative for now.
+      pass
 
   @property
   def _plans_path(self) -> Path:
@@ -87,6 +107,7 @@ class PlanStore:
       data = self._load_plans()
       data["plans"][plan.id] = plan.to_dict()
       self._save_plans(data)
+    self._emit_domain(plan.to_dict())
     return plan
 
   def get(self, plan_id: str) -> Plan | None:
@@ -114,6 +135,7 @@ class PlanStore:
       plan.updated_at = self._now()
       data["plans"][plan_id] = plan.to_dict()
       self._save_plans(data)
+    self._emit_domain(plan.to_dict())
     return plan
 
   def delete(self, plan_id: str) -> bool:
@@ -121,8 +143,10 @@ class PlanStore:
       data = self._load_plans()
       if plan_id not in data["plans"]:
         return False
+      deleted = data["plans"][plan_id]
       del data["plans"][plan_id]
       self._save_plans(data)
+    self._emit_domain({"id": plan_id, "deleted": True}, tombstone=True)
     return True
 
   def list_all(self) -> list[Plan]:
@@ -145,6 +169,7 @@ class PlanStore:
       plan.updated_at = self._now()
       data["plans"][plan_id] = plan.to_dict()
       self._save_plans(data)
+    self._emit_domain(plan.to_dict())
     return plan
 
   def activate(self, plan_id: str) -> Plan:

@@ -17,6 +17,26 @@ class TodoStore:
     self.base_dir = Path(base_dir)
     self.base_dir.mkdir(parents=True, exist_ok=True)
     self._lock = threading.Lock()
+    self._event_sink: Any = None
+
+  def set_event_sink(self, sink: Any) -> None:
+    """Bind an optional domain-event sink: sink(snapshot_dict, tombstone).
+
+    Every successful write (including clear) emits a full-snapshot
+    ``todo/change`` event; clearing emits a tombstone since the list is
+    emptied wholesale. Unbound stores keep the legacy JSON-only behavior.
+    """
+    self._event_sink = sink
+
+  def _emit_domain(self, snapshot: Any, tombstone: bool = False) -> None:
+    sink = self._event_sink
+    if sink is None:
+      return
+    try:
+      sink(snapshot, tombstone)
+    except Exception:
+      # Best-effort projection; JSON store remains authoritative for now.
+      pass
 
   @property
   def _state_path(self) -> Path:
@@ -74,6 +94,10 @@ class TodoStore:
         "updatedAt": int(time.monotonic() * 1000),
         "metadata": dict(metadata or {}),
       })
+    self._emit_domain(
+      {"todos": [t.to_dict() for t in items], "metadata": dict(metadata or {})},
+      tombstone=not items,
+    )
     return {
       "todos": [t.to_dict() for t in items],
       "counts": counts.to_dict(),

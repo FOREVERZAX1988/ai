@@ -29,6 +29,9 @@ class EventType(StrEnum):
   REQUEST_HEADER = "request/header"
   REQUEST_CONTEXT = "request/context"
   LIFECYCLE = "lifecycle"
+  GOAL_CHANGE = "goal/change"
+  PLAN_CHANGE = "plan/change"
+  TODO_CHANGE = "todo/change"
 
 
 class SurfaceOp(StrEnum):
@@ -281,6 +284,14 @@ class SessionLog:
   def persist_path(self) -> Path | None:
     return self._persist_path
 
+  def append_domain_event(self, domain: str, snapshot: Any, *, tombstone: bool = False) -> SessionEvent:
+    event_type = EventType(f"{domain}/change")
+    return self.append(event_type, {"snapshot": snapshot, "tombstone": tombstone})
+
+  def derive_domain_state(self) -> dict[str, Any]:
+    from ai.core.session.folds import fold_domain_events
+    return fold_domain_events(self._events)
+
   @property
   def surface(self) -> tuple[SurfaceNode, ...]:
     return tuple(self._surface)
@@ -418,6 +429,12 @@ class SessionLog:
       if node.event_type == EventType.ASSISTANT_MESSAGE:
         return _project_assistant(node.data)
     return None
+
+
+def project_domain_state(events: list[SessionEvent]) -> dict[str, Any]:
+  """Legacy inline fold kept for compatibility; prefer folds.fold_domain_events."""
+  from ai.core.session.folds import fold_domain_events
+  return fold_domain_events(events)
 
 
 def _project_user(data: Any) -> dict[str, Any]:

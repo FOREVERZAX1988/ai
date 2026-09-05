@@ -33,6 +33,27 @@ class GoalStore:
     self.base_dir = Path(base_dir)
     self.base_dir.mkdir(parents=True, exist_ok=True)
     self._lock = threading.RLock()
+    self._event_sink: Any = None
+
+  def set_event_sink(self, sink: Any) -> None:
+    """Bind an optional domain-event sink: sink(snapshot_dict, tombstone).
+
+    When bound, every successful mutation emits a full-snapshot
+    ``goal/change`` session event so state is replayable from the log.
+    Unbound stores keep the legacy JSON-only behavior.
+    """
+    self._event_sink = sink
+
+  def _emit_domain(self, snapshot: dict[str, Any], tombstone: bool = False) -> None:
+    sink = self._event_sink
+    if sink is None:
+      return
+    try:
+      sink(snapshot, tombstone)
+    except Exception:
+      # Best-effort projection: the JSON store remains authoritative until
+      # resume switches to fold-first replay.
+      pass
 
   @property
   def _state_path(self) -> Path:
@@ -125,6 +146,7 @@ class GoalStore:
       if goal.id not in state["seenGoalIds"]:
         state["seenGoalIds"].append(goal.id)
       self._save_state(state)
+    self._emit_domain(goal.to_dict())
     return GoalView(
       id=goal.id,
       revision=goal.revision,

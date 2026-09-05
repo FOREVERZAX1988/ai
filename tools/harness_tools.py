@@ -48,6 +48,34 @@ def _ref(args: dict[str, Any]) -> GoalRef:
   return GoalRef(id=str(ref), revision=1)
 
 
+def _bind_domain_sink(store: Any, domain: str) -> None:
+  """Bind the current session log as a domain-event sink (G2/U6).
+
+  Reads the SessionLog injected through the pipeline ``session_ctx``
+  ContextVar; when present, every successful store mutation emits a
+  ``<domain>/change`` event so goal/plan/todo state is replayable from
+  the session log. No-op outside a session (legacy HTTP/CLI callers).
+  """
+  try:
+    from ai.core.tools.pipeline import session_ctx
+    log = session_ctx.get()
+  except Exception:
+    return
+  if log is None:
+    return
+
+  def _sink(snapshot: Any, tombstone: bool = False) -> None:
+    try:
+      log.append_domain_event(domain, snapshot, tombstone=tombstone)
+    except Exception:
+      pass
+
+  try:
+    store.set_event_sink(_sink)
+  except Exception:
+    pass
+
+
 # ---------------------------------------------------------------------------
 # Schemas
 # ---------------------------------------------------------------------------
@@ -109,7 +137,9 @@ def harness_tool_schemas(params=None) -> list[dict[str, Any]]:
 
 def _h_goal_create(a: dict[str, Any]) -> dict[str, Any]:
   try:
-    view = _goal_store().create(CreateGoalRequest(
+    store = _goal_store()
+    _bind_domain_sink(store, "goal")
+    view = store.create(CreateGoalRequest(
       objective=str(a.get("objective", "")),
       max_goal_rounds=a.get("maxGoalRounds"),
     ))
@@ -128,7 +158,9 @@ def _h_goal_get(_a: dict[str, Any]) -> dict[str, Any]:
 
 def _h_goal_edit(a: dict[str, Any]) -> dict[str, Any]:
   try:
-    view = _goal_store().edit(_ref(a), EditGoalRequest(
+    store = _goal_store()
+    _bind_domain_sink(store, "goal")
+    view = store.edit(_ref(a), EditGoalRequest(
       objective=a.get("objective"),
       max_goal_rounds=a.get("maxGoalRounds"),
     ))
@@ -139,28 +171,36 @@ def _h_goal_edit(a: dict[str, Any]) -> dict[str, Any]:
 
 def _h_goal_pause(a: dict[str, Any]) -> dict[str, Any]:
   try:
-    return {"ok": True, "goal": _goal_store().pause(_ref(a)).to_dict()}
+    store = _goal_store()
+    _bind_domain_sink(store, "goal")
+    return {"ok": True, "goal": store.pause(_ref(a)).to_dict()}
   except Exception as exc:
     return _error(str(exc))
 
 
 def _h_goal_resume(a: dict[str, Any]) -> dict[str, Any]:
   try:
-    return {"ok": True, "goal": _goal_store().resume(_ref(a)).to_dict()}
+    store = _goal_store()
+    _bind_domain_sink(store, "goal")
+    return {"ok": True, "goal": store.resume(_ref(a)).to_dict()}
   except Exception as exc:
     return _error(str(exc))
 
 
 def _h_goal_complete(a: dict[str, Any]) -> dict[str, Any]:
   try:
-    return {"ok": True, "goal": _goal_store().complete(_ref(a)).to_dict()}
+    store = _goal_store()
+    _bind_domain_sink(store, "goal")
+    return {"ok": True, "goal": store.complete(_ref(a)).to_dict()}
   except Exception as exc:
     return _error(str(exc))
 
 
 def _h_goal_block(a: dict[str, Any]) -> dict[str, Any]:
   try:
-    view = _goal_store().block(_ref(a), dict(a.get("reason") or {}))
+    store = _goal_store()
+    _bind_domain_sink(store, "goal")
+    view = store.block(_ref(a), dict(a.get("reason") or {}))
     return {"ok": True, "goal": view.to_dict()}
   except Exception as exc:
     return _error(str(exc))
@@ -172,7 +212,9 @@ def _h_goal_block(a: dict[str, Any]) -> dict[str, Any]:
 
 def _h_plan_generate(a: dict[str, Any]) -> dict[str, Any]:
   try:
-    plan = _plan_store().create(
+    store = _plan_store()
+    _bind_domain_sink(store, "plan")
+    plan = store.create(
       title=str(a.get("title", "")),
       steps=a.get("steps") or [],
       goal_id=a.get("goal_id") or a.get("goalId"),
@@ -184,7 +226,9 @@ def _h_plan_generate(a: dict[str, Any]) -> dict[str, Any]:
 
 def _h_plan_update(a: dict[str, Any]) -> dict[str, Any]:
   try:
-    plan = _plan_store().update(str(a.get("plan_id", "")), dict(a.get("patch") or {}))
+    store = _plan_store()
+    _bind_domain_sink(store, "plan")
+    plan = store.update(str(a.get("plan_id", "")), dict(a.get("patch") or {}))
     return {"ok": True, "plan": plan.to_dict()}
   except Exception as exc:
     return _error(str(exc))
@@ -192,14 +236,18 @@ def _h_plan_update(a: dict[str, Any]) -> dict[str, Any]:
 
 def _h_plan_activate(a: dict[str, Any]) -> dict[str, Any]:
   try:
-    return {"ok": True, "plan": _plan_store().activate(str(a.get("plan_id", ""))).to_dict()}
+    store = _plan_store()
+    _bind_domain_sink(store, "plan")
+    return {"ok": True, "plan": store.activate(str(a.get("plan_id", ""))).to_dict()}
   except Exception as exc:
     return _error(str(exc))
 
 
 def _h_plan_step_status(a: dict[str, Any]) -> dict[str, Any]:
   try:
-    plan = _plan_store().set_step_status(
+    store = _plan_store()
+    _bind_domain_sink(store, "plan")
+    plan = store.set_step_status(
       str(a.get("plan_id", "")),
       str(a.get("step_id", "")),
       str(a.get("status", "")),
@@ -211,7 +259,9 @@ def _h_plan_step_status(a: dict[str, Any]) -> dict[str, Any]:
 
 def _h_plan_complete(a: dict[str, Any]) -> dict[str, Any]:
   try:
-    return {"ok": True, "plan": _plan_store().complete(str(a.get("plan_id", ""))).to_dict()}
+    store = _plan_store()
+    _bind_domain_sink(store, "plan")
+    return {"ok": True, "plan": store.complete(str(a.get("plan_id", ""))).to_dict()}
   except Exception as exc:
     return _error(str(exc))
 
@@ -222,7 +272,9 @@ def _h_plan_complete(a: dict[str, Any]) -> dict[str, Any]:
 
 def _h_todo_write(a: dict[str, Any]) -> dict[str, Any]:
   try:
-    result = _todo_store().write(
+    store = _todo_store()
+    _bind_domain_sink(store, "todo")
+    result = store.write(
       a.get("todos", []),
       allow_parallel=bool(a.get("allowParallel", True)),
       metadata=a.get("metadata"),
@@ -234,7 +286,9 @@ def _h_todo_write(a: dict[str, Any]) -> dict[str, Any]:
 
 def _h_todo_clear(_a: dict[str, Any]) -> dict[str, Any]:
   try:
-    return {"ok": True, **_todo_store().clear()}
+    store = _todo_store()
+    _bind_domain_sink(store, "todo")
+    return {"ok": True, **store.clear()}
   except Exception as exc:
     return _error(str(exc))
 

@@ -12,6 +12,9 @@ import asyncio
 import functools
 import json
 import time
+from contextvars import ContextVar, Token, copy_context
+
+session_ctx: ContextVar[Any] = ContextVar("session_ctx", default=None)
 from collections.abc import Callable, Coroutine
 from dataclasses import dataclass, field
 from typing import Any
@@ -243,70 +246,81 @@ class ToolPipeline:
       return {"ok": False, "error": "Tool call was cancelled before execution", "error_code": "CANCELLED"}
 
     # Execute
-    effective_timeout = timeout_seconds
-    if effective_timeout is None and tool.timeout_ms:
-      effective_timeout = tool.timeout_ms / 1000.0
-
-    body_invoked = True
+    context_token: Token[Any] | None = None
+    if extra and extra.get("session_ctx") is not None:
+      context_token = session_ctx.set(extra["session_ctx"])
     try:
-      if asyncio.iscoroutinefunction(tool.handler) or getattr(tool, "is_async", False):
-        if effective_timeout is not None and effective_timeout > 0:
-          result = await asyncio.wait_for(tool.handler(args), timeout=effective_timeout)
+      effective_timeout = timeout_seconds
+      if effective_timeout is None and tool.timeout_ms:
+        effective_timeout = tool.timeout_ms / 1000.0
+
+      body_invoked = True
+      try:
+        if asyncio.iscoroutinefunction(tool.handler) or getattr(tool, "is_async", False):
+          if effective_timeout is not None and effective_timeout > 0:
+            result = await asyncio.wait_for(tool.handler(args), timeout=effective_timeout)
+          else:
+            result = await tool.handler(args)
         else:
-          result = await tool.handler(args)
-      else:
-        loop = asyncio.get_running_loop()
-        if effective_timeout is not None and effective_timeout > 0:
-          result = await asyncio.wait_for(
-            loop.run_in_executor(None, functools.partial(tool.handler, args)),
-            timeout=effective_timeout,
-          )
-        else:
-          result = await loop.run_in_executor(None, functools.partial(tool.handler, args))
-    except TimeoutError:
-      body_invoked = False
-      result = {"ok": False, "error": f"Tool '{name}' timed out after {effective_timeout}s", "error_code": "TOOL_TIMEOUT", "retryable": True}
-    except asyncio.CancelledError:
-      raise
-    except Exception as e:
-      result = {"ok": False, "error": f"Tool execution failed: {e}", "error_code": "TOOL_ERROR"}
+          # ContextVar does NOT propagate into executor threads automatically;
+          # run the handler inside a copy of the current context so session
+          # handlers can read `session_ctx` (domain event sink binding).
+          loop = asyncio.get_running_loop()
+          run_ctx = copy_context()
+          if effective_timeout is not None and effective_timeout > 0:
+            result = await asyncio.wait_for(
+              loop.run_in_executor(None, functools.partial(run_ctx.run, tool.handler, args)),
+              timeout=effective_timeout,
+            )
+          else:
+            result = await loop.run_in_executor(None, functools.partial(run_ctx.run, tool.handler, args))
+      except TimeoutError:
+        body_invoked = False
+        result = {"ok": False, "error": f"Tool '{name}' timed out after {effective_timeout}s", "error_code": "TOOL_TIMEOUT", "retryable": True}
+      except asyncio.CancelledError:
+        raise
+      except Exception as e:
+        result = {"ok": False, "error": f"Tool execution failed: {e}", "error_code": "TOOL_ERROR"}
 
-    if is_cancelled and is_cancelled():
-      if body_invoked:
-        return {"ok": False, "error": "Tool call was cancelled during execution", "error_code": "CANCELLED"}
-      return {"ok": False, "error": "Tool call was cancelled before execution", "error_code": "CANCELLED"}
+      if is_cancelled and is_cancelled():
+        if body_invoked:
+          return {"ok": False, "error": "Tool call was cancelled during execution", "error_code": "CANCELLED"}
+        return {"ok": False, "error": "Tool call was cancelled before execution", "error_code": "CANCELLED"}
 
-    if not isinstance(result, dict):
-      result = {"ok": True, "value": result}
+      if not isinstance(result, dict):
+        result = {"ok": True, "value": result}
 
-    # Post-execute hooks
-    for hook in self._post_hooks:
-      decision = hook(exec_ctx, result)
-      if asyncio.iscoroutine(decision):
-        decision = await decision
-      if decision.kind == "block":
-        return {"ok": False, "error": decision.feedback or "Tool result blocked by post-execute policy", "error_code": "BLOCKED"}
-      if decision.kind == "accept" and decision.result is not None:
-        result = decision.result
+      # Post-execute hooks
+      for hook in self._post_hooks:
+        decision = hook(exec_ctx, result)
+        if asyncio.iscoroutine(decision):
+          decision = await decision
+        if decision.kind == "block":
+          return {"ok": False, "error": decision.feedback or "Tool result blocked by post-execute policy", "error_code": "BLOCKED"}
+        if decision.kind == "accept" and decision.result is not None:
+          result = decision.result
 
-    if self._post_waterfall:
-      async def run_stage(index: int, current: ToolResult) -> ToolResult:
-        if index >= len(self._post_waterfall):
-          return current
-        stage = self._post_waterfall[index]
+      if self._post_waterfall:
+        async def run_stage(index: int, current: ToolResult) -> ToolResult:
+          if index >= len(self._post_waterfall):
+            return current
+          stage = self._post_waterfall[index]
 
-        async def next_stage() -> ToolResult:
-          return await run_stage(index + 1, current)
+          async def next_stage() -> ToolResult:
+            return await run_stage(index + 1, current)
 
-        updated = stage(exec_ctx, current, next_stage)
-        if asyncio.iscoroutine(updated):
-          updated = await updated
-        return updated if isinstance(updated, ToolResult) else current
+          updated = stage(exec_ctx, current, next_stage)
+          if asyncio.iscoroutine(updated):
+            updated = await updated
+          return updated if isinstance(updated, ToolResult) else current
 
-      structured = await run_stage(0, build_tool_result(result))
-      result = structured.value
+        structured = await run_stage(0, build_tool_result(result))
+        result = structured.value
 
-    return result
+      return result
+    finally:
+      if context_token is not None:
+        session_ctx.reset(context_token)
 
   def wrap_executor(self) -> Callable[..., Coroutine[Any, Any, Any]]:
     """Return a callable matching the old execute_tool_async signature."""

@@ -242,6 +242,7 @@ class AgentLoop:
         raw_arguments=arguments,
         is_cancelled=self.state.is_cancelled,
         timeout_seconds=self.tool_timeout,
+        extra={"session_ctx": self.log},
       )
 
       await self.emit_event({

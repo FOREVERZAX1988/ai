@@ -507,6 +507,7 @@ class Agent:
         raw_arguments=p["arguments"],
         is_cancelled=lambda: self.is_cancelled,
         timeout_seconds=self.tool_timeout,
+        extra={"session_ctx": self.log},
       )
 
     tasks = [asyncio.create_task(_exec(p)) for p in prepared]
