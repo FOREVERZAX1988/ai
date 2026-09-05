@@ -32,6 +32,7 @@ class EventType(StrEnum):
   GOAL_CHANGE = "goal/change"
   PLAN_CHANGE = "plan/change"
   TODO_CHANGE = "todo/change"
+  COMPACTION_PRUNE = "compaction/prune"
 
 
 class SurfaceOp(StrEnum):
