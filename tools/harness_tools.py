@@ -688,6 +688,96 @@ async def _h_mcp_discover(a: dict[str, Any]) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
+# Schedule handlers (agent-scoped durable reminders)
+# ---------------------------------------------------------------------------
+
+def _schedule_store():
+  from ai.schedule.store import get_schedule_store
+  return get_schedule_store()
+
+
+def _bind_schedule_sink(store: Any) -> None:
+  """Project schedule mutations into the session log as schedule/change."""
+  try:
+    from ai.core.tools.pipeline import session_ctx
+    log = session_ctx.get()
+  except Exception:
+    return
+  if log is None:
+    return
+
+  def _sink(payload: dict[str, Any]) -> None:
+    try:
+      from ai.core.session.log import EventType
+      snapshot = payload.get("snapshot")
+      tombstone = bool(payload.get("tombstone"))
+      log.append(
+        EventType.SCHEDULE_CHANGE,
+        {"version": 1, "snapshot": snapshot, "tombstone": tombstone},
+      )
+    except Exception:
+      pass
+
+  try:
+    store.set_event_sink(_sink)
+  except Exception:
+    pass
+
+
+def _schedule_create_error(exc: Exception) -> dict[str, Any]:
+  if hasattr(exc, "code"):
+    return {"ok": False, "error": str(exc), "error_code": exc.code}
+  return _error(str(exc))
+
+
+def _h_schedule_create(a: dict[str, Any]) -> dict[str, Any]:
+  """Create a reminder; exactly one of after_seconds / at / every_seconds."""
+  try:
+    store = _schedule_store()
+    _bind_schedule_sink(store)
+    selectors = [s for s in ("after_seconds", "at", "every_seconds") if a.get(s) is not None]
+    if len(selectors) != 1:
+      return {"ok": False, "error": "schedule_create accepts exactly one of after_seconds, at, or every_seconds.", "error_code": "invalid_rule"}
+    from ai.schedule.store import ScheduleInputError
+    try:
+      if selectors[0] == "after_seconds":
+        record = store.create_after(str(a.get("prompt", "")), a["after_seconds"])
+      elif selectors[0] == "at":
+        record = store.create_at(str(a.get("prompt", "")), str(a["at"]))
+      else:
+        record = store.create_every(str(a.get("prompt", "")), a["every_seconds"])
+    except ScheduleInputError as exc:
+      return _schedule_create_error(exc)
+    return {"ok": True, "schedule": record.to_dict()}
+  except Exception as exc:
+    return _error(str(exc))
+
+
+def _h_schedule_list(_a: dict[str, Any]) -> dict[str, Any]:
+  try:
+    store = _schedule_store()
+    schedules = [r.to_dict() for r in store.list()]
+    return {"ok": True, "schedules": schedules, "count": len(schedules)}
+  except Exception as exc:
+    return _error(str(exc))
+
+
+def _h_schedule_delete(a: dict[str, Any]) -> dict[str, Any]:
+  try:
+    store = _schedule_store()
+    _bind_schedule_sink(store)
+    schedule_id = str(a.get("id", "")).strip()
+    if not schedule_id:
+      return {"ok": False, "error": "schedule_delete id must be non-empty without surrounding whitespace.", "error_code": "invalid_rule"}
+    deleted = store.delete(schedule_id)
+    if not deleted:
+      return {"ok": False, "error": f"schedule not found: {schedule_id}", "error_code": "schedule_not_found", "id": schedule_id}
+    return {"ok": True, "id": schedule_id, "deleted": True}
+  except Exception as exc:
+    return _schedule_create_error(exc)
+
+
+# ---------------------------------------------------------------------------
 # Registration entry points
 # ---------------------------------------------------------------------------
 
@@ -716,4 +806,7 @@ def register_harness_handlers(handlers, *, params=None, get_state_reader=None, t
     "lsp": _h_lsp,
     "run_python_code": _h_run_python_code,
     "workflow_advance": _h_workflow_advance,
+    "schedule_create": _h_schedule_create,
+    "schedule_list": _h_schedule_list,
+    "schedule_delete": _h_schedule_delete,
   })

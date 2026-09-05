@@ -740,6 +740,20 @@ class Agent:
             wakeup=False,
           )
 
+      # Deliver reminders that fired while no run was active: drain the
+      # schedule runtime mailbox into the seeded turns (dsh dispatches them
+      # as user turns; here they ride the already-driven session).
+      try:
+        from ai.schedule.runtime import drain_reminders
+        for reminder in drain_reminders(self.session_id):
+          loop.state.send(
+            AgentMessage(role="user", content=reminder, source="schedule"),
+            InboxTarget.NEXT_TURN,
+            wakeup=False,
+          )
+      except Exception:
+        pass  # schedule delivery is best-effort, never block the chat run
+
       # Drive the session through the loop's public iteration seam (dsh
       # wakeDriver/whenIdle semantics): wake + drain queued follow-ups.
       # The facade must not invoke the loop's private run entry directly.

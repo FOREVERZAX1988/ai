@@ -35,6 +35,7 @@ class EventType(StrEnum):
   COMPACTION_PRUNE = "compaction/prune"
   SUBAGENT_START = "subagent/start"
   SUBAGENT_END = "subagent/end"
+  SCHEDULE_CHANGE = "schedule/change"
 
 
 class SurfaceOp(StrEnum):
