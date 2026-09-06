@@ -24,6 +24,8 @@ class SubagentTask:
   status: SubagentStatus = "pending"
   result_summary: str = ""
   provider: str = "in-process"
+  origin: str = "user"
+  delegation_depth: int | None = None
   metadata: dict[str, Any] = field(default_factory=dict)
 
   def to_dict(self) -> dict[str, Any]:
@@ -40,8 +42,11 @@ class SubagentTask:
       "status": self.status,
       "resultSummary": self.result_summary,
       "provider": self.provider,
+      "origin": self.origin,
       "metadata": dict(self.metadata),
     }
+    if self.delegation_depth is not None:
+      out["delegationDepth"] = self.delegation_depth
     if self.output_schema is not None:
       out["outputSchema"] = self.output_schema
     return out
@@ -62,6 +67,8 @@ class SubagentTask:
       status=str(data.get("status", "pending")),
       result_summary=str(data.get("resultSummary") or data.get("result_summary", "")),
       provider=str(data.get("provider", "in-process") or "in-process"),
+      origin=str(data.get("origin", "user") or "user"),
+      delegation_depth=data.get("delegationDepth") or data.get("delegation_depth"),
       metadata=dict(data.get("metadata") or {}),
     )
 

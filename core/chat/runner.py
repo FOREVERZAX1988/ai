@@ -79,6 +79,12 @@ async def build_chat_messages(
   )
   labeled_parts.append(("base", base_prompt, budget.system_max, 100))
 
+  try:
+    from ai.core.wspace.safety_rules import safety_rules_prompt_block
+    labeled_parts.append(("safety_rules", safety_rules_prompt_block(), 800, 99))
+  except Exception:
+    pass
+
   agent_prompt = agent_system_prompt(agent_id, route_data) if agent_id else ""
   if agent_prompt:
     labeled_parts.append(("agent", agent_prompt, 800, 90))

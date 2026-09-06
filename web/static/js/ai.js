@@ -8504,6 +8504,9 @@ async function init() {
     DeviceTrust.refreshTrust(api).catch(() => {});
   }
   bindSettingsTabs();
+  if (typeof SettingsApp !== 'undefined') {
+    SettingsApp.mount({ api, t, showToast, escapeHtml, getConfig: () => savedConfig });
+  }
   if (typeof ComposerMention !== 'undefined') {
     ComposerMention.init({
       api,
@@ -8614,6 +8617,9 @@ async function init() {
 
   const settingsTab = new URLSearchParams(location.search).get('settings');
   if (settingsTab === 'secoc') openSecocModal();
+  else if (settingsTab && typeof SettingsApp !== 'undefined' && SettingsApp.registry.get(settingsTab)) {
+    SettingsApp.openTab(settingsTab);
+  }
   else if (settingsTab) openSettingsTab(settingsTab);
 }
 

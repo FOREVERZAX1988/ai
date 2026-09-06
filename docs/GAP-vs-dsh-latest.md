@@ -19,23 +19,23 @@
 
 | # | 差距 | dsh 基准 | ai 现状 | 状态 |
 |---|------|----------|---------|------|
-| G1 | **Spill waterfall + content-block 语义**（= U3，任务 #46） | `packages/spill/spill-policy/src/index.ts:190-231`：`await next()` waterfall、只处理 accepted plain-text、跳过 nested PTC 的 model-facing arm、dispatch-log arm、UTF-8 head/tail retention、预留 notice 字节 | `core/agent/agent.py` 已注册 outermost waterfall；`tools/result_externalize.py` 提供纯文本 spill、UTF-8 head/tail、notice cap 预留；dispatch-log arm 仍待 PTC 接入 | `[部分闭合]` |
-| G2 | **Goal/Plan/Todo event projection**（= U6） | `packages/goal/goal/src/domain.ts:13-114`：`goal/change` snapshot/tombstone 事件 + replay fold + scoped emit；plan/todo 同为 tool/domain event 投影 | `goal/store.py`、`plan/store.py`、`todo/store.py` 独立 JSON 快照，replay 无法重建 | `[未开始]` |
-| G3 | **Compaction（会话压缩与 tool 结果修剪）** | dsh 有 compaction 语义：长会话上下文压缩、旧 tool 结果裁剪，保证 token 预算 | ai 无任何 compaction | `[未开始]` |
+| G1 | **Spill waterfall + content-block 语义**（= U3，任务 #46） | `packages/spill/spill-policy/src/index.ts:190-231`：`await next()` waterfall、只处理 accepted plain-text、跳过 nested PTC 的 model-facing arm、dispatch-log arm、UTF-8 head/tail retention、预留 notice 字节 | Model-facing arm（`ff3d04d`）+ dispatch-log arm（`3129923`）：`loop.py` 的 TOOL_RESULT 日志副本经 `bound_dispatch_log_copy`（kind="dispatch"）独立收敛——read 族/nested 的模型面结果保持完整而日志副本缩为 preview+locator，与 dsh `tools/ptc-dispatch-log` 语义对齐；spill ref 记录 kind；QA_PASS=YES（12 套件 89 项，spill 双写/双臂产物互不冲突、surface 校验合法、异常路径无阻断） | `[闭合]`（ai 无 PTC nested dispatch 生产者，arm 以 read 族/大结果日志副本为实际覆盖面） |
+| G2 | **Goal/Plan/Todo event projection**（= U6） | `packages/goal/goal/src/domain.ts:13-114`：`goal/change` snapshot/tombstone 事件 + replay fold + scoped emit；plan/todo 同为 tool/domain event 投影 | **已闭合**：Commit `b9c115d`（mutation → domain event + replay fold + ContextVar 透传）+ `17ace86`（resume fold-first 重建，legacy 启发式仅作 fallback）；测试 14/14 + 全量回归 | `[已闭合]` |
+| G3 | **Compaction（会话压缩与 tool 结果修剪）** | dsh 有 compaction 语义：长会话上下文压缩、旧 tool 结果裁剪，保证 token 预算 | Commit `9e7529c`：`core/session/tokens.py` 启发式 token meter（ASCII~4/CJK~1.6 chars-per-token）；`compaction.py` budget 门控（`ai_compaction_max_tokens` 默认 32768，超 budget×threshold_ratio 才触发，=0 只手动）+ retain_ratio 保留最近 tool 结果 + LLM 摘要优先/确定性 digest 兜底 + shadow-priced prune 带 token 价格；修复旧版 max_tokens=0 恒触发与非连续 REPLACE 必挂 surface 校验两处 bug；QA_PASS=YES（budget 门控/retain/摘要回退/pre-step 无回归逐项命中） | `[闭合]`（meter 为启发式估计；真实 provider usage 校准为后续） |
 
 ### P1 — 生命周期与错误契约（可本地完成）
 
 | # | 差距 | dsh 基准 | ai 现状 | 状态 |
 |---|------|----------|---------|------|
-| G4 | **Agent 门面公开迭代接口**（= U13 的一部分） | public `wakeDriver()/whenIdle()` 生命周期驱动 | `core/agent/agent.py` 直接调私有 `loop._run()`，取消/唤醒/dispose 边界不一致 | `[未开始]` |
-| G5 | **LSP structured error taxonomy + 取消 + 结果上限**（= U5） | `packages/lsp/*`：provider/extension 路由、60s tool budget、结果上限、`NO_PROVIDER/WORKSPACE_OUTSIDE/INVALID_RESPONSE` 错误码、取消升级终止进程 | `tools/harness_tools.py:339-375` 四操作可用但缺 provider 生命周期与结构化错误 | `[未开始]` |
-| G6 | **Scheduler（agent 级 cron/at/every 工具）** | dsh 有 agent 级定时任务工具（at/cron/every） | ai 无 | `[未开始]` |
-| G7 | **Subagent capability matrix + 父子 lineage**（= U9 剩余） | provider capability 声明、parentSession/delegationDepth/origin 持久化、depth/tool/outputSchema 能力拒绝 | `subagent/providers.py` registry 与并行 fan-out 已闭合；capability/lineage 缺 | `[未开始]` |
-| G8 | **Profile patch composition**（= U12 剩余） | `packages/boot/app-boot/src/profile.ts`：ordered `dsh.profile.bundles`、`dsh.bundle.patch`、`cordis.patch.yml` 原子合成 | `bundle/` zip+manifest+原子安装已闭合；profile 层缺 | `[未开始]` |
+| G4 | **Agent 门面公开迭代接口**（= U13 的一部分） | public `wakeDriver()/whenIdle()` 生命周期驱动 | Commit `070dfc9`：AgentLoop 新增公开 `run_until_idle(is_cancelled=...)`（外部取消在排队轮间抛 ChatCancelled）与 `when_idle(timeout=...)`；门面 `run_with_loop` 已改用公开 seam，不再调用私有 `_run()`；静态守卫测试 + 7/7 行为测试 | `[已闭合]` |
+| G5 | **LSP structured error taxonomy + 取消 + 结果上限**（= U5） | `packages/lsp/*`：provider/extension 路由、60s tool budget、结果上限、`NO_PROVIDER/WORKSPACE_OUTSIDE/INVALID_RESPONSE` 错误码、取消升级终止进程 | `tools/harness_tools.py` LSP 四操作 + `LspError` 结构化错误码 + 60s 超时 + 结果上限 + workspace containment + 取消停止 server（commit `f715db1`） | `[已闭合]`（真实 provider 端到端受环境限制） |
+| G6 | **Scheduler（agent 级 cron/at/every 工具）** | dsh 有 agent 级定时任务工具（at/cron/every） | 双实现并存：`schedule/store.py`+`runtime.py`（durable reminder → mailbox，commit `6122a3d`）与 `tools/domains/agent_scheduler.py`+`scheduler_cron.py`（at/cron/every/list/cancel 工具 + `/api/ai/agent-schedule` 路由，纯 Python cron 解析，零新依赖） | `[已闭合]`（两套定位互补：store=提醒投递，agent_scheduler=动作调度） |
+| G7 | **Subagent capability matrix + 父子 lineage**（= U9 剩余） | provider capability 声明、parentSession/delegationDepth/origin 持久化、depth/tool/outputSchema 能力拒绝 | Commit `10980e6`：`subagent/capabilities.py`（agentOptions/outputSchema/depthLimit/toolFilter/persona 五旗 + `validate_request`/`validate_depth` fail-loud 拒绝，深度上限对注入 runner 也生效）；runner 发 `subagent/start`/`subagent/end` lineage 事件（runId/provider/depth 配对）；pool/harness handler 透传 session_log | `[闭合]` |
+| G8 | **Profile patch composition**（= U12 剩余） | `packages/boot/app-boot/src/profile.ts`：ordered `dsh.profile.bundles`、`dsh.bundle.patch`、`cordis.patch.yml` 原子合成 | Commit `03e3060`：`bundle/profile.py`——profile 目录（`profile.json` manifest + 用户 `cordis.patch.json` 层），有序 bundle 层→用户层→launcher 层合成（include 追加/逐键合并、exclude 剪除），未知/重复 bundle 与畸形 patch 均 fail-loud；patch 文件用 JSON（设备无 yaml 依赖） | `[闭合]`（HTTP 暴露为后续产品接线） |
 | G9 | **U1 剩余细节**：完整 header 字段、ignorable event、全部 surface 细节核对 | `packages/core/session/src/types.ts:29-94,211-423` | 基础 strict event/surface 已落地（#34） | `[部分闭合]` |
 | G10 | **U2 剩余细节**：完整 transcript/surface 语义、resume 后 loop 生命周期 | `packages/core/session/src/repair.ts` | repair closers 已落地（#33） | `[部分闭合]` |
 | G11 | **U4 剩余**：SandboxPolicy session cwd/mode、可回放 runtime-context、host fallback 收敛 | `packages/sandbox/sandbox-policy/src/index.ts:1-130` | 三入口统一已闭合；session policy 缺 | `[部分闭合]` |
-| G12 | **U13 剩余**：集中 config schema、依赖清单、启动诊断、边界错误稳定 code | 基准 Cordis inject/Schemastery Config | 靠 Params + try/except 静默回退 | `[未开始]` |
+| G12 | **U13 剩余**：集中 config schema、依赖清单、启动诊断、边界错误稳定 code | 基准 Cordis inject/Schemastery Config | `config/registry.py` + `validator.py` + `config/schemas/*.json`（conversation/evolution/vehicle_safety/data_backup/dev_diagnostics/agent_scheduler 6 域）+ `core/diagnostics.py` 启动诊断 + `server/handlers/config_schema_handlers.py`（`GET /api/ai/config/schema`、`GET /api/ai/config/diagnose`、`PATCH /api/ai/config` 校验+revision）+ `core/errors.py` 稳定错误码；`aid.py` 启动时调用诊断 | `[已闭合]`（逐域迁移旧 key 为后续工作） |
 
 ### P1 — 外部阻断（不可本地完成）
 

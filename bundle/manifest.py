@@ -44,6 +44,38 @@ class BundleManifest:
   files: list[str] = field(default_factory=list)
   extra: dict[str, Any] = field(default_factory=dict)
 
+  def patch_operations(self) -> list[dict[str, Any]]:
+    """Parse the dsh.bundle.patch operation list from extra (backward compatible).
+
+    Format (optionally under ``extra``):
+      {"dsh": {"bundle": {"patch": [{"op": "set", "path": "ai_*", "value": ...}]}}}
+      or flat {"patch": [op, ...]}.
+    Returns an empty list when absent.
+    """
+    extra_raw = self.extra.get("dsh") if isinstance(self.extra.get("dsh"), dict) else {}
+    bundle = extra_raw.get("bundle") if isinstance(extra_raw.get("bundle"), dict) else {}
+    raw = bundle.get("patch")
+    if raw is None:
+      raw = self.extra.get("patch")
+    if isinstance(raw, list):
+      return [dict(x) for x in raw if isinstance(x, dict)]
+    if isinstance(raw, dict):
+      return [dict(raw)]
+    return []
+
+  def profile_bundles(self) -> list[str]:
+    """Parse ordered bundle ids referenced by a profile (``dsh.profile.bundles``)."""
+    extra_raw = self.extra.get("dsh") if isinstance(self.extra.get("dsh"), dict) else {}
+    profile = extra_raw.get("profile") if isinstance(extra_raw.get("profile"), dict) else {}
+    raw = profile.get("bundles")
+    if raw is None:
+      raw = self.extra.get("bundles")
+    if isinstance(raw, list):
+      return [str(x) for x in raw if str(x).strip()]
+    if isinstance(raw, str):
+      return [x.strip() for x in raw.split(",") if x.strip()]
+    return []
+
   def capabilities(self) -> set[str]:
     """Set of capability names this bundle provides/claims (e.g. tools, mcp)."""
     raw = self.extra.get("capabilities")

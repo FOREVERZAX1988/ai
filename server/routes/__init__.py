@@ -10,6 +10,8 @@ from ai.server.handlers import lsp_handlers
 from ai.server.handlers import spill_handlers
 from ai.server.handlers import skill_handlers
 from ai.server.handlers import sessions_handlers
+from ai.server.handlers import config_schema_handlers
+from ai.server.handlers import scheduler_handlers
 from ai.server.handlers.profile_handlers import register_profile_routes
 from ai.server.routes.agents import register_agent_routes
 
@@ -53,6 +55,13 @@ def register_routes(app: web.Application, *, json_response) -> None:
   app.router.add_post("/api/ai/memory", h.api_memory)
   app.router.add_get("/api/ai/scheduler", h.api_scheduler)
   app.router.add_post("/api/ai/scheduler", h.api_scheduler)
+  # G6 isolated agent scheduler (distinct from the Web scheduler above).
+  app.router.add_get("/api/ai/agent-schedule", scheduler_handlers.api_agent_schedule)
+  app.router.add_post("/api/ai/agent-schedule", scheduler_handlers.api_agent_schedule)
+  # G12 schema-driven config + startup diagnostics.
+  app.router.add_get("/api/ai/config/schema", config_schema_handlers.api_get_config_schema)
+  app.router.add_get("/api/ai/config/diagnose", config_schema_handlers.api_config_diagnose)
+  app.router.add_patch("/api/ai/config", config_schema_handlers.api_patch_config)
   app.router.add_get("/api/ai/write/pending", h.api_write_pending)
   app.router.add_post("/api/ai/write/confirm", h.api_write_confirm)
   app.router.add_get("/api/ai/tune_passport", h.api_tune_passport)

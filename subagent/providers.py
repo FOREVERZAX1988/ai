@@ -112,5 +112,23 @@ def _register_defaults() -> None:
     ),
   )
 
+  # Capability matrices for the external provider family. Their EXECUTION is
+  # externally blocked (G13 ACP / G14 Codex need an external harness binary),
+  # so no provider fn is registered — only the declared capability matrix, so
+  # a capability check can still reject unsupported requests loudly when one
+  # of these providers is later wired in. These are NOT faked executions.
+  _PROVIDER_CAPABILITIES.setdefault(
+    "fork", SubagentCapabilities(agent_options=True, output_schema=True,
+                                 depth_limit=True, tool_filter=True, persona=True)
+  )
+  _PROVIDER_CAPABILITIES.setdefault(
+    "acp", SubagentCapabilities(agent_options=True, output_schema=True,
+                                depth_limit=True, tool_filter=True, persona=True)
+  )
+  _PROVIDER_CAPABILITIES.setdefault(
+    "codex", SubagentCapabilities(agent_options=True, output_schema=True,
+                                  depth_limit=True, tool_filter=True, persona=True)
+  )
+
 
 _register_defaults()

@@ -810,3 +810,11 @@ def register_harness_handlers(handlers, *, params=None, get_state_reader=None, t
     "schedule_list": _h_schedule_list,
     "schedule_delete": _h_schedule_delete,
   })
+  # G6: register agent-level at/cron/every/list/cancel tools (isolated from
+  # the Web/platform scheduler above). Each closure drives its own in-memory
+  # scheduler instance; failures surface as stable SCHEDULE_INVALID codes.
+  try:
+    from ai.tools.domains.agent_scheduler import register_agent_scheduler_tools
+    register_agent_scheduler_tools(handlers)
+  except Exception:
+    pass

@@ -184,4 +184,169 @@ Fork 训练数据若要被 comma 采纳，须满足：
 
 调参可走 dp_* 等扩展键（若本机存在）；改安全/控车逻辑需知 fork 合规与 comma 封禁风险。""",
   },
+  {
+    "id": "builtin_op_safety_full",
+    "title": "openpilot 安全边界（全文）",
+    "tags": ["safety", "official", "faq"],
+    "refresh": True,
+    "text": """来源：openpilot 上游 docs（comma.ai 原版）docs/SAFETY.md
+适用范围：openpilot 安全设计与 fork 合规要求的英文原文全文。
+
+# Safety
+
+openpilot is an Adaptive Cruise Control (ACC) and Automated Lane Centering (ALC) system.
+Like other ACC and ALC systems, openpilot is a failsafe passive system and it requires the
+driver to be alert and to pay attention at all times.
+
+To assist the driver in maintaining alertness, openpilot includes a driver monitoring feature
+that alerts when it detects driver distraction.
+
+However, even with an attentive driver, we must make further efforts for the system to be
+safe. We repeat, **driver alertness is necessary, but not sufficient, for openpilot to be
+used safely** and openpilot is provided with no warranty of fitness for any purpose.
+
+openpilot is developed in good faith to be compliant with FMVSS requirements and to follow
+industry standards of safety for Level 2 Driver Assistance Systems. In particular, we observe
+ISO26262 guidelines, including those from pertinent documents released by NHTSA. In addition,
+we impose strict coding guidelines (like MISRA C : 2012) on parts of openpilot that are
+safety relevant. We also perform software-in-the-loop, hardware-in-the-loop, and in-vehicle
+tests before each software release.
+
+Following Hazard and Risk Analysis and FMEA, at a very high level, we have designed openpilot
+ensuring two main safety requirements.
+
+1. The driver must always be capable to immediately retake manual control of the vehicle,
+   by stepping on the brake pedal or by pressing the cancel button.
+2. The vehicle must not alter its trajectory too quickly for the driver to safely
+   react. This means that while the system is engaged, the actuators are constrained
+   to operate within reasonable limits.
+
+For these actuator limits we observe ISO11270 and ISO15622. Lateral limits described there
+translate to 0.9 seconds of maximum actuation to achieve a 1m lateral deviation.
+
+For additional safety implementation details, refer to the panda safety model
+(github.com/commaai/panda#safety-model). For vehicle specific implementation of the safety
+concept, refer to opendbc/safety/safety.
+
+### Forks of openpilot
+
+* Do not disable or nerf driver monitoring (openpilot/selfdrive/monitoring)
+* Do not disable or nerf excessive actuation checks (openpilot/selfdrive/selfdrived/helpers.py)
+* If your fork modifies any of the code in opendbc/safety/:
+   * your fork cannot use the openpilot trademark
+   * your fork must preserve the full safety test suite and all tests must pass, including
+     any new coverage required by the fork's changes
+
+Failure to comply with these standards will get you and your users banned from comma.ai servers.
+
+comma.ai strongly discourages the use of openpilot forks with safety code either missing or
+not fully meeting the above requirements.""",
+  },
+  {
+    "id": "builtin_op_limitations_full",
+    "title": "openpilot 功能局限（全文）",
+    "tags": ["safety", "official", "faq"],
+    "refresh": True,
+    "text": """来源：openpilot 上游 docs（comma.ai 原版）docs/LIMITATIONS.md
+适用范围：openpilot ALC/LDW、ACC/FCW、DM 官方限制清单的英文原文全文。
+
+## Limitations of openpilot ALC and LDW
+
+openpilot ALC and openpilot LDW do not automatically drive the vehicle or reduce the amount
+of attention that must be paid to operate your vehicle. The driver must always keep control
+of the steering wheel and be ready to correct the openpilot ALC action at all times.
+
+While changing lanes, openpilot is not capable of looking next to you or checking your blind
+spot. Only nudge the wheel to initiate a lane change after you have confirmed it's safe to
+do so.
+
+Many factors can impact the performance of openpilot ALC and openpilot LDW, causing them to
+be unable to function as intended. These include, but are not limited to:
+
+* Poor visibility (heavy rain, snow, fog, etc.) or weather conditions that may interfere
+  with sensor operation.
+* The road facing camera is obstructed, covered or damaged by mud, ice, snow, etc.
+* Obstruction caused by applying excessive paint or adhesive products (such as wraps,
+  stickers, rubber coating, etc.) onto the vehicle.
+* The device is mounted incorrectly.
+* When in sharp curves, like on-off ramps, intersections etc...; openpilot is designed to
+  be limited in the amount of steering torque it can produce.
+* In the presence of restricted lanes or construction zones.
+* When driving on highly banked roads or in presence of strong cross-wind.
+* Extremely hot or cold temperatures.
+* Bright light (due to oncoming headlights, direct sunlight, etc.).
+* Driving on hills, narrow, or winding roads.
+
+The list above does not represent an exhaustive list of situations that may interfere with
+proper operation of openpilot components. It is the driver's responsibility to be in control
+of the vehicle at all times.
+
+## Limitations of openpilot ACC and FCW
+
+openpilot ACC and openpilot FCW are not systems that allow careless or inattentive driving.
+It is still necessary for the driver to pay close attention to the vehicle's surroundings
+and to be ready to re-take control of the gas and the brake at all times.
+
+Many factors can impact the performance of openpilot ACC and openpilot FCW, causing them to
+be unable to function as intended. These include, but are not limited to:
+
+* Poor visibility (heavy rain, snow, fog, etc.) or weather conditions that may interfere
+  with sensor operation.
+* The road facing camera or radar are obstructed, covered, or damaged by mud, ice, snow, etc.
+* Obstruction caused by applying excessive paint or adhesive products (such as wraps,
+  stickers, rubber coating, etc.) onto the vehicle.
+* The device is mounted incorrectly.
+* Approaching a toll booth, a bridge or a large metal plate.
+* When driving on roads with pedestrians, cyclists, etc...
+* In presence of traffic signs or stop lights, which are not detected by openpilot at this
+  time.
+* When the posted speed limit is below the user selected set speed. openpilot does not
+  detect speed limits at this time.
+* In presence of vehicles in the same lane that are not moving.
+* When abrupt braking maneuvers are required. openpilot is designed to be limited in the
+  amount of deceleration and acceleration that it can produce.
+* When surrounding vehicles perform close cut-ins from neighbor lanes.
+* Driving on hills, narrow, or winding roads.
+* Extremely hot or cold temperatures.
+* Bright light (due to oncoming headlights, direct sunlight, etc.).
+* Interference from other equipment that generates radar waves.
+
+The list above does not represent an exhaustive list of situations that may interfere with
+proper operation of openpilot components. It is the driver's responsibility to be in control
+of the vehicle at all times.
+
+## Limitations of openpilot DM
+
+openpilot DM should not be considered an exact measurement of the alertness of the driver.
+
+Many factors can impact the performance of openpilot DM, causing it to be unable to function
+as intended. These include, but are not limited to:
+
+* Low light conditions, such as driving at night or in dark tunnels.
+* Bright light (due to oncoming headlights, direct sunlight, etc.).
+* The driver's face is partially or completely outside field of view of the cabin camera.
+* The cabin camera is obstructed, covered, or damaged.
+
+The list above does not represent an exhaustive list of situations that may interfere with
+proper operation of openpilot components. A driver should not rely on openpilot DM to assess
+their level of attention.""",
+  },
+  {
+    "id": "builtin_op_cars_index_guide",
+    "title": "车型支持查询指引（CARS_INDEX 数据模块）",
+    "tags": ["cars", "support", "faq", "lookup"],
+    "refresh": True,
+    "text": """来源：openpilot 上游 docs（comma.ai 原版）docs/CARS.md（约 334 款上游支持车的结构化索引）
+
+查询「某车型是否支持 / 支持包要求 / ACC 语义」时，不要把整篇 CARS.md 当文档检索，
+直接使用车型索引数据模块 ai/tools/domains/vehicle/cars_index.py 的 lookup_cars(make, model)：
+- 大小写不敏感、部分匹配；返回 make/model/years/package/acc/acc_min_mph/alc_min_mph/
+  steer_torque_stars/resume_stars/hardware_summary 字段。
+- ACC 列语义：openpilot — 完整横向+纵向控制；openpilot available — 默认用 stock ACC，
+  OP 纵向为 Alpha 须非 release 分支开开关；Stock — 仅原厂 ACC/LKA；dashcam — 仅行车记录仪。
+- acc_min_mph / alc_min_mph 为该功能最低生效车速（mph，0 表示全速域）。
+- steer_torque_stars / resume_stars 为能力星级（0-5，5=满星）。
+- hardware_summary 为所需硬件清单摘要（None 表示无需额外硬件）。
+脚注细节（如纵向 Alpha 副作用、SecOC 平台限制）参考 builtin_op_cars_support 与 builtin_op_integration。""",
+  },
 ]

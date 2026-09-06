@@ -8,6 +8,7 @@ import uuid
 from collections.abc import Awaitable, Callable
 from typing import Any
 
+from ai.subagent.lineage import SubagentLineage
 from ai.subagent.models import SubagentResult, SubagentTask
 from ai.subagent.runner import SubagentRunner, run_subagent
 
@@ -36,6 +37,7 @@ class SubagentPool:
     self._results: dict[str, SubagentResult] = {}
     self._lock = threading.Lock()
     self._cancelled: set[str] = set()
+    self.lineage = SubagentLineage()
 
   def list_tasks(self) -> list[SubagentTask]:
     with self._lock:
@@ -76,10 +78,22 @@ class SubagentPool:
       depth=depth,
       max_depth=max_depth,
       provider=provider,
+      origin=str((metadata or {}).get("origin") or "user"),
+      delegation_depth=depth,
       metadata=dict(metadata or {}),
     )
     with self._lock:
       self._tasks[task.id] = task
+    try:
+      self.lineage.add_edge(
+        parent_task=parent_id or "",
+        child_task=task.id,
+        run_id=task.id,
+        depth=depth,
+        origin=str(task.origin or ((metadata or {}).get("origin")) or "tool"),
+      )
+    except Exception:
+      pass  # lineage is best-effort
     return task
 
   def is_cancelled(self, task_id: str) -> bool:
