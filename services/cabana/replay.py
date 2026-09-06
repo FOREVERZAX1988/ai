@@ -120,7 +120,7 @@ def _threadsafe_queue_put(
   item: Any,
   loop: asyncio.AbstractEventLoop,
   *,
-  abort: "threading.Event | None" = None,
+  abort: threading.Event | None = None,
   timeout: float = 30.0,
 ) -> bool:
   """Block the worker thread until the batch is queued (never drop frames).

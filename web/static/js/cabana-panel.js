@@ -11,7 +11,6 @@ const CabanaPanel = (() => {
   let signals = [];
   const signalsByAddress = new Map();
   let ws = null;
-  const latestFrames = new Map();
   let dbcName = '';
   let dbcNames = [];
   let dbcCatalog = {};
@@ -41,7 +40,30 @@ const CabanaPanel = (() => {
     雷达: 'cab-tag-radar',
     认证: 'cab-tag-auth',
   };
-  const tableRows = new Map();
+  // ---- Session state machine + per-mode data stores (layout refactor) -----
+  // session = {mode, phase} is the single source of truth for control
+  // visibility; WS events only call transition(). live/replay each own a data
+  // store, so switching modes never clears the other mode's data.
+  const session = { mode: 'live', phase: 'idle' };
+  const LIVE_PHASES = ['idle', 'connecting', 'online', 'error'];
+  const REPLAY_PHASES = ['idle', 'connecting', 'indexing', 'ready', 'playing', 'paused', 'error', 'ended'];
+  function createStore() {
+    return {
+      tableRows: new Map(),
+      latestFrames: new Map(),
+      frameHistory: new Map(),
+      msgStats: new Map(),
+      prevPayloadByKey: new Map(),
+      selectedKey: null,
+    };
+  }
+  const stores = { live: createStore(), replay: createStore() };
+  let activeStore = stores.live;
+  // "Active view" bindings — rebound to the active store on mode switch and
+  // temporarily inside runWithStore(). All generic table/detail code reads
+  // these, so it automatically operates on the visible mode's data.
+  let tableRows = activeStore.tableRows;
+  let latestFrames = activeStore.latestFrames;
   let sortCol = 'name';
   let sortAsc = true;
   let filterChip = 'all';
@@ -57,11 +79,11 @@ const CabanaPanel = (() => {
   let els = {};
   let labeledCount = 0;
 
-  const frameHistory = new Map();
-  const msgStats = new Map();
+  let frameHistory = activeStore.frameHistory;
+  let msgStats = activeStore.msgStats;
   const HISTORY_MAX = 32;
   const PLOT_MAX_POINTS = 1200;
-  let selectedKey = null;
+  let selectedKey = activeStore.selectedKey;
   let plotSignalName = null;
   let plotSeriesList = [];
   const PLOT_COLORS = ['#4ecdc4', '#ff6b6b', '#ffd93d', '#6bcbff', '#c77dff', '#95e06c'];
@@ -69,7 +91,60 @@ const CabanaPanel = (() => {
   let plotResizeObserver = null;
   let hideUnchanged = false;
   let signalFilterQuery = '';
-  const prevPayloadByKey = new Map();
+  let prevPayloadByKey = activeStore.prevPayloadByKey;
+  // Inspector (right pane) active tab: detail | plot | binary | ai | dbc.
+  let inspectorTab = 'detail';
+  let dbcInferResult = null;
+  let dbcVersionsName = '';
+
+  function rebindStore() {
+    activeStore.selectedKey = selectedKey;
+    activeStore = stores[session.mode] || stores.live;
+    tableRows = activeStore.tableRows;
+    latestFrames = activeStore.latestFrames;
+    frameHistory = activeStore.frameHistory;
+    msgStats = activeStore.msgStats;
+    prevPayloadByKey = activeStore.prevPayloadByKey;
+    selectedKey = activeStore.selectedKey;
+    invalidateSortCache();
+  }
+
+  /** Run fn() with the "active view" bindings temporarily pointed at a store. */
+  function runWithStore(mode, fn) {
+    if (session.mode === mode) {
+      fn();
+      return;
+    }
+    const saved = {
+      activeStore,
+      tableRows,
+      latestFrames,
+      frameHistory,
+      msgStats,
+      prevPayloadByKey,
+      selectedKey,
+    };
+    activeStore.selectedKey = selectedKey;
+    activeStore = stores[mode];
+    tableRows = activeStore.tableRows;
+    latestFrames = activeStore.latestFrames;
+    frameHistory = activeStore.frameHistory;
+    msgStats = activeStore.msgStats;
+    prevPayloadByKey = activeStore.prevPayloadByKey;
+    selectedKey = activeStore.selectedKey;
+    try {
+      fn();
+    } finally {
+      activeStore.selectedKey = selectedKey;
+      activeStore = saved.activeStore;
+      tableRows = saved.tableRows;
+      latestFrames = saved.latestFrames;
+      frameHistory = saved.frameHistory;
+      msgStats = saved.msgStats;
+      prevPayloadByKey = saved.prevPayloadByKey;
+      selectedKey = saved.selectedKey;
+    }
+  }
 
   const SIGNAL_LABEL_RULES = [
     [/brake|brk|brakepressed|brakelight/i, '刹车'],
@@ -115,7 +190,6 @@ const CabanaPanel = (() => {
   let thumbAbort = null;
   let lastThumbKey = '';
   let thumbObjectUrl = null;
-  let panelMode = 'live';
   // P2 additions: live server-side filter state + replay video timeline hint.
   let liveFilterActive = false;
   let replayVideoTime = null;
@@ -472,15 +546,38 @@ const CabanaPanel = (() => {
     schedulePlotRender();
   }
 
-  function clearSelection() {
+  // Selection UI re-sync flag: set when the selected key changes indirectly
+  // (e.g. pruning inside a non-active store) and flushed on the UI thread.
+  let selectionUiDirty = false;
+
+  function clearSelectionData() {
     selectedKey = null;
     plotSignalName = null;
     plotSeriesList = [];
     destroyPlot();
-    if (els.detailWrap) els.detailWrap.hidden = true;
-    if (els.plotWrap) els.plotWrap.hidden = true;
-    if (els.detailBinary) els.detailBinary.hidden = true;
-    if (els.binaryGrid) els.binaryGrid.hidden = true;
+  }
+
+  function clearSelection() {
+    clearSelectionData();
+    renderInspectorVisibility();
+  }
+
+  function renderInspectorVisibility() {
+    const visible = !!selectedKey && !!latestFrames.get(selectedKey);
+    if (els.inspector) els.inspector.hidden = !visible;
+    if (els.detailWrap) els.detailWrap.hidden = !visible || inspectorTab !== 'detail';
+    if (els.plotWrap) els.plotWrap.hidden = !visible || inspectorTab !== 'plot';
+    if (!visible) {
+      if (els.binaryGrid) els.binaryGrid.hidden = true;
+      if (els.detailBinary) els.detailBinary.hidden = true;
+    }
+  }
+
+  function flushSelectionUi() {
+    if (!selectionUiDirty) return;
+    selectionUiDirty = false;
+    renderDetailPanel();
+    scheduleVirtualRender();
   }
 
   function clearAuxState() {
@@ -603,7 +700,7 @@ const CabanaPanel = (() => {
   // ---- P2: replay recent-frame augmentation via the frames endpoint ---------
 
   async function augmentReplayHistory(key) {
-    if (panelMode !== 'replay' || !replayRoute) return;
+    if (session.mode !== 'replay' || !replayRoute) return;
     const frame = latestFrames.get(key);
     if (!frame) return;
     const t1 = Math.max(0, replayProgress);
@@ -658,7 +755,7 @@ const CabanaPanel = (() => {
   // ---- P2: server-side history chart via the downsample endpoint ------------
 
   async function loadServerChartSeries() {
-    if (panelMode !== 'replay' || !replayRoute || !selectedKey) {
+    if (session.mode !== 'replay' || !replayRoute || !selectedKey) {
       if (els.hint) els.hint.textContent = t('cabanaPlotServerNeedReplay', '历史曲线需在回放模式选中报文');
       return;
     }
@@ -814,7 +911,7 @@ const CabanaPanel = (() => {
         esc(row.label || ''),
       ].join(','));
     }
-    downloadTextFile(`cabana-${panelMode}-${Date.now()}.csv`, lines.join('\n'));
+    downloadTextFile(`cabana-${session.mode}-${Date.now()}.csv`, lines.join('\n'));
   }
 
   function exportHistoryCsv() {
@@ -847,23 +944,23 @@ const CabanaPanel = (() => {
   }
 
   function formatDetailTime(frame) {
-    if (panelMode === 'replay') return `+${formatReplayRowTime(frame)}s`;
+    if (session.mode === 'replay') return `+${formatReplayRowTime(frame)}s`;
     return Number(frame.time).toFixed(2);
   }
 
   function renderDetailPanel() {
     if (!els.detailWrap) return;
     if (!selectedKey) {
-      els.detailWrap.hidden = true;
+      renderInspectorVisibility();
       return;
     }
     const frame = latestFrames.get(selectedKey);
     const row = tableRows.get(selectedKey);
     if (!frame) {
-      els.detailWrap.hidden = true;
+      renderInspectorVisibility();
       return;
     }
-    els.detailWrap.hidden = false;
+    renderInspectorVisibility();
     const sigs = signalsByAddress.get(Number(frame.address)) || [];
     const msgName = sigs[0]?.message || addrHex(frame.address);
     const stats = msgStats.get(selectedKey);
@@ -895,6 +992,7 @@ const CabanaPanel = (() => {
             plotSignalName = sig.signal;
             seedPlotFromHistory(selectedKey, sig.signal, { add: e.shiftKey });
             renderBinaryView(frame, sig);
+            setInspectorTab('plot');
             renderDetailPanel();
           });
           els.detailSignals.appendChild(btn);
@@ -947,6 +1045,7 @@ const CabanaPanel = (() => {
     const highlightSig = plotSignalName ? findSignalForKey(selectedKey, plotSignalName) : (sigs[0] || null);
     renderBinaryView(frame, highlightSig);
     renderBinaryGridView(frame);
+    updateDbcTabState(frame);
     if (row?.label && els.detailTitle) {
       els.detailTitle.textContent += ` · ${row.label}`;
     }
@@ -973,12 +1072,12 @@ const CabanaPanel = (() => {
       if (els.plotWrap) els.plotWrap.hidden = true;
     }
     renderDetailPanel();
-    if (panelMode === 'replay') augmentReplayHistory(key).catch(console.error);
+    if (session.mode === 'replay') augmentReplayHistory(key).catch(console.error);
     scheduleVirtualRender();
   }
 
   function shouldAutoLabel() {
-    return autoLabelEnabled && panelMode !== 'replay';
+    return autoLabelEnabled && session.mode !== 'replay';
   }
 
   function upsertTableRow(frame, opts = {}) {
@@ -994,8 +1093,8 @@ const CabanaPanel = (() => {
     }
     tableRows.set(key, rec);
     if (rec.label) explainCache.set(key, rec.label);
-    if (panelMode === 'live' && tableRows.size > maxRows) pruneTableRows();
-    if (selectedKey === key) {
+    if (opts.live && tableRows.size > maxRows) pruneTableRows();
+    if (selectedKey === key && session.mode === (opts.replay ? 'replay' : 'live')) {
       appendPlotPoint(frame);
       renderDetailPanel();
     }
@@ -1024,7 +1123,12 @@ const CabanaPanel = (() => {
       explainCache.delete(k);
       prevPayloadByKey.delete(k);
     }
-    if (selectedKey && !tableRows.has(selectedKey)) clearSelection();
+    if (selectedKey && !tableRows.has(selectedKey)) {
+      // Data-only clearing: the visible inspector may belong to the other
+      // mode's store; re-sync the selection UI after the flush unwinds.
+      clearSelectionData();
+      selectionUiDirty = true;
+    }
     invalidateSortCache();
   }
 
@@ -1184,7 +1288,7 @@ const CabanaPanel = (() => {
 
   function updateReplayStats() {
     if (!els.replayStats) return;
-    if (panelMode !== 'replay') {
+    if (session.mode !== 'replay') {
       els.replayStats.textContent = '';
       return;
     }
@@ -1330,27 +1434,42 @@ const CabanaPanel = (() => {
 
   function decodeSignal(data, sig) {
     try {
+      if (!data || !data.length) return null;
+      const size = Number(sig.size) || 0;
+      if (size <= 0 || size > 64) return null;
+      const startBit = Number(sig.start_bit) || 0;
+      // Parity with the backend decoder: a frame shorter than the bits the
+      // signal touches must not zero-fill into fake 0 values — return null.
+      let neededBytes;
+      if (sig.little_endian) {
+        neededBytes = ((startBit + size - 1) >> 3) + 1;
+      } else {
+        // MSB-first sequence index of start_bit in the BE bit order.
+        const beIdx = 8 * (startBit >> 3) + (7 - (startBit & 7));
+        neededBytes = ((beIdx + size - 1) >> 3) + 1;
+      }
+      if (neededBytes > 8 || data.length < neededBytes) return null;
       const bytes = new Uint8Array(8);
       bytes.set(data.slice(0, 8));
       let val = 0n;
       for (let i = 0; i < 8; i++) val |= BigInt(bytes[i]) << BigInt(i * 8);
       let raw = 0n;
-      const size = BigInt(sig.size);
+      const sizeB = BigInt(size);
       if (sig.little_endian) {
-        raw = (val >> BigInt(sig.start_bit)) & ((1n << size) - 1n);
+        raw = (val >> BigInt(startBit)) & ((1n << sizeB) - 1n);
       } else {
         const beBits = [];
         for (let byte = 0; byte < 8; byte++) {
-          for (let bit = 7; bit >= 0; bit++) beBits.push(byte * 8 + bit);
+          for (let bit = 7; bit >= 0; bit--) beBits.push(byte * 8 + bit);
         }
-        const idx = beBits.indexOf(sig.start_bit);
-        if (idx < 0 || idx + sig.size > beBits.length) return null;
-        for (let i = 0; i < sig.size; i++) {
+        const idx = beBits.indexOf(startBit);
+        if (idx < 0 || idx + size > beBits.length) return null;
+        for (let i = 0; i < size; i++) {
           const seqBit = BigInt(beBits[idx + i]);
-          raw |= ((val >> seqBit) & 1n) << BigInt(sig.size - 1 - i);
+          raw |= ((val >> seqBit) & 1n) << BigInt(size - 1 - i);
         }
       }
-      if (sig.signed && raw & (1n << (size - 1n))) raw -= 1n << size;
+      if (sig.signed && raw & (1n << (sizeB - 1n))) raw -= 1n << sizeB;
       return Number(raw) * sig.factor + sig.offset;
     } catch {
       return null;
@@ -1427,6 +1546,7 @@ const CabanaPanel = (() => {
 
   function setReplayLoading(on, text) {
     replayLoading = !!on;
+    if (on && session.mode === 'replay') transition('loading_start');
     if (els.replayLoading) {
       if (on) els.replayLoading.removeAttribute('hidden');
       else els.replayLoading.setAttribute('hidden', '');
@@ -1513,6 +1633,7 @@ const CabanaPanel = (() => {
     if (!replayIndexReady) {
       replayIndexReady = true;
       clearReplayLoading();
+      transition('index_ready');
       scheduleReplayUiFlush();
       els.status.textContent = t('cabanaReplay', '回放');
       if (hint && els.hint) els.hint.textContent = hint;
@@ -1570,6 +1691,7 @@ const CabanaPanel = (() => {
 
   function flushReplayUi(force = false) {
     replayUiFlushScheduled = false;
+    if (session.mode !== 'replay') return; // replay store keeps buffering; flushed on re-activation
     if (!els.tbody || (!replayDirtyKeys.size && !replayPendingByKey.size)) return;
     const now = performance.now();
     if (!force && tableRows.size > 0 && now - lastReplayUiPaintAt < REPLAY_UI_MIN_INTERVAL_MS) {
@@ -1714,12 +1836,19 @@ const CabanaPanel = (() => {
     const slice = frames.length > REPLAY_MAX_FRAMES_PER_MSG
       ? frames.slice(0, REPLAY_MAX_FRAMES_PER_MSG)
       : frames;
+    const inactive = session.mode !== 'replay';
     for (const raw of slice) {
       const frame = normalizeFrame(raw);
       if (!frame) continue;
       const key = frameKey(frame);
       replayPendingByKey.set(key, frame);
-      latestFrames.set(key, frame);
+      if (inactive) {
+        // Replay WS may still be open while the user views the live mode:
+        // update the replay store only (no row DOM).
+        stores.replay.latestFrames.set(key, frame);
+      } else {
+        latestFrames.set(key, frame);
+      }
       replayDirtyKeys.add(key);
     }
     while (replayPendingByKey.size > 1200) {
@@ -1727,6 +1856,7 @@ const CabanaPanel = (() => {
       replayPendingByKey.delete(oldest);
       replayRowCache.delete(oldest);
     }
+    if (inactive) return;
     if (immediate || tableRows.size === 0) {
       if (replayLoading) scheduleReplayUiFlush();
       else flushReplayUiNow();
@@ -1756,16 +1886,32 @@ const CabanaPanel = (() => {
     enqueueCanFrames(frames, { replay: true });
   }
 
+  /** Data-only row input (no DOM): used while the owning mode is not active. */
+  function upsertFrameData(frame) {
+    latestFrames.set(frameKey(frame), frame);
+    pushFrameHistory(frame);
+    updateMsgStats(frame);
+  }
+
   function flushLiveFrames() {
     liveFlushScheduled = false;
     if (!livePendingFrames.length) return;
-    liveFrameBatches += 1;
     const batch = livePendingFrames;
     livePendingFrames = [];
     const latest = new Map();
     for (const frame of batch) {
       latest.set(`${frame.bus}:${frame.address}`, frame);
     }
+    if (session.mode !== 'live') {
+      // Live stays connected across mode switches: keep the live store fresh
+      // without touching the replay table DOM.
+      runWithStore('live', () => {
+        for (const frame of latest.values()) upsertFrameData(frame);
+        if (tableRows.size > maxRows) pruneTableRows();
+      });
+      return;
+    }
+    liveFrameBatches += 1;
     for (const frame of latest.values()) {
       upsertTableRow(frame, { live: true });
     }
@@ -1807,7 +1953,7 @@ const CabanaPanel = (() => {
   }
 
   function scheduleVideoThumbnail({ immediate = false } = {}) {
-    if (!videoPreviewEnabled || !hasQcamera || !replayRoute || panelMode !== 'replay') return;
+    if (!videoPreviewEnabled || !hasQcamera || !replayRoute || session.mode !== 'replay') return;
     if (thumbDebounceTimer) clearTimeout(thumbDebounceTimer);
     const delay = immediate ? 0 : (replayPaused ? 120 : 350);
     thumbDebounceTimer = window.setTimeout(() => {
@@ -2000,12 +2146,12 @@ const CabanaPanel = (() => {
 
   function scheduleBulkExplainAll() {
     if (!shouldAutoLabel()) return;
-    if (panelMode === 'replay' && (replayLoading || replayConnecting || !replayIndexReady)) return;
+    if (session.mode === 'replay' && (replayLoading || replayConnecting || !replayIndexReady)) return;
     if (bulkExplainTimer) clearTimeout(bulkExplainTimer);
     bulkExplainTimer = window.setTimeout(() => {
       bulkExplainTimer = null;
       runBulkExplainAll().catch(console.error);
-    }, panelMode === 'replay' ? 480 : 160);
+    }, session.mode === 'replay' ? 480 : 160);
   }
 
   function repaintAllExplainCells() {
@@ -2189,7 +2335,7 @@ const CabanaPanel = (() => {
 
   function replayPlotTime(frame) {
     const t = Number(frame?.time) || 0;
-    if (panelMode === 'replay' && replayStartMono > 0) {
+    if (session.mode === 'replay' && replayStartMono > 0) {
       return Math.max(0, t - replayStartMono);
     }
     return t;
@@ -2756,12 +2902,14 @@ const CabanaPanel = (() => {
     liveConnectedAt = 0;
     liveFrameBatches = 0;
     if (ws) {
+      ws.onclose = null;
       ws.close();
       ws = null;
     }
+    transition('disconnect');
   }
 
-  function disconnectReplay() {
+  function disconnectReplay({ keepData = false } = {}) {
     if (offlineWs) {
       offlineWs.onclose = null;
       offlineWs.onmessage = null;
@@ -2780,7 +2928,11 @@ const CabanaPanel = (() => {
     videoPreviewEnabled = false;
     if (els.videoToggle) els.videoToggle.checked = false;
     if (els.videoPreview) els.videoPreview.hidden = true;
-    clearTableRows();
+    if (!keepData) {
+      // Default (modal close / route change): clear the replay store.
+      runWithStore('replay', () => clearTableRows());
+    }
+    setReplayPhase('idle');
     clearReplayLoading();
   }
 
@@ -2790,35 +2942,161 @@ const CabanaPanel = (() => {
     }
   }
 
-  function setPanelMode(mode) {
-    panelMode = mode === 'replay' ? 'replay' : 'live';
-    els.modeTabs?.forEach((tab) => {
-      tab.classList.toggle('active', tab.dataset.mode === panelMode);
-    });
-    const replay = panelMode === 'replay';
-    if (root) {
-      root.classList.toggle('cabana-mode-replay', replay);
-      root.classList.toggle('cabana-mode-live', !replay);
+  // ---- Session state machine ----------------------------------------------
+  // All control visibility / disabled state derives from session.phase via
+  // renderSessionUi(); WS events call transition() and nothing else needs to
+  // know about the scattered legacy booleans (kept in sync by set*Phase).
+
+  function setLivePhase(phase) {
+    if (!LIVE_PHASES.includes(phase)) return;
+    if (session.mode !== 'live') return;
+    session.phase = phase;
+    renderSessionUi();
+  }
+
+  function setReplayPhase(phase) {
+    if (!REPLAY_PHASES.includes(phase)) return;
+    if (session.mode !== 'replay') return;
+    session.phase = phase;
+    // Legacy booleans stay in sync for the throttled WS pipelines.
+    replayLoading = phase === 'indexing';
+    replayIndexReady = phase === 'ready' || phase === 'playing' || phase === 'paused' || phase === 'ended';
+    replayPaused = phase !== 'playing';
+    replayConnecting = phase === 'connecting'
+      || (phase === 'indexing' && offlineWs?.readyState === WebSocket.CONNECTING);
+    renderSessionUi();
+  }
+
+  function transition(event) {
+    if (session.mode === 'live') {
+      const next = {
+        connect: 'connecting',
+        open: 'online',
+        message_error: 'error',
+        error: 'error',
+        close: 'idle',
+        disconnect: 'idle',
+      }[event];
+      if (next && next !== session.phase) setLivePhase(next);
+      return;
     }
-    if (els.replayBar) els.replayBar.hidden = !replay;
-    if (els.connectBtn) els.connectBtn.hidden = replay;
-    if (els.routeChatBtn) els.routeChatBtn.hidden = !replay;
-    if (els.deepAnalyzeBtn) els.deepAnalyzeBtn.hidden = false;
-    // Additive: server-side filter buttons are live-mode only.
-    if (els.liveFilterBtn) els.liveFilterBtn.hidden = replay;
-    if (els.liveFilterClearBtn) els.liveFilterClearBtn.hidden = replay;
-    if (replay) {
-      disconnectLive();
-      els.status.textContent = t('cabanaReplay', '回放');
-      els.status.className = 'cab-status';
+    const next = {
+      connect: 'connecting',
+      ws_open: 'indexing',
+      loading_start: 'indexing',
+      index_ready: 'ready',
+      metadata: 'ready',
+      play: 'playing',
+      pause: 'paused',
+      done: 'ended',
+      error: 'error',
+      close: 'idle',
+      disconnect: 'idle',
+    }[event];
+    if (next && next !== session.phase) setReplayPhase(next);
+  }
+
+  function renderSessionUi() {
+    const mode = session.mode;
+    const phase = session.phase;
+    if (root) {
+      root.classList.toggle('cabana-mode-replay', mode === 'replay');
+      root.classList.toggle('cabana-mode-live', mode === 'live');
+    }
+    els.modeTabs?.forEach((tab) => {
+      tab.classList.toggle('active', tab.dataset.mode === mode);
+    });
+    if (els.ctxLive) els.ctxLive.hidden = mode !== 'live';
+    if (els.ctxReplay) els.ctxReplay.hidden = mode !== 'replay';
+    if (els.bottomDock) els.bottomDock.hidden = mode !== 'replay';
+    if (els.routeChatBtn) els.routeChatBtn.hidden = mode !== 'replay';
+
+    // Status badge
+    if (els.status) {
+      let statusText = t('cabanaOffline', '离线');
+      let statusClass = 'cab-status';
+      if (mode === 'live') {
+        if (phase === 'connecting') {
+          statusText = t('cabanaConnecting', '连接中…');
+          statusClass = 'cab-status connecting';
+        } else if (phase === 'online') {
+          statusText = t('cabanaLive', '实时');
+          statusClass = 'cab-status live';
+        }
+      } else if (phase === 'connecting') {
+        statusText = t('cabanaReplayConnecting', '正在连接回放…');
+        statusClass = 'cab-status connecting';
+      } else if (phase === 'indexing') {
+        statusText = t('cabanaReplayLoading', '索引中');
+        statusClass = 'cab-status connecting';
+      } else if (phase === 'playing') {
+        statusText = t('cabanaReplay', '回放');
+        statusClass = 'cab-status live';
+      } else if (phase === 'paused') {
+        statusText = t('cabanaPaused', '已暂停');
+      } else if (phase === 'ended') {
+        statusText = t('cabanaReplayDone', '回放结束');
+      } else {
+        statusText = t('cabanaReplay', '回放');
+      }
+      els.status.textContent = statusText;
+      els.status.className = statusClass;
+    }
+
+    // Replay controls derive from phase.
+    const indexing = phase === 'indexing' || phase === 'connecting';
+    if (els.replayLoading) els.replayLoading.hidden = phase !== 'indexing';
+    if (els.replayPlayBtn) {
+      els.replayPlayBtn.disabled = indexing;
+      els.replayPlayBtn.textContent = indexing
+        ? t('cabanaReplayLoadingShort', '索引中…')
+        : t('cabanaPlayShort', '播放');
+    }
+    if (els.replayPauseBtn) {
+      els.replayPauseBtn.disabled = indexing || phase === 'paused' || phase === 'idle'
+        || phase === 'ended' || phase === 'error';
+    }
+    if (els.routeSelect) els.routeSelect.disabled = indexing;
+    if (els.progress) els.progress.disabled = indexing;
+    if (els.connectBtn) els.connectBtn.disabled = phase === 'connecting' || phase === 'online';
+
+    // Empty state: replay data kept but the WS is gone.
+    if (mode === 'replay' && phase === 'idle' && els.hint) {
+      if (stores.replay.tableRows.size > 0) {
+        els.hint.textContent = t('cabanaReplayDisconnected', '已断开，点击重连');
+      }
+    }
+  }
+
+  function setPanelMode(mode) {
+    mode = mode === 'replay' ? 'replay' : 'live';
+    if (mode === session.mode) {
+      renderSessionUi();
+      return;
+    }
+    if (mode === 'replay') {
+      // Keep the live WS connected: its frames buffer into the live store
+      // while the replay view is active (see flushLiveFrames).
+      session.mode = 'replay';
+      session.phase = 'idle';
+      rebindStore();
+      renderSessionUi();
       loadRoutes().catch(console.error);
     } else {
-      disconnectReplay();
-      clearReplayLoading();
-      if (els.replayLoading) els.replayLoading.setAttribute('hidden', '');
-      els.status.textContent = t('cabanaOffline', '离线');
-      els.status.className = 'cab-status';
+      // Close the replay WS but keep its data so switching back restores the
+      // table with a "disconnected — click play to reconnect" empty state.
+      session.mode = 'live';
+      session.phase = ws && ws.readyState === WebSocket.OPEN ? 'online' : 'idle';
+      rebindStore();
+      disconnectReplay({ keepData: true });
+      renderSessionUi();
     }
+    // Selection belongs to each mode's store (restored by rebindStore);
+    // just re-sync the inspector for the newly active store.
+    renderInspectorVisibility();
+    renderDetailPanel();
+    flushSelectionUi();
+    scheduleVirtualRender();
     updateAiButtons();
   }
 
@@ -2884,6 +3162,7 @@ const CabanaPanel = (() => {
       if (replayIndexReady) {
         replayPlayPending = false;
         sendReplayControl({ action: 'play' });
+        transition('play');
         if (els.replayPlayBtn) els.replayPlayBtn.disabled = false;
       } else {
         els.hint.textContent = t('cabanaReplayIndexing', '正在索引，请稍候…');
@@ -2910,6 +3189,7 @@ const CabanaPanel = (() => {
     }
     replayConnecting = true;
     replayIndexReady = false;
+    transition('connect');
     clearReplayWsState();
     resetBulkExplain();
     resetReplayQueue();
@@ -2940,8 +3220,7 @@ const CabanaPanel = (() => {
 
     offlineWs.onopen = () => {
       replayConnecting = false;
-      els.status.textContent = t('cabanaReplayLoading', '索引中');
-      els.status.className = 'cab-status live';
+      transition('ws_open');
       replayPaused = true;
     };
 
@@ -2950,6 +3229,7 @@ const CabanaPanel = (() => {
       replayPlayPending = false;
       replayIndexReady = false;
       clearReplayLoading();
+      transition('error');
       if (els.replayPlayBtn) els.replayPlayBtn.disabled = false;
       els.hint.textContent = t('cabanaReplayError', '回放失败');
     };
@@ -2964,11 +3244,12 @@ const CabanaPanel = (() => {
       replayPlayPending = false;
       clearReplayWsState();
       clearReplayLoading();
+      transition('close');
       if (els.replayPlayBtn) els.replayPlayBtn.disabled = false;
       if (els.replayPauseBtn) els.replayPauseBtn.disabled = false;
-      if (!replayIndexReady && panelMode === 'replay') {
+      if (!replayIndexReady && session.mode === 'replay') {
         els.hint.textContent = t('cabanaReplayError', '回放失败');
-      } else if (panelMode === 'replay' && !replayPaused) {
+      } else if (session.mode === 'replay' && !replayPaused) {
         els.status.textContent = t('cabanaOffline', '离线');
         els.status.className = 'cab-status';
       }
@@ -2976,9 +3257,13 @@ const CabanaPanel = (() => {
   }
 
   function handleOfflineWsMessage(msg) {
+    // Replay WS data always lands in the replay store, even while the live
+    // view is active; status/DOM writes are re-asserted by renderSessionUi.
+    runWithStore('replay', () => {
       if (msg.type === 'loading') {
         if (!replayIndexReady) {
           setReplayLoading(true, formatLoadingText(msg));
+          transition('loading_start');
           if (msg.phase === 'ready') {
             const n = msg.can_frames != null ? Number(msg.can_frames) : 0;
             if (n > 0) {
@@ -3019,6 +3304,7 @@ const CabanaPanel = (() => {
         clearReplayWsState();
         updateProgressUI();
         unlockReplayIndexUi();
+        transition('metadata');
         els.status.textContent = t('cabanaReplay', '回放');
         let hint;
         if (msg.cached) {
@@ -3047,6 +3333,7 @@ const CabanaPanel = (() => {
         if (shouldAutoPlay) {
           replayPaused = false;
           sendReplayControl({ action: 'play' });
+          transition('play');
         } else {
           replayPaused = true;
         }
@@ -3083,6 +3370,7 @@ const CabanaPanel = (() => {
       if (msg.type === 'done') {
         replayPaused = true;
         replayIndexReady = true;
+        transition('done');
         if (els.replayPlayBtn) els.replayPlayBtn.disabled = false;
         if (els.replayPauseBtn) els.replayPauseBtn.disabled = true;
         els.hint.textContent = t('cabanaReplayDone', '回放结束 · 可再次播放');
@@ -3092,7 +3380,7 @@ const CabanaPanel = (() => {
       if (msg.type === 'error') {
         replayIndexReady = false;
         clearReplayLoading();
-        if (els.replayPlayBtn) els.replayPlayBtn.disabled = false;
+        transition('error');
         const err = msg.error || '';
         if (err.includes('No qlog/rlog')) {
           els.hint.textContent = t('cabanaReplayNoLogs', '该路线没有 qlog/rlog，无法回放');
@@ -3101,10 +3389,11 @@ const CabanaPanel = (() => {
         }
         els.status.textContent = t('cabanaOffline', '离线');
       }
+    });
   }
 
   function connectLive() {
-    if (panelMode !== 'live') return;
+    if (session.mode !== 'live') return;
     disconnectLive();
     if (els.connectBtn) els.connectBtn.disabled = true;
     if (els.status) {
@@ -3112,12 +3401,12 @@ const CabanaPanel = (() => {
       els.status.className = 'cab-status connecting';
     }
     if (els.hint) els.hint.textContent = '';
+    transition('connect');
     ws = new WebSocket(wsUrl('/api/cabana/ws'));
     ws.onopen = () => {
       liveConnectedAt = Date.now();
       liveFrameBatches = 0;
-      els.status.textContent = t('cabanaLive', '实时');
-      els.status.className = 'cab-status live';
+      transition('open');
       if (els.connectBtn) els.connectBtn.disabled = false;
       updateAiButtons();
     };
@@ -3150,14 +3439,16 @@ const CabanaPanel = (() => {
         els.status.textContent = t('cabanaOffline', '离线');
         els.status.className = 'cab-status';
       }
+      transition('error');
       if (els.connectBtn) els.connectBtn.disabled = false;
     };
     ws.onclose = () => {
       ws = null;
       liveConnectedAt = 0;
       liveFrameBatches = 0;
+      transition('close');
       if (els.connectBtn) els.connectBtn.disabled = false;
-      if (panelMode === 'live') {
+      if (session.mode === 'live') {
         els.status.textContent = t('cabanaOffline', '离线');
         els.status.className = 'cab-status';
       }
@@ -3192,7 +3483,7 @@ const CabanaPanel = (() => {
   }
 
   function buildLiveContextLine() {
-    if (panelMode !== 'live' || !ws || ws.readyState !== WebSocket.OPEN) return '';
+    if (session.mode !== 'live' || !ws || ws.readyState !== WebSocket.OPEN) return '';
     const elapsed = liveConnectedAt ? formatDurationMs(Date.now() - liveConnectedAt) : '—';
     return tf('cabanaLiveContext', {
       elapsed,
@@ -3206,7 +3497,7 @@ const CabanaPanel = (() => {
     if (dbcName) lines.push(`DBC: ${dbcName}`);
     const route = replayRoute || els.routeSelect?.value;
     if (route) lines.push(`${t('cabanaRouteLabel', 'Route')}: ${route}`);
-    if (panelMode === 'replay' && replayDuration > 0) {
+    if (session.mode === 'replay' && replayDuration > 0) {
       lines.push(`${t('cabanaReplayProgressLabel', 'Replay')}: ${formatReplayTime(replayProgress)} / ${formatReplayTime(replayDuration)}`);
     }
     const liveLine = buildLiveContextLine();
@@ -3214,26 +3505,22 @@ const CabanaPanel = (() => {
     return lines.join('\n');
   }
 
-  function showAiResult(text, { analyzing = false, noScroll = false } = {}) {
+  function showAiResult(text, { analyzing = false } = {}) {
     lastAiResult = text || '';
-    if (!els.aiResult || !els.aiResultText) return;
+    if (!els.aiResultText) return;
     if (!text && !analyzing) {
-      els.aiResult.setAttribute('hidden', '');
       els.aiResult.classList.remove('analyzing');
       return;
     }
-    els.aiResult.removeAttribute('hidden');
+    // AI output lives in the Inspector's "AI" tab now.
+    renderInspectorVisibility();
+    setInspectorTab('ai');
     els.aiResult.classList.toggle('analyzing', analyzing);
     els.aiResultText.textContent = text || t('cabanaAnalyzing', '分析中…');
-    if (!noScroll) {
-      requestAnimationFrame(() => {
-        els.aiResult?.scrollIntoView({ behavior: 'auto', block: 'nearest' });
-      });
-    }
   }
 
   function buildAnalyzeQuestion() {
-    if (panelMode === 'replay') {
+    if (session.mode === 'replay') {
       const route = replayRoute || els.routeSelect?.value || '';
       if (route && replayDuration > 0) {
         return tf('cabanaAnalyzeReplayAt', { route, time: formatReplayTime(replayProgress) });
@@ -3247,7 +3534,7 @@ const CabanaPanel = (() => {
     if (aiAnalyzeRunning) return;
     const framesText = collectFramesText(30);
     if (!framesText.trim()) {
-      els.hint.textContent = panelMode === 'live'
+      els.hint.textContent = session.mode === 'live'
         ? t('cabanaAiNeedLive', '请先连接实时 CAN 并等待采样')
         : t('cabanaAiNeedReplay', '请先选择路线并等待 CAN 数据加载');
       return;
@@ -3265,7 +3552,7 @@ const CabanaPanel = (() => {
       const question = buildAnalyzeQuestion();
       const userParts = [question];
       if (context) userParts.push(`\n${t('cabanaContextLabel', 'Context')}:\n${context}`);
-      if (panelMode === 'replay') {
+      if (session.mode === 'replay') {
         const route = replayRoute || els.routeSelect?.value;
         if (route) {
           const summary = await api('GET', `/api/cabana/route/${encodeURIComponent(route)}/summary`, null, { timeoutMs: 15000 });
@@ -3304,14 +3591,14 @@ const CabanaPanel = (() => {
     if (!onSendToChat) return;
     const framesText = collectFramesText(40);
     if (!framesText.trim()) {
-      els.hint.textContent = panelMode === 'live'
+      els.hint.textContent = session.mode === 'live'
         ? t('cabanaAiNeedLive', '请先连接实时 CAN 并等待采样')
         : t('cabanaAiNeedReplay', '请先选择路线并等待 CAN 数据加载');
       return;
     }
     const ctx = buildCabanaAiContext();
     let prompt;
-    if (panelMode === 'live') {
+    if (session.mode === 'live') {
       prompt = t('cabanaAnalyzeLive', '分析当前实时 CAN 采样，指出异常与关键信号。');
     } else if (replayDuration > 0 && replayRoute) {
       prompt = tf('cabanaAnalyzeReplayAt', {
@@ -3375,8 +3662,8 @@ const CabanaPanel = (() => {
 
   function updateAiButtons() {
     const hasFrames = latestFrames.size > 0;
-    const liveReady = panelMode === 'live' && ws?.readyState === WebSocket.OPEN;
-    const replayReady = panelMode === 'replay' && replayRoute;
+    const liveReady = session.mode === 'live' && ws?.readyState === WebSocket.OPEN;
+    const replayReady = session.mode === 'replay' && replayRoute;
     if (els.deepAnalyzeBtn) {
       els.deepAnalyzeBtn.disabled = aiAnalyzeRunning || (!hasFrames && !liveReady && !replayReady);
     }
@@ -3388,16 +3675,254 @@ const CabanaPanel = (() => {
       els.sendChatBtn.disabled = !hasFrames && !liveReady && !replayReady;
     }
     if (els.routeChatBtn) {
-      els.routeChatBtn.hidden = panelMode !== 'replay';
       els.routeChatBtn.disabled = !replayRoute;
     }
+  }
+
+  // ---- Pull-down menus (more / filter / export) -----------------------------
+
+  function closeAllMenus(except = null) {
+    for (const menu of [els.moreMenu, els.filterPopover, els.exportMenu, els.inspectorExportMenu]) {
+      if (menu && menu !== except) menu.setAttribute('hidden', '');
+    }
+  }
+
+  function toggleMenu(menu) {
+    if (!menu) return;
+    const wasOpen = !menu.hasAttribute('hidden');
+    closeAllMenus();
+    if (wasOpen) menu.setAttribute('hidden', '');
+    else menu.removeAttribute('hidden');
+  }
+
+  function onDocumentClickMenus(e) {
+    if (e.target instanceof Element && e.target.closest('.cabana-menu-wrap')) return;
+    closeAllMenus();
+  }
+
+  // ---- Inspector tabs --------------------------------------------------------
+
+  const INSPECTOR_TABS = ['detail', 'plot', 'binary', 'ai', 'dbc'];
+
+  function setInspectorTab(tab) {
+    inspectorTab = INSPECTOR_TABS.includes(tab) ? tab : 'detail';
+    root?.querySelectorAll('.cabana-inspector-tab').forEach((b) => {
+      b.classList.toggle('active', b.dataset.itab === inspectorTab);
+    });
+    const map = {
+      detail: els.iTabDetail,
+      plot: els.iTabPlot,
+      binary: els.iTabBinary,
+      ai: els.iTabAi,
+      dbc: els.iTabDbc,
+    };
+    for (const [name, el] of Object.entries(map)) {
+      if (el) el.hidden = name !== inspectorTab;
+    }
+    if (inspectorTab === 'plot' && plotSeriesList.length) schedulePlotRender();
+    renderInspectorVisibility();
+  }
+
+  function toggleInspectorDrawer() {
+    els.inspector?.classList.toggle('collapsed');
+  }
+
+  // ---- Inspector DBC tab: AI-assisted signal inference -----------------------
+
+  function setDbcStatus(text, isError = false, busy = false) {
+    if (!els.dbcStatus) return;
+    els.dbcStatus.textContent = text || '';
+    els.dbcStatus.classList.toggle('error', isError);
+    els.dbcStatus.classList.toggle('busy', busy);
+  }
+
+  function updateDbcTabState(frame) {
+    if (!els.dbcInferBtn) return;
+    const addr = Number(frame?.address);
+    const hasSignals = Number.isFinite(addr) && (signalsByAddress.get(addr) || []).length > 0;
+    els.dbcInferBtn.classList.toggle('highlight', !!frame && !hasSignals);
+    els.dbcInferBtn.disabled = !frame;
+  }
+
+  function escHtml(s) {
+    return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  function renderDbcCandidates(candidates) {
+    if (!els.dbcCandidates) return;
+    els.dbcCandidates.innerHTML = '';
+    if (!candidates?.length) {
+      els.dbcCandidates.textContent = t('cabanaDbcNoCandidates', '未发现活动位段');
+      return;
+    }
+    const table = document.createElement('table');
+    table.className = 'cabana-dbc-cand-table';
+    const thead = document.createElement('thead');
+    thead.innerHTML = `<tr><th>${t('cabanaDbcColName', '信号')}</th><th>start</th><th>size</th><th>endian</th><th>factor</th><th>offset</th><th>${t('cabanaDbcColUnit', '单位')}</th><th>${t('cabanaDbcColConf', '置信')}</th></tr>`;
+    table.appendChild(thead);
+    const tbody = document.createElement('tbody');
+    for (const c of candidates) {
+      const tr = document.createElement('tr');
+      const conf = c.confidence === 'statistical'
+        ? t('cabanaDbcConfStatistical', '统计')
+        : (typeof c.confidence === 'number' ? c.confidence.toFixed(2) : String(c.confidence ?? ''));
+      const cells = [
+        escHtml(c.name),
+        String(c.start_bit),
+        String(c.size),
+        c.endian === 'big' ? 'BE' : 'LE',
+        String(c.factor),
+        String(c.offset),
+        escHtml(c.unit || ''),
+        escHtml(conf) + (c.kind && c.kind !== 'signal' ? ` · ${c.kind}` : ''),
+      ];
+      cells.forEach((text, i) => {
+        const td = document.createElement('td');
+        td.textContent = text;
+        if (i === 0) td.className = 'mono';
+        tr.appendChild(td);
+      });
+      tbody.appendChild(tr);
+    }
+    table.appendChild(tbody);
+    els.dbcCandidates.appendChild(table);
+  }
+
+  /** Simple diff-ish preview: DBC statement lines are highlighted as additions. */
+  function renderDbcDiff(dbcText) {
+    if (!els.dbcDiff) return;
+    els.dbcDiff.innerHTML = '';
+    const lines = String(dbcText || '').split('\n');
+    for (const line of lines) {
+      const div = document.createElement('div');
+      if (/^\s*(BO_|SG_|VAL_|CM_)/.test(line)) div.className = 'cab-dbc-diff-add';
+      div.textContent = line;
+      els.dbcDiff.appendChild(div);
+    }
+  }
+
+  function dbcDraftName(address) {
+    const base = (dbcName || 'user').replace(/[^\w.-]+/g, '_');
+    return `${base}_0x${Number(address).toString(16).toUpperCase()}`;
+  }
+
+  async function runDbcInfer() {
+    const frame = selectedKey ? latestFrames.get(selectedKey) : null;
+    if (!frame) return;
+    const route = session.mode === 'replay' ? (replayRoute || els.routeSelect?.value || '') : '';
+    if (!route) {
+      setDbcStatus(t('cabanaDbcInferNeedRoute', 'AI 推断需要回放模式的路线数据'), true);
+      return;
+    }
+    setDbcStatus(t('cabanaDbcInferring', '正在统计推断…'), false, true);
+    if (els.dbcInferBtn) els.dbcInferBtn.disabled = true;
+    const data = await api('POST', '/api/cabana/dbc/ai/infer', {
+      route,
+      address: Number(frame.address),
+      sample_limit: 200,
+      hints: '',
+    }, { timeoutMs: 180000 });
+    if (els.dbcInferBtn) els.dbcInferBtn.disabled = false;
+    if (!data.ok) {
+      setDbcStatus(data.error || t('cabanaDbcInferFail', '推断失败'), true);
+      return;
+    }
+    dbcInferResult = data;
+    renderDbcCandidates(data.candidates);
+    renderDbcDiff(data.dbc_text_draft || '');
+    setDbcStatus(data.llm_used
+      ? t('cabanaDbcInferDone', '推断完成，请确认后提交')
+      : t('cabanaDbcInferStatistical', '仅统计候选（AI 不可用）'));
+  }
+
+  async function commitDbcDraft() {
+    if (!dbcInferResult?.dbc_text_draft) {
+      setDbcStatus(t('cabanaDbcNothingToCommit', '请先运行 AI 推断'), true);
+      return;
+    }
+    const name = dbcDraftName(dbcInferResult.address);
+    setDbcStatus(t('cabanaDbcCommitting', '正在提交…'), false, true);
+    const data = await api('POST', '/api/cabana/dbc/commit', {
+      name,
+      dbc_text: dbcInferResult.dbc_text_draft,
+    }, { timeoutMs: 60000 });
+    if (!data.ok) {
+      setDbcStatus(data.error || t('cabanaDbcCommitFail', '提交失败（校验未通过）'), true);
+      return;
+    }
+    dbcInferResult = null;
+    renderDbcCandidates([]);
+    renderDbcDiff('');
+    dbcVersionsName = name;
+    if (els.dbcVersionsName) els.dbcVersionsName.value = name;
+    setDbcStatus(t('cabanaDbcSaved', '已保存，新会话生效'));
+    loadDbcVersions(name).catch(console.error);
+  }
+
+  function discardDbcDraft() {
+    dbcInferResult = null;
+    renderDbcCandidates([]);
+    renderDbcDiff('');
+    setDbcStatus(t('cabanaDbcDiscarded', '已放弃当前草稿'));
+  }
+
+  async function loadDbcVersions(name) {
+    const target = (name || els.dbcVersionsName?.value || '').trim();
+    if (!target) return;
+    dbcVersionsName = target;
+    const data = await api('GET', `/api/cabana/dbc/versions?name=${encodeURIComponent(target)}`);
+    if (!els.dbcVersionsList) return;
+    els.dbcVersionsList.innerHTML = '';
+    if (!data.ok) {
+      const li = document.createElement('li');
+      li.textContent = data.error || t('cabanaDbcVersionsEmpty', '无版本记录');
+      els.dbcVersionsList.appendChild(li);
+      return;
+    }
+    const versions = data.versions || [];
+    if (!versions.length) {
+      const li = document.createElement('li');
+      li.textContent = t('cabanaDbcVersionsEmpty', '无版本记录');
+      els.dbcVersionsList.appendChild(li);
+      return;
+    }
+    for (const v of versions) {
+      const li = document.createElement('li');
+      li.className = 'cabana-dbc-version-item';
+      const label = document.createElement('span');
+      const sizeKb = v.size ? `${(v.size / 1024).toFixed(1)} KB` : '';
+      const when = v.mtime ? new Date(v.mtime * 1000).toLocaleString() : '';
+      label.textContent = `${v.version} · ${when}${sizeKb ? ` · ${sizeKb}` : ''}`;
+      li.appendChild(label);
+      if (v.current) li.classList.add('current');
+      else {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'btn small ghost';
+        btn.textContent = t('cabanaDbcRollback', '回滚');
+        btn.addEventListener('click', () => rollbackDbcVersion(target, v.version).catch(console.error));
+        li.appendChild(btn);
+      }
+      els.dbcVersionsList.appendChild(li);
+    }
+  }
+
+  async function rollbackDbcVersion(name, version) {
+    const data = await api('POST', '/api/cabana/dbc/rollback', { name, version });
+    if (!data.ok) {
+      setDbcStatus(data.error || t('cabanaDbcRollbackFail', '回滚失败'), true);
+      return;
+    }
+    setDbcStatus(tf('cabanaDbcRolledBack', { version: data.version || '' }));
+    loadDbcVersions(name).catch(console.error);
   }
 
   function toggleAutoLabel() {
     autoLabelEnabled = !autoLabelEnabled;
     updateAiButtons();
     if (autoLabelEnabled) {
-      if (panelMode === 'replay' && els.hint) {
+      if (session.mode === 'replay' && els.hint) {
         els.hint.textContent = t('cabanaReplayAutoLabelWarn', '回放自动标注较慢，建议先播放查看');
       }
       scheduleBulkExplainAll();
@@ -3423,21 +3948,25 @@ const CabanaPanel = (() => {
   function onCabanaKeydown(e) {
     const modal = document.getElementById('cabanaModal');
     if (!modal || modal.hidden) return;
-    if (e.key === 'Escape' && selectedKey) {
-      e.preventDefault();
-      clearSelection();
-      renderDetailPanel();
-      scheduleVirtualRender();
+    if (e.key === 'Escape') {
+      closeAllMenus();
+      if (selectedKey) {
+        e.preventDefault();
+        clearSelection();
+        renderDetailPanel();
+        scheduleVirtualRender();
+      }
       return;
     }
     if (e.target?.matches('input, textarea, select')) return;
-    if (panelMode !== 'replay') return;
+    if (session.mode !== 'replay') return;
     if (e.code === 'Space') {
       e.preventDefault();
       if (replayPaused) connectReplay();
       else {
         sendReplayControl({ action: 'pause' });
         replayPaused = true;
+        transition('pause');
       }
     }
     if (e.code === 'ArrowRight' && replayDuration > 0) {
@@ -3487,9 +4016,31 @@ const CabanaPanel = (() => {
     if (els.hideUnchangedLabel) {
       els.hideUnchangedLabel.textContent = t('cabanaHideUnchanged', '隐藏不变');
     }
-    if (els.exportCsvBtn) els.exportCsvBtn.textContent = t('cabanaExportCsv', '导出表格 CSV');
+    if (els.exportCsvBtn) els.exportCsvBtn.textContent = t('cabanaExportMenu', '导出 ▾');
+    if (els.moreBtn) els.moreBtn.textContent = t('cabanaMoreMenu', '更多 ▾');
+    if (els.filterToggleBtn) els.filterToggleBtn.textContent = t('cabanaFilterMenu', '筛选 ▾');
+    if (els.exportTableItem) els.exportTableItem.textContent = t('cabanaExportCsv', '导出表格 CSV');
+    if (els.exportRouteItem) els.exportRouteItem.textContent = t('cabanaExportRouteCsv', '导出 CSV');
+    if (els.exportHistItem) els.exportHistItem.textContent = t('cabanaExportHistCsv', '导出历史 CSV');
+    if (els.inspectorExportBtn) els.inspectorExportBtn.textContent = t('cabanaExportMenu', '导出 ▾');
+    if (els.inspectorExportRouteItem) els.inspectorExportRouteItem.textContent = t('cabanaExportRouteCsv', '导出 CSV');
+    if (els.inspectorExportHistItem) els.inspectorExportHistItem.textContent = t('cabanaExportHistCsv', '导出历史 CSV');
+    root?.querySelectorAll('.cabana-inspector-tab').forEach((btn) => {
+      const labels = {
+        detail: t('cabanaTabDetail', '详情'),
+        plot: t('cabanaTabPlot', '曲线'),
+        binary: t('cabanaTabBinary', '二进制'),
+        ai: 'AI',
+        dbc: 'DBC',
+      };
+      const label = labels[btn.dataset.itab];
+      if (label) btn.textContent = label;
+    });
+    if (els.dbcInferBtn) els.dbcInferBtn.textContent = t('cabanaDbcInfer', 'AI 推断信号');
+    if (els.dbcCommitBtn) els.dbcCommitBtn.textContent = t('cabanaDbcCommit', '确认提交');
+    if (els.dbcDiscardBtn) els.dbcDiscardBtn.textContent = t('cabanaDbcDiscard', '放弃');
+    if (els.dbcVersionsName) els.dbcVersionsName.placeholder = t('cabanaDbcVersionsNameHint', 'DBC 名称…');
     if (els.copyHexBtn) els.copyHexBtn.textContent = t('cabanaCopyHex', '复制 HEX');
-    if (els.exportHistCsvBtn) els.exportHistCsvBtn.textContent = t('cabanaExportHistCsv', '导出历史 CSV');
     if (els.histThCopy) els.histThCopy.textContent = t('cabanaHistThCopy', '操作');
     if (els.plotTitle) els.plotTitle.textContent = t('cabanaPlotTitle', '信号曲线');
     if (els.plotClear) els.plotClear.textContent = t('cabanaPlotClear', '清空曲线');
@@ -3506,7 +4057,6 @@ const CabanaPanel = (() => {
     if (els.decodeToggleLabel) els.decodeToggleLabel.textContent = t('cabanaDecodeToggle', '物理值解码');
     if (els.liveFilterBtn) els.liveFilterBtn.textContent = t('cabanaLiveFilterOnly', '仅显示选中');
     if (els.liveFilterClearBtn) els.liveFilterClearBtn.textContent = t('cabanaLiveFilterClear', '清除过滤');
-    if (els.exportRouteCsvBtn) els.exportRouteCsvBtn.textContent = t('cabanaExportRouteCsv', '导出 CSV');
     if (els.plotServerBtn) els.plotServerBtn.textContent = t('cabanaPlotServer', '历史曲线');
     if (els.progress) {
       els.progress.title = t('cabanaReplayProgressHint', '拖动定位 CAN 日志时间（非视频）');
@@ -3514,7 +4064,7 @@ const CabanaPanel = (() => {
     if (els.replaySpeed) {
       els.replaySpeed.title = t('cabanaReplaySpeedHint', 'CAN 数据回放倍速');
     }
-    if (els.hint) els.hint.textContent = panelMode === 'replay'
+    if (els.hint) els.hint.textContent = session.mode === 'replay'
       ? t('cabanaReplayPanelHint3', '点击报文查看历史与曲线；空格播放/暂停，←→ 快进')
       : t('cabanaLivePanelHint3', '点击报文查看历史与曲线；连接后自动标注功能');
     renderFilterChips();
@@ -3556,7 +4106,11 @@ const CabanaPanel = (() => {
     els.plotChart = $('#cabanaPlotChart');
     els.plotEmpty = $('#cabanaPlotEmpty');
     els.plotClear = $('#cabanaPlotClear');
-    els.detailWrap = $('#cabanaDetailWrap');
+    // The detail content lives inside the Inspector detail pane (P1-1 fix:
+    // #cabanaDetailWrap no longer exists in the new layout). Both
+    // setInspectorTab and renderInspectorVisibility control `hidden` on this
+    // node with agreeing semantics, so sharing the element is safe.
+    els.detailWrap = $('#cabanaITabDetail') || $('#cabanaDetailWrap');
     els.detailTitle = $('#cabanaDetailTitle');
     els.detailMeta = $('#cabanaDetailMeta');
     els.detailSignals = $('#cabanaDetailSignals');
@@ -3564,7 +4118,6 @@ const CabanaPanel = (() => {
     els.detailHistoryBody = $('#cabanaDetailHistoryBody');
     els.detailBinary = $('#cabanaDetailBinary');
     els.copyHexBtn = $('#cabanaCopyHexBtn');
-    els.exportHistCsvBtn = $('#cabanaExportHistCsvBtn');
     els.detailClose = $('#cabanaDetailClose');
     els.histThTime = $('#cabanaHistThTime');
     els.histThHex = $('#cabanaHistThHex');
@@ -3574,7 +4127,6 @@ const CabanaPanel = (() => {
     els.modeTabs = root?.querySelectorAll('.cabana-mode-tab');
     els.tabLive = $('#cabanaTabLive');
     els.tabReplay = $('#cabanaTabReplay');
-    els.replayBar = $('#cabanaReplayBar');
     els.routeSelect = $('#cabanaRouteSelect');
     els.replayPlayBtn = $('#cabanaReplayPlayBtn');
     els.replayPauseBtn = $('#cabanaReplayPauseBtn');
@@ -3599,9 +4151,39 @@ const CabanaPanel = (() => {
     els.decodeToggleLabel = $('#cabanaDecodeToggleLabel');
     els.liveFilterBtn = $('#cabanaLiveFilterBtn');
     els.liveFilterClearBtn = $('#cabanaLiveFilterClearBtn');
-    els.exportRouteCsvBtn = $('#cabanaExportRouteCsvBtn');
     els.plotServerBtn = $('#cabanaPlotServerBtn');
     els.binaryGrid = $('#cabanaBinaryGrid');
+    // Layout refactor: context bar / menus / inspector / bottom dock
+    els.ctxLive = $('#cabanaCtxLive');
+    els.ctxReplay = $('#cabanaCtxReplay');
+    els.moreBtn = $('#cabanaMoreBtn');
+    els.moreMenu = $('#cabanaMoreMenu');
+    els.filterToggleBtn = $('#cabanaFilterToggleBtn');
+    els.filterPopover = $('#cabanaFilterPopover');
+    els.exportMenu = $('#cabanaExportMenu');
+    els.exportTableItem = $('#cabanaExportTableItem');
+    els.exportRouteItem = $('#cabanaExportRouteItem');
+    els.exportHistItem = $('#cabanaExportHistItem');
+    els.inspector = $('#cabanaInspector');
+    els.inspectorHandle = $('#cabanaInspectorHandle');
+    els.iTabDetail = $('#cabanaITabDetail');
+    els.iTabPlot = $('#cabanaITabPlot');
+    els.iTabBinary = $('#cabanaITabBinary');
+    els.iTabAi = $('#cabanaITabAi');
+    els.iTabDbc = $('#cabanaITabDbc');
+    els.inspectorExportBtn = $('#cabanaInspectorExportBtn');
+    els.inspectorExportMenu = $('#cabanaInspectorExportMenu');
+    els.inspectorExportRouteItem = $('#cabanaInspectorExportRouteItem');
+    els.inspectorExportHistItem = $('#cabanaInspectorExportHistItem');
+    els.bottomDock = $('#cabanaBottomDock');
+    els.dbcInferBtn = $('#cabanaDbcInferBtn');
+    els.dbcCandidates = $('#cabanaDbcCandidates');
+    els.dbcDiff = $('#cabanaDbcDiff');
+    els.dbcCommitBtn = $('#cabanaDbcCommitBtn');
+    els.dbcDiscardBtn = $('#cabanaDbcDiscardBtn');
+    els.dbcStatus = $('#cabanaDbcStatus');
+    els.dbcVersionsName = $('#cabanaDbcVersionsName');
+    els.dbcVersionsList = $('#cabanaDbcVersionsList');
 
     renderFilterChips();
     root?.querySelectorAll('#cabanaTable th[data-sort]').forEach((th) => {
@@ -3627,10 +4209,54 @@ const CabanaPanel = (() => {
       invalidateSortCache();
       scheduleVirtualRender();
     });
-    els.exportCsvBtn?.addEventListener('click', exportTableCsv);
+    els.exportCsvBtn?.addEventListener('click', () => toggleMenu(els.exportMenu));
     els.copyHexBtn?.addEventListener('click', copySelectedHex);
-    els.exportHistCsvBtn?.addEventListener('click', exportHistoryCsv);
     document.addEventListener('keydown', onCabanaKeydown);
+    document.addEventListener('click', onDocumentClickMenus);
+
+    // Layout refactor: menus / inspector tabs / DBC tab
+    els.moreBtn?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      toggleMenu(els.moreMenu);
+    });
+    els.moreMenu?.addEventListener('click', (e) => {
+      if (e.target instanceof Element && e.target.closest('button')) closeAllMenus();
+    });
+    els.filterToggleBtn?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      toggleMenu(els.filterPopover);
+    });
+    els.exportTableItem?.addEventListener('click', () => {
+      closeAllMenus();
+      exportTableCsv();
+    });
+    els.exportRouteItem?.addEventListener('click', () => {
+      closeAllMenus();
+      exportRouteCsv();
+    });
+    els.exportHistItem?.addEventListener('click', () => {
+      closeAllMenus();
+      exportHistoryCsv();
+    });
+    els.inspectorExportBtn?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      toggleMenu(els.inspectorExportMenu);
+    });
+    els.inspectorExportRouteItem?.addEventListener('click', () => {
+      closeAllMenus();
+      exportRouteCsv();
+    });
+    els.inspectorExportHistItem?.addEventListener('click', () => {
+      closeAllMenus();
+      exportHistoryCsv();
+    });
+    root?.querySelectorAll('.cabana-inspector-tab').forEach((btn) => {
+      btn.addEventListener('click', () => setInspectorTab(btn.dataset.itab || 'detail'));
+    });
+    els.inspectorHandle?.addEventListener('click', toggleInspectorDrawer);
+    els.dbcInferBtn?.addEventListener('click', () => runDbcInfer().catch(console.error));
+    els.dbcCommitBtn?.addEventListener('click', () => commitDbcDraft().catch(console.error));
+    els.dbcDiscardBtn?.addEventListener('click', discardDbcDraft);
 
     els.modeTabs?.forEach((tab) => {
       tab.addEventListener('click', () => setPanelMode(tab.dataset.mode || 'live'));
@@ -3655,6 +4281,7 @@ const CabanaPanel = (() => {
     els.replayPauseBtn?.addEventListener('click', () => {
       sendReplayControl({ action: 'pause' });
       replayPaused = true;
+      transition('pause');
     });
     els.replaySpeed?.addEventListener('change', () => {
       replaySpeed = parseFloat(els.replaySpeed.value) || 1;
@@ -3712,13 +4339,12 @@ const CabanaPanel = (() => {
     });
     els.liveFilterBtn?.addEventListener('click', applyLiveFilterSelected);
     els.liveFilterClearBtn?.addEventListener('click', () => sendLiveFilter(null));
-    els.exportRouteCsvBtn?.addEventListener('click', exportRouteCsv);
     els.plotServerBtn?.addEventListener('click', () => loadServerChartSeries().catch(console.error));
   }
 
   async function refresh() {
     applyTranslations();
-    const route = panelMode === 'replay' ? (els.routeSelect?.value || replayRoute || '') : '';
+    const route = session.mode === 'replay' ? (els.routeSelect?.value || replayRoute || '') : '';
     await loadCar(route);
   }
 
@@ -3731,10 +4357,12 @@ const CabanaPanel = (() => {
     if (!root) return;
     bindDom();
     applyTranslations();
-    setPanelMode(panelMode);
+    setPanelMode(session.mode);
+    setInspectorTab('detail');
+    renderSessionUi();
     updateAiButtons();
     onSortHeaderClick(sortCol);
   }
 
-  return { init, refresh, reloadRoutes: loadRoutes, connectLive, disconnectLive, disconnectReplay, syncMode: () => setPanelMode(panelMode) };
+  return { init, refresh, reloadRoutes: loadRoutes, connectLive, disconnectLive, disconnectReplay, syncMode: () => setPanelMode(session.mode) };
 })();

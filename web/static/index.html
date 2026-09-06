@@ -13,7 +13,7 @@
   <link rel="stylesheet" href="/static/css/canvas-panel.css?v=20260723e">
   <link rel="stylesheet" href="/static/css/composer-context-meter.css?v=20260819b">
   <link rel="stylesheet" href="/static/css/workbuddy-panel.css?v=20260819e">
-  <link rel="stylesheet" href="/static/css/cabana-panel.css?v=20260730k">
+  <link rel="stylesheet" href="/static/css/cabana-panel.css?v=20260906a">
   <link rel="stylesheet" href="/static/css/harness-panel.css?v=20260904a">
   <link rel="stylesheet" href="/static/vendor/uplot/uPlot.min.css">
   <link rel="stylesheet" href="/static/vendor/xterm/xterm.css?v=20260722i">
@@ -247,6 +247,10 @@
     <div class="modal-content cabana-modal-content">
       <div class="modal-header cabana-modal-header">
         <h2 id="cabanaPanelTitle" data-i18n="cabanaPanelTitle">CAN 总线分析</h2>
+        <div class="cabana-mode-tabs" role="tablist">
+          <button type="button" class="cabana-mode-tab active" data-mode="live" id="cabanaTabLive">实时</button>
+          <button type="button" class="cabana-mode-tab" data-mode="replay" id="cabanaTabReplay">回放</button>
+        </div>
         <div class="cabana-modal-actions">
           <span id="cabanaStatus" class="cab-status">离线</span>
           <button type="button" id="cabanaClose" class="btn icon" aria-label="Close">
@@ -255,149 +259,213 @@
         </div>
       </div>
       <div class="modal-body cabana-modal-body" id="cabanaPanelRoot">
-        <div class="cabana-compact-head">
-          <div class="cabana-mode-tabs" role="tablist">
-            <button type="button" class="cabana-mode-tab active" data-mode="live" id="cabanaTabLive">实时</button>
-            <button type="button" class="cabana-mode-tab" data-mode="replay" id="cabanaTabReplay">回放</button>
+        <!-- Zone 1: ContextBar — single row, content switches with the mode -->
+        <div class="cabana-contextbar" id="cabanaContextBar">
+          <div class="cabana-ctx-section" id="cabanaCtxLive">
+            <div class="cabana-dbc-picker-wrap">
+              <div class="cabana-dbc-picker" id="cabanaDbcPicker">
+                <input type="text" id="cabanaDbcSearch" class="cabana-dbc-search toolbar-input" placeholder="模糊搜索 DBC 或车型…" autocomplete="off" spellcheck="false" role="combobox" aria-expanded="false" aria-controls="cabanaDbcList" aria-autocomplete="list">
+                <ul class="cabana-dbc-list" id="cabanaDbcList" role="listbox" hidden></ul>
+              </div>
+            </div>
+            <button type="button" id="cabanaLiveFilterBtn" class="btn small ghost" hidden>仅显示选中</button>
+            <button type="button" id="cabanaLiveFilterClearBtn" class="btn small ghost" hidden>清除过滤</button>
           </div>
-          <p class="cabana-meta" id="cabanaMetaBar">加载中…</p>
-          <div class="cabana-head-actions">
-            <span id="cabanaLabelProgress" class="cabana-label-progress" hidden></span>
-            <button type="button" id="cabanaAutoLabelBtn" class="btn small ghost">自动标注</button>
-            <button type="button" id="cabanaSendChatBtn" class="btn small ghost">片段→聊天</button>
-            <button type="button" id="cabanaRouteChatBtn" class="btn small ghost" hidden>分析 route</button>
-            <button type="button" id="cabanaDeepAnalyzeBtn" class="btn small">深度分析</button>
-            <button type="button" id="cabanaConnectBtn" class="btn primary small">连接实时 CAN</button>
-          </div>
-        </div>
-        <div class="cabana-live-toolbar" id="cabanaLiveToolbar">
-          <div class="cabana-dbc-picker-wrap">
-            <div class="cabana-dbc-picker" id="cabanaDbcPicker">
-              <input type="text" id="cabanaDbcSearch" class="cabana-dbc-search toolbar-input" placeholder="模糊搜索 DBC 或车型…" autocomplete="off" spellcheck="false" role="combobox" aria-expanded="false" aria-controls="cabanaDbcList" aria-autocomplete="list">
-              <ul class="cabana-dbc-list" id="cabanaDbcList" role="listbox" hidden></ul>
+          <div class="cabana-ctx-section" id="cabanaCtxReplay" hidden>
+            <select id="cabanaRouteSelect" class="toolbar-select cabana-route-select"></select>
+            <div class="cabana-ctx-replay-controls">
+              <button type="button" id="cabanaReplayPlayBtn" class="btn small primary">播放</button>
+              <button type="button" id="cabanaReplayPauseBtn" class="btn small">暂停</button>
+              <select id="cabanaReplaySpeed" class="toolbar-select cabana-speed-select" title="CAN 数据回放倍速">
+                <option value="0.5">0.5x</option>
+                <option value="1" selected>1x</option>
+                <option value="2">2x</option>
+                <option value="5">5x</option>
+                <option value="10">10x</option>
+              </select>
+              <input type="range" id="cabanaProgress" class="cabana-progress" min="0" max="1000" value="0" step="1" title="拖动定位 CAN 日志时间">
+              <span id="cabanaProgressLabel" class="cabana-progress-label">日志 0:00</span>
+              <span id="cabanaReplayStats" class="cabana-replay-stats"></span>
+            </div>
+            <div class="cabana-ctx-replay-toggles">
+              <label class="cabana-replay-full" title="完整 rlog CAN（较慢）">
+                <input type="checkbox" id="cabanaReplayFull">
+                <span data-i18n="cabanaReplayFull">完整 rlog</span>
+              </label>
+              <label class="cabana-replay-video" title="低清 qcamera 缩略图预览（默认关闭）">
+                <input type="checkbox" id="cabanaVideoToggle">
+                <span id="cabanaVideoToggleLabel">路况预览</span>
+              </label>
+              <label class="cabana-replay-decode" title="服务端按 DBC 解码物理值（需先选择 DBC）">
+                <input type="checkbox" id="cabanaDecodeToggle">
+                <span id="cabanaDecodeToggleLabel">物理值解码</span>
+              </label>
             </div>
           </div>
-          <button type="button" id="cabanaLiveFilterBtn" class="btn small ghost" hidden>仅显示选中</button>
-          <button type="button" id="cabanaLiveFilterClearBtn" class="btn small ghost" hidden>清除过滤</button>
-        </div>
-        <div class="cabana-replay-bar" id="cabanaReplayBar" hidden>
-          <select id="cabanaRouteSelect" class="toolbar-select cabana-route-select"></select>
-          <div class="cabana-replay-row">
-            <button type="button" id="cabanaReplayPlayBtn" class="btn small primary">播放</button>
-            <button type="button" id="cabanaReplayPauseBtn" class="btn small">暂停</button>
-            <label class="cabana-replay-full" title="完整 rlog CAN（较慢）">
-              <input type="checkbox" id="cabanaReplayFull">
-              <span data-i18n="cabanaReplayFull">完整 rlog</span>
-            </label>
-            <label class="cabana-replay-video" title="低清 qcamera 缩略图预览（默认关闭）">
-              <input type="checkbox" id="cabanaVideoToggle">
-              <span id="cabanaVideoToggleLabel">路况预览</span>
-            </label>
-            <label class="cabana-replay-decode" title="服务端按 DBC 解码物理值（需先选择 DBC）">
-              <input type="checkbox" id="cabanaDecodeToggle">
-              <span id="cabanaDecodeToggleLabel">物理值解码</span>
-            </label>
-            <select id="cabanaReplaySpeed" class="toolbar-select cabana-speed-select" title="CAN 数据回放倍速">
-              <option value="0.5">0.5x</option>
-              <option value="1" selected>1x</option>
-              <option value="2">2x</option>
-              <option value="5">5x</option>
-              <option value="10">10x</option>
-            </select>
-            <input type="range" id="cabanaProgress" class="cabana-progress" min="0" max="1000" value="0" step="1" title="拖动定位 CAN 日志时间">
-            <span id="cabanaProgressLabel" class="cabana-progress-label">日志 0:00</span>
-            <span id="cabanaReplayStats" class="cabana-replay-stats"></span>
-          </div>
-        </div>
-        <div class="cabana-video-preview" id="cabanaVideoPreview" hidden>
-          <img id="cabanaVideoImg" class="cabana-video-img" alt="" hidden>
-          <div id="cabanaVideoPlaceholder" class="cabana-video-placeholder">加载预览…</div>
-        </div>
-        <div class="cabana-replay-loading" id="cabanaReplayLoading" hidden>
-          <span class="cabana-spinner" aria-hidden="true"></span>
-          <span id="cabanaReplayLoadingText">正在索引日志…</span>
-        </div>
-        <div class="cabana-filter-row">
-          <input type="text" id="cabanaFilter" class="cabana-filter toolbar-input" placeholder="搜索报文…">
-          <input type="text" id="cabanaSignalFilter" class="cabana-filter toolbar-input" placeholder="信号/物理值过滤…" title="例如 BRK 或 > 0">
-          <label class="cabana-filter-check" title="隐藏 payload 连续不变的报文">
-            <input type="checkbox" id="cabanaHideUnchanged">
-            <span id="cabanaHideUnchangedLabel">隐藏不变</span>
-          </label>
-          <button type="button" id="cabanaExportCsvBtn" class="btn small ghost">导出表格 CSV</button>
-          <div class="cabana-filter-chips" id="cabanaFilterChips"></div>
-        </div>
-        <div class="cabana-plot-wrap" id="cabanaPlotWrap" hidden>
-          <div class="cabana-plot-toolbar">
-            <span id="cabanaPlotTitle">信号曲线</span>
-            <div class="cabana-plot-actions">
-              <button type="button" id="cabanaPlotServerBtn" class="btn small ghost">历史曲线</button>
-              <button type="button" id="cabanaPlotClear" class="btn small ghost">清空曲线</button>
+          <span id="cabanaMetaBar" class="cabana-meta">加载中…</span>
+          <span id="cabanaLabelProgress" class="cabana-label-progress" hidden></span>
+          <div class="cabana-menu-wrap">
+            <button type="button" id="cabanaMoreBtn" class="btn small ghost">更多 ▾</button>
+            <div class="cabana-menu" id="cabanaMoreMenu" hidden>
+              <button type="button" id="cabanaConnectBtn" class="cab-menu-item primary">连接实时 CAN</button>
+              <button type="button" id="cabanaAutoLabelBtn" class="cab-menu-item">自动标注</button>
+              <button type="button" id="cabanaSendChatBtn" class="cab-menu-item">片段→聊天</button>
+              <button type="button" id="cabanaRouteChatBtn" class="cab-menu-item" hidden>分析 route</button>
+              <button type="button" id="cabanaDeepAnalyzeBtn" class="cab-menu-item">深度分析</button>
             </div>
           </div>
-          <div id="cabanaPlotChart" class="cabana-plot-chart"></div>
-          <div id="cabanaPlotEmpty" class="cabana-plot-empty">点击表格行选择报文，播放或连接后将显示信号曲线</div>
         </div>
-        <div class="cabana-table-wrap" id="cabanaTableWrap">
-          <table id="cabanaTable">
-            <thead>
-              <tr>
-                <th id="cabThTime" data-sort="time">时间</th>
-                <th id="cabThBus" data-sort="bus">总线</th>
-                <th id="cabThName" data-sort="name">报文</th>
-                <th id="cabThValue">当前值</th>
-                <th id="cabThCount" data-sort="count">Count</th>
-                <th id="cabThFreq" data-sort="freq">Hz</th>
-                <th id="cabThExplain" data-sort="label">功能</th>
-              </tr>
-            </thead>
-            <tbody id="cabanaTableBody">
-              <tr class="cab-virtual-spacer cab-virtual-spacer-top" aria-hidden="true"><td colspan="7"></td></tr>
-              <tr class="cab-virtual-spacer cab-virtual-spacer-bottom" aria-hidden="true"><td colspan="7"></td></tr>
-            </tbody>
-          </table>
-        </div>
-        <div class="cabana-detail-wrap" id="cabanaDetailWrap" hidden>
-          <div class="cabana-detail-header">
-            <span id="cabanaDetailTitle" class="cabana-detail-title">报文详情</span>
-            <div class="cabana-detail-actions">
-              <span id="cabanaDetailMeta" class="cabana-detail-meta"></span>
-              <button type="button" id="cabanaCopyHexBtn" class="btn small ghost">复制 HEX</button>
-              <button type="button" id="cabanaExportRouteCsvBtn" class="btn small ghost">导出 CSV</button>
-              <button type="button" id="cabanaExportHistCsvBtn" class="btn small ghost">导出历史 CSV</button>
-              <button type="button" id="cabanaDetailClose" class="btn small ghost cab-detail-close" aria-label="Close">×</button>
+        <!-- Zone 2: MainGrid — filter toolbar + virtual table (left), Inspector (right) -->
+        <div class="cabana-main-grid">
+          <div class="cabana-left-col">
+            <div class="cabana-filter-row">
+              <input type="text" id="cabanaFilter" class="cabana-filter toolbar-input" placeholder="搜索报文…">
+              <div class="cabana-menu-wrap">
+                <button type="button" id="cabanaFilterToggleBtn" class="btn small ghost">筛选 ▾</button>
+                <div class="cabana-menu cabana-filter-pop" id="cabanaFilterPopover" hidden>
+                  <input type="text" id="cabanaSignalFilter" class="cabana-filter toolbar-input" placeholder="信号/物理值过滤…" title="例如 BRK 或 > 0">
+                  <label class="cabana-filter-check" title="隐藏 payload 连续不变的报文">
+                    <input type="checkbox" id="cabanaHideUnchanged">
+                    <span id="cabanaHideUnchangedLabel">隐藏不变</span>
+                  </label>
+                  <div class="cabana-filter-chips" id="cabanaFilterChips"></div>
+                </div>
+              </div>
+              <div class="cabana-menu-wrap">
+                <button type="button" id="cabanaExportCsvBtn" class="btn small ghost">导出 ▾</button>
+                <div class="cabana-menu" id="cabanaExportMenu" hidden>
+                  <button type="button" id="cabanaExportTableItem" class="cab-menu-item">导出表格 CSV</button>
+                  <button type="button" id="cabanaExportRouteItem" class="cab-menu-item">导出 CSV（选中报文）</button>
+                  <button type="button" id="cabanaExportHistItem" class="cab-menu-item">导出历史 CSV</button>
+                </div>
+              </div>
             </div>
-          </div>
-          <div id="cabanaBinaryGrid" class="cabana-binary-grid" hidden></div>
-          <div id="cabanaDetailBinary" class="cabana-detail-binary" hidden></div>
-          <div id="cabanaDetailSignals" class="cabana-detail-signals"></div>
-          <div class="cabana-detail-history">
-            <div class="cabana-detail-history-head" id="cabanaDetailHistoryHead">最近帧</div>
-            <div class="cabana-detail-history-scroll">
-              <table class="cabana-history-table">
+            <div class="cabana-table-wrap" id="cabanaTableWrap">
+              <table id="cabanaTable">
                 <thead>
                   <tr>
-                    <th id="cabanaHistThTime">时间</th>
-                    <th id="cabanaHistThHex">HEX</th>
-                    <th id="cabanaHistThDec">DEC</th>
-                    <th id="cabanaHistThDecoded">解码</th>
-                    <th id="cabanaHistThCopy">操作</th>
+                    <th id="cabThTime" data-sort="time">时间</th>
+                    <th id="cabThBus" data-sort="bus">总线</th>
+                    <th id="cabThName" data-sort="name">报文</th>
+                    <th id="cabThValue">当前值</th>
+                    <th id="cabThCount" data-sort="count">Count</th>
+                    <th id="cabThFreq" data-sort="freq">Hz</th>
+                    <th id="cabThExplain" data-sort="label">功能</th>
                   </tr>
                 </thead>
-                <tbody id="cabanaDetailHistoryBody"></tbody>
+                <tbody id="cabanaTableBody">
+                  <tr class="cab-virtual-spacer cab-virtual-spacer-top" aria-hidden="true"><td colspan="7"></td></tr>
+                  <tr class="cab-virtual-spacer cab-virtual-spacer-bottom" aria-hidden="true"><td colspan="7"></td></tr>
+                </tbody>
               </table>
             </div>
           </div>
-        </div>
-        <div class="cabana-ai-result" id="cabanaAiResult" hidden>
-          <div class="cabana-ai-result-header">
-            <span id="cabanaAiResultTitle">深度分析</span>
-            <div class="cabana-ai-result-actions">
-              <button type="button" id="cabanaAiResultToChat" class="btn ghost small">发到聊天</button>
-              <button type="button" id="cabanaAiResultClose" class="btn icon small" aria-label="Close">×</button>
+          <div class="cabana-inspector" id="cabanaInspector" hidden>
+            <div class="cabana-inspector-tabs" role="tablist" id="cabanaInspectorTabs">
+              <button type="button" class="cabana-inspector-tab active" data-itab="detail">详情</button>
+              <button type="button" class="cabana-inspector-tab" data-itab="plot">曲线</button>
+              <button type="button" class="cabana-inspector-tab" data-itab="binary">二进制</button>
+              <button type="button" class="cabana-inspector-tab" data-itab="ai">AI</button>
+              <button type="button" class="cabana-inspector-tab" data-itab="dbc">DBC</button>
+              <button type="button" id="cabanaInspectorHandle" class="cabana-inspector-handle" aria-label="Toggle inspector">▾</button>
+            </div>
+            <div class="cabana-inspector-body">
+              <div class="cab-itab" id="cabanaITabDetail">
+                <div class="cabana-detail-header">
+                  <span id="cabanaDetailTitle" class="cabana-detail-title">报文详情</span>
+                  <div class="cabana-detail-actions">
+                    <span id="cabanaDetailMeta" class="cabana-detail-meta"></span>
+                    <button type="button" id="cabanaCopyHexBtn" class="btn small ghost">复制 HEX</button>
+                    <div class="cabana-menu-wrap">
+                      <button type="button" id="cabanaInspectorExportBtn" class="btn small ghost">导出 ▾</button>
+                      <div class="cabana-menu" id="cabanaInspectorExportMenu" hidden>
+                        <button type="button" id="cabanaInspectorExportRouteItem" class="cab-menu-item">导出 CSV（选中报文）</button>
+                        <button type="button" id="cabanaInspectorExportHistItem" class="cab-menu-item">导出历史 CSV</button>
+                      </div>
+                    </div>
+                    <button type="button" id="cabanaDetailClose" class="btn small ghost cab-detail-close" aria-label="Close">×</button>
+                  </div>
+                </div>
+                <div id="cabanaDetailSignals" class="cabana-detail-signals"></div>
+                <div class="cabana-detail-history">
+                  <div class="cabana-detail-history-head" id="cabanaDetailHistoryHead">最近帧</div>
+                  <div class="cabana-detail-history-scroll">
+                    <table class="cabana-history-table">
+                      <thead>
+                        <tr>
+                          <th id="cabanaHistThTime">时间</th>
+                          <th id="cabanaHistThHex">HEX</th>
+                          <th id="cabanaHistThDec">DEC</th>
+                          <th id="cabanaHistThDecoded">解码</th>
+                          <th id="cabanaHistThCopy">操作</th>
+                        </tr>
+                      </thead>
+                      <tbody id="cabanaDetailHistoryBody"></tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+              <div class="cab-itab" id="cabanaITabPlot" hidden>
+                <div class="cabana-plot-wrap" id="cabanaPlotWrap" hidden>
+                  <div class="cabana-plot-toolbar">
+                    <span id="cabanaPlotTitle">信号曲线</span>
+                    <div class="cabana-plot-actions">
+                      <button type="button" id="cabanaPlotServerBtn" class="btn small ghost">历史曲线</button>
+                      <button type="button" id="cabanaPlotClear" class="btn small ghost">清空曲线</button>
+                    </div>
+                  </div>
+                  <div id="cabanaPlotChart" class="cabana-plot-chart"></div>
+                  <div id="cabanaPlotEmpty" class="cabana-plot-empty">点击表格行选择报文，播放或连接后将显示信号曲线</div>
+                </div>
+              </div>
+              <div class="cab-itab" id="cabanaITabBinary" hidden>
+                <div id="cabanaBinaryGrid" class="cabana-binary-grid" hidden></div>
+                <div id="cabanaDetailBinary" class="cabana-detail-binary" hidden></div>
+              </div>
+              <div class="cab-itab" id="cabanaITabAi" hidden>
+                <div class="cabana-ai-result" id="cabanaAiResult" hidden>
+                  <div class="cabana-ai-result-header">
+                    <span id="cabanaAiResultTitle">深度分析</span>
+                    <div class="cabana-ai-result-actions">
+                      <button type="button" id="cabanaAiResultToChat" class="btn ghost small">发到聊天</button>
+                      <button type="button" id="cabanaAiResultClose" class="btn icon small" aria-label="Close">×</button>
+                    </div>
+                  </div>
+                  <pre id="cabanaAiResultText" class="cabana-ai-result-text"></pre>
+                </div>
+              </div>
+              <div class="cab-itab" id="cabanaITabDbc" hidden>
+                <div class="cabana-dbc-tools">
+                  <button type="button" id="cabanaDbcInferBtn" class="btn small primary" disabled>AI 推断信号</button>
+                  <span id="cabanaDbcStatus" class="cabana-dbc-status"></span>
+                </div>
+                <div id="cabanaDbcCandidates" class="cabana-dbc-candidates"></div>
+                <pre id="cabanaDbcDiff" class="cabana-dbc-diff"></pre>
+                <div class="cabana-dbc-actions">
+                  <button type="button" id="cabanaDbcCommitBtn" class="btn small primary">确认提交</button>
+                  <button type="button" id="cabanaDbcDiscardBtn" class="btn small ghost">放弃</button>
+                </div>
+                <div class="cabana-dbc-versions">
+                  <div class="cabana-dbc-versions-head">
+                    <span>版本历史</span>
+                    <input type="text" id="cabanaDbcVersionsName" class="toolbar-input" placeholder="DBC 名称…">
+                  </div>
+                  <ul id="cabanaDbcVersionsList" class="cabana-dbc-versions-list"></ul>
+                </div>
+              </div>
             </div>
           </div>
-          <pre id="cabanaAiResultText" class="cabana-ai-result-text"></pre>
+        </div>
+        <!-- Zone 3: BottomDock — replay only (video thumb + loading progress) -->
+        <div class="cabana-bottom-dock" id="cabanaBottomDock" hidden>
+          <div class="cabana-video-preview" id="cabanaVideoPreview" hidden>
+            <img id="cabanaVideoImg" class="cabana-video-img" alt="" hidden>
+            <div id="cabanaVideoPlaceholder" class="cabana-video-placeholder">加载预览…</div>
+          </div>
+          <div class="cabana-replay-loading" id="cabanaReplayLoading" hidden>
+            <span class="cabana-spinner" aria-hidden="true"></span>
+            <span id="cabanaReplayLoadingText">正在索引日志…</span>
+          </div>
         </div>
         <p class="cabana-panel-hint" id="cabanaPanelHint"></p>
       </div>
@@ -1546,7 +1614,7 @@
     </div>
   </div>
 
-  <script src="/static/js/i18n.js?v=20260806t"></script>
+  <script src="/static/js/i18n.js?v=20260906a"></script>
   <script src="/static/js/theme.js?v=20260715h"></script>
   <script src="/static/vendor/markdown-it/markdown-it-tasklists.bundle.js"></script>
   <script src="/static/vendor/markdown-it/purify.min.js"></script>
@@ -1607,6 +1675,6 @@
   <script src="/static/js/ai.js?v=20260905a"></script>
   <script src="/static/js/harness-panel.js?v=20260904a"></script>
   <script src="/static/vendor/uplot/uPlot.iife.min.js"></script>
-  <script src="/static/js/cabana-panel.js?v=20260804a"></script>
+  <script src="/static/js/cabana-panel.js?v=20260906a"></script>
 </body>
 </html>

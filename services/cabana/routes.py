@@ -22,6 +22,13 @@ from ai.services.cabana.ai_explain import (
   api_explain_cache,
   api_explain_signal,
 )
+from ai.services.cabana.dbc_edit import (
+  api_dbc_ai_edit,
+  api_dbc_ai_infer,
+  api_dbc_commit,
+  api_dbc_rollback,
+  api_dbc_versions,
+)
 from ai.services.cabana.live import ws_live
 from ai.services.cabana.replay_ws import ws_offline
 from ai.services.cabana.stream_ws import ws_stream
@@ -47,6 +54,12 @@ def register_routes(app: web.Application, static_root: Path) -> None:
   app.router.add_get("/api/cabana/route/{name}/frames", api_route_frames)
   app.router.add_get("/api/cabana/route/{name}/export", api_route_export)
   app.router.add_post("/api/cabana/tools/similar_bits", api_similar_bits)
+  # AI-assisted DBC editing (user DBC store; opendbc originals stay read-only)
+  app.router.add_post("/api/cabana/dbc/ai/infer", api_dbc_ai_infer)
+  app.router.add_post("/api/cabana/dbc/ai/edit", api_dbc_ai_edit)
+  app.router.add_post("/api/cabana/dbc/commit", api_dbc_commit)
+  app.router.add_get("/api/cabana/dbc/versions", api_dbc_versions)
+  app.router.add_post("/api/cabana/dbc/rollback", api_dbc_rollback)
   app.router.add_get("/api/cabana/ws", ws_live)
   app.router.add_get("/api/cabana/offline/ws", ws_offline)
   app.router.add_get("/api/cabana/stream/ws", ws_stream)

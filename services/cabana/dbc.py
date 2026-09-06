@@ -1,6 +1,7 @@
 """Cabana dbc module."""
 from __future__ import annotations
 
+import os
 import re
 import threading
 import time
@@ -11,9 +12,40 @@ from typing import Any
 from ai.services.cabana.deps import DBC, PLATFORMS, DBC_PATH, get_generated_dbcs
 
 
+def _user_dbc_dir() -> Path:
+  """Directory for user-committed DBCs (AI-assisted editing).
+
+  Override with the ``AI_USER_DBC_DIR`` environment variable. On Windows
+  (dev machines, no /data) fall back to a repo-local directory so tests and
+  local runs work without root paths.
+  """
+  env = os.getenv("AI_USER_DBC_DIR")
+  if env:
+    return Path(env)
+  if os.name == "nt":
+    return Path(__file__).resolve().parents[2] / "data" / "user_dbcs"
+  return Path("/data/ai_user_dbcs")
+
+
+def _list_user_dbc_files() -> list[Path]:
+  """Current-version user DBC files ({name}.dbc) in the user directory."""
+  try:
+    user_dir = _user_dbc_dir()
+    if user_dir.is_dir():
+      # Only current-version files: history snapshots carry an extra ".{ts}" suffix.
+      return sorted(p for p in user_dir.glob("*.dbc") if not _USER_HISTORY_RE.match(p.name))
+  except Exception:
+    pass
+  return []
+
+
+_USER_HISTORY_RE = re.compile(r"^.+\.\d{14,}$")
+
+
 def _list_dbc_names() -> list[str]:
-  """All known DBC names: file-based, generated, and platform dbc_dict values."""
+  """All known DBC names: user, file-based, generated, and platform dbc_dict values."""
   dbcs: list[str] = []
+  dbcs.extend(p.stem for p in _list_user_dbc_files())
   if DBC_PATH:
     dbc_path = Path(DBC_PATH)
     if dbc_path.exists():
@@ -73,9 +105,14 @@ _dbc_catalog_mtime_sig: float | None = None
 
 
 def _dbc_sources_mtime() -> float:
-  """Max mtime across file-based DBC sources (0.0 when nothing is probeable)."""
+  """Max mtime across DBC sources (user dir + opendbc files; 0.0 when nothing is probeable)."""
   latest = 0.0
   try:
+    for f in _list_user_dbc_files():
+      try:
+        latest = max(latest, f.stat().st_mtime)
+      except OSError:
+        continue
     if DBC_PATH:
       dbc_path = Path(DBC_PATH)
       if dbc_path.is_dir():
@@ -87,6 +124,18 @@ def _dbc_sources_mtime() -> float:
   except Exception:
     pass
   return latest
+
+
+def _invalidate_dbc_catalog() -> None:
+  """Force the next catalog build to rebuild (called after a user DBC commit/rollback).
+
+  Without this the TTL/mtime cache could serve a stale list for up to
+  ``_DBC_CATALOG_TTL`` seconds after a new user DBC is written.
+  """
+  global _dbc_catalog_cache, _dbc_catalog_mtime_sig
+  with _dbc_catalog_lock:
+    _dbc_catalog_cache = None
+    _dbc_catalog_mtime_sig = None
 
 
 def _quick_dbc_catalog() -> list[dict[str, Any]]:
@@ -301,9 +350,24 @@ def _suggest_dbc_for_car(car: dict[str, Any]) -> str | None:
 
 
 def _load_dbc_content(dbc_name: str) -> str | None:
-  """Return raw DBC text for a given DBC name (generated or file)."""
+  """Return raw DBC text for a given DBC name (user > generated > file).
+
+  A user DBC (AI-assisted editing store) with the same name overrides the
+  opendbc original — the opendbc directory itself is never written.
+
+  Session safety: established decode sessions already hold their own parsed
+  signal table (see decoder.get_decoder callers in replay_ws.py — the table is
+  fetched once per session), so committing a new user version never mutates a
+  running session; only sessions created afterwards pick it up.
+  """
   if DBC is None:
     return None
+  try:
+    user_path = _user_dbc_dir() / f"{dbc_name}.dbc"
+    if user_path.exists():
+      return user_path.read_text()
+  except Exception:
+    pass
   try:
     generated = get_generated_dbcs()
     if dbc_name in generated:

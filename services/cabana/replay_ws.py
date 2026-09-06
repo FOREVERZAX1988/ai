@@ -16,6 +16,7 @@ from aiohttp import web
 from ai.services.cabana.car_params import _resolve_car_params
 from ai.services.cabana.dbc import _suggest_dbc_for_car
 from ai.services.cabana.deps import LogReader
+from ai.services.cabana.deps import cloudlog
 from ai.services.cabana.decoder import decode_frames as _decode_frames
 from ai.services.cabana.decoder import decode_frames_multi as _decode_frames_multi
 from ai.services.cabana.decoder import get_decoder as _get_decoder
@@ -258,7 +259,13 @@ async def run_replay_ws(
 
   try:
     if not stream.all_frames and stream.streaming_load:
-      await asyncio.wait_for(stream.load_complete.wait(), timeout=120.0)
+      try:
+        await asyncio.wait_for(stream.load_complete.wait(), timeout=120.0)
+      except TimeoutError:
+        # First chunks are usually buffered long before the full index
+        # completes; keep playing what we have instead of dropping the
+        # connection. The background drain task keeps topping up frames.
+        cloudlog.warning("cabana replay: initial load timeout after 120s, continuing with buffered frames")
     elif stream.streaming_load:
       # Do not block UI on full background drain — metadata uses partial buffer first.
       pass
@@ -323,11 +330,11 @@ async def run_replay_ws(
 
     await asyncio.sleep(0)
 
-    if stream.streaming_load and drain_task is not None and not stream.load_complete.is_set():
-      try:
-        await asyncio.wait_for(stream.load_complete.wait(), timeout=90.0)
-      except TimeoutError:
-        pass
+    # Design intent: do NOT block the playback loop waiting for the background
+    # drain to finish — the first buffered frames are already primed (prime()
+    # below), so playback starts immediately while drain_task keeps filling the
+    # buffer. The loop below handles the not-yet-complete drain via its
+    # `load_complete` branches (bounds() == 0 poll and at_end wait).
 
     # Stream playback without pre-building the full snapshot list (avoids multi-second stall).
     interval = REPLAY_SNAPSHOT_INTERVAL
