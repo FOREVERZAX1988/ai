@@ -76,6 +76,7 @@ class PrunedEntry:
 class PruneResult:
   pruned: list[PrunedEntry] = field(default_factory=list)
   chars_removed: int = 0
+  tokens_removed: int = 0
 
 
 class ToolResultPruner:
@@ -109,20 +110,28 @@ class ToolResultPruner:
     tail = points[removed_end:] if removed_end > removed_start else []
     return "".join(head) + PRUNE_MARKER + "".join(tail)
 
-  def prune_session(self, log: SessionLog) -> PruneResult:
-    """Prune every over-budget tool result from one stable surface snapshot.
+  def prune_session(self, log: SessionLog, *, token_meter=None, retain_recent: int = 0) -> PruneResult:
+    """Prune over-budget tool results from one stable surface snapshot.
+
+    ``token_meter`` (optional callable str->int) prices each shadowed node in
+    tokens for the ``compaction/prune`` shadow-price event. ``retain_recent``
+    leaves the most recent N TOOL_RESULT surface nodes untouched so a just
+    finished step is never pruned by the same compaction pass.
 
     Each replacement is immediately preceded by a ``compaction/prune``
     shadow-price event; the REPLACE cites the shadowed seq via source_seqs
     and keeps the same tool_call_id (strict surface validation requires it).
     """
-    candidates: list[int] = []
-    for node in list(log.surface):
-      if node.event_type == EventType.TOOL_RESULT:
-        candidates.append(node.seq)
+    nodes = [node for node in log.surface if node.event_type == EventType.TOOL_RESULT]
+    protected: set[int] = set()
+    if retain_recent > 0:
+      protected = {node.seq for node in nodes[len(nodes) - retain_recent:]}
 
     result = PruneResult()
-    for seq in candidates:
+    for node in nodes:
+      seq = node.seq
+      if seq in protected:
+        continue
       event = log.events[seq]
       data = event.data if isinstance(event.data, dict) else {}
       content = data.get("content")
@@ -136,15 +145,24 @@ class ToolResultPruner:
 
       # Shadow-price protocol: metering event and its replacement land
       # synchronously adjacent so pure consumers subtract the shadowed node
-      # without per-node state. Priced in Unicode code points (no token
-      # meter seam on the Python side yet).
+      # without per-node state. Priced in Unicode code points; when a token
+      # meter is supplied the shadow event also carries the token price.
+      shadow_payload: dict = {
+        "shadowedRange": {"start": seq, "end": seq},
+        "shadowedSeqs": [seq],
+        "shadowedCharCount": chars_before,
+      }
+      if token_meter is not None:
+        try:
+          tokens_before = int(token_meter(content))
+          tokens_after = int(token_meter(pruned_text))
+        except Exception:
+          tokens_before = tokens_after = 0
+        shadow_payload["shadowedTokenCount"] = max(0, tokens_before - tokens_after)
+        result.tokens_removed += max(0, tokens_before - tokens_after)
       log.append(
         EventType.COMPACTION_PRUNE,
-        {
-          "shadowedRange": {"start": seq, "end": seq},
-          "shadowedSeqs": [seq],
-          "shadowedCharCount": chars_before,
-        },
+        shadow_payload,
       )
       replacement = log.append(
         EventType.TOOL_RESULT,

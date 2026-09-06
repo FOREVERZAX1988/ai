@@ -720,6 +720,23 @@ class Agent:
         stream_timeout=self.stream_timeout,
         workflow_id=str(self.body.get("workflow_id") or self.body.get("workflowId") or self.body.get("workflow") or "").strip() or None,
       )
+      # Pre-step compaction seam (G3): token-metered budget from params.
+      try:
+        from ai.core.session.compaction import DEFAULT_MAX_TOKENS, CompactionConfig, CompactionService
+        max_tokens = DEFAULT_MAX_TOKENS
+        try:
+          from ai.common.storage import read_param
+          raw = read_param(self.params, "ai_compaction_max_tokens", str(DEFAULT_MAX_TOKENS))
+          max_tokens = max(1024, min(int(str(raw or DEFAULT_MAX_TOKENS)), 1_000_000))
+        except Exception:
+          pass
+        loop.compaction = CompactionService(
+          session_log=loop.log,
+          llm_stream=None,
+          config=CompactionConfig(max_tokens=max_tokens),
+        )
+      except Exception:
+        loop.compaction = None
       # Share durable log with the lower-level loop.
       loop.log.close()
       loop.log = self.log
