@@ -16,6 +16,42 @@ from ai.core.agent.state import AgentState, CancelCause, CancelCauseKind, ChatCa
 from ai.core.session.log import EventType, RequestHeader, SessionLog, SurfaceOp
 from ai.core.tools.pipeline import ToolPipeline
 
+
+def bound_dispatch_log_copy(
+  result: Any,
+  log_content: str,
+  *,
+  session_id: str,
+  tool_name: str,
+  call_id: str,
+  params: Any = None,
+) -> str:
+  """Shrink the session log's copy of an oversized result (best-effort).
+
+  Dispatch-log arm of the spill policy (dsh ``tools/ptc-dispatch-log``).
+  Reuses ``spill_text_if_needed`` with ``kind="dispatch"``; returns the
+  original serialized payload unchanged when spill is disabled, the payload
+  is within budget, or anything fails. Never raises, never touches the
+  model-facing ``result``.
+  """
+  try:
+    if isinstance(result, dict) and isinstance(result.get("content"), str):
+      text = result["content"]
+    else:
+      text = log_content
+    from ai.tools.result_externalize import spill_text_if_needed
+    replaced, _ref = spill_text_if_needed(
+      text,
+      session_id=session_id,
+      tool_name=tool_name,
+      call_id=call_id,
+      params=params,
+      kind="dispatch",
+    )
+    return replaced if replaced is not None else log_content
+  except Exception:
+    return log_content
+
 EmitFn = Callable[[dict[str, Any]], Awaitable[None]]
 StreamFn = Callable[..., Any]
 
@@ -36,6 +72,7 @@ class AgentLoop:
     tool_timeout: float = 300.0,
     stream_timeout: float = 120.0,
     workflow_id: str | None = None,
+    compaction: Any = None,
   ) -> None:
     self.session_id = session_id
     self.agent_id = agent_id
@@ -47,6 +84,7 @@ class AgentLoop:
     self.tool_timeout = tool_timeout
     self.stream_timeout = stream_timeout
     self.workflow_id = workflow_id
+    self.compaction = compaction
     self.state = AgentState(agent_id, session_id)
     self.log = SessionLog(session_id)
     self._driver_task: asyncio.Task[Any] | None = None
@@ -196,6 +234,13 @@ class AgentLoop:
     return True
 
   async def _step(self, turn: int, step: int) -> str:
+    # Pre-step compaction seam: event projection + pruner. Any failure is
+    # best-effort and must not block the model turn.
+    if self.compaction is not None:
+      try:
+        await self.compaction.compact_if_needed(self, trigger="pressure")
+      except Exception:
+        pass
     messages = self.log.derive_messages()
     header = self.log.request_header()
     if header is None:
@@ -290,18 +335,34 @@ class AgentLoop:
         "result": result,
         "agentId": self.agent_id,
       })
+      # Dispatch-log arm (dsh tools/ptc-dispatch-log): bound the session
+      # log's copy of an oversized result independently of the model-facing
+      # waterfall. The model-facing arm deliberately skips read-family tools
+      # (read → spill → read-again loop) and nested calls (the caller gets
+      # the whole value); the log copy is NOT model context, so it always
+      # shrinks to preview + locator — replay/UIs read the full text through
+      # the spill artifact exactly as they do for spilled native results.
+      log_content = json.dumps(result, ensure_ascii=False, default=str)
+      if not (isinstance(result, dict) and result.get("externalized")):
+        log_content = self._bound_log_copy(name, call_id, result, log_content)
       self.log.append(
         EventType.TOOL_RESULT,
         {
           "turn": turn,
           "step": step,
           "tool_call_id": call_id,
-          "content": json.dumps(result, ensure_ascii=False, default=str),
+          "content": log_content,
         },
         surface_op=SurfaceOp.APPEND,
       )
 
     return "tool_calls"
+
+  def _bound_log_copy(self, name: str, call_id: str, result: Any, log_content: str) -> str:
+    return bound_dispatch_log_copy(
+      result, log_content,
+      session_id=self.session_id, tool_name=name, call_id=call_id, params=self.params,
+    )
 
   async def _stream_with_timeout(self, request: dict[str, Any]) -> Any:
     # stream_fn is expected to return an async iterator.

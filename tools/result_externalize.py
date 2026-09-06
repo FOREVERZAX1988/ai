@@ -167,11 +167,15 @@ def spill_text_if_needed(
   call_id: str = "",
   max_bytes: int | None = None,
   params: Any = None,
+  kind: str = "result",
 ) -> tuple[str | None, dict[str, Any] | None]:
   """Spill `text` and return (bounded_replacement, ref) or (None, None).
 
-  Port of dsh `spillReplacement`. Returns ``None`` (keep original) when:
-  no session owner, save fails, or the notice itself exceeds the cap.
+  Port of dsh ``spillReplacement``. ``kind`` records which arm produced the
+  spill — ``result`` (model-facing post-execute) or ``dispatch`` (session-log
+  copy of a sub-call result) — so artifacts are distinguishable on replay.
+  Returns ``None`` (keep original) when: no session owner, save fails, or the
+  notice itself exceeds the cap.
   """
   if not externalize_enabled(params):
     return None, None
@@ -196,6 +200,7 @@ def spill_text_if_needed(
     "path": locator,
     "tool": tool_name,
     "call_id": call_id,
+    "kind": kind if kind in ("result", "dispatch") else "result",
     "size_bytes": total,
     "hint": hint,
   }
