@@ -7,7 +7,9 @@ the WS message sequence is unchanged.
 from __future__ import annotations
 
 import asyncio
+import threading
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
@@ -24,6 +26,10 @@ class ReplayStream:
   """StreamSource implementation backed by qlog/rlog CAN frames."""
 
   mode = "replay"
+
+  # Dedicated pool for heavy log scans: a stuck/abandoned scan must never
+  # starve aid's default executor (video info, decoders, LLM, ...).
+  _scan_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="replay-scan")
 
   def __init__(self, route_name: str, *, full: bool = False, routes_dir: Path | None = None):
     self.route_name = route_name
@@ -67,6 +73,7 @@ class ReplayStream:
     self._pending_seek: float | None = None
     self._speed = 1.0
     self._callbacks: list[FrameCallback] = []
+    self._abort = threading.Event()
 
   # -- StreamSource protocol -------------------------------------------------
 
@@ -74,6 +81,8 @@ class ReplayStream:
     """No-op: replay loading is driven explicitly via load_async()."""
 
   def stop(self) -> None:
+    """Abort any in-flight load/scan and detach callbacks (session gone)."""
+    self._abort.set()
     self._callbacks.clear()
 
   def messages(self, address: int, t0: float, t1: float) -> list[CanFrame]:
@@ -129,7 +138,8 @@ class ReplayStream:
     cb = progress_cb or (lambda _p: None)
     if self.route_path is not None and self.route_path.is_dir():
       cached = await loop.run_in_executor(
-        None, lambda: _replay._load_route_cache(self.route_path, want_full=self.full),
+        self._scan_executor,
+        lambda: _replay._load_route_cache(self.route_path, want_full=self.full),
       )
       if cached:
         cb({"phase": "cache_hit", "can_frames": len(cached)})
@@ -146,23 +156,31 @@ class ReplayStream:
         cb({"phase": "fast_qlog", "files": len(self.stream_paths), "parallel": len(self.stream_paths) > 1})
         return _replay._collect_can_frames(self.stream_paths, cb)
 
-      frames, dec = await loop.run_in_executor(None, read_qlog_only)
-      self.all_frames = frames
-      self.decimated = dec
-      self.from_cache = False
-      self._refresh_bounds()
-      if self.route_path is not None and self.route_path.is_dir() and frames:
-        self._cache_task = asyncio.ensure_future(loop.run_in_executor(
-          None,
-          lambda: _replay._save_route_cache(self.route_path, frames, decimated=dec, full=False),
-        ))
-      return self.source, dec, False
+      frames, dec = await loop.run_in_executor(self._scan_executor, read_qlog_only)
+      if frames or not self.rlogs:
+        self.all_frames = frames
+        self.decimated = dec
+        self.from_cache = False
+        self._refresh_bounds()
+        if self.route_path is not None and self.route_path.is_dir() and frames:
+          self._cache_task = asyncio.ensure_future(loop.run_in_executor(
+            self._scan_executor,
+            lambda: _replay._save_route_cache(self.route_path, frames, decimated=dec, full=False),
+          ))
+        return self.source, dec, False
+      # qlog yielded no CAN frames (recent openpilot no longer writes CAN to
+      # qlog) — fall back to streaming the rlog instead of failing the session.
+      cb({"phase": "qlog_no_can", "rlogs": len(self.rlogs)})
+      self.stream_paths = self.rlogs
+      self.source = "rlog"
 
     self.frame_queue = asyncio.Queue(maxsize=REPLAY_FRAME_QUEUE_SIZE)
     self.streaming_load = True
-    self.reader_task = loop.run_in_executor(None, self._stream_logs_worker, self.frame_queue, loop, cb)
+    self.reader_task = loop.run_in_executor(self._scan_executor, self._stream_logs_worker, self.frame_queue, loop, cb)
     partial: list[dict[str, Any]] = []
     while len(partial) < REPLAY_START_BUFFER:
+      if self._abort.is_set():
+        raise RuntimeError("replay session aborted")
       item = await self.frame_queue.get()
       if item is None:
         break
@@ -186,6 +204,7 @@ class ReplayStream:
     can_total = 0
     decimated_local = False
     state: dict[str, bool] = {}
+    aborted = False
     try:
       cb({
         "phase": "fast_rlog" if self.source == "rlog" else "qlog",
@@ -193,19 +212,37 @@ class ReplayStream:
         "parallel": len(self.stream_paths) > 1,
       })
       for file_name, batch in _replay._iter_can_batches(self.stream_paths, state=state):
+        if self._abort.is_set():
+          aborted = True
+          break
         collected.extend(batch)
         can_total += len(batch)
         cb({"phase": "scanning", "file": file_name, "can_frames": can_total})
-        _replay._threadsafe_queue_put(frame_queue, batch, loop)
-      collected.sort(key=lambda f: f["time"])
-      collected, decimated_final = _replay._decimate(collected)
-      decimated_local = bool(state.get("decimated")) or decimated_final
-      if self.route_path is not None and self.route_path.is_dir() and collected:
-        _replay._save_route_cache(self.route_path, collected, decimated=decimated_local, full=self.full)
+        if not _replay._threadsafe_queue_put(frame_queue, batch, loop, abort=self._abort):
+          aborted = True
+          break
+      if not aborted:
+        collected.sort(key=lambda f: f["time"])
+        collected, decimated_final = _replay._decimate(collected)
+        decimated_local = bool(state.get("decimated")) or decimated_final
+        if self.route_path is not None and self.route_path.is_dir() and collected:
+          # Mirror replay.py's convention: qlog-derived caches are qlog-only
+          # (full=False); anything that read the rlog is cached as full CAN.
+          _replay._save_route_cache(self.route_path, collected, decimated=decimated_local, full=(self.source != "qlog"))
     except Exception as e:
-      _replay._threadsafe_queue_put(frame_queue, ("error", str(e)), loop)
+      if not self._abort.is_set():
+        _replay._threadsafe_queue_put(frame_queue, ("error", str(e)), loop, abort=self._abort, timeout=5.0)
     finally:
-      _replay._threadsafe_queue_put(frame_queue, None, loop)
+      # Always deliver the sentinel so load_async/drain_async can finish.
+      if self._abort.is_set():
+        # Session is dead: hand the put off asynchronously (a pending put task
+        # is harmless; a blocked thread or a missing sentinel is not — without
+        # the sentinel the consumer waits out the full load timeout).
+        asyncio.run_coroutine_threadsafe(frame_queue.put(None), loop)
+      else:
+        ok = _replay._threadsafe_queue_put(frame_queue, None, loop, abort=self._abort, timeout=10.0)
+        if not ok:
+          asyncio.run_coroutine_threadsafe(frame_queue.put(None), loop)
 
   async def drain_async(self) -> None:
     """Drain the streaming frame queue into all_frames (ex-drain_stream_queue)."""

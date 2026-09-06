@@ -7,6 +7,7 @@ import hashlib
 import json
 import re
 import subprocess
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import UTC, datetime
@@ -114,10 +115,36 @@ def _route_cache_file(route_path: Path) -> Path:
   return _cabana_cache_dir() / f"{digest}_{mtime}_v{CACHE_VERSION}.json.gz"
 
 
-def _threadsafe_queue_put(queue: asyncio.Queue[Any], item: Any, loop: asyncio.AbstractEventLoop) -> None:
-  """Block the worker thread until the batch is queued (never drop frames)."""
+def _threadsafe_queue_put(
+  queue: asyncio.Queue[Any],
+  item: Any,
+  loop: asyncio.AbstractEventLoop,
+  *,
+  abort: "threading.Event | None" = None,
+  timeout: float = 30.0,
+) -> bool:
+  """Block the worker thread until the batch is queued (never drop frames).
+
+  Unlike a blind ``fut.result(900)`` — which could hold an executor thread
+  hostage for 15 minutes when the consumer disappears — this gives up after
+  ``timeout`` seconds or when ``abort`` is set, returning False so the worker
+  can exit promptly and release the thread.
+  """
   fut = asyncio.run_coroutine_threadsafe(queue.put(item), loop)
-  fut.result(timeout=900)
+  deadline = time.monotonic() + timeout
+  while True:
+    try:
+      fut.result(timeout=0.5)
+      return True
+    except TimeoutError:
+      # concurrent.futures.TimeoutError (alias of builtin TimeoutError):
+      # the put task is still pending because the queue is full.
+      if abort is not None and abort.is_set():
+        fut.cancel()
+        return False
+      if time.monotonic() >= deadline:
+        fut.cancel()
+        return False
 
 
 def _replay_log_paths(qlogs: list[Path], rlogs: list[Path], *, full: bool) -> tuple[list[Path], str]:

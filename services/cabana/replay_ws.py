@@ -194,6 +194,12 @@ async def run_replay_ws(
         pass
 
   control_task = asyncio.create_task(control_loop())
+
+  # Client went away mid-session (page refresh, popup closed, reconnect):
+  # control_loop's `async for` ends as soon as the socket closes — abort any
+  # in-flight scan immediately so the worker thread frees up. Harmless when
+  # the session is already ending (finally also stops the stream).
+  control_task.add_done_callback(lambda _task: stream.stop())
   progress_queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
 
   def progress_cb(payload: dict[str, Any]) -> None:
@@ -391,6 +397,7 @@ async def run_replay_ws(
   except Exception as e:
     await ws_send({"type": "error", "error": str(e)})
   finally:
+    stream.stop()
     if drain_task is not None:
       drain_task.cancel()
       try:
