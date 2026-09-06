@@ -1,7 +1,17 @@
 """Cabana dbc module."""
-from ai.services.cabana.deps import *
-from ai.services.cabana.frame import can_frame_to_dict as _can_frame_to_dict
+from __future__ import annotations
+
+import re
+import threading
+from collections import defaultdict
+from pathlib import Path
+from typing import Any
+
+from ai.services.cabana.deps import DBC, PLATFORMS, DBC_PATH, get_generated_dbcs
+
+
 def _list_dbc_names() -> list[str]:
+  """All known DBC names: file-based, generated, and platform dbc_dict values."""
   dbcs: list[str] = []
   if DBC_PATH:
     dbc_path = Path(DBC_PATH)
@@ -11,6 +21,13 @@ def _list_dbc_names() -> list[str]:
     dbcs.extend(get_generated_dbcs().keys())
   except Exception:
     pass
+  for platform in (PLATFORMS or {}).values():
+    cfg = getattr(platform, "config", None)
+    dbc_dict = getattr(cfg, "dbc_dict", None) or {}
+    if isinstance(dbc_dict, dict):
+      for val in dbc_dict.values():
+        if val:
+          dbcs.append(str(val))
   return sorted(set(dbcs))
 
 
@@ -262,15 +279,87 @@ def _load_dbc_content(dbc_name: str) -> str | None:
   return None
 
 
+# -----------------------------------------------------------------------------
+# Raw DBC text annotation extraction (units / comments / value labels)
+# -----------------------------------------------------------------------------
+
 _SG_UNIT_RE = re.compile(r'^SG_\s+\w+.*?\)\s+\[[^\]]+\]\s+"([^"]*)"')
+_CM_SIGNAL_RE = re.compile(r'^CM_\s+SG_\s+(\d+)\s+(\w+)\s+"((?:[^"\\]|\\.)*)"\s*;')
+_CM_MESSAGE_RE = re.compile(r'^CM_\s+BO_\s+(\d+)\s+"((?:[^"\\]|\\.)*)"\s*;')
+_VAL_RE = re.compile(r"^VAL_\s+(\d+)\s+(\w+)\s+(.*);\s*$")
+_VAL_PAIR_RE = re.compile(r'(-?\d+)\s+"((?:[^"\\]|\\.)*)"')
+
+# Annotation dict keys: (address, signal_name) for signals, (address, "") for messages.
+_AnnUnitMap = dict[tuple[int, str], str]
+_AnnCommentMap = dict[tuple[int, str], str]
+_AnnValLabelMap = dict[tuple[int, str], dict[str, str]]
 
 
-def _extract_units(content: str) -> dict[tuple[int, str], str]:
-  """Map (address, signal_name) -> unit string from raw DBC lines."""
-  units: dict[tuple[int, str], str] = {}
+def _statement_complete(text: str) -> bool:
+  """True if a DBC statement terminator `;` appears outside double quotes."""
+  in_quote = False
+  escaped = False
+  for ch in text:
+    if escaped:
+      escaped = False
+    elif ch == "\\":
+      escaped = True
+    elif ch == '"':
+      in_quote = not in_quote
+    elif ch == ";" and not in_quote:
+      return True
+  return False
+
+
+def _extract_annotations(content: str) -> tuple[_AnnUnitMap, _AnnCommentMap, _AnnValLabelMap]:
+  """Single-pass scan of raw DBC text for SG_ units, CM_ comments and VAL_ labels.
+
+  Returns (units, comments, val_labels):
+    - units: (address, signal) -> unit string from SG_ lines
+    - comments: (address, signal) -> signal comment; (address, "") -> message comment
+    - val_labels: (address, signal) -> {value_string: label} (original casing preserved)
+  Malformed lines are silently skipped. Multi-line CM_/VAL_ statements are
+  accumulated until a `;` appears outside double quotes (so comments containing
+  semicolons are not truncated mid-statement).
+  """
+  units: _AnnUnitMap = {}
+  comments: _AnnCommentMap = {}
+  val_labels: _AnnValLabelMap = {}
   address = 0
-  for line in content.splitlines():
-    line = line.strip()
+  buffer = ""
+  collecting: str | None = None  # None | "cm" | "val"
+
+  def collect_cm(text: str) -> None:
+    m = _CM_SIGNAL_RE.match(text)
+    if m:
+      addr = int(m.group(1))
+      comments[(addr, m.group(2))] = m.group(3)
+      return
+    m = _CM_MESSAGE_RE.match(text)
+    if m:
+      comments[(int(m.group(1)), "")] = m.group(2)
+
+  def collect_val(text: str) -> None:
+    m = _VAL_RE.match(text)
+    if not m:
+      return
+    addr = int(m.group(1))
+    sig = m.group(2)
+    labels = dict(_VAL_PAIR_RE.findall(m.group(3)))
+    if labels:
+      val_labels[(addr, sig)] = labels
+
+  for raw_line in content.splitlines():
+    line = raw_line.strip()
+    if collecting is not None:
+      buffer += " " + line
+      if _statement_complete(buffer):
+        if collecting == "cm":
+          collect_cm(buffer)
+        else:
+          collect_val(buffer)
+        collecting = None
+      continue
     if line.startswith("BO_ "):
       parts = line.split()
       if len(parts) >= 2:
@@ -283,10 +372,23 @@ def _extract_units(content: str) -> dict[tuple[int, str], str]:
       if m:
         sig_name = line.split()[1]
         units[(address, sig_name)] = m.group(1)
-  return units
+    elif line.startswith("CM_"):
+      if _statement_complete(line):
+        collect_cm(line)
+      else:
+        buffer = line
+        collecting = "cm"
+    elif line.startswith("VAL_"):
+      if _statement_complete(line):
+        collect_val(line)
+      else:
+        buffer = line
+        collecting = "val"
+  return units, comments, val_labels
 
 
 def _parse_dbc_signals(dbc_name: str) -> list[dict[str, Any]]:
+  """Parse structure data from opendbc DBC and enrich with raw-text annotations."""
   if DBC is None:
     return []
   try:
@@ -294,10 +396,15 @@ def _parse_dbc_signals(dbc_name: str) -> list[dict[str, Any]]:
   except Exception:
     return []
   content = _load_dbc_content(dbc_name)
-  units = _extract_units(content) if content else {}
+  if content:
+    units, comments, val_labels = _extract_annotations(content)
+  else:
+    units, comments, val_labels = {}, {}, {}
   signals = []
   for addr, msg in dbc.msgs.items():
+    msg_comment = comments.get((addr, ""), "")
     for sig_name, sig in msg.sigs.items():
+      comment = comments.get((addr, sig_name), "") or msg_comment
       signals.append({
         "address": addr,
         "message": msg.name,
@@ -309,10 +416,9 @@ def _parse_dbc_signals(dbc_name: str) -> list[dict[str, Any]]:
         "factor": sig.factor,
         "offset": sig.offset,
         "unit": units.get((addr, sig_name), ""),
+        "comment": comment,
+        "message_comment": msg_comment,
+        "val_labels": val_labels.get((addr, sig_name), {}),
+        "signal_type": int(getattr(sig, "type", 0) or 0),
       })
   return signals
-
-
-# -----------------------------------------------------------------------------
-# Live CAN broadcasting
-# -----------------------------------------------------------------------------

@@ -1,5 +1,12 @@
 """Cabana car_params module."""
-from ai.services.cabana.deps import *
+from __future__ import annotations
+
+import json
+from typing import Any
+
+from ai.services.cabana.deps import LogReader, Params, cloudlog, messaging
+from ai.services.cabana.replay import _find_qlogs, _find_rlogs, _route_dir
+
 _CAR_PARAM_KEYS = (
   "CarParams",
   "CarParamsCache",

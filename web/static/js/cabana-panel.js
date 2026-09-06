@@ -2756,6 +2756,9 @@ const CabanaPanel = (() => {
         if (msg.decimated) {
           hint += ` · ${t('cabanaReplayDecimated', '长路线已抽样显示')}`;
         }
+        if (msg.truncated && msg.original_frame_count) {
+          hint += ` · ${t('cabanaReplaySampled', '已抽样')} ${msg.frame_count}/${msg.original_frame_count} ${t('cabanaReplayFramesUnit', '帧')}`;
+        }
         if (msg.streaming) {
           hint += ` · ${t('cabanaReplayStreaming', '后台继续索引，可先播放')}`;
         }

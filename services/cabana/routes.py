@@ -21,6 +21,7 @@ from ai.services.cabana.ai_explain import (
 )
 from ai.services.cabana.live import ws_live
 from ai.services.cabana.replay_ws import ws_offline
+from ai.services.cabana.stream_ws import ws_stream
 
 
 def register_routes(app: web.Application, static_root: Path) -> None:
@@ -42,6 +43,7 @@ def register_routes(app: web.Application, static_root: Path) -> None:
   app.router.add_get("/api/cabana/route/{name}/file", api_route_file)
   app.router.add_get("/api/cabana/ws", ws_live)
   app.router.add_get("/api/cabana/offline/ws", ws_offline)
+  app.router.add_get("/api/cabana/stream/ws", ws_stream)
   app.router.add_post("/api/cabana/analyze", api_analyze)
   app.router.add_post("/api/cabana/explain", api_explain_signal)
   app.router.add_post("/api/cabana/explain_batch", api_explain_batch)
