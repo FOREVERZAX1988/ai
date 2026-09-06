@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import re
 import threading
+import time
 from collections import defaultdict
 from pathlib import Path
 from typing import Any
@@ -64,6 +65,28 @@ _EN_TO_ZH_ALIASES: dict[str, list[str]] = {
 
 _dbc_catalog_cache: list[dict[str, Any]] | None = None
 _dbc_catalog_lock = threading.Lock()
+# Cache invalidation: TTL probe + DBC source mtime digest. Generated DBCs come
+# from an in-memory dict (no probeable mtime); file-based DBCs are covered.
+_DBC_CATALOG_TTL = 300.0
+_dbc_catalog_built_at = 0.0
+_dbc_catalog_mtime_sig: float | None = None
+
+
+def _dbc_sources_mtime() -> float:
+  """Max mtime across file-based DBC sources (0.0 when nothing is probeable)."""
+  latest = 0.0
+  try:
+    if DBC_PATH:
+      dbc_path = Path(DBC_PATH)
+      if dbc_path.is_dir():
+        for f in dbc_path.glob("*.dbc"):
+          try:
+            latest = max(latest, f.stat().st_mtime)
+          except OSError:
+            continue
+  except Exception:
+    pass
+  return latest
 
 
 def _quick_dbc_catalog() -> list[dict[str, Any]]:
@@ -84,13 +107,25 @@ def _append_zh_aliases(parts: set[str]) -> None:
 
 
 def _build_dbc_catalog() -> list[dict[str, Any]]:
-  global _dbc_catalog_cache
+  global _dbc_catalog_cache, _dbc_catalog_built_at, _dbc_catalog_mtime_sig
+  now = time.monotonic()
   if _dbc_catalog_cache is not None:
-    return _dbc_catalog_cache
+    if now - _dbc_catalog_built_at < _DBC_CATALOG_TTL:
+      return _dbc_catalog_cache
+    # TTL expired: re-probe source mtimes; keep the cache when unchanged.
+    mtime = _dbc_sources_mtime()
+    if _dbc_catalog_mtime_sig is not None and mtime == _dbc_catalog_mtime_sig:
+      _dbc_catalog_built_at = now
+      return _dbc_catalog_cache
 
   with _dbc_catalog_lock:
     if _dbc_catalog_cache is not None:
-      return _dbc_catalog_cache
+      if time.monotonic() - _dbc_catalog_built_at < _DBC_CATALOG_TTL:
+        return _dbc_catalog_cache
+      mtime = _dbc_sources_mtime()
+      if _dbc_catalog_mtime_sig is not None and mtime == _dbc_catalog_mtime_sig:
+        _dbc_catalog_built_at = time.monotonic()
+        return _dbc_catalog_cache
 
     buckets: dict[str, dict[str, set[str]]] = defaultdict(
       lambda: {
@@ -181,6 +216,8 @@ def _build_dbc_catalog() -> list[dict[str, Any]]:
       })
 
     _dbc_catalog_cache = catalog
+    _dbc_catalog_mtime_sig = _dbc_sources_mtime()
+    _dbc_catalog_built_at = time.monotonic()
     return catalog
 
 

@@ -116,6 +116,9 @@ const CabanaPanel = (() => {
   let lastThumbKey = '';
   let thumbObjectUrl = null;
   let panelMode = 'live';
+  // P2 additions: live server-side filter state + replay video timeline hint.
+  let liveFilterActive = false;
+  let replayVideoTime = null;
 
   function $(sel) {
     return (root?.querySelector(sel)) || document.querySelector(sel);
@@ -295,6 +298,8 @@ const CabanaPanel = (() => {
 
   function decodeSignalValue(frame, sig) {
     if (!sig || !frame?.data) return null;
+    // Prefer server-side decoded physical values (replay decode=1) when present.
+    if (frame?.values && frame.values[sig.signal] != null) return Number(frame.values[sig.signal]);
     const data = hexToBytes(frame.data);
     if (!data) return null;
     return decodeSignal(data, sig);
@@ -475,6 +480,7 @@ const CabanaPanel = (() => {
     if (els.detailWrap) els.detailWrap.hidden = true;
     if (els.plotWrap) els.plotWrap.hidden = true;
     if (els.detailBinary) els.detailBinary.hidden = true;
+    if (els.binaryGrid) els.binaryGrid.hidden = true;
   }
 
   function clearAuxState() {
@@ -511,6 +517,236 @@ const CabanaPanel = (() => {
     }
     els.detailBinary.innerHTML = `<div class="cab-bin-head">${t('cabanaBinaryView', '二进制视图')}</div>${rows.join('')}`;
     els.detailBinary.hidden = false;
+  }
+
+  // ---- P2: hex byte grid (simplified desktop binaryview) --------------------
+
+  const BIN_GRID_COLORS = [
+    'rgba(78, 205, 196, 0.30)',
+    'rgba(255, 107, 107, 0.30)',
+    'rgba(255, 217, 61, 0.30)',
+    'rgba(107, 203, 255, 0.30)',
+    'rgba(199, 125, 255, 0.30)',
+    'rgba(149, 224, 108, 0.30)',
+  ];
+
+  function escapeHtmlAttr(s) {
+    return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  /** Global bit positions (byte*8 + bit_in_byte, same space as the decoder). */
+  function signalBitPositions(sig) {
+    const size = Math.min(64, Number(sig.size) || 0);
+    const start = Number(sig.start_bit) || 0;
+    const positions = [];
+    if (sig.little_endian) {
+      for (let b = start; b < start + size && b < 64; b++) positions.push(b);
+    } else {
+      const beBits = [];
+      for (let byte = 0; byte < 8; byte++) {
+        for (let bit = 7; bit >= 0; bit--) beBits.push(byte * 8 + bit);
+      }
+      const idx = beBits.indexOf(start);
+      if (idx >= 0) {
+        for (let i = 0; i < size && idx + i < beBits.length; i++) positions.push(beBits[idx + i]);
+      }
+    }
+    return positions;
+  }
+
+  function renderBinaryGridView(frame) {
+    if (!els.binaryGrid) return;
+    const bytes = hexToBytes(frame?.data);
+    if (!bytes || !bytes.length) {
+      els.binaryGrid.hidden = true;
+      return;
+    }
+    const sigs = signalsByAddress.get(Number(frame.address)) || [];
+    const colorOf = new Map();
+    sigs.slice(0, BIN_GRID_COLORS.length * 4).forEach((sig, i) => {
+      const color = BIN_GRID_COLORS[i % BIN_GRID_COLORS.length];
+      for (const p of signalBitPositions(sig)) colorOf.set(p, { color, sig });
+    });
+    const rows = [];
+    for (let row = 0; row < bytes.length; row += 16) {
+      const cells = [];
+      for (let i = row; i < Math.min(row + 16, bytes.length); i++) {
+        const base = i * 8;
+        const coverMap = new Map();
+        for (let b = base; b < base + 8; b++) {
+          const entry = colorOf.get(b);
+          if (entry) coverMap.set(entry.sig, (coverMap.get(entry.sig) || 0) + 1);
+        }
+        let color = '';
+        let bestCount = 0;
+        const titles = [];
+        coverMap.forEach((count, sig) => {
+          const val = decodeSignalValue(frame, sig);
+          const valText = val == null ? '—' : `${Number(val).toFixed(2)}${sig.unit || ''}`;
+          titles.push(`${sig.signal}=${valText}`);
+          if (count > bestCount) {
+            bestCount = count;
+            color = BIN_GRID_COLORS[sigs.indexOf(sig) % BIN_GRID_COLORS.length];
+          }
+        });
+        const hex = bytes[i].toString(16).toUpperCase().padStart(2, '0');
+        const tip = escapeHtmlAttr(titles.length ? titles.join('; ') : `Byte ${i}: 0x${hex}`);
+        cells.push(`<span class="cab-bgrid-byte"${color ? ` style="background:${color}"` : ''} title="${tip}">${hex}</span>`);
+      }
+      rows.push(`<div class="cab-bgrid-row"><span class="cab-bgrid-idx">+${row.toString(16).toUpperCase().padStart(2, '0')}</span>${cells.join('')}</div>`);
+    }
+    els.binaryGrid.innerHTML = `<div class="cab-bgrid-head">${t('cabanaBinaryGrid', '二进制视图 (16B/行)')}</div>${rows.join('')}`;
+    els.binaryGrid.hidden = false;
+  }
+
+  // ---- P2: replay recent-frame augmentation via the frames endpoint ---------
+
+  async function augmentReplayHistory(key) {
+    if (panelMode !== 'replay' || !replayRoute) return;
+    const frame = latestFrames.get(key);
+    if (!frame) return;
+    const t1 = Math.max(0, replayProgress);
+    const t0 = Math.max(0, t1 - 10);
+    const addr = Number(frame.address);
+    if (!Number.isFinite(addr)) return;
+    const params = new URLSearchParams({
+      address: String(addr),
+      t0: t0.toFixed(2),
+      t1: t1.toFixed(2),
+    });
+    if (dbcName) params.set('dbc', dbcName);
+    const data = await api('GET', `/api/cabana/route/${encodeURIComponent(replayRoute)}/frames?${params}`, null, { timeoutMs: 10000 });
+    if (!data.ok || !Array.isArray(data.frames)) return;
+    for (const raw of data.frames) {
+      // Endpoint times are route-relative; convert back to the absolute mono
+      // time base used by frameHistory so display stays consistent.
+      const rel = Number(raw.time) || 0;
+      const abs = replayStartMono > 0 ? replayStartMono + rel : rel;
+      pushFrameHistory(normalizeFrame({ ...raw, time: abs }));
+    }
+    if (selectedKey === key) renderDetailPanel();
+  }
+
+  // ---- P2: live server-side address filter ----------------------------------
+
+  function sendLiveFilter(addresses) {
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+      if (els.hint) els.hint.textContent = t('cabanaLiveFilterOffline', '请先连接实时 CAN');
+      return;
+    }
+    if (addresses) ws.send(JSON.stringify({ type: 'filter', addresses }));
+    else ws.send(JSON.stringify({ type: 'filter', clear: true }));
+    liveFilterActive = !!addresses;
+    if (els.liveFilterBtn) els.liveFilterBtn.classList.toggle('active', liveFilterActive);
+    if (els.hint) {
+      els.hint.textContent = addresses
+        ? tf('cabanaLiveFilterOn', { n: addresses.length })
+        : t('cabanaLiveFilterOff', '已清除服务端过滤');
+    }
+  }
+
+  function applyLiveFilterSelected() {
+    const addr = selectedKey ? Number(latestFrames.get(selectedKey)?.address) : NaN;
+    if (!Number.isFinite(addr)) {
+      if (els.hint) els.hint.textContent = t('cabanaLiveFilterNeedSelection', '请先选中一条报文');
+      return;
+    }
+    sendLiveFilter([addr]);
+  }
+
+  // ---- P2: server-side history chart via the downsample endpoint ------------
+
+  async function loadServerChartSeries() {
+    if (panelMode !== 'replay' || !replayRoute || !selectedKey) {
+      if (els.hint) els.hint.textContent = t('cabanaPlotServerNeedReplay', '历史曲线需在回放模式选中报文');
+      return;
+    }
+    if (!dbcName) {
+      if (els.hint) els.hint.textContent = t('cabanaPlotServerNoDbc', '历史曲线需先选择 DBC');
+      return;
+    }
+    const frame = latestFrames.get(selectedKey);
+    if (!frame) return;
+    const sigs = signalsByAddress.get(Number(frame.address)) || [];
+    if (!sigs.length) {
+      if (els.hint) els.hint.textContent = t('cabanaPlotServerNoSignals', '该报文无 DBC 信号');
+      return;
+    }
+    const chosen = plotSeriesList.filter((s) => s.key === selectedKey).map((s) => s.signalName);
+    const names = (chosen.length ? chosen : sigs.slice(0, 4).map((s) => s.signal)).slice(0, 6);
+    const params = new URLSearchParams({
+      address: String(Number(frame.address)),
+      t0: '0',
+      t1: Math.max(0, replayProgress).toFixed(2),
+      downsample: '200',
+      dbc: dbcName,
+      signals: names.join(','),
+    });
+    if (els.plotServerBtn) els.plotServerBtn.disabled = true;
+    try {
+      const data = await api('GET', `/api/cabana/route/${encodeURIComponent(replayRoute)}/frames?${params}`, null, { timeoutMs: 30000 });
+      if (!data.ok || !Array.isArray(data.buckets) || !data.buckets.length) {
+        if (els.hint) els.hint.textContent = data.error || t('cabanaPlotServerEmpty', '历史曲线无数据');
+        return;
+      }
+      const buckets = data.buckets;
+      const unitOf = (name) => sigs.find((s) => s.signal === name)?.unit || '';
+      let added = 0;
+      for (const name of names) {
+        const midVals = buckets.map((b) => {
+          const v = b.signals?.[name];
+          return v ? (Number(v.min) + Number(v.max)) / 2 : null;
+        });
+        if (midVals.every((v) => v == null)) continue;
+        const id = `${plotSeriesId(selectedKey, name)}::srv`;
+        const series = {
+          id,
+          key: selectedKey,
+          signalName: name,
+          label: `${sigs[0]?.message || selectedKey} · ${name}${unitOf(name) ? ` (${unitOf(name)})` : ''}`,
+          times: buckets.map((b) => Number(b.t) || 0),
+          values: midVals,
+        };
+        const idx = plotSeriesList.findIndex((s) => s.id === id);
+        if (idx >= 0) plotSeriesList[idx] = series;
+        else plotSeriesList.push(series);
+        added += 1;
+      }
+      if (!added) {
+        if (els.hint) els.hint.textContent = t('cabanaPlotServerNoDecode', '服务端未返回解码值（DBC 不匹配？）');
+        return;
+      }
+      if (els.plotWrap) els.plotWrap.hidden = false;
+      if (els.plotEmpty) els.plotEmpty.hidden = true;
+      renderPlotChart();
+      if (els.hint) els.hint.textContent = t('cabanaPlotServerDone', '已加载服务端历史曲线');
+    } catch (e) {
+      console.error('cabana server chart', e);
+    } finally {
+      if (els.plotServerBtn) els.plotServerBtn.disabled = false;
+    }
+  }
+
+  // ---- P2: route CSV export for the selected message -------------------------
+
+  function exportRouteCsv() {
+    const route = replayRoute || els.routeSelect?.value;
+    const frame = selectedKey ? latestFrames.get(selectedKey) : null;
+    if (!route || !frame) {
+      if (els.hint) els.hint.textContent = t('cabanaExportRouteNeed', '导出 CSV 需在回放模式选中报文');
+      return;
+    }
+    const params = new URLSearchParams({
+      address: String(Number(frame.address)),
+      t0: '0',
+      t1: Math.max(0, replayProgress).toFixed(2),
+    });
+    if (dbcName) {
+      params.set('dbc', dbcName);
+      params.set('decode', '1');
+    }
+    window.open(`/api/cabana/route/${encodeURIComponent(route)}/export?${params}`, '_blank');
   }
 
   function matchesSignalFilter(key, row) {
@@ -710,6 +946,7 @@ const CabanaPanel = (() => {
     }
     const highlightSig = plotSignalName ? findSignalForKey(selectedKey, plotSignalName) : (sigs[0] || null);
     renderBinaryView(frame, highlightSig);
+    renderBinaryGridView(frame);
     if (row?.label && els.detailTitle) {
       els.detailTitle.textContent += ` · ${row.label}`;
     }
@@ -736,6 +973,7 @@ const CabanaPanel = (() => {
       if (els.plotWrap) els.plotWrap.hidden = true;
     }
     renderDetailPanel();
+    if (panelMode === 'replay') augmentReplayHistory(key).catch(console.error);
     scheduleVirtualRender();
   }
 
@@ -1055,6 +1293,23 @@ const CabanaPanel = (() => {
     const tooltipParts = [];
     if (hexSpaced) tooltipParts.push(`HEX: ${hexSpaced}`);
     if (decSpaced) tooltipParts.push(`DEC: ${decSpaced}`);
+
+    // Server-decoded physical values (replay decode=1): show `signal: value unit`.
+    if (frame?.values && Object.keys(frame.values).length) {
+      const sigs = signalsByAddress.get(Number(frame.address)) || [];
+      const text = Object.entries(frame.values).map(([name, v]) => {
+        const sig = sigs.find((s) => s.signal === name);
+        const num = Number(v);
+        let out = `${name}: ${Number.isFinite(num) ? num.toFixed(2) : String(v)}`;
+        if (sig?.val_labels && sig.val_labels[String(Math.round(num))] != null) {
+          out += ` (${sig.val_labels[String(Math.round(num))]})`;
+        } else if (sig?.unit) {
+          out += ` ${sig.unit}`;
+        }
+        return out;
+      }).join(' · ');
+      return { display: text, title: [...tooltipParts, text].join('\n') };
+    }
 
     const sigs = signalsByAddress.get(Number(frame.address));
     if (sigs?.length && rawHex) {
@@ -1636,6 +1891,10 @@ const CabanaPanel = (() => {
     els.progress.value = String(Math.round(Math.min(1, Math.max(0, ratio)) * 1000));
     const logLabel = t('cabanaLogTime', '日志');
     els.progressLabel.textContent = `${logLabel} ${formatReplayTime(replayProgress)} / ${formatReplayTime(replayDuration)}`;
+    // Additive: append the synced video-timeline position when known.
+    if (replayVideoTime != null) {
+      els.progressLabel.textContent += ` · ${t('cabanaVideoTime', '视频')} ${formatReplayTime(replayVideoTime)}`;
+    }
   }
 
   function explainPersistKeys(item) {
@@ -2545,6 +2804,9 @@ const CabanaPanel = (() => {
     if (els.connectBtn) els.connectBtn.hidden = replay;
     if (els.routeChatBtn) els.routeChatBtn.hidden = !replay;
     if (els.deepAnalyzeBtn) els.deepAnalyzeBtn.hidden = false;
+    // Additive: server-side filter buttons are live-mode only.
+    if (els.liveFilterBtn) els.liveFilterBtn.hidden = replay;
+    if (els.liveFilterClearBtn) els.liveFilterClearBtn.hidden = replay;
     if (replay) {
       disconnectLive();
       els.status.textContent = t('cabanaReplay', '回放');
@@ -2669,6 +2931,11 @@ const CabanaPanel = (() => {
       autoplay: '0',
     });
     if (els.replayFull?.checked) qs.set('full', '1');
+    // Server-side decode (opt-in): physical values arrive as frame.values.
+    if (els.decodeToggle?.checked && dbcName) {
+      qs.set('decode', '1');
+      qs.set('dbc', dbcName);
+    }
     offlineWs = new WebSocket(wsUrl(`/api/cabana/offline/ws?${qs}`));
 
     offlineWs.onopen = () => {
@@ -2736,6 +3003,16 @@ const CabanaPanel = (() => {
         replayStartMono = msg.start_time || 0;
         replayProgress = 0;
         lastProgressPaintAt = 0;
+        // Server-side video availability: hide the preview UI when absent.
+        if (msg.video && msg.video.available === false) {
+          hasQcamera = false;
+          videoPreviewEnabled = false;
+          if (els.videoToggle) {
+            els.videoToggle.checked = false;
+            els.videoToggle.disabled = true;
+          }
+          if (els.videoPreview) els.videoPreview.hidden = true;
+        }
         if (Array.isArray(msg.init_frames) && msg.init_frames.length) {
           applyReplayCanBatch(msg.init_frames, { immediate: false });
         }
@@ -2794,6 +3071,11 @@ const CabanaPanel = (() => {
         clearTableRows();
         replayProgress = msg.time;
         lastProgressPaintAt = 0;
+        // Video-timeline sync: show the qcamera playback time next to log time.
+        if (typeof msg.video_time === 'number' && msg.video_time != null) {
+          replayVideoTime = msg.video_time;
+          updateProgressUI();
+        }
         updateProgressUI();
         scheduleVideoThumbnail({ immediate: true });
         return;
@@ -3221,6 +3503,11 @@ const CabanaPanel = (() => {
     if (els.histThDec) els.histThDec.textContent = 'DEC';
     if (els.histThDecoded) els.histThDecoded.textContent = t('cabanaThSignals', '解码');
     if (els.videoToggleLabel) els.videoToggleLabel.textContent = t('cabanaVideoPreview', '路况预览');
+    if (els.decodeToggleLabel) els.decodeToggleLabel.textContent = t('cabanaDecodeToggle', '物理值解码');
+    if (els.liveFilterBtn) els.liveFilterBtn.textContent = t('cabanaLiveFilterOnly', '仅显示选中');
+    if (els.liveFilterClearBtn) els.liveFilterClearBtn.textContent = t('cabanaLiveFilterClear', '清除过滤');
+    if (els.exportRouteCsvBtn) els.exportRouteCsvBtn.textContent = t('cabanaExportRouteCsv', '导出 CSV');
+    if (els.plotServerBtn) els.plotServerBtn.textContent = t('cabanaPlotServer', '历史曲线');
     if (els.progress) {
       els.progress.title = t('cabanaReplayProgressHint', '拖动定位 CAN 日志时间（非视频）');
     }
@@ -3307,6 +3594,14 @@ const CabanaPanel = (() => {
     els.videoPreview = $('#cabanaVideoPreview');
     els.videoImg = $('#cabanaVideoImg');
     els.videoPlaceholder = $('#cabanaVideoPlaceholder');
+    // P2 additions
+    els.decodeToggle = $('#cabanaDecodeToggle');
+    els.decodeToggleLabel = $('#cabanaDecodeToggleLabel');
+    els.liveFilterBtn = $('#cabanaLiveFilterBtn');
+    els.liveFilterClearBtn = $('#cabanaLiveFilterClearBtn');
+    els.exportRouteCsvBtn = $('#cabanaExportRouteCsvBtn');
+    els.plotServerBtn = $('#cabanaPlotServerBtn');
+    els.binaryGrid = $('#cabanaBinaryGrid');
 
     renderFilterChips();
     root?.querySelectorAll('#cabanaTable th[data-sort]').forEach((th) => {
@@ -3409,6 +3704,16 @@ const CabanaPanel = (() => {
     els.videoToggle?.addEventListener('change', () => {
       setVideoPreviewEnabled(els.videoToggle.checked);
     });
+    // P2 additions: decode toggle / live filter / server chart / route CSV export.
+    els.decodeToggle?.addEventListener('change', () => {
+      if (els.decodeToggle?.checked && !dbcName && els.hint) {
+        els.hint.textContent = t('cabanaDecodeNoDbc', '物理值解码需先选择 DBC，连接时将自动尝试');
+      }
+    });
+    els.liveFilterBtn?.addEventListener('click', applyLiveFilterSelected);
+    els.liveFilterClearBtn?.addEventListener('click', () => sendLiveFilter(null));
+    els.exportRouteCsvBtn?.addEventListener('click', exportRouteCsv);
+    els.plotServerBtn?.addEventListener('click', () => loadServerChartSeries().catch(console.error));
   }
 
   async function refresh() {

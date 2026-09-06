@@ -70,6 +70,8 @@ REPLAY_FRAME_QUEUE_SIZE = 64
 CACHE_VERSION = 3
 # qlog is heavily decimated; caches above this are almost certainly mis-tagged rlog data.
 QLOG_CACHE_MAX_FRAMES = 8_000
+# Cap on the number of *.json.gz cache files kept on disk (oldest deleted first).
+CABANA_CACHE_MAX_FILES = 32
 
 
 def _cabana_cache_dir() -> Path:
@@ -93,17 +95,22 @@ def _cabana_cache_dir() -> Path:
   return candidates[-1]
 
 
+def _route_path_digest(route_path: Path) -> str:
+  """Stable digest of a route directory's resolved path (cache key component)."""
+  try:
+    resolved = str(route_path.resolve())
+  except OSError:
+    resolved = str(route_path)
+  return hashlib.sha1(resolved.encode("utf-8")).hexdigest()[:16]
+
+
 def _route_cache_file(route_path: Path) -> Path:
   """Cache file keyed by resolved path (collision-proof) + mtime + format version."""
   try:
     mtime = int(route_path.stat().st_mtime)
   except OSError:
     mtime = 0
-  try:
-    resolved = str(route_path.resolve())
-  except OSError:
-    resolved = str(route_path)
-  digest = hashlib.sha1(resolved.encode("utf-8")).hexdigest()[:16]
+  digest = _route_path_digest(route_path)
   return _cabana_cache_dir() / f"{digest}_{mtime}_v{CACHE_VERSION}.json.gz"
 
 
@@ -134,7 +141,11 @@ def _load_route_cache(route_path: Path, *, want_full: bool) -> list[dict[str, An
     raw = gzip.decompress(path.read_bytes())
     data = json.loads(raw.decode("utf-8"))
     # Strict validation: cache file must match this exact route and format version.
+    # route_key (digest of the resolved path) disambiguates segment sub-directories
+    # whose plain name (e.g. "1") would collide across routes.
     if data.get("route") != route_path.name or data.get("version") != CACHE_VERSION:
+      return None
+    if "route_key" in data and data.get("route_key") != _route_path_digest(route_path):
       return None
     if bool(data.get("full")) != want_full:
       return None
@@ -160,13 +171,48 @@ def _save_route_cache(
     payload = json.dumps({
       "version": CACHE_VERSION,
       "route": route_path.name,
+      "route_key": _route_path_digest(route_path),
       "decimated": decimated,
       "full": full,
       "frames": frames,
     }, separators=(",", ":")).encode("utf-8")
     path.write_bytes(gzip.compress(payload, compresslevel=3))
+    _prune_cabana_cache()
   except Exception as e:
     cloudlog.warning(f"cabana: cache write failed: {e}")
+
+
+def _prune_cabana_cache(keep: int = CABANA_CACHE_MAX_FILES, cache_dir: Path | None = None) -> list[Path]:
+  """Delete the oldest *.json.gz cache files beyond ``keep``; returns removed paths.
+
+  Defensive: only files ending in ``.json.gz`` inside the (optionally given)
+  cache directory are ever considered for deletion.
+  """
+  directory = cache_dir if cache_dir is not None else _cabana_cache_dir()
+  try:
+    if not directory.is_dir():
+      return []
+    files = [p for p in directory.iterdir() if p.is_file() and p.name.endswith(".json.gz")]
+  except OSError:
+    return []
+  if len(files) <= keep:
+    return []
+
+  def mtime_of(p: Path) -> float:
+    try:
+      return p.stat().st_mtime
+    except OSError:
+      return 0.0
+
+  files.sort(key=mtime_of)
+  removed: list[Path] = []
+  for path in files[: len(files) - keep]:
+    try:
+      path.unlink()
+      removed.append(path)
+    except OSError:
+      continue
+  return removed
 
 
 def _decimate(frames: list[dict[str, Any]], max_n: int = MAX_REPLAY_FRAMES) -> tuple[list[dict[str, Any]], bool]:
@@ -259,6 +305,41 @@ def _collect_can_frames(
   return all_frames, decimated or final_dec
 
 
+def _query_frames(route_name: str) -> tuple[list[dict[str, Any]] | None, str | None]:
+  """Load every CAN frame of a route for HTTP query endpoints (frames/export/tools).
+
+  Reads the route cache first (full, then fast-path); on cache miss a blocking
+  log scan is performed and the result written back to the cache. Callers must
+  run this in an executor. Returns ``(frames, error)``; frames are sorted by
+  absolute time and the first frame time is the route-relative time origin.
+  """
+  route_path = _route_dir(route_name)
+  if route_path is None:
+    return None, "Route not found"
+  frames: list[dict[str, Any]] | None = None
+  for want_full in (True, False):
+    cached = _load_route_cache(route_path, want_full=want_full)
+    if cached:
+      frames = list(cached)
+      break
+  if not frames:
+    if LogReader is None:
+      return None, "LogReader not available"
+    qlogs = _find_qlogs(route_path)
+    rlogs = _find_rlogs(route_path)
+    paths, source = _replay_log_paths(qlogs, rlogs, full=True)
+    if not paths:
+      return None, "No qlog/rlog found in route"
+    loaded, decimated = _collect_can_frames(paths)
+    if not loaded:
+      return None, "No CAN frames found"
+    frames = loaded
+    # full=True is only truthful when rlog data was read; a qlog-only scan must
+    # not be served to later full-CAN replays as "full".
+    _save_route_cache(route_path, frames, decimated=decimated, full=(source != "qlog"))
+  return frames, None
+
+
 def _iter_can_batches(
   log_paths: list[Path],
   batch_size: int = REPLAY_STREAM_BATCH,
@@ -300,13 +381,33 @@ def _iter_can_batches(
     yield log_path.name, batch
 
 
+_ROUTE_SEGMENT_RE = re.compile(r"^\d{1,4}$")
+
+
 def _route_dir(route_name: str) -> Path | None:
-  if not route_name or "/" in route_name or "\\" in route_name or ".." in route_name:
+  """Resolve a route name to its directory; supports ``name/<segment>``.
+
+  ``name/1`` addresses the segment sub-directory ``1``: log discovery
+  (``_find_qlogs`` / ``_find_rlogs``) within that directory only sees the
+  addressed segment. Only a single all-digit segment level is accepted;
+  ``..``, backslashes and non-numeric segments are rejected.
+  """
+  if not route_name or "\\" in route_name or ".." in route_name:
+    return None
+  name = route_name
+  segment = ""
+  if "/" in name:
+    name, _, segment = name.partition("/")
+    if "/" in name or not _ROUTE_SEGMENT_RE.match(segment or ""):
+      return None
+  if not name:
     return None
   routes_dir = _get_routes_dir()
   if routes_dir is None:
     return None
-  base = routes_dir / route_name
+  base = routes_dir / name
+  if segment:
+    base = base / segment
   return base if base.is_dir() else None
 
 

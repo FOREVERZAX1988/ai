@@ -277,6 +277,8 @@
               <ul class="cabana-dbc-list" id="cabanaDbcList" role="listbox" hidden></ul>
             </div>
           </div>
+          <button type="button" id="cabanaLiveFilterBtn" class="btn small ghost" hidden>仅显示选中</button>
+          <button type="button" id="cabanaLiveFilterClearBtn" class="btn small ghost" hidden>清除过滤</button>
         </div>
         <div class="cabana-replay-bar" id="cabanaReplayBar" hidden>
           <select id="cabanaRouteSelect" class="toolbar-select cabana-route-select"></select>
@@ -290,6 +292,10 @@
             <label class="cabana-replay-video" title="低清 qcamera 缩略图预览（默认关闭）">
               <input type="checkbox" id="cabanaVideoToggle">
               <span id="cabanaVideoToggleLabel">路况预览</span>
+            </label>
+            <label class="cabana-replay-decode" title="服务端按 DBC 解码物理值（需先选择 DBC）">
+              <input type="checkbox" id="cabanaDecodeToggle">
+              <span id="cabanaDecodeToggleLabel">物理值解码</span>
             </label>
             <select id="cabanaReplaySpeed" class="toolbar-select cabana-speed-select" title="CAN 数据回放倍速">
               <option value="0.5">0.5x</option>
@@ -325,6 +331,7 @@
           <div class="cabana-plot-toolbar">
             <span id="cabanaPlotTitle">信号曲线</span>
             <div class="cabana-plot-actions">
+              <button type="button" id="cabanaPlotServerBtn" class="btn small ghost">历史曲线</button>
               <button type="button" id="cabanaPlotClear" class="btn small ghost">清空曲线</button>
             </div>
           </div>
@@ -356,10 +363,12 @@
             <div class="cabana-detail-actions">
               <span id="cabanaDetailMeta" class="cabana-detail-meta"></span>
               <button type="button" id="cabanaCopyHexBtn" class="btn small ghost">复制 HEX</button>
+              <button type="button" id="cabanaExportRouteCsvBtn" class="btn small ghost">导出 CSV</button>
               <button type="button" id="cabanaExportHistCsvBtn" class="btn small ghost">导出历史 CSV</button>
               <button type="button" id="cabanaDetailClose" class="btn small ghost cab-detail-close" aria-label="Close">×</button>
             </div>
           </div>
+          <div id="cabanaBinaryGrid" class="cabana-binary-grid" hidden></div>
           <div id="cabanaDetailBinary" class="cabana-detail-binary" hidden></div>
           <div id="cabanaDetailSignals" class="cabana-detail-signals"></div>
           <div class="cabana-detail-history">

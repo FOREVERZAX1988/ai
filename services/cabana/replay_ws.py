@@ -17,7 +17,9 @@ from ai.services.cabana.car_params import _resolve_car_params
 from ai.services.cabana.dbc import _suggest_dbc_for_car
 from ai.services.cabana.deps import LogReader
 from ai.services.cabana.decoder import decode_frames as _decode_frames
+from ai.services.cabana.decoder import decode_frames_multi as _decode_frames_multi
 from ai.services.cabana.decoder import get_decoder as _get_decoder
+from ai.services.cabana.decoder import get_decoders as _get_decoders
 from ai.services.cabana.frame import encode_frame_data
 from ai.services.cabana.replay import _get_routes_dir
 from ai.services.cabana.replay import _video_info_for_route
@@ -97,28 +99,51 @@ async def run_replay_ws(
   loop = asyncio.get_running_loop()
 
   # Optional server-side signal decoding (opt-in; never changes default behavior).
+  # ``bus_dbc`` (JSON object bus->dbc name) selects the per-bus multi-DBC path;
+  # otherwise a single DBC is used best-effort (warning behavior unchanged).
   decoder_signals: list[dict[str, Any]] = []
+  multi_decoders: dict[str, dict[int, list[dict[str, Any]]]] | None = None
   if decode_enabled:
-    dbc_name = str(_param(query, init_msg, "dbc", "") or "")
-    if not dbc_name:
-      def resolve_dbc() -> str | None:
-        cp = _resolve_car_params(route)
-        return _suggest_dbc_for_car(cp) if cp else None
+    bus_map: dict[str, str] | None = None
+    bus_dbc_raw = _param(query, init_msg, "bus_dbc", None)
+    if bus_dbc_raw:
+      if isinstance(bus_dbc_raw, str):
+        try:
+          bus_dbc_raw = json.loads(bus_dbc_raw)
+        except (ValueError, TypeError):
+          bus_dbc_raw = None
+      if isinstance(bus_dbc_raw, dict) and bus_dbc_raw:
+        bus_map = {str(k): str(v) for k, v in bus_dbc_raw.items() if v}
+    if bus_map:
       try:
-        dbc_name = str(await loop.run_in_executor(None, resolve_dbc) or "")
+        multi_decoders = await loop.run_in_executor(None, _get_decoders, bus_map)
       except Exception:
-        dbc_name = ""
-    table = None
-    if dbc_name:
-      try:
-        table = await loop.run_in_executor(None, _get_decoder, dbc_name)
-      except Exception:
-        table = None
-    if table:
-      decoder_signals = [s for sigs in table.values() for s in sigs]
+        multi_decoders = None
+      if not multi_decoders:
+        multi_decoders = None
+        decode_enabled = False
+        await ws_send({"type": "warning", "error": "decode unavailable"})
     else:
-      decode_enabled = False
-      await ws_send({"type": "warning", "error": "decode unavailable"})
+      dbc_name = str(_param(query, init_msg, "dbc", "") or "")
+      if not dbc_name:
+        def resolve_dbc() -> str | None:
+          cp = _resolve_car_params(route)
+          return _suggest_dbc_for_car(cp) if cp else None
+        try:
+          dbc_name = str(await loop.run_in_executor(None, resolve_dbc) or "")
+        except Exception:
+          dbc_name = ""
+      table = None
+      if dbc_name:
+        try:
+          table = await loop.run_in_executor(None, _get_decoder, dbc_name)
+        except Exception:
+          table = None
+      if table:
+        decoder_signals = [s for sigs in table.values() for s in sigs]
+      else:
+        decode_enabled = False
+        await ws_send({"type": "warning", "error": "decode unavailable"})
 
   def out_frames(frames: list[dict[str, Any]]) -> list[dict[str, Any]]:
     if encoding == "hex":
@@ -126,7 +151,11 @@ async def run_replay_ws(
     return [{**f, "data": encode_frame_data(str(f.get("data", "")), encoding)} for f in frames]
 
   async def maybe_decode(frames: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    if not decoder_signals or not frames:
+    if not frames:
+      return frames
+    if multi_decoders:
+      return await loop.run_in_executor(None, _decode_frames_multi, multi_decoders, frames)
+    if not decoder_signals:
       return frames
     return await loop.run_in_executor(None, _decode_frames, decoder_signals, frames)
 

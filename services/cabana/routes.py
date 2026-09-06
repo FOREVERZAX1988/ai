@@ -7,11 +7,14 @@ from ai.services.cabana.handlers import (
   api_car,
   api_dbc,
   api_dbcs,
+  api_route_export,
   api_route_file,
+  api_route_frames,
   api_route_media,
   api_route_summary,
   api_route_thumbnail,
   api_routes,
+  api_similar_bits,
 )
 from ai.services.cabana.ai_explain import (
   api_analyze,
@@ -41,6 +44,9 @@ def register_routes(app: web.Application, static_root: Path) -> None:
   app.router.add_get("/api/cabana/route/{name}/thumbnail", api_route_thumbnail)
   app.router.add_get("/api/cabana/route/{name}/summary", api_route_summary)
   app.router.add_get("/api/cabana/route/{name}/file", api_route_file)
+  app.router.add_get("/api/cabana/route/{name}/frames", api_route_frames)
+  app.router.add_get("/api/cabana/route/{name}/export", api_route_export)
+  app.router.add_post("/api/cabana/tools/similar_bits", api_similar_bits)
   app.router.add_get("/api/cabana/ws", ws_live)
   app.router.add_get("/api/cabana/offline/ws", ws_offline)
   app.router.add_get("/api/cabana/stream/ws", ws_stream)

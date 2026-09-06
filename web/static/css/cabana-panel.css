@@ -1208,6 +1208,51 @@
   border-radius: 2px;
 }
 
+/* P2: hex byte grid (simplified binaryview, 16 bytes per row) */
+.cabana-binary-grid {
+  margin: 0.5rem 0;
+  padding: 0.5rem;
+  border: 1px solid var(--border, rgba(128, 128, 128, 0.25));
+  border-radius: 6px;
+  background: var(--surface-2, rgba(0, 0, 0, 0.15));
+  font-family: ui-monospace, monospace;
+  font-size: 0.72rem;
+  overflow-x: auto;
+}
+
+.cab-bgrid-head {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-bottom: 0.35rem;
+}
+
+.cab-bgrid-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  line-height: 1.4;
+}
+
+.cab-bgrid-idx {
+  width: 2.2rem;
+  color: var(--text-muted);
+}
+
+.cab-bgrid-byte {
+  display: inline-block;
+  width: 1.55rem;
+  text-align: center;
+  border-radius: 3px;
+  cursor: default;
+}
+
+/* P2: live server-side filter buttons */
+#cabanaLiveFilterBtn.active {
+  background: var(--accent-soft, rgba(78, 205, 196, 0.12));
+  color: var(--accent, #4ecdc4);
+  border-color: var(--accent, #4ecdc4);
+}
+
 .platform-memory-notes .dev-item-list {
   margin: 0;
 }

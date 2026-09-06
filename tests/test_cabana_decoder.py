@@ -12,7 +12,13 @@ if str(ROOT) not in sys.path:
   sys.path.insert(0, str(ROOT))
 
 from ai.services.cabana.dbc import _extract_annotations
-from ai.services.cabana.decoder import decode_frames, decode_signal_value, get_decoder
+from ai.services.cabana.decoder import (
+  decode_frames,
+  decode_frames_multi,
+  decode_signal_value,
+  get_decoder,
+  get_decoders,
+)
 
 
 def _sig(name: str, address: int, *, start_bit: int, size: int, little_endian: bool = True,
@@ -128,6 +134,44 @@ class GetDecoderTest(unittest.TestCase):
 
   def test_empty_name_returns_none(self):
     self.assertIsNone(get_decoder(""))
+
+
+class MultiBusDecoderTest(unittest.TestCase):
+  """E: per-bus DBC mapping (dbcmanager-style multi-DBC decode)."""
+
+  def test_get_decoders_unavailable_or_empty(self):
+    self.assertIsNone(get_decoders(None))
+    self.assertIsNone(get_decoders({}))
+    self.assertIsNone(get_decoders({"0": ""}))
+    # bootstrap_pc mocks opendbc away, so no DBC can be loaded on PC.
+    self.assertIsNone(get_decoders({"0": "no_such_dbc_xyz"}))
+
+  def test_decode_frames_multi_selects_table_by_bus(self):
+    decoders = {
+      "0": {0x100: [_sig("speed", 0x100, start_bit=0, size=16, factor=0.01)]},
+      "1": {0x100: [_sig("temp", 0x100, start_bit=8, size=8)]},
+    }
+    frames = [
+      {"address": 0x100, "bus": 0, "data": "d204050000000000", "time": 1.0},
+      {"address": 0x100, "bus": 1, "data": "0064000000000000", "time": 2.0},
+      {"address": 0x100, "bus": 9, "data": "ffffffffffffffff", "time": 3.0},  # no table
+    ]
+    out = decode_frames_multi(decoders, frames)
+    self.assertEqual(len(out), 2)
+    self.assertAlmostEqual(out[0]["values"]["speed"], 12.34)
+    self.assertAlmostEqual(out[1]["values"]["temp"], 100.0)
+
+  def test_decode_frames_multi_skips_undecodable(self):
+    decoders = {"0": {0x100: [_sig("speed", 0x100, start_bit=0, size=16)]}}
+    frames = [
+      {"address": 0x100, "bus": 0, "data": "zz", "time": 1.0},  # bad hex
+      {"address": 0x100, "bus": 0, "data": "d2", "time": 2.0},  # too short
+    ]
+    self.assertEqual(decode_frames_multi(decoders, frames), [])
+
+  def test_decode_frames_multi_empty_decoders(self):
+    frames = [{"address": 0x100, "bus": 0, "data": "d204050000000000", "time": 1.0}]
+    self.assertEqual(decode_frames_multi(None, frames), [])
 
 
 if __name__ == "__main__":
