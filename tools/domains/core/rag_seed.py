@@ -11,6 +11,7 @@ from ai.system.paths import rel_source
 from ai.services.rag.builtin_loader import load_json_builtin_docs
 from ai.tools.domains.core.comma_docs_rag import COMMA_DOCS_RAG
 from ai.tools.domains.core.secoc_rag import SECOC_RAG
+from ai.tools.domains.core.upstream_docs_rag import UPSTREAM_DOCS_RAG
 from ai.tools.domains.core.wiki_rag import WIKI_RAG
 from ai.common.rag_config import rag_max_docs
 from ai.tools.domains.core.rag_store import (
@@ -263,6 +264,7 @@ op助手工具：webui_health_check webui_headless_status webui_service_status�
   },
   *load_json_builtin_docs(),
   *COMMA_DOCS_RAG,
+  *UPSTREAM_DOCS_RAG,
   *SECOC_RAG,
   *WIKI_RAG,
 ]

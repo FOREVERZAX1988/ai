@@ -28,12 +28,53 @@
   overflow: hidden;
 }
 
-.cabana-compact-head {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  gap: 0.45rem 0.65rem;
+/* ---- Zone layout: ContextBar / MainGrid / Inspector / BottomDock --------- */
+
+.cabana-contextbar {
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
+  gap: 0.45rem 0.65rem;
   flex-shrink: 0;
+}
+
+.cabana-ctx-section {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.5rem;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.cabana-ctx-section[hidden] {
+  display: none !important;
+}
+
+.cabana-ctx-live .cabana-dbc-picker-wrap {
+  flex: 1 1 220px;
+}
+
+.cabana-ctx-replay-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  flex: 1 1 260px;
+  min-width: 0;
+}
+
+.cabana-ctx-replay-controls .cabana-progress {
+  flex: 1 1 90px;
+  min-width: 5rem;
+  width: auto;
+}
+
+.cabana-ctx-replay-toggles {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.6rem;
 }
 
 .cabana-meta {
@@ -45,52 +86,326 @@
   overflow: hidden;
   text-overflow: ellipsis;
   min-width: 0;
+  flex: 0 1 auto;
 }
 
-.cabana-head-actions {
+/* Pull-down menus (更多 / 筛选 / 导出) */
+
+.cabana-menu-wrap {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.cabana-menu {
+  position: absolute;
+  top: calc(100% + 0.3rem);
+  right: 0;
+  min-width: 11rem;
+  padding: 0.3rem;
+  background: var(--bg-card, var(--surface));
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow);
+  z-index: 30;
   display: flex;
-  flex-wrap: wrap;
-  gap: 0.35rem;
-  align-items: center;
-  justify-content: flex-end;
+  flex-direction: column;
+  gap: 0.15rem;
 }
 
-.cabana-label-progress {
-  font-size: 0.68rem;
-  color: var(--accent);
-  font-variant-numeric: tabular-nums;
+.cabana-menu[hidden] {
+  display: none !important;
+}
+
+.cab-menu-item {
+  text-align: left;
+  padding: 0.45rem 0.6rem;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 0.76rem;
+  cursor: pointer;
   white-space: nowrap;
 }
 
-.cabana-head-actions .btn.ghost.active {
+.cab-menu-item:hover {
+  background: var(--surface);
+  color: var(--text);
+}
+
+.cab-menu-item.primary {
+  color: var(--accent);
+}
+
+.cab-menu-item:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.cabana-menu.cabana-filter-pop {
+  left: 0;
+  right: auto;
+  min-width: 15rem;
+  padding: 0.5rem;
+  gap: 0.45rem;
+}
+
+/* MainGrid: left = filter + table, right = Inspector */
+
+.cabana-main-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  flex: 1;
+  min-height: 0;
+}
+
+.cabana-left-col {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  flex: 1;
+  min-height: 0;
+}
+
+.cabana-filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.5rem;
+  flex-shrink: 0;
+}
+
+.cabana-filter-row .cabana-filter {
+  flex: 1 1 140px;
+  min-width: 0;
+  width: auto;
+}
+
+/* Inspector: right pane at ≥1024px, bottom drawer below */
+
+.cabana-inspector {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  overflow: hidden;
+  flex: 0 0 auto;
+}
+
+.cabana-inspector[hidden] {
+  display: none !important;
+}
+
+.cabana-inspector-tabs {
+  display: flex;
+  align-items: center;
+  gap: 0.2rem;
+  padding: 0.25rem 0.4rem;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.cabana-inspector-tab {
+  padding: 0.22rem 0.6rem;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.7rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.cabana-inspector-tab.active {
   background: var(--accent-soft);
   border-color: rgba(78, 205, 196, 0.35);
   color: var(--accent);
 }
 
-.cabana-live-toolbar {
+.cabana-inspector-handle {
+  margin-left: auto;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 0.8rem;
+  padding: 0.2rem 0.4rem;
+  display: none;
+}
+
+.cabana-inspector-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.cab-itab {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.cab-itab[hidden] {
+  display: none !important;
+}
+
+/* BottomDock (replay only): video thumb + loading progress */
+
+.cabana-bottom-dock {
+  display: flex;
+  align-items: stretch;
+  gap: 0.5rem;
   flex-shrink: 0;
+}
+
+.cabana-bottom-dock[hidden] {
+  display: none !important;
+}
+
+.cabana-bottom-dock .cabana-video-preview {
+  flex: 0 0 160px;
+  min-height: 90px;
+  max-height: 120px;
+}
+
+.cabana-bottom-dock .cabana-replay-loading {
+  flex: 1;
+  align-self: center;
+}
+
+/* Inspector DBC tab */
+
+.cabana-dbc-tools {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0.5rem;
+  flex-wrap: wrap;
+}
+
+#cabanaDbcInferBtn.highlight {
+  box-shadow: 0 0 0 2px rgba(78, 205, 196, 0.45);
+  animation: cabana-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes cabana-pulse {
+  50% { box-shadow: 0 0 0 4px rgba(78, 205, 196, 0.2); }
+}
+
+.cabana-dbc-status {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+
+.cabana-dbc-status.error {
+  color: #fc8181;
+}
+
+.cabana-dbc-status.busy {
+  color: var(--accent);
+}
+
+.cabana-dbc-candidates {
+  padding: 0 0.5rem;
+  font-size: 0.68rem;
+  overflow: auto;
+}
+
+.cabana-dbc-cand-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.cabana-dbc-cand-table th,
+.cabana-dbc-cand-table td {
+  padding: 0.2rem 0.35rem;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.cabana-dbc-cand-table td.mono {
+  font-family: var(--font-mono);
+  color: var(--text);
+}
+
+.cabana-dbc-diff {
+  margin: 0.4rem 0.5rem;
+  padding: 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-2, rgba(0, 0, 0, 0.15));
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  overflow: auto;
+  max-height: 180px;
+  white-space: pre;
+}
+
+.cab-dbc-diff-add {
+  color: #95e06c;
+}
+
+.cabana-dbc-actions {
+  display: flex;
+  gap: 0.4rem;
+  padding: 0.2rem 0.5rem 0.45rem;
+}
+
+.cabana-dbc-versions {
+  border-top: 1px solid var(--border);
+  padding: 0.4rem 0.5rem 0.5rem;
+}
+
+.cabana-dbc-versions-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+  margin-bottom: 0.3rem;
+}
+
+.cabana-dbc-versions-head .toolbar-input {
+  max-width: 12rem;
+  padding: 0.25rem 0.45rem;
+  font-size: 0.72rem;
+}
+
+.cabana-dbc-versions-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 140px;
+  overflow: auto;
+  font-size: 0.68rem;
+}
+
+.cabana-dbc-version-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.2rem 0.15rem;
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--border);
+}
+
+.cabana-dbc-version-item.current {
+  color: var(--accent);
 }
 
 /* DBC picker visible in both live and replay modes */
 
 .cabana-car-bar {
   display: none;
-}
-
-.cabana-toolbar {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 0.5rem;
-  align-items: start;
-  flex-shrink: 0;
-}
-
-.cabana-toolbar-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.4rem;
-  justify-content: flex-end;
 }
 
 .cabana-mode-tabs {
@@ -117,37 +432,11 @@
   color: var(--accent);
 }
 
-.cabana-replay-bar {
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
-  flex-shrink: 0;
-}
-
-.cabana-replay-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.4rem;
-  align-items: center;
-}
-
-.cabana-replay-row .cabana-progress {
-  flex: 1;
-  min-width: 6rem;
-}
-
 .cabana-replay-stats {
   font-size: 0.68rem;
   color: var(--text-muted);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
-}
-
-.cabana-filter-row {
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
-  flex-shrink: 0;
 }
 
 .cabana-filter-chips {
@@ -233,13 +522,11 @@
   text-align: center;
 }
 
-.cabana-mode-live .cabana-video-preview,
-.cabana-mode-live .cabana-replay-video {
-  display: none !important;
-}
+/* ContextBar sections toggle via [hidden]; keep the legacy guards for the
+   replay-only blocks that now live in the bottom dock. */
 
-.cabana-mode-live .cabana-replay-bar,
-.cabana-mode-live .cabana-replay-loading {
+.cabana-mode-live .cabana-ctx-replay,
+.cabana-mode-live .cabana-replay-video {
   display: none !important;
 }
 
@@ -247,8 +534,8 @@
   display: none !important;
 }
 
-.cabana-replay-bar[hidden],
-.cabana-replay-loading[hidden],
+.cabana-ctx-replay[hidden],
+.cab-replay-loading[hidden],
 #cabanaRouteChatBtn[hidden] {
   display: none !important;
 }
@@ -378,18 +665,15 @@
   display: none;
 }
 
-.cabana-detail-wrap {
+.cabana-label-progress {
+  font-size: 0.68rem;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
   flex-shrink: 0;
-  max-height: min(220px, 28vh);
-  display: flex;
-  flex-direction: column;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--surface);
-  overflow: hidden;
 }
 
-.cabana-detail-wrap[hidden] {
+.cabana-label-progress[hidden] {
   display: none !important;
 }
 
@@ -839,10 +1123,6 @@
   border-color: rgba(78, 205, 196, 0.25);
 }
 
-.cabana-head-actions .btn.small {
-  white-space: nowrap;
-}
-
 .cabana-replay-full {
   display: inline-flex;
   align-items: center;
@@ -856,30 +1136,33 @@
   margin: 0;
 }
 
+/* ≥1024px: two-column main grid with a side Inspector (38% width) */
+@media (min-width: 1024px) {
+  .cabana-main-grid {
+    flex-direction: row;
+    align-items: stretch;
+  }
+
+  .cabana-left-col {
+    flex: 1 1 62%;
+    min-width: 0;
+  }
+
+  .cabana-inspector {
+    flex: 0 0 38%;
+    max-width: 38%;
+    min-height: 0;
+  }
+
+  .cabana-inspector-handle {
+    display: none;
+  }
+}
+
 @media (max-width: 900px) {
   .cabana-modal .modal-content.cabana-modal-content {
     width: min(100%, 96vw);
     max-height: min(92vh, 92dvh);
-  }
-
-  .cabana-compact-head {
-    grid-template-columns: auto minmax(0, 1fr);
-    grid-template-areas:
-      "tabs meta"
-      "actions actions";
-  }
-
-  .cabana-mode-tabs {
-    grid-area: tabs;
-  }
-
-  .cabana-meta {
-    grid-area: meta;
-  }
-
-  .cabana-head-actions {
-    grid-area: actions;
-    justify-content: flex-start;
   }
 }
 
@@ -920,93 +1203,34 @@
     overflow: hidden;
   }
 
-  .cabana-compact-head {
-    display: flex;
-    flex-direction: column;
-    gap: 0.4rem;
-    align-items: stretch;
-  }
-
-  .cabana-compact-head > .cabana-mode-tabs {
-    align-self: flex-start;
-  }
-
   .cabana-meta {
     white-space: normal;
     line-height: 1.35;
     font-size: 0.7rem;
+    flex-basis: 100%;
   }
 
-  .cabana-head-actions {
-    display: flex;
+  /* ContextBar collapses into two rows of horizontally scrollable controls */
+  .cabana-ctx-replay-controls {
     flex-wrap: nowrap;
-    gap: 0.35rem;
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
     scrollbar-width: none;
-    padding-bottom: 0.15rem;
-    margin: 0 -0.15rem;
-    padding-left: 0.15rem;
-    padding-right: 0.15rem;
   }
 
-  .cabana-head-actions::-webkit-scrollbar {
+  .cabana-ctx-replay-controls::-webkit-scrollbar {
     display: none;
   }
 
-  .cabana-head-actions .btn.small {
+  .cabana-ctx-replay-controls .btn.small,
+  .cabana-ctx-replay-controls .toolbar-select {
     flex-shrink: 0;
     min-height: 36px;
-    padding: 0.35rem 0.55rem;
-    font-size: 0.72rem;
-    touch-action: manipulation;
   }
 
   .cabana-label-progress {
     flex-shrink: 0;
     align-self: center;
-  }
-
-  .cabana-replay-bar {
-    gap: 0.4rem;
-  }
-
-  .cabana-replay-row {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 0.35rem;
-    align-items: center;
-  }
-
-  .cabana-replay-row #cabanaReplayPlayBtn,
-  .cabana-replay-row #cabanaReplayPauseBtn {
-    width: 100%;
-    min-height: 40px;
-  }
-
-  .cabana-replay-row .cabana-replay-full {
-    grid-column: 1 / -1;
-    justify-content: flex-start;
-  }
-
-  .cabana-replay-row .cabana-speed-select {
-    grid-column: 1;
-    width: 100%;
-    min-height: 40px;
-  }
-
-  .cabana-replay-row .cabana-progress {
-    grid-column: 1 / -1;
-    width: 100%;
-    min-height: 28px;
-  }
-
-  .cabana-replay-row .cabana-progress-label,
-  .cabana-replay-row .cabana-replay-stats {
-    grid-column: 1 / -1;
-    white-space: normal;
-    text-align: left;
-    line-height: 1.35;
   }
 
   .cabana-filter-row {
@@ -1044,11 +1268,23 @@
     -webkit-overflow-scrolling: touch;
   }
 
-  .cabana-detail-wrap {
-    position: relative;
-    z-index: 4;
+  /* Inspector becomes a bottom drawer (expand/collapse via the handle) */
+  .cabana-inspector {
+    flex-shrink: 0;
     max-height: min(42vh, 320px);
     box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.35);
+  }
+
+  .cabana-inspector.collapsed {
+    max-height: 2.4rem;
+  }
+
+  .cabana-inspector.collapsed .cabana-inspector-body {
+    overflow: hidden;
+  }
+
+  .cabana-inspector-handle {
+    display: inline-block;
   }
 
   .cabana-detail-header {
@@ -1135,11 +1371,6 @@
 }
 
 @media (max-width: 400px) {
-  .cabana-head-actions .btn.small {
-    font-size: 0.68rem;
-    padding: 0.32rem 0.45rem;
-  }
-
   .cabana-table-wrap td.cab-col-label,
   .cabana-table-wrap td:nth-child(4) {
     width: 4.2rem;
@@ -1206,6 +1437,51 @@
   color: #ffd93d;
   background: rgba(255, 217, 61, 0.12);
   border-radius: 2px;
+}
+
+/* P2: hex byte grid (simplified binaryview, 16 bytes per row) */
+.cabana-binary-grid {
+  margin: 0.5rem 0;
+  padding: 0.5rem;
+  border: 1px solid var(--border, rgba(128, 128, 128, 0.25));
+  border-radius: 6px;
+  background: var(--surface-2, rgba(0, 0, 0, 0.15));
+  font-family: ui-monospace, monospace;
+  font-size: 0.72rem;
+  overflow-x: auto;
+}
+
+.cab-bgrid-head {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-bottom: 0.35rem;
+}
+
+.cab-bgrid-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  line-height: 1.4;
+}
+
+.cab-bgrid-idx {
+  width: 2.2rem;
+  color: var(--text-muted);
+}
+
+.cab-bgrid-byte {
+  display: inline-block;
+  width: 1.55rem;
+  text-align: center;
+  border-radius: 3px;
+  cursor: default;
+}
+
+/* P2: live server-side filter buttons */
+#cabanaLiveFilterBtn.active {
+  background: var(--accent-soft, rgba(78, 205, 196, 0.12));
+  color: var(--accent, #4ecdc4);
+  border-color: var(--accent, #4ecdc4);
 }
 
 .platform-memory-notes .dev-item-list {

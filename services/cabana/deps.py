@@ -1,4 +1,4 @@
-"""Shared imports for Cabana submodules."""
+"""Shared imports for Cabana submodules (compat hub — prefer explicit imports)."""
 from __future__ import annotations
 
 import asyncio
@@ -52,3 +52,37 @@ try:
   from openpilot.tools.lib.logreader import LogReader
 except ImportError:
   LogReader = None  # type: ignore
+
+__all__ = [
+  "Any",
+  "DBC",
+  "DBC_PATH",
+  "LogReader",
+  "PLATFORMS",
+  "Params",
+  "REPLAY_SNAPSHOT_INTERVAL",
+  "ThreadPoolExecutor",
+  "_build_replay_snapshots",
+  "_compact_can_batch",
+  "_latest_frames_at_rel",
+  "as_completed",
+  "asyncio",
+  "cloudlog",
+  "datetime",
+  "defaultdict",
+  "get_generated_dbcs",
+  "gzip",
+  "hashlib",
+  "json",
+  "messaging",
+  "os",
+  "Path",
+  "quote",
+  "re",
+  "subprocess",
+  "threading",
+  "time",
+  "timedelta",
+  "timezone",
+  "web",
+]

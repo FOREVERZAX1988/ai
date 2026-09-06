@@ -1,7 +1,14 @@
 """Cabana ai_explain module."""
-from ai.services.cabana.deps import *
+from __future__ import annotations
+
+import json
+import re
+from typing import Any
+
+from aiohttp import web
+
+from ai.services.cabana.deps import Params, cloudlog
 from ai.services.cabana.http import json_response as _json_response
-from ai.services.cabana.dbc import _parse_dbc_signals
 
 # Short functional labels for Cabana table (2–8 Chinese chars); rules checked in order.
 _SIGNAL_LABEL_PATTERNS: list[tuple[re.Pattern[str], str]] = [
@@ -54,13 +61,13 @@ def _cabana_analyze_system(lang: str) -> str:
   if _normalize_cabana_lang(lang) == "zh":
     return (
       "你是 CAN 总线分析助手。仅用简体中文回答。"
-      "简洁列出关键报文功能（刹车、油门、车速、转向等）和异常；不要输出思考过程或英文。"
-      "直接给出最终结论，不要复述用户要求。"
+      + "简洁列出关键报文功能（刹车、油门、车速、转向等）和异常；不要输出思考过程或英文。"
+      + "直接给出最终结论，不要复述用户要求。"
     )
   return (
     "You are a CAN bus analysis assistant. Reply only in English. "
-    "Briefly list key message roles (brake, throttle, speed, steering, etc.) and anomalies. "
-    "Output the final answer only — no chain-of-thought and no restating the prompt."
+    + "Briefly list key message roles (brake, throttle, speed, steering, etc.) and anomalies. "
+    + "Output the final answer only — no chain-of-thought and no restating the prompt."
   )
 
 
@@ -68,12 +75,12 @@ def _cabana_explain_system(lang: str) -> str:
   if _normalize_cabana_lang(lang) == "zh":
     return (
       "你是汽车 CAN 报文标注助手。只输出 JSON 对象，键为输入 id，值为 2-6 个汉字的功能标签。"
-      "例如：刹车、油门、车速、转向、巡航、车身。禁止句子、禁止解释数值、禁止超过 6 字。"
+      + "例如：刹车、油门、车速、转向、巡航、车身。禁止句子、禁止解释数值、禁止超过 6 字。"
     )
   return (
     "You are a CAN message labeling assistant. Output only a JSON object mapping each input id "
-    "to a 2-8 character English function tag (e.g. Brake, Throttle, Speed, Steer, Cruise, Body). "
-    "No sentences, no value explanations."
+    + "to a 2-8 character English function tag (e.g. Brake, Throttle, Speed, Steer, Cruise, Body). "
+    + "No sentences, no value explanations."
   )
 
 
@@ -474,16 +481,16 @@ async def _explain_signals_batch_llm(
     if _normalize_cabana_lang(lang) == "zh":
       prompt = (
         f"DBC: {dbc or 'unknown'}\n"
-        f"报文列表 JSON:\n{payload}\n\n"
-        "为每条返回功能标签。只输出一个 JSON 对象 {\"id\":\"标签\"}，键必须与 id 完全一致。"
-        "无 DBC 名称的 hex 报文请结合 address 字段猜测，可写「车身」「其他」。"
+        + f"报文列表 JSON:\n{payload}\n\n"
+        + "为每条返回功能标签。只输出一个 JSON 对象 {\"id\":\"标签\"}，键必须与 id 完全一致。"
+        + "无 DBC 名称的 hex 报文请结合 address 字段猜测，可写「车身」「其他」。"
       )
     else:
       prompt = (
         f"DBC: {dbc or 'unknown'}\n"
-        f"Messages JSON:\n{payload}\n\n"
-        'Return one function tag per row. Output only one JSON object {"id":"tag"} with exact id keys. '
-        "For unnamed hex frames, guess from address/name; Body/Other are acceptable."
+        + f"Messages JSON:\n{payload}\n\n"
+        + 'Return one function tag per row. Output only one JSON object {"id":"tag"} with exact id keys. '
+        + "For unnamed hex frames, guess from address/name; Body/Other are acceptable."
       )
     messages = [
       {"role": "system", "content": _cabana_explain_system(lang)},

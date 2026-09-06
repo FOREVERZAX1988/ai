@@ -152,6 +152,7 @@ function initChatJobs() {
     savePartialAssistant,
     renderStoredMessages,
     formatApiError,
+    postSseStream,
     showToast,
     reconcileStreamUi,
     handleAgentStreamEvent,
@@ -1627,7 +1628,18 @@ function hideAssistantLoading(ui) {
   const hasReasoning = Boolean(String(ui.thinkingBody?.textContent || '').trim());
   ui.thinkingWaitingDots?.classList.add('hidden');
   ui.thinking.classList.remove('is-activity-waiting');
-  if (!hasReasoning) ui.thinking.classList.add('hidden');
+  if (!hasReasoning) {
+    ui.thinking.classList.add('hidden');
+    ui.thinking.dataset.state = '';
+    const summary = ui.thinking.querySelector('.thinking-summary');
+    if (summary) summary.textContent = '';
+  }
+}
+
+function latestThinkingLine(text) {
+  const visible = String(text || '').trimEnd();
+  const idx = visible.lastIndexOf('\n');
+  return idx === -1 ? visible : visible.slice(idx + 1);
 }
 
 function renderThinkingContent(el, text) {
@@ -1646,6 +1658,9 @@ function renderThinkingContent(el, text) {
   } else {
     el.textContent = raw;
   }
+  // Mirror the latest reasoning line into the summary row (dsh ReasoningRow parity).
+  const summary = el.closest('.chat-thinking-collapse')?.querySelector('.thinking-summary');
+  if (summary) summary.textContent = latestThinkingLine(raw);
 }
 
 function setDetailsCollapsed(el, collapsed) {
@@ -1659,6 +1674,7 @@ function syncThinkingBlock(ui, msg) {
   const hasReasoning = Boolean(String(msg?.reasoning_content || '').trim());
   if (!hasReasoning) {
     ui.thinking.classList.add('hidden');
+    ui.thinking.dataset.state = '';
     return;
   }
   hideAssistantLoading(ui);
@@ -1667,14 +1683,32 @@ function syncThinkingBlock(ui, msg) {
   setDetailsCollapsed(ui.thinking, true);
   if (ui.thinkingBody) renderThinkingContent(ui.thinkingBody, msg.reasoning_content);
   if (ui.thinkingLabel) ui.thinkingLabel.textContent = t('thinking', 'Thinking');
+  // Show the running sweep when the assistant bubble is still streaming.
+  const isRunning = ui.content?.classList.contains('streaming');
+  ui.thinking.dataset.state = isRunning ? 'running' : '';
+}
+
+function firstThinkingLine(text) {
+  const visible = String(text || '').trim();
+  const idx = visible.indexOf('\n');
+  return idx === -1 ? visible : visible.slice(0, idx);
 }
 
 function clearLiveStreamChrome(ui) {
   hideAssistantLoading(ui);
   if (!ui) return;
   ui.content?.classList.remove('streaming');
-  const hasReasoning = Boolean(String(ui.thinkingBody?.textContent || '').trim());
-  if (!hasReasoning) ui.thinking?.classList.add('hidden');
+  if (ui.thinking) ui.thinking.dataset.state = '';
+  const raw = String(ui.thinkingBody?.textContent || '').trim();
+  const hasReasoning = Boolean(raw);
+  if (!hasReasoning) {
+    ui.thinking?.classList.add('hidden');
+    return;
+  }
+  // Once streaming settles, show the first reasoning line as the summary
+  // (dsh ReasoningRow parity: running = latestLine, settled = firstLine).
+  const summary = ui.thinking?.querySelector('.thinking-summary');
+  if (summary) summary.textContent = firstThinkingLine(raw);
 }
 
 function showAssistantLoading(ui) {
@@ -1684,10 +1718,13 @@ function showAssistantLoading(ui) {
   hideAssistantLoading(ui);
   ui.thinking.classList.remove('hidden');
   ui.thinking.classList.add('is-activity-waiting');
+  ui.thinking.dataset.state = 'running';
   setDetailsCollapsed(ui.thinking, true);
   if (ui.thinkingLabel) ui.thinkingLabel.textContent = t('assistantLoading', '正在思考…');
   ui.thinkingWaitingDots?.classList.remove('hidden');
   if (ui.thinkingBody) ui.thinkingBody.innerHTML = '';
+  const summary = ui.thinking.querySelector('.thinking-summary');
+  if (summary) summary.textContent = '';
 }
 
 function endChatStream(sessionId) {
@@ -1745,6 +1782,7 @@ function wrapperToAssistantUi(wrapper) {
     loading: null,
     thinking,
     thinkingLabel: thinking?.querySelector('.thinking-label'),
+    thinkingSummary: thinking?.querySelector('.thinking-summary'),
     thinkingBody: thinking?.querySelector('.thinking-body, .chat-thinking'),
     thinkingWaitingDots: thinking?.querySelector('.thinking-waiting-dots'),
     agentCallsBlock,
@@ -1918,6 +1956,17 @@ function updateModelBadgeFromSaved() {
 }
 
 function formatApiError(raw) {
+  // Structured tool/API errors (error_code/retryable/details) keep their
+  // machine-readable classification; plain strings keep previous behavior.
+  if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+    const code = raw.error_code || raw.code;
+    const msg = String(raw.error || raw.message || '').trim();
+    const retry = raw.retryable ? t('retryableHint', '（可重试）') : '';
+    if (code) {
+      return `${msg}\n[${code}]${retry}`.trim();
+    }
+    return formatApiError(msg);
+  }
   const text = String(raw || '').trim();
   if (!text) return t('chatErrorGeneric', '请求失败，请稍后重试。');
   if (/Server got itself in trouble|500 Internal Server Error/i.test(text)) {
@@ -3377,7 +3426,7 @@ function appendAssistantMessage({ withLoading = true } = {}) {
 
   const thinking = document.createElement('details');
   thinking.className = 'chat-thinking-collapse hidden';
-  thinking.innerHTML = `<summary><span class="thinking-icon">🧠</span><span class="thinking-label">${t('thinking', 'Thinking')}</span><span class="thinking-waiting-dots typing-dots hidden" aria-hidden="true"><span></span><span></span><span></span></span></summary><div class="chat-thinking thinking-body"></div>`;
+  thinking.innerHTML = `<summary><span class="thinking-icon">🧠</span><span class="thinking-label">${t('thinking', 'Thinking')}</span><span class="thinking-summary" aria-hidden="true"></span><span class="thinking-waiting-dots typing-dots hidden" aria-hidden="true"><span></span><span></span><span></span></span></summary><div class="chat-thinking thinking-body"></div>`;
 
   const agentCallsBlock = createAgentCallsBlock();
   const agentCallsList = agentCallsBlock.querySelector('.agent-calls-list');
@@ -3443,6 +3492,7 @@ function appendAssistantMessage({ withLoading = true } = {}) {
     loading: null,
     thinking,
     thinkingLabel: thinking.querySelector('.thinking-label'),
+    thinkingSummary: thinking.querySelector('.thinking-summary'),
     thinkingBody: thinking.querySelector('.thinking-body'),
     thinkingWaitingDots: thinking.querySelector('.thinking-waiting-dots'),
     agentCallsBlock,
@@ -8454,6 +8504,9 @@ async function init() {
     DeviceTrust.refreshTrust(api).catch(() => {});
   }
   bindSettingsTabs();
+  if (typeof SettingsApp !== 'undefined') {
+    SettingsApp.mount({ api, t, showToast, escapeHtml, getConfig: () => savedConfig });
+  }
   if (typeof ComposerMention !== 'undefined') {
     ComposerMention.init({
       api,
@@ -8564,6 +8617,9 @@ async function init() {
 
   const settingsTab = new URLSearchParams(location.search).get('settings');
   if (settingsTab === 'secoc') openSecocModal();
+  else if (settingsTab && typeof SettingsApp !== 'undefined' && SettingsApp.registry.get(settingsTab)) {
+    SettingsApp.openTab(settingsTab);
+  }
   else if (settingsTab) openSettingsTab(settingsTab);
 }
 

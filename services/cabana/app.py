@@ -24,10 +24,22 @@ from ai.services.cabana.replay import (
 _pick_can_log_paths = _replay_log_paths
 
 __all__ = [
-  "register_routes",
-  "warm_dbc_catalog",
   "LIVE_CAN",
   "LiveCanBroadcaster",
+  "_find_qlogs",
+  "_find_rlogs",
+  "_get_routes_dir",
+  "_list_dbc_names",
+  "_list_route_media",
+  "_list_routes",
+  "_load_dbc_content",
+  "_parse_dbc_signals",
+  "_replay_log_paths",
+  "_route_date_label",
+  "_route_dir",
   "cabana_analyze_tool",
   "cabana_explain_signal_tool",
+  "register_routes",
+  "warm_dbc_catalog",
+  "ws_live",
 ]

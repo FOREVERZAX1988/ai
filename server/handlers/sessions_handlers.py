@@ -1,6 +1,7 @@
 """API handlers — sessions."""
 
 from ai.server.handlers._api_common import *  # noqa: F403
+from ai.server.handlers.chat_handlers import _session_log_path
 
 async def api_sessions(request: web.Request) -> web.Response:
   if request.method == "GET":
@@ -33,3 +34,137 @@ async def api_pc_sessions(request: web.Request) -> web.Response:
     return _json_response(pc_list_tool_sessions(limit=int(request.query.get("limit", "20"))))
   except Exception as e:
     return _json_response({"ok": False, "error": str(e)})
+
+
+async def api_session_log(request: web.Request) -> web.Response:
+  """GET /api/ai/sessions/{session_id}/log - return durable session event log."""
+  session_id = request.match_info.get("session_id", "").strip()
+  if not session_id:
+    return _json_response({"ok": False, "error": "session_id required"}, status=400)
+  log_path = _session_log_path(session_id)
+  events: list[dict[str, Any]] = []
+  if log_path and os.path.isfile(log_path):
+    try:
+      with open(log_path, "r", encoding="utf-8") as f:
+        for line in f:
+          line = line.strip()
+          if not line:
+            continue
+          try:
+            events.append(json.loads(line))
+          except json.JSONDecodeError:
+            continue
+    except Exception as e:
+      return _json_response({"ok": False, "error": f"Failed to read log: {e}"}, status=500)
+  return _json_response({"ok": True, "sessionId": session_id, "events": events})
+
+
+async def api_session_repair(request: web.Request) -> web.Response:
+  """POST /api/ai/sessions/{id}/repair - deterministic repair of a corrupt log tail."""
+  session_id = request.match_info.get("session_id", "").strip()
+  if not session_id:
+    return _json_response({"ok": False, "error": "session_id required"}, status=400)
+  log_path = _session_log_path(session_id)
+  if not log_path or not os.path.isfile(log_path):
+    return _json_response({"ok": False, "error": "no persisted log for session"}, status=404)
+  try:
+    from ai.core.session.log import SessionLog
+    from ai.core.session.repair import repair_session_log
+    log = SessionLog(session_id, persist_path=log_path, load_persisted=True)
+    repaired = repair_session_log(log)
+    log.close()
+    return _json_response({"ok": True, "sessionId": session_id, "repaired": [event.to_dict() for event in repaired]})
+  except Exception as e:
+    return _json_response({"ok": False, "error": str(e)}, status=500)
+
+
+def reconstruct_domain_state(events: list[Any]) -> dict[str, Any]:
+  """Fold-first reconstruction of goal/plan/todo from session events.
+
+  Prefers ``<domain>/change`` events produced by the G2 projection
+  (store mutations → SessionLog.append_domain_event, replayed via
+  folds.fold_domain_events). Legacy logs without domain events fall
+  back to the TOOL_CALL/TOOL_RESULT heuristic: the tool name lives on
+  TOOL_CALL while the result payload lives on TOOL_RESULT, correlated
+  by call id.
+  """
+  try:
+    from ai.core.session.folds import fold_domain_events
+    folded = fold_domain_events(events)
+  except Exception:
+    folded = {"goal": None, "plan": None, "todo": None}
+  if any(folded.get(k) is not None for k in ("goal", "plan", "todo")):
+    return folded
+
+  from ai.core.session.log import EventType
+  name_by_call: dict[str, str] = {}
+  result_by_call: dict[str, dict] = {}
+  for ev in events:
+    data = ev.data if isinstance(ev.data, dict) else {}
+    if ev.type == EventType.TOOL_CALL:
+      cid = str(data.get("callId") or "")
+      if cid:
+        name_by_call[cid] = str(data.get("name") or "")
+    elif ev.type == EventType.TOOL_RESULT:
+      cid = str(data.get("tool_call_id") or "")
+      if cid:
+        try:
+          payload = json.loads(data.get("content", "{}")) if isinstance(data.get("content"), str) else data.get("result")
+        except (json.JSONDecodeError, TypeError):
+          payload = None
+        if isinstance(payload, dict):
+          result_by_call[cid] = payload
+  reconstructed = {"goal": None, "plan": None, "todo": None}
+  for cid, name in name_by_call.items():
+    payload = result_by_call.get(cid)
+    if payload is None:
+      continue
+    if name.startswith("goal_") and payload.get("goal") is not None:
+      reconstructed["goal"] = payload["goal"]
+    elif name.startswith("plan_") and payload.get("plan") is not None:
+      reconstructed["plan"] = payload["plan"]
+    elif name.startswith("todo_") and isinstance(payload, dict):
+      reconstructed["todo"] = payload
+  return reconstructed
+
+
+async def api_session_resume(request: web.Request) -> web.Response:
+  """POST /api/ai/sessions/{id}/resume - replay persisted events to rebuild context."""
+  session_id = request.match_info.get("session_id", "").strip()
+  if not session_id:
+    return _json_response({"ok": False, "error": "session_id required"}, status=400)
+  log_path = _session_log_path(session_id)
+  if not log_path or not os.path.isfile(log_path):
+    return _json_response({"ok": False, "error": "no persisted log for session"}, status=404)
+  try:
+    from ai.core.session.log import SessionLog
+    log = SessionLog(session_id, persist_path=log_path, load_persisted=True)
+    replayed = len(log.events)
+    interrupted = []
+    call_ids: set[str] = set()
+    result_ids: set[str] = set()
+    for ev in log.events:
+      data = ev.data if isinstance(ev.data, dict) else {}
+      if ev.type.value == "tool/call":
+        cid = str(data.get("callId") or "")
+        if cid:
+          call_ids.add(cid)
+      elif ev.type.value == "tool/result":
+        cid = str(data.get("tool_call_id") or "")
+        if cid:
+          result_ids.add(cid)
+    reconstructed = reconstruct_domain_state(log.events)
+    interrupted = sorted(call_ids - result_ids)
+    from ai.core.session.repair import repair_session_log
+    repaired_events = repair_session_log(log)
+    log.close()
+    return _json_response({
+      "ok": True,
+      "sessionId": session_id,
+      "replayedEvents": replayed,
+      "reconstructed": reconstructed,
+      "interrupted": interrupted,
+      "repaired": [event.to_dict() for event in repaired_events],
+    })
+  except Exception as e:
+    return _json_response({"ok": False, "error": str(e)}, status=500)

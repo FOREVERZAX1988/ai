@@ -8,7 +8,6 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
-from types import SimpleNamespace
 from unittest.mock import patch
 
 from aiohttp import web
@@ -77,21 +76,21 @@ class CabanaReplayWsTest(AioHTTPTestCase):
 
   @unittest_run_loop
   async def test_offline_ws_streams_metadata_and_can(self):
-    import ai.services.cabana.app as cabana
-
     route_name = self.route_dir.name
 
     def fake_routes_dir():
       return self.route_dir.parent
 
-    with patch.object(cabana, "LogReader", _FakeLogReader), patch.object(cabana, "_get_routes_dir", fake_routes_dir):
+    with patch("ai.services.cabana.replay_ws.LogReader", _FakeLogReader), patch(
+      "ai.services.cabana.replay.LogReader", _FakeLogReader,
+    ), patch("ai.services.cabana.replay_ws._get_routes_dir", fake_routes_dir):
       client = await self.client.ws_connect(f"/api/cabana/offline/ws?route={route_name}&speed=10")
       seen: dict[str, list] = {"loading": [], "can": 0, "metadata": None, "done": False}
 
-      async def recv_until(predicate, timeout=8.0):
-        deadline = asyncio.get_event_loop().time() + timeout
+      async def recv_until(predicate, limit=8.0):
+        deadline = asyncio.get_event_loop().time() + limit
         while asyncio.get_event_loop().time() < deadline:
-          msg = await asyncio.wait_for(client.receive(), timeout=timeout)
+          msg = await asyncio.wait_for(client.receive(), timeout=limit)
           if msg.type.name != "TEXT":
             continue
           data = json.loads(msg.data)
@@ -112,9 +111,15 @@ class CabanaReplayWsTest(AioHTTPTestCase):
       meta = await recv_until(lambda d: d.get("type") == "metadata")
       self.assertGreater(meta.get("duration", 0), 0)
       self.assertIn(meta.get("source"), ("rlog", "qlog"))
+      # P2-13 / P3-15 additive contract fields
+      self.assertIn("truncated", meta)
+      self.assertIn("video", meta)
 
-      await recv_until(lambda d: d.get("type") == "can" and len(d.get("frames", [])) > 0, timeout=12.0)
+      can_msg = await recv_until(lambda d: d.get("type") == "can" and len(d.get("frames", [])) > 0, limit=12.0)
       self.assertGreater(seen["can"], 0)
+      # P1-10 additive contract fields
+      self.assertIn(can_msg.get("source"), ("rlog", "qlog"))
+      self.assertIsInstance(can_msg.get("seq"), int)
 
       await client.close()
 
