@@ -3710,12 +3710,46 @@ const CabanaPanel = (() => {
     }
   }
 
+  /* Keep a pull-down menu inside the modal content area. On narrow viewports
+   * the anchor buttons sit near a horizontal edge, where the default CSS
+   * anchoring (right: 0 or left: 0 relative to the wrap) pushes the menu out
+   * of the modal and it gets clipped. Measure and pin it via inline styles.
+   * Desktop layouts stay untouched: the clamp only fires when out of bounds. */
+  function clampMenuToModal(menu) {
+    if (!(menu instanceof HTMLElement)) return;
+    const modal = menu.closest('.cabana-modal-content');
+    const wrap = menu.parentElement;
+    if (!modal || !wrap) return;
+    const menuRect = menu.getBoundingClientRect();
+    const modalRect = modal.getBoundingClientRect();
+    const wrapRect = wrap.getBoundingClientRect();
+    if (menuRect.width <= 0) return;
+    const margin = 4;
+    // Default anchoring is right-aligned with the wrap (.cabana-menu right:0).
+    const defaultLeft = wrapRect.right - menuRect.width;
+    const minLeft = modalRect.left + margin;
+    const maxLeft = modalRect.right - margin - menuRect.width;
+    const clampedLeft = Math.max(minLeft, Math.min(defaultLeft, maxLeft));
+    if (Math.abs(clampedLeft - defaultLeft) < 1) {
+      menu.style.left = '';
+      menu.style.right = '';
+      return;
+    }
+    // Inline left is relative to the wrap (its offsetParent), while the rects
+    // above are viewport coordinates — convert before assigning.
+    menu.style.right = 'auto';
+    menu.style.left = `${Math.round(clampedLeft - wrapRect.left)}px`;
+  }
+
   function toggleMenu(menu) {
     if (!menu) return;
     const wasOpen = !menu.hasAttribute('hidden');
     closeAllMenus();
     if (wasOpen) menu.setAttribute('hidden', '');
-    else menu.removeAttribute('hidden');
+    else {
+      menu.removeAttribute('hidden');
+      clampMenuToModal(menu);
+    }
   }
 
   function onDocumentClickMenus(e) {

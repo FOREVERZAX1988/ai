@@ -1384,23 +1384,17 @@ function isCabanaStandalone() {
   return new URLSearchParams(location.search).get('cabana') === '1';
 }
 
-/* Open Cabana in a dedicated window (the analysis UI needs the full screen).
- * Returns false when the popup is blocked so the caller can fall back to the
- * in-page modal. */
-function openCabanaWindow() {
-  try {
-    const win = window.open('/?cabana=1', 'cabana', 'width=1280,height=860,menubar=no,toolbar=no');
-    if (win) {
-      try { win.focus(); } catch (e) { /* cross-origin/noopener quirks */ }
-      return true;
-    }
-  } catch (e) { /* popup blocked or environment without window.open */ }
-  return false;
-}
-
+/* Open the Cabana UI. On the main page this navigates the CURRENT tab to the
+ * standalone page (?cabana=1) via location.assign — no window.open popup, so
+ * the browser back/forward history keeps working. The in-page modal path is
+ * kept for the standalone startup (isCabanaStandalone() guard also prevents
+ * redirect loops after navigation). */
 function openCabanaModal() {
+  if (!isCabanaStandalone()) {
+    location.assign('/?cabana=1');
+    return;
+  }
   ensureCabanaInited();
-  if (!isCabanaStandalone() && openCabanaWindow()) return;
   cabanaOpen = true;
   setOverlayVisible(els.cabanaModal, true);
   els.cabanaBtn?.classList.add('active');
@@ -1413,14 +1407,15 @@ function openCabanaModal() {
 
 function closeCabanaModal() {
   if (isCabanaStandalone()) {
-    // Standalone page: try to close the window; script-opened popups close
-    // silently, otherwise tell the user they can just close the tab.
-    window.close();
-    setTimeout(() => {
-      if (!window.closed) {
-        showToast(t('cabanaStandaloneCloseHint', 'CAN 分析运行在独立页面中，可直接关闭此标签页。'), 'info');
-      }
-    }, 150);
+    // The standalone page is reached by in-tab navigation, so window.close()
+    // cannot close it (browsers only allow closing script-opened windows).
+    // Go back to the previous page when history allows, otherwise tell the
+    // user they can just close the tab.
+    if (history.length > 1) {
+      history.back();
+      return;
+    }
+    showToast(t('cabanaStandaloneCloseHint', '无上一页，可直接关闭此标签页。'), 'info');
     return;
   }
   cabanaOpen = false;
