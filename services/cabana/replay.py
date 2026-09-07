@@ -1,8 +1,22 @@
 """Cabana replay module."""
-from ai.services.cabana.deps import *
+from __future__ import annotations
+
+import asyncio
+import gzip
+import hashlib
+import json
+import re
+import subprocess
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import Any
+from urllib.parse import quote
+
+from ai.services.cabana.deps import LogReader, Params, cloudlog
 from ai.services.cabana.frame import can_frame_to_dict as _can_frame_to_dict
-from ai.services.cabana.car_params import _resolve_car_params
-from ai.services.cabana.dbc import _suggest_dbc_for_car
 
 # -----------------------------------------------------------------------------
 # Route / qlog helpers
@@ -54,9 +68,11 @@ MAX_REPLAY_FRAMES = 25_000
 REPLAY_START_BUFFER = 32
 REPLAY_STREAM_BATCH = 32
 REPLAY_FRAME_QUEUE_SIZE = 64
-CACHE_VERSION = 2
+CACHE_VERSION = 3
 # qlog is heavily decimated; caches above this are almost certainly mis-tagged rlog data.
 QLOG_CACHE_MAX_FRAMES = 8_000
+# Cap on the number of *.json.gz cache files kept on disk (oldest deleted first).
+CABANA_CACHE_MAX_FILES = 32
 
 
 def _cabana_cache_dir() -> Path:
@@ -80,19 +96,55 @@ def _cabana_cache_dir() -> Path:
   return candidates[-1]
 
 
+def _route_path_digest(route_path: Path) -> str:
+  """Stable digest of a route directory's resolved path (cache key component)."""
+  try:
+    resolved = str(route_path.resolve())
+  except OSError:
+    resolved = str(route_path)
+  return hashlib.sha1(resolved.encode("utf-8")).hexdigest()[:16]
+
+
 def _route_cache_file(route_path: Path) -> Path:
+  """Cache file keyed by resolved path (collision-proof) + mtime + format version."""
   try:
     mtime = int(route_path.stat().st_mtime)
   except OSError:
     mtime = 0
-  digest = hashlib.sha1(route_path.name.encode("utf-8")).hexdigest()[:12]
+  digest = _route_path_digest(route_path)
   return _cabana_cache_dir() / f"{digest}_{mtime}_v{CACHE_VERSION}.json.gz"
 
 
-def _threadsafe_queue_put(queue: asyncio.Queue[Any], item: Any, loop: asyncio.AbstractEventLoop) -> None:
-  """Block the worker thread until the batch is queued (never drop frames)."""
+def _threadsafe_queue_put(
+  queue: asyncio.Queue[Any],
+  item: Any,
+  loop: asyncio.AbstractEventLoop,
+  *,
+  abort: threading.Event | None = None,
+  timeout: float = 30.0,
+) -> bool:
+  """Block the worker thread until the batch is queued (never drop frames).
+
+  Unlike a blind ``fut.result(900)`` — which could hold an executor thread
+  hostage for 15 minutes when the consumer disappears — this gives up after
+  ``timeout`` seconds or when ``abort`` is set, returning False so the worker
+  can exit promptly and release the thread.
+  """
   fut = asyncio.run_coroutine_threadsafe(queue.put(item), loop)
-  fut.result(timeout=900)
+  deadline = time.monotonic() + timeout
+  while True:
+    try:
+      fut.result(timeout=0.5)
+      return True
+    except TimeoutError:
+      # concurrent.futures.TimeoutError (alias of builtin TimeoutError):
+      # the put task is still pending because the queue is full.
+      if abort is not None and abort.is_set():
+        fut.cancel()
+        return False
+      if time.monotonic() >= deadline:
+        fut.cancel()
+        return False
 
 
 def _replay_log_paths(qlogs: list[Path], rlogs: list[Path], *, full: bool) -> tuple[list[Path], str]:
@@ -115,6 +167,13 @@ def _load_route_cache(route_path: Path, *, want_full: bool) -> list[dict[str, An
   try:
     raw = gzip.decompress(path.read_bytes())
     data = json.loads(raw.decode("utf-8"))
+    # Strict validation: cache file must match this exact route and format version.
+    # route_key (digest of the resolved path) disambiguates segment sub-directories
+    # whose plain name (e.g. "1") would collide across routes.
+    if data.get("route") != route_path.name or data.get("version") != CACHE_VERSION:
+      return None
+    if "route_key" in data and data.get("route_key") != _route_path_digest(route_path):
+      return None
     if bool(data.get("full")) != want_full:
       return None
     frames = data.get("frames")
@@ -139,23 +198,67 @@ def _save_route_cache(
     payload = json.dumps({
       "version": CACHE_VERSION,
       "route": route_path.name,
+      "route_key": _route_path_digest(route_path),
       "decimated": decimated,
       "full": full,
       "frames": frames,
     }, separators=(",", ":")).encode("utf-8")
     path.write_bytes(gzip.compress(payload, compresslevel=3))
+    _prune_cabana_cache()
   except Exception as e:
     cloudlog.warning(f"cabana: cache write failed: {e}")
 
 
-def _read_can_from_log(log_path: Path) -> list[dict[str, Any]]:
+def _prune_cabana_cache(keep: int = CABANA_CACHE_MAX_FILES, cache_dir: Path | None = None) -> list[Path]:
+  """Delete the oldest *.json.gz cache files beyond ``keep``; returns removed paths.
+
+  Defensive: only files ending in ``.json.gz`` inside the (optionally given)
+  cache directory are ever considered for deletion.
+  """
+  directory = cache_dir if cache_dir is not None else _cabana_cache_dir()
+  try:
+    if not directory.is_dir():
+      return []
+    files = [p for p in directory.iterdir() if p.is_file() and p.name.endswith(".json.gz")]
+  except OSError:
+    return []
+  if len(files) <= keep:
+    return []
+
+  def mtime_of(p: Path) -> float:
+    try:
+      return p.stat().st_mtime
+    except OSError:
+      return 0.0
+
+  files.sort(key=mtime_of)
+  removed: list[Path] = []
+  for path in files[: len(files) - keep]:
+    try:
+      path.unlink()
+      removed.append(path)
+    except OSError:
+      continue
+  return removed
+
+
+def _decimate(frames: list[dict[str, Any]], max_n: int = MAX_REPLAY_FRAMES) -> tuple[list[dict[str, Any]], bool]:
+  """Stride-decimate frames down to max_n; returns (frames, decimated)."""
+  if len(frames) <= max_n:
+    return frames, False
+  stride = max(1, len(frames) // max_n)
+  return frames[::stride], True
+
+
+def _read_can_from_log(log_path: Path) -> tuple[list[dict[str, Any]], bool]:
+  """Read CAN frames from one log with in-memory stride decimation."""
   frames: list[dict[str, Any]] = []
   if LogReader is None:
-    return frames
+    return frames, False
   try:
     lr = LogReader(str(log_path))
   except Exception:
-    return frames
+    return frames, False
   can_seen = 0
   stride = 1
   for msg in lr:
@@ -169,7 +272,7 @@ def _read_can_from_log(log_path: Path) -> list[dict[str, Any]]:
       if can_seen % stride != 0:
         continue
       frames.append(_can_frame_to_dict(cf, mono))
-  return frames
+  return frames, stride > 1
 
 
 def _collect_can_frames(
@@ -199,7 +302,8 @@ def _collect_can_frames(
     })
 
   if len(log_paths) == 1:
-    frames = _read_can_from_log(log_paths[0])
+    frames, early_dec = _read_can_from_log(log_paths[0])
+    decimated = decimated or early_dec
     report(log_paths[0].name, 0, len(frames))
     parts.append(frames)
   else:
@@ -212,26 +316,67 @@ def _collect_can_frames(
         path = futures[fut]
         done += 1
         try:
-          chunk = fut.result()
+          chunk, early_dec = fut.result()
         except Exception as e:
           if progress_cb:
             progress_cb({"phase": "error", "file": path.name, "error": str(e)})
-          chunk = []
+          chunk, early_dec = [], False
+        decimated = decimated or early_dec
         total_can += len(chunk)
         parts.append(chunk)
         report(path.name, done, total_can, phase="parallel")
 
   all_frames = [f for chunk in parts for f in chunk]
   all_frames.sort(key=lambda f: f["time"])
-  if len(all_frames) > MAX_REPLAY_FRAMES:
-    stride = max(1, len(all_frames) // MAX_REPLAY_FRAMES)
-    all_frames = all_frames[::stride]
-    decimated = True
-  return all_frames, decimated
+  all_frames, final_dec = _decimate(all_frames)
+  return all_frames, decimated or final_dec
 
 
-def _iter_can_batches(log_paths: list[Path], batch_size: int = REPLAY_STREAM_BATCH):
-  """Yield decimated CAN frame batches while reading (enables early playback)."""
+def _query_frames(route_name: str) -> tuple[list[dict[str, Any]] | None, str | None]:
+  """Load every CAN frame of a route for HTTP query endpoints (frames/export/tools).
+
+  Reads the route cache first (full, then fast-path); on cache miss a blocking
+  log scan is performed and the result written back to the cache. Callers must
+  run this in an executor. Returns ``(frames, error)``; frames are sorted by
+  absolute time and the first frame time is the route-relative time origin.
+  """
+  route_path = _route_dir(route_name)
+  if route_path is None:
+    return None, "Route not found"
+  frames: list[dict[str, Any]] | None = None
+  for want_full in (True, False):
+    cached = _load_route_cache(route_path, want_full=want_full)
+    if cached:
+      frames = list(cached)
+      break
+  if not frames:
+    if LogReader is None:
+      return None, "LogReader not available"
+    qlogs = _find_qlogs(route_path)
+    rlogs = _find_rlogs(route_path)
+    paths, source = _replay_log_paths(qlogs, rlogs, full=True)
+    if not paths:
+      return None, "No qlog/rlog found in route"
+    loaded, decimated = _collect_can_frames(paths)
+    if not loaded:
+      return None, "No CAN frames found"
+    frames = loaded
+    # full=True is only truthful when rlog data was read; a qlog-only scan must
+    # not be served to later full-CAN replays as "full".
+    _save_route_cache(route_path, frames, decimated=decimated, full=(source != "qlog"))
+  return frames, None
+
+
+def _iter_can_batches(
+  log_paths: list[Path],
+  batch_size: int = REPLAY_STREAM_BATCH,
+  state: dict[str, bool] | None = None,
+):
+  """Yield decimated CAN frame batches while reading (enables early playback).
+
+  When ``state`` is a dict, ``state["decimated"]`` is set to True if any
+  stride-based decimation occurred during the scan.
+  """
   if LogReader is None:
     return
   can_seen = 0
@@ -249,7 +394,10 @@ def _iter_can_batches(log_paths: list[Path], batch_size: int = REPLAY_STREAM_BAT
       for cf in msg.can:
         can_seen += 1
         if can_seen > MAX_REPLAY_FRAMES * 2:
-          stride = max(stride, can_seen // MAX_REPLAY_FRAMES)
+          new_stride = max(stride, can_seen // MAX_REPLAY_FRAMES)
+          if new_stride > stride and state is not None:
+            state["decimated"] = True
+          stride = new_stride
         if can_seen % stride != 0:
           continue
         batch.append(_can_frame_to_dict(cf, mono))
@@ -260,13 +408,33 @@ def _iter_can_batches(log_paths: list[Path], batch_size: int = REPLAY_STREAM_BAT
     yield log_path.name, batch
 
 
+_ROUTE_SEGMENT_RE = re.compile(r"^\d{1,4}$")
+
+
 def _route_dir(route_name: str) -> Path | None:
-  if not route_name or "/" in route_name or "\\" in route_name or ".." in route_name:
+  """Resolve a route name to its directory; supports ``name/<segment>``.
+
+  ``name/1`` addresses the segment sub-directory ``1``: log discovery
+  (``_find_qlogs`` / ``_find_rlogs``) within that directory only sees the
+  addressed segment. Only a single all-digit segment level is accepted;
+  ``..``, backslashes and non-numeric segments are rejected.
+  """
+  if not route_name or "\\" in route_name or ".." in route_name:
+    return None
+  name = route_name
+  segment = ""
+  if "/" in name:
+    name, _, segment = name.partition("/")
+    if "/" in name or not _ROUTE_SEGMENT_RE.match(segment or ""):
+      return None
+  if not name:
     return None
   routes_dir = _get_routes_dir()
   if routes_dir is None:
     return None
-  base = routes_dir / route_name
+  base = routes_dir / name
+  if segment:
+    base = base / segment
   return base if base.is_dir() else None
 
 
@@ -415,6 +583,40 @@ def _qcamera_offset_in_segment(route_name: str, rel_sec: float, seg_num: int) ->
   return None
 
 
+def _qcamera_locate(route_name: str, rel_sec: float) -> tuple[int, Path, float] | None:
+  """Shared qcamera seek: returns (seg_idx, video_path, offset_in_segment) or None."""
+  segs = _qcamera_paths_sorted(route_name)
+  if not segs:
+    return None
+  rel_sec = max(0.0, rel_sec)
+  seg_idx = int(rel_sec // LOG_SEGMENT_LENGTH_SEC)
+  if seg_idx >= len(segs):
+    seg_idx = len(segs) - 1
+  seg_num = segs[seg_idx][0]
+  offset = _qcamera_offset_in_segment(route_name, rel_sec, seg_num)
+  if offset is None:
+    offset = rel_sec - seg_idx * LOG_SEGMENT_LENGTH_SEC
+  return seg_idx, segs[seg_idx][1], offset
+
+
+def _video_time_at(route_name: str, rel_sec: float) -> float | None:
+  """qcamera playback time (video timeline seconds) for a route-relative time."""
+  located = _qcamera_locate(route_name, rel_sec)
+  if located is None:
+    return None
+  seg_idx, _path, offset = located
+  return seg_idx * LOG_SEGMENT_LENGTH_SEC + float(offset)
+
+
+def _video_info_for_route(route_name: str) -> dict[str, Any]:
+  """Video metadata advertised in replay metadata messages (P3-15)."""
+  return {
+    "fps": _QCAMERA_FPS,
+    "segment_length_sec": LOG_SEGMENT_LENGTH_SEC,
+    "available": bool(_qcamera_paths_sorted(route_name)),
+  }
+
+
 def _extract_qcamera_jpeg(path: Path, offset_sec: float, *, max_width: int = 480) -> bytes | None:
   if not path.is_file():
     return None
@@ -451,22 +653,15 @@ def _extract_qcamera_jpeg(path: Path, offset_sec: float, *, max_width: int = 480
 
 
 def _qcamera_thumbnail_at_time(route_name: str, rel_sec: float) -> bytes | None:
-  segs = _qcamera_paths_sorted(route_name)
-  if not segs:
+  located = _qcamera_locate(route_name, rel_sec)
+  if located is None:
     return None
-  rel_sec = max(0.0, rel_sec)
-  seg_idx = int(rel_sec // LOG_SEGMENT_LENGTH_SEC)
-  if seg_idx >= len(segs):
-    seg_idx = len(segs) - 1
-  seg_num = segs[seg_idx][0]
-  offset = _qcamera_offset_in_segment(route_name, rel_sec, seg_num)
-  if offset is None:
-    offset = rel_sec - seg_idx * LOG_SEGMENT_LENGTH_SEC
+  _seg_idx, seg_num, path, offset = located
   cache_key = f"{route_name}:{seg_num}:{offset:.2f}"
   cached = _thumb_cache_get(cache_key)
   if cached:
     return cached
-  jpeg = _extract_qcamera_jpeg(segs[seg_idx][1], offset)
+  jpeg = _extract_qcamera_jpeg(path, offset)
   if jpeg:
     _thumb_cache_put(cache_key, jpeg)
   return jpeg
@@ -490,7 +685,7 @@ def _route_datetime_from_name(
     dt_utc = datetime.strptime(
       f"{m.group('date')} {m.group('time').replace('-', ':')}",
       "%Y-%m-%d %H:%M:%S",
-    ).replace(tzinfo=timezone.utc)
+    ).replace(tzinfo=UTC)
     if display_tz is not None:
       return dt_utc.astimezone(display_tz)
     return dt_utc

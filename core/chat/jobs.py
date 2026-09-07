@@ -98,6 +98,7 @@ async def start_chat_job(
   tools: list[dict[str, Any]] | None,
   max_tool_rounds: int,
   config: Any,
+  session_log_path: str | None = None,
 ) -> str:
   idem = str(body.get("idempotencyKey") or body.get("idempotency_key") or "").strip()
   if idem and session_id:
@@ -186,6 +187,7 @@ async def start_chat_job(
           tools=tools,
           max_tool_rounds=max_tool_rounds,
           is_cancelled=lambda: bool(_cancel_flags.get(job_id)),
+          session_log_path=session_log_path,
         )
         async with _lock:
           j = _jobs.get(job_id)
@@ -268,6 +270,7 @@ async def start_chat_job(
               tools=prep_tools,
               max_tool_rounds=prep_rounds,
               config=config,
+              session_log_path=session_log_path,
             )
 
           await drain_session_queue(session_id, _start_queued)

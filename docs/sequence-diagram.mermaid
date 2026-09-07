@@ -1,0 +1,34 @@
+sequenceDiagram
+participant UI as Settings UI
+participant API as aiohttp handlers
+participant CFG as ConfigService
+participant Agent as Agent/AgentLoop
+participant CMP as CompactionService
+participant SCH as AgentScheduler
+participant SUB as SubagentPool
+participant PROF as ProfileComposer
+UI->>API: GET /api/ai/config/schema
+API->>CFG: get_schema()
+CFG-->>API: schemas + revisions
+API-->>UI: {ok,data,message}
+UI->>API: PATCH config namespace, revision
+API->>CFG: patch(namespace, payload, revision)
+CFG-->>API: validated config/new revision
+API-->>UI: result or STALE_REVISION
+Agent->>CMP: compact_if_needed(log,messages)
+CMP->>CMP: prune tool results + summarize old surface
+CMP-->>Agent: replacement messages + CompactionResult
+UI->>API: POST /api/ai/agent-schedule
+API->>SCH: schedule_at/cron/every(spec)
+SCH-->>API: SchedulerJob
+API-->>UI: job
+SUB->>SUB: validate capabilities + lineage depth
+SUB->>Agent: run child with parent context
+Agent-->>SUB: result/events
+UI->>API: POST dangerous action preview
+API-->>UI: preview token/diff
+UI->>API: POST confirm(token)
+API->>API: execute + append audit entry
+API-->>UI: audit result
+PROF->>PROF: load ordered bundle/profile patches
+PROF-->>Agent: composed profile or conflict diagnostics

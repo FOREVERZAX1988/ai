@@ -9,7 +9,6 @@ from __future__ import annotations
 import asyncio
 import json
 import os
-import subprocess
 from datetime import datetime
 from typing import Any, Callable
 
@@ -17,7 +16,7 @@ from openpilot.common.params import Params
 
 from ai.system.safety import is_action_allowed
 from ai.system.admin import is_admin_mode
-from ai.system.shell import ALLOWED_COMMANDS, run_command, run_shell_command
+from ai.system.shell import ALLOWED_COMMANDS, run_shell_command
 from ai.tools.sp_settings import list_sp_settings
 from ai.tools.memory_store import append_note, delete_note, get_memory, update_vehicle_profile
 from ai.tools.param_write import put_param
@@ -349,7 +348,23 @@ def build_tool_schemas() -> list[dict[str, Any]]:
     {"type": "function", "function": {"name": "restart_ui", "description": "Restart openpilot UI (stationary).", "parameters": {"type": "object", "properties": {}, "required": []}}},
   ]
   from ai.tools.extensions import EXTENSION_SCHEMAS
-  return schemas + EXTENSION_SCHEMAS
+  schemas = schemas + EXTENSION_SCHEMAS
+  schemas = schemas + _skill_tool_schemas()
+  from ai.tools.harness_tools import harness_tool_schemas
+  schemas.extend(harness_tool_schemas())
+  return schemas
+
+
+def _skill_tool_schemas() -> list[dict[str, Any]]:
+  """Append dynamic skill schemas from ai.skill registry."""
+  try:
+    from ai.skill.registry import get_skill_registry
+    from ai.skill.builtins import register_builtins
+    registry = get_skill_registry()
+    register_builtins(registry)
+    return registry.build_tool_definitions()
+  except Exception:
+    return []
 
 
 AVAILABLE_TOOLS = build_tool_schemas()
@@ -1571,18 +1586,36 @@ def make_handlers(
         result["pattern_analysis"] = pattern
     return result
 
-  def h_run_shell(args):
+  async def h_run_shell(args):
+    """Run shell through the same session-scoped sandbox as harness tools."""
     err = _stationary_check("shell")
     if err:
       return err
-    return run_command(args.get("command", ""))
+    command = str(args.get("command", ""))
+    if not command.strip():
+      return {"ok": False, "error": "command required", "error_code": "INVALID_INPUT"}
+    from ai.core.tools.sandbox_hooks import run_shell_via_sandbox
+    return await run_shell_via_sandbox(
+      command,
+      timeout=min(int(args.get("timeout", 60) or 60), 300),
+      params=p,
+      session_id=str(args.get("sessionId") or ""),
+      cwd=args.get("cwd"),
+    )
 
-  def h_run_shell_command(args):
+  async def h_run_shell_command(args):
     err = _stationary_check("shell")
     if err:
       return err
     timeout = int(args.get("timeout", 60) or 60)
-    return run_shell_command(str(args.get("command", "")), timeout=min(timeout, 300))
+    command = str(args.get("command", ""))
+    try:
+      from ai.core.tools.sandbox_hooks import run_shell_via_sandbox, sandbox_shell_enabled
+      if sandbox_shell_enabled(p):
+        return await run_shell_via_sandbox(command, timeout=min(timeout, 300), params=p, session_id=str(args.get("sessionId") or args.get("session_id") or ""), cwd=args.get("cwd"))
+    except Exception:
+      pass
+    return await run_shell_command(command, timeout=min(timeout, 300))
 
   def h_read_file(args):
     from ai.tools.fs_tools import read_file
@@ -1599,7 +1632,7 @@ def make_handlers(
     from ai.tools.fs_tools import list_directory
     return list_directory(str(args.get("path", ".") or "."))
 
-  def h_restart_service(args):
+  async def h_restart_service(args):
     err = _stationary_check("restart_service")
     if err:
       return err
@@ -1608,14 +1641,16 @@ def make_handlers(
       return {"ok": False, "error": "name required"}
     if not admin and name not in _RESTARTABLE_SERVICES:
       return {"ok": False, "error": f"Service '{name}' not whitelisted."}
-    subprocess.run(["pkill", "-f", name], check=False)
+    proc = await asyncio.create_subprocess_exec("pkill", "-f", name)
+    await proc.wait()
     return {"ok": True, "message": f"Sent restart to {name}"}
 
-  def h_restart_ui(_a):
+  async def h_restart_ui(_a):
     err = _stationary_check("restart_ui")
     if err:
       return err
-    subprocess.run(["pkill", "-f", "selfdrive/ui"], check=False)
+    proc = await asyncio.create_subprocess_exec("pkill", "-f", "selfdrive/ui")
+    await proc.wait()
     return {"ok": True, "message": "UI restart signal sent"}
 
   handlers = {
@@ -1764,7 +1799,31 @@ def make_handlers(
       needs_confirm=_needs_confirm,
     )
   )
+  _register_skill_handlers(handlers)
+  from ai.tools.harness_tools import register_harness_handlers, register_mcp_handlers
+  register_harness_handlers(handlers, params=p, get_state_reader=get_state_reader)
+  register_mcp_handlers(handlers, params=p)
   return handlers
+
+
+def _register_skill_handlers(handlers: dict[str, Any]) -> None:
+  """Bind dynamic skill IDs to the skill registry invocation."""
+  try:
+    from ai.skill.registry import get_skill_registry
+    from ai.skill.builtins import register_builtins
+    registry = get_skill_registry()
+    register_builtins(registry)
+  except Exception:
+    return
+
+  def _invoke_skill(skill_id: str, args: dict[str, Any]) -> dict[str, Any]:
+    invocation = registry.request_invocation(skill_id, args, auto_confirm=True)
+    return invocation.to_dict()
+
+  for skill in registry.list_skills():
+    if skill.policy == "disabled" or skill.id in handlers:
+      continue
+    handlers[skill.id] = lambda args, sid=skill.id: _invoke_skill(sid, args)
 
 
 from ai.tools.executor import execute_tool, execute_tool_async  # noqa: E402,F401

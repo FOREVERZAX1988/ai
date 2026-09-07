@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -16,7 +16,6 @@ try:
     _DEFAULT_TZ = timezone(timedelta(hours=8))
 except ImportError:
   _DEFAULT_TZ = timezone(timedelta(hours=8))
-_ROUTE_TZ_OFFSET_HOURS = 8
 
 from ai.system.paths import routes_dir
 
@@ -50,17 +49,15 @@ def _find_logs(route_dir: Path, prefix: str) -> list[Path]:
 
 
 def _route_datetime_from_name(name: str) -> datetime | None:
+  """Parse route folder timestamp as tz-aware UTC (route names record UTC)."""
   m = _ROUTE_DATETIME_RE.match(name)
   if not m:
     return None
   try:
-    dt = datetime.strptime(
+    return datetime.strptime(
       f"{m.group('date')} {m.group('time').replace('-', ':')}",
       "%Y-%m-%d %H:%M:%S",
-    )
-    if _ROUTE_TZ_OFFSET_HOURS:
-      dt += timedelta(hours=_ROUTE_TZ_OFFSET_HOURS)
-    return dt
+    ).replace(tzinfo=UTC)
   except ValueError:
     return None
 
@@ -76,9 +73,10 @@ def _route_sort_ts(path: Path) -> float:
 
 
 def _route_date_label(route_path: Path, *, display_tz=_DEFAULT_TZ) -> str:
+  """Display label in the viewer timezone (UTC route name -> local wall clock)."""
   dt = _route_datetime_from_name(route_path.name)
   if dt is not None:
-    return dt.strftime("%Y-%m-%d %H:%M")
+    return dt.astimezone(display_tz).strftime("%Y-%m-%d %H:%M")
   try:
     return datetime.fromtimestamp(route_path.stat().st_mtime, tz=display_tz).strftime("%Y-%m-%d %H:%M")
   except OSError:

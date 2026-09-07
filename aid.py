@@ -25,6 +25,17 @@ def main() -> None:
   from ai.services.tsk.routes import init_tsk_for_aid
   init_tsk_for_aid(args.port)
 
+  # G12: run startup dependency diagnostics at boot. Never raises; failures are
+  # logged with stable error codes but do not block service startup.
+  try:
+    from openpilot.common.params import Params
+    from ai.core.diagnostics import run_startup_diagnostics
+    diag = run_startup_diagnostics(Params())
+    if not diag.ok:
+      cloudlog.warning(f"aid: startup diagnostics reported {len(diag.checks)} check(s); non-fatal by default")
+  except Exception as e:
+    cloudlog.warning(f"aid: startup diagnostics skipped: {e}")
+
   app = create_app()
   cloudlog.info(f"aid: starting on {args.host}:{args.port} (SecOC in settings sidebar)")
   web.run_app(app, host=args.host, port=args.port)

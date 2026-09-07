@@ -1,0 +1,25 @@
+classDiagram
+class CompactionPolicy {+int max_tokens;+int keep_recent_turns;+compact(messages) list}
+class CompactionService {+__init__(policy, summarizer);+compact_session(log, messages) CompactionResult}
+class CompactionResult {+list messages;+int removed_tokens;+str summary_id}
+class AgentScheduler {+schedule_at(spec) Job;+schedule_cron(spec) Job;+schedule_every(spec) Job;+cancel(job_id) bool;+list(agent_id) list}
+class SchedulerJob {+str id;+str agent_id;+str schedule;+dict payload;+str status}
+class SubagentCapabilities {+bool output_schema;+bool depth_limit;+bool tool_filter;+bool persona;+bool agent_options}
+class Lineage {+str parent_session;+str parent_task;+int depth;+str origin}
+class SubagentTask {+str id;+str provider;+Lineage lineage;+dict metadata}
+class ProfilePatch {+str bundle_id;+int order;+dict operations}
+class ProfileComposer {+compose(base, patches) Profile;+validate(patches) list}
+class ConfigSchema {+str namespace;+dict fields;+validate(payload) ValidationResult}
+class ConfigService {+get_schema() list;+read(namespace) dict;+patch(namespace, payload, revision) ConfigResult;+diagnose() DiagnosticReport}
+class SettingsRegistry {+register(domain, schema);+search(query) list}
+class SettingsCard {+str namespace;+dict schema;+bool dirty;+int revision;+save()}
+class DangerousAction {+preview(args) Preview;+confirm(token) AuditEntry}
+CompactionService --> CompactionPolicy
+CompactionService --> CompactionResult
+AgentScheduler --> SchedulerJob
+SubagentTask --> SubagentCapabilities
+SubagentTask --> Lineage
+ProfileComposer --> ProfilePatch
+ConfigService --> ConfigSchema
+SettingsRegistry --> SettingsCard
+SettingsCard --> DangerousAction

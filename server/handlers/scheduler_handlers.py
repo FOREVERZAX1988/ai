@@ -43,3 +43,46 @@ async def api_write_confirm(request: web.Request) -> web.Response:
 
 async def api_write_pending(request: web.Request) -> web.Response:
   return _json_response(list_pending(_PARAMS))
+
+
+_AGENT_SCHEDULER = None
+
+
+async def api_agent_schedule(request: web.Request) -> web.Response:
+  """Isolated G6 agent-level schedule endpoints, separate from the Web scheduler.
+
+  Supports:
+    GET  ?agent_id=<id>            -> list schedules
+    POST {agent_id, spec, payload} -> schedule (spec: 'at HH:MM' | 'cron ...' | 'every <n><s|m|h|d>')
+    POST {op: 'cancel', job_id}    -> cancel a schedule
+  """
+  try:
+    from ai.tools.domains.agent_scheduler import AgentScheduler, ERR_SCHEDULE_INVALID
+  except Exception as e:
+    return _json_response({"ok": False, "error_code": ERR_SCHEDULE_INVALID, "message": str(e)}, status=500)
+  global _AGENT_SCHEDULER
+  if _AGENT_SCHEDULER is None:
+    _AGENT_SCHEDULER = AgentScheduler()
+  scheduler = _AGENT_SCHEDULER
+  if request.method == "GET":
+    agent_id = str(request.query.get("agent_id") or "").strip()
+    if not agent_id:
+      return _json_response({"ok": False, "error_code": "INVALID_INPUT", "message": "agent_id required"}, status=400)
+    return _json_response({"ok": True, "data": scheduler.list(agent_id)})
+  try:
+    body = await request.json()
+  except Exception:
+    return _json_response({"ok": False, "error_code": "INVALID_INPUT", "message": "invalid JSON"}, status=400)
+  op = str(body.get("op") or "").strip()
+  if op == "cancel":
+    job_id = str(body.get("job_id") or "").strip()
+    if not job_id:
+      return _json_response({"ok": False, "error_code": "INVALID_INPUT", "message": "job_id required"}, status=400)
+    return _json_response({"ok": scheduler.cancel(job_id)})
+  agent_id = str(body.get("agent_id") or "").strip()
+  spec = str(body.get("spec") or "").strip()
+  if not agent_id or not spec:
+    return _json_response({"ok": False, "error_code": "INVALID_INPUT", "message": "agent_id and spec required"}, status=400)
+  result = scheduler.schedule(agent_id, spec, body.get("payload") if isinstance(body.get("payload"), dict) else {})
+  status = 400 if not result.get("ok") else 200
+  return _json_response(result, status=status)

@@ -2,6 +2,18 @@
 
 from ai.server.handlers._api_common import *  # noqa: F403
 
+
+def _session_log_path(session_id: str) -> str | None:
+  if not session_id:
+    return None
+  try:
+    from ai.system.paths import workspace_path
+    path = workspace_path("ai_session_logs", mkdir=True) / f"{session_id}.jsonl"
+    return str(path)
+  except Exception:
+    return None
+
+
 async def _parse_chat_body(request: web.Request) -> tuple[dict[str, Any] | None, AIConfig | None, web.Response | None]:
   config = _read_ai_config()
   if not config.is_configured:
@@ -129,6 +141,7 @@ async def api_chat(request: web.Request) -> web.Response:
       async def emit(event: dict[str, Any]) -> None:
         await response.write(_sse(event))
 
+      session_id = str(body.get("sessionId") or body.get("session_id") or "").strip()
       try:
         await run_chat_with_agents(
           run_body,
@@ -138,6 +151,7 @@ async def api_chat(request: web.Request) -> web.Response:
           get_tool_handlers=_get_tool_handlers,
           tools=prep["tools"],
           max_tool_rounds=prep["max_tool_rounds"],
+          session_log_path=_session_log_path(session_id),
         )
       except ChatCancelled:
         pass
@@ -184,6 +198,7 @@ async def api_chat_jobs(request: web.Request) -> web.Response:
         tools=prep["tools"],
         max_tool_rounds=prep["max_tool_rounds"],
         config=config,
+        session_log_path=_session_log_path(session_id),
       )
 
     submit = await submit_chat_request(
@@ -237,3 +252,72 @@ async def api_chat_job_detail(request: web.Request) -> web.Response:
     if waited:
       job = waited
   return _json_response(job)
+
+
+async def api_chat_job_stream(request: web.Request) -> web.Response:
+  """GET /api/ai/chat/jobs/{job_id}/stream?since=N — long-lived SSE stream.
+
+  Streams new job events as ``data: {json}\\n\\n`` frames (same event shape as
+  the polling endpoint) until the job reaches a terminal state, then closes.
+  Keeps the job's durable in-memory event log, so a client that disconnects
+  and reconnects with a later ``since`` still receives the missing events —
+  the same recovery guarantees as polling, with live push.
+  """
+  job_id = request.match_info.get("job_id", "")
+  since = int(request.query.get("since", "0") or "0")
+  if not job_id:
+    return _json_response({"ok": False, "error": "job_id required"}, status=400)
+
+  first = get_job(job_id, since=since)
+  if first is None:
+    return _json_response({"ok": False, "error": "Job not found"}, status=404)
+
+  response = web.StreamResponse(
+    status=200,
+    reason="OK",
+    headers={
+      "Content-Type": "text/event-stream; charset=utf-8",
+      "Cache-Control": "no-cache",
+      "X-Accel-Buffering": "no",
+    },
+  )
+  await response.prepare(request)
+
+  idle_heartbeat = 0
+  try:
+    while True:
+      snap = get_job(job_id, since=since)
+      if snap is None:
+        await response.write(b"data: {\"type\":\"error\",\"error\":\"Job not found\"}\n\n")
+        break
+      events = snap.get("events") or []
+      for ev in events:
+        since = max(since, int(ev.get("_seq") or since))
+        await response.write(b"data: " + json.dumps(ev, ensure_ascii=False, default=str).encode("utf-8") + b"\n\n")
+      status = snap.get("status")
+      if status in ("done", "error", "cancelled"):
+        # Terminal frame mirrors the polling payload for a clean transition.
+        await response.write(b"data: " + json.dumps({
+          "type": "job_terminal",
+          "status": status,
+          "jobId": job_id,
+          "sessionId": snap.get("sessionId"),
+          "error": snap.get("error"),
+          "resolvedModel": snap.get("resolvedModel"),
+        }, ensure_ascii=False, default=str).encode("utf-8") + b"\n\n")
+        break
+      # Heartbeat to keep proxies from closing an idle stream.
+      idle_heartbeat += 1
+      if idle_heartbeat % 50 == 0:
+        await response.write(b": keepalive\n\n")
+      await asyncio.sleep(0.2)
+  except asyncio.CancelledError:
+    pass
+  except Exception as e:
+    cloudlog.error(f"aid: api_chat_job_stream error: {e}")
+  finally:
+    try:
+      await response.write_eof()
+    except Exception:
+      pass
+  return response
