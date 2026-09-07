@@ -164,17 +164,25 @@ class AgentLoop:
       return False
     if self.workflow_id:
       from ai.tools.domains.platform.workflow_graph import advance_graph_workflow, get_graph_workflow
-      if get_graph_workflow(self.workflow_id) is None:
-        error = f"graph workflow '{self.workflow_id}' not found"
-        await self.emit_event({"type": "error", "error": error})
-        self.log.append(EventType.LIFECYCLE, {"kind": "workflow_error", "workflowId": self.workflow_id, "error": error})
-        return False
-      workflow_result = advance_graph_workflow(self.workflow_id, "step")
-      if not workflow_result.get("ok"):
-        error = str(workflow_result.get("error") or "workflow advance failed")
-        await self.emit_event({"type": "error", "error": error})
-        self.log.append(EventType.LIFECYCLE, {"kind": "workflow_error", "workflowId": self.workflow_id, "error": error})
-        return False
+      graph = get_graph_workflow(self.workflow_id)
+      if graph is None:
+        # Prompt-based workflow (batch_route_review / compare_routes_tune / ...):
+        # runner.py already injects workflow_system_prompt into the system context,
+        # so run a normal agent turn. Only hard-fail when the id is unknown to BOTH
+        # the graph registry and the prompt-workflow catalog.
+        from ai.tools.domains.platform.workflows import workflow_system_prompt
+        if not workflow_system_prompt(self.workflow_id):
+          error = f"workflow '{self.workflow_id}' not found"
+          await self.emit_event({"type": "error", "error": error})
+          self.log.append(EventType.LIFECYCLE, {"kind": "workflow_error", "workflowId": self.workflow_id, "error": error})
+          return False
+      else:
+        workflow_result = advance_graph_workflow(self.workflow_id, "step")
+        if not workflow_result.get("ok"):
+          error = str(workflow_result.get("error") or "workflow advance failed")
+          await self.emit_event({"type": "error", "error": error})
+          self.log.append(EventType.LIFECYCLE, {"kind": "workflow_error", "workflowId": self.workflow_id, "error": error})
+          return False
     phase = self.state.phase.running
     turn = phase.turn + 1
     phase.turn = turn
