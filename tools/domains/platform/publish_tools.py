@@ -259,6 +259,7 @@ def publish_changes(
       "action": "publish_changes",
       "unit_id": unit_id,
       "kind": unit.get("kind"),
+      "repo_target": repo_target,
       "target_mode": target.get("target_mode"),
       "title": title,
       "repo": repo_slug(owner, repo),
