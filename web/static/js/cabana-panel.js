@@ -2836,6 +2836,20 @@ const CabanaPanel = (() => {
     els.dbcSearch?.blur();
   }
 
+  // Backend hint strings (see ai/services/cabana/handlers.py and
+  // ai/services/cabana/replay_ws.py) mapped to i18n keys; unknown hints pass
+  // through unchanged so new backend strings degrade gracefully.
+  const BACKEND_HINT_KEYS = {
+    'Drive once, pick a route with carParams in qlog/rlog, or choose a DBC manually.': 'cabanaHintCarParams',
+    'This folder has no driving logs (e.g. boot/ is not a route). Pick a route with qlog or rlog.': 'cabanaHintNoDriveLogs',
+  };
+
+  function mapBackendHint(hint) {
+    if (!hint) return '';
+    const key = BACKEND_HINT_KEYS[hint];
+    return key ? t(key, hint) : hint;
+  }
+
   async function loadCar(routeName) {
     const token = ++loadCarToken;
     const route = (routeName || '').trim();
@@ -2853,9 +2867,12 @@ const CabanaPanel = (() => {
       const catalog = dbcs.ok
         ? (dbcs.catalog || (dbcs.dbcs || []).map((name) => ({ name, searchText: name })))
         : [];
-      if (!dbcs.ok && els.metaBar) {
-        const err = dbcs.error || t('cabanaDbcLoadFailed', 'DBC load failed');
-        els.metaBar.textContent = `${err} · ${t('cabanaOfflineHint', '可手动选择 DBC')}`;
+      if (!dbcs.ok) {
+        // Keep the meta bar short; the detailed error goes to the hint line.
+        if (els.metaBar) {
+          els.metaBar.textContent = t('cabanaDbcLoadFailed', 'DBC load failed');
+        }
+        if (els.hint && dbcs.error) els.hint.textContent = dbcs.error;
       }
       const car = data.car || null;
       const suggested = data.suggested_dbc || '';
@@ -2868,10 +2885,13 @@ const CabanaPanel = (() => {
       }
 
       if (!data.ok) {
-        const hint = data.hint || data.error || t('cabanaNoCarParams', '无车型信息');
+        const hintText = mapBackendHint(data.hint) || data.error || t('cabanaNoCarParams', '无车型信息');
         if (els.metaBar) {
-          els.metaBar.textContent = `${hint} · ${t('cabanaOfflineHint', '可手动选择 DBC')}`;
+          // Short status only — the full hint belongs on the hint line below
+          // the table, not crammed into this row.
+          els.metaBar.textContent = `${t('cabanaNoCarParams', '无车型信息')} · ${t('cabanaOfflineHint', '可手动选择 DBC')}`;
         }
+        if (els.hint && hintText) els.hint.textContent = hintText;
         const pref = resolvePreferredDbc(catalog, { suggested, car, dbcDict });
         await setDbcCatalog(catalog, pref, { force: Boolean(pref && fingerprintChanged), car, dbcDict });
         return;
@@ -3382,8 +3402,11 @@ const CabanaPanel = (() => {
         clearReplayLoading();
         transition('error');
         const err = msg.error || '';
+        const errHint = mapBackendHint(msg.hint || '');
         if (err.includes('No qlog/rlog')) {
           els.hint.textContent = t('cabanaReplayNoLogs', '该路线没有 qlog/rlog，无法回放');
+        } else if (errHint && errHint !== err) {
+          els.hint.textContent = errHint;
         } else {
           els.hint.textContent = err || t('cabanaReplayError', '回放失败');
         }
@@ -4124,7 +4147,10 @@ const CabanaPanel = (() => {
     els.histThDec = $('#cabanaHistThDec');
     els.histThDecoded = $('#cabanaHistThDecoded');
     els.histThCopy = $('#cabanaHistThCopy');
-    els.modeTabs = root?.querySelectorAll('.cabana-mode-tab');
+    // Mode tabs live in the modal header (outside #cabanaPanelRoot), so look
+    // them up document-wide; #cabanaTabLive/#cabanaTabReplay stay as direct
+    // element references for fallback checks.
+    els.modeTabs = document.querySelectorAll('.cabana-mode-tab');
     els.tabLive = $('#cabanaTabLive');
     els.tabReplay = $('#cabanaTabReplay');
     els.routeSelect = $('#cabanaRouteSelect');

@@ -1380,8 +1380,27 @@ function loadSessionMode() {
   /* single mode: unlimited */
 }
 
+function isCabanaStandalone() {
+  return new URLSearchParams(location.search).get('cabana') === '1';
+}
+
+/* Open Cabana in a dedicated window (the analysis UI needs the full screen).
+ * Returns false when the popup is blocked so the caller can fall back to the
+ * in-page modal. */
+function openCabanaWindow() {
+  try {
+    const win = window.open('/?cabana=1', 'cabana', 'width=1280,height=860,menubar=no,toolbar=no');
+    if (win) {
+      try { win.focus(); } catch (e) { /* cross-origin/noopener quirks */ }
+      return true;
+    }
+  } catch (e) { /* popup blocked or environment without window.open */ }
+  return false;
+}
+
 function openCabanaModal() {
   ensureCabanaInited();
+  if (!isCabanaStandalone() && openCabanaWindow()) return;
   cabanaOpen = true;
   setOverlayVisible(els.cabanaModal, true);
   els.cabanaBtn?.classList.add('active');
@@ -1393,6 +1412,17 @@ function openCabanaModal() {
 }
 
 function closeCabanaModal() {
+  if (isCabanaStandalone()) {
+    // Standalone page: try to close the window; script-opened popups close
+    // silently, otherwise tell the user they can just close the tab.
+    window.close();
+    setTimeout(() => {
+      if (!window.closed) {
+        showToast(t('cabanaStandaloneCloseHint', 'CAN 分析运行在独立页面中，可直接关闭此标签页。'), 'info');
+      }
+    }, 150);
+    return;
+  }
   cabanaOpen = false;
   setOverlayVisible(els.cabanaModal, false);
   els.cabanaBtn?.classList.remove('active');
@@ -8611,7 +8641,9 @@ async function init() {
   loadNotifications().catch(() => {});
   startNotificationsPolling();
 
-  if (new URLSearchParams(location.search).get('cabana') === '1') {
+  if (isCabanaStandalone()) {
+    // Full-page Cabana: hide the chat shell and boot the panel immediately.
+    document.body.classList.add('cabana-standalone');
     openCabanaModal();
   }
 

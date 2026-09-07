@@ -2,6 +2,9 @@
 
 .cabana-modal .modal-content.cabana-modal-content {
   width: min(1020px, 96vw);
+  /* Fixed height: the modal must not collapse to content height, otherwise
+   * the flex:1 table area (below) shrinks to the header row. */
+  height: min(90vh, 940px);
   max-height: min(90vh, 940px);
   display: flex;
   flex-direction: column;
@@ -920,7 +923,8 @@
 
 .cabana-table-wrap {
   flex: 1;
-  min-height: 0;
+  /* Guarantee usable table space even when the modal body is squeezed. */
+  min-height: 200px;
   overflow: auto;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
@@ -1486,4 +1490,38 @@
 
 .platform-memory-notes .dev-item-list {
   margin: 0;
+}
+
+/* ---- Standalone window mode (?cabana=1) ----------------------------------
+ * The chat shell is hidden and the Cabana modal becomes a full-viewport app.
+ * Element visibility is toggled from ai.js via body.cabana-standalone. */
+
+body.cabana-standalone {
+  overflow: hidden !important;
+}
+
+/* Hide every direct child of body except the Cabana modal (splash, app shell,
+ * drawers, other modals). */
+body.cabana-standalone > :not(#cabanaModal) {
+  display: none !important;
+}
+
+body.cabana-standalone #cabanaModal {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  padding: 0;
+}
+
+body.cabana-standalone #cabanaBackdrop {
+  display: none !important;
+}
+
+body.cabana-standalone .cabana-modal .modal-content.cabana-modal-content {
+  width: 100%;
+  max-width: none;
+  height: 100vh;
+  max-height: none;
+  border-radius: 0;
+  border: none;
 }
