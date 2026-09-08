@@ -563,7 +563,12 @@ const CabanaPanel = (() => {
   }
 
   function renderInspectorVisibility() {
-    const visible = !!selectedKey && !!latestFrames.get(selectedKey);
+    // Route-level tabs stay visible without a selected row: the profile
+    // report (inspectorTab 'profile') and preview-only plot series (bug #1:
+    // setInspectorTab() re-hiding the whole inspector after a scan).
+    const visible = (!!selectedKey && !!latestFrames.get(selectedKey))
+      || (inspectorTab === 'profile' && !!profileReport)
+      || (inspectorTab === 'plot' && plotSeriesList.length > 0 && !selectedKey);
     if (els.inspector) els.inspector.hidden = !visible;
     if (els.detailWrap) els.detailWrap.hidden = !visible || inspectorTab !== 'detail';
     if (els.plotWrap) els.plotWrap.hidden = !visible || inspectorTab !== 'plot';
@@ -3759,7 +3764,7 @@ const CabanaPanel = (() => {
 
   // ---- Inspector tabs --------------------------------------------------------
 
-  const INSPECTOR_TABS = ['detail', 'plot', 'binary', 'ai', 'dbc'];
+  const INSPECTOR_TABS = ['detail', 'plot', 'binary', 'ai', 'dbc', 'profile'];
 
   function setInspectorTab(tab) {
     inspectorTab = INSPECTOR_TABS.includes(tab) ? tab : 'detail';
@@ -3772,6 +3777,7 @@ const CabanaPanel = (() => {
       binary: els.iTabBinary,
       ai: els.iTabAi,
       dbc: els.iTabDbc,
+      profile: els.profilePanel,
     };
     for (const [name, el] of Object.entries(map)) {
       if (el) el.hidden = name !== inspectorTab;
@@ -3841,6 +3847,17 @@ const CabanaPanel = (() => {
         tr.appendChild(td);
       });
       tbody.appendChild(tr);
+      // Evidence is a list[str] across the backend (statistical/anchor/fit/decode/LLM sources).
+      const evidence = Array.isArray(c.evidence) ? c.evidence : (c.evidence ? [String(c.evidence)] : []);
+      if (evidence.length) {
+        const eviTr = document.createElement('tr');
+        const eviTd = document.createElement('td');
+        eviTd.colSpan = cells.length;
+        eviTd.className = 'cab-dbc-cand-evi mono';
+        eviTd.textContent = evidence.join(' | ');
+        eviTr.appendChild(eviTd);
+        tbody.appendChild(eviTr);
+      }
     }
     table.appendChild(tbody);
     els.dbcCandidates.appendChild(table);
@@ -3975,6 +3992,368 @@ const CabanaPanel = (() => {
     loadDbcVersions(name).catch(console.error);
   }
 
+  // ---- Inspector profile tab: one-click vehicle profile ----------------------
+  // P0-A: GET /api/cabana/car fingerprint shortcut → suggested DBC.
+  // P1: POST /api/cabana/profile/scan (zero-LLM report) → group cards.
+  // Naming / commit reuse the scan state server-side (no extra log reads).
+
+  let profileReport = null;
+  let profileRoute = '';
+  let profileBusy = false;
+  let profileNamingBusyAddr = null;
+  const PROFILE_GROUP_KEYS = {
+    speed: 'cabanaProfileGroupSpeed',
+    brake: 'cabanaProfileGroupBrake',
+    throttle: 'cabanaProfileGroupThrottle',
+    steering: 'cabanaProfileGroupSteering',
+    gear: 'cabanaProfileGroupGear',
+    other: 'cabanaProfileGroupOther',
+  };
+  const PROFILE_GROUP_FALLBACKS = {
+    speed: '车速', brake: '刹车', throttle: '油门', steering: '转向', gear: '档位', other: '其他',
+  };
+
+  function setProfileStatus(text, isError = false, busy = false) {
+    if (!els.profileStatus) return;
+    els.profileStatus.textContent = text || '';
+    els.profileStatus.classList.toggle('error', isError);
+    els.profileStatus.classList.toggle('busy', busy);
+  }
+
+  function currentReplayRoute() {
+    return session.mode === 'replay' ? (replayRoute || els.routeSelect?.value || '') : '';
+  }
+
+  async function runProfileScan() {
+    if (profileBusy) return;
+    const route = currentReplayRoute();
+    if (!route) {
+      setProfileStatus(t('cabanaProfileNeedReplay', '车辆画像需要回放模式'), true);
+      setInspectorTab('profile');
+      return;
+    }
+    // P0-A fingerprint shortcut: hit → pick the suggested DBC and stop.
+    try {
+      const car = await api('GET', `/api/cabana/car?route=${encodeURIComponent(route)}`, null, { timeoutMs: 15000 });
+      if (car?.ok && car.suggested_dbc && dbcNames.includes(car.suggested_dbc)) {
+        const msg = tf('cabanaProfileMatched', { name: car.suggested_dbc });
+        setProfileStatus(msg);
+        if (typeof showToast === 'function') showToast(msg, 'success');
+        await selectDbc(car.suggested_dbc, { manual: true });
+        return;
+      }
+    } catch (e) { /* fingerprint lookup is best-effort; fall through to scan */ }
+    profileBusy = true;
+    if (els.profileBtn) els.profileBtn.disabled = true;
+    setProfileStatus(t('cabanaProfileScanning', '正在扫描全部 CAN 消息…约需 1-2 分钟'), false, true);
+    try {
+      const data = await api('POST', '/api/cabana/profile/scan', { route }, { timeoutMs: 600000 });
+      if (!data.ok) {
+        setProfileStatus(data.error || t('cabanaProfileFail', '画像扫描失败'), true);
+        return;
+      }
+      profileReport = data;
+      profileRoute = route;
+      if (els.profileCommitBtn) els.profileCommitBtn.hidden = false;
+      // The inspector pane stays hidden until a row is selected; the profile
+      // tab is route-level, so force it visible for the report.
+      if (els.inspector) els.inspector.hidden = false;
+      renderProfileReport(data);
+      setInspectorTab('profile');
+      setProfileStatus(data.truth?.available
+        ? ''
+        : t('cabanaProfileNoTruth', '未找到 IMU/GPS 真值，仅统计推断'));
+    } finally {
+      profileBusy = false;
+      if (els.profileBtn) els.profileBtn.disabled = false;
+    }
+  }
+
+  function renderProfileReport(report) {
+    if (!els.profileGroups) return;
+    els.profileGroups.innerHTML = '';
+    const truthOk = !!(report.truth?.available && report.truth?.variance_ok);
+    if (els.profileTruthNote) {
+      els.profileTruthNote.hidden = truthOk;
+      els.profileTruthNote.textContent = truthOk ? '' : t('cabanaProfileNoTruth', '未找到 IMU/GPS 真值，仅统计推断');
+    }
+    const addrByAddress = new Map((report.addresses || []).map((a) => [Number(a.address), a]));
+    for (const group of Object.keys(PROFILE_GROUP_KEYS)) {
+      const entries = report.summary?.[group] || [];
+      const wrap = document.createElement('div');
+      wrap.className = 'cab-profile-group';
+      const title = document.createElement('div');
+      title.className = 'cab-profile-group-title';
+      title.textContent = t(PROFILE_GROUP_KEYS[group], PROFILE_GROUP_FALLBACKS[group]);
+      wrap.appendChild(title);
+      const cards = document.createElement('div');
+      cards.className = 'cab-profile-cards';
+      if (!entries.length) {
+        const empty = document.createElement('span');
+        empty.className = 'cab-profile-empty';
+        empty.textContent = '—';
+        cards.appendChild(empty);
+      }
+      for (const entry of entries) {
+        const addrBlock = addrByAddress.get(Number(entry.address));
+        // Match summary entries to candidates by the (start_bit,size,endian)
+        // identity tuple — resilient to LLM renaming (bug #3). Name is only a
+        // legacy fallback for reports scanned before the tuple was added.
+        const keyOf = (x) => `${x.start_bit}|${x.size}|${x.endian || 'little'}`;
+        const cand = (entry.start_bit != null
+          ? addrBlock?.candidates?.find((c) => keyOf(c) === keyOf(entry))
+          : null)
+          || addrBlock?.candidates?.find((c) => c.name === entry.name) || null;
+        cards.appendChild(buildProfileCard(addrBlock, cand, entry, truthOk));
+      }
+      wrap.appendChild(cards);
+      els.profileGroups.appendChild(wrap);
+    }
+    // Checksum candidates are excluded from summary/LLM/DBC by design but stay
+    // visible as gray informational cards (bug #2).
+    const checksumCands = [];
+    for (const addrBlock of report.addresses || []) {
+      for (const cand of addrBlock.candidates || []) {
+        if (cand.flag === 'checksum') checksumCands.push([addrBlock, cand]);
+      }
+    }
+    if (checksumCands.length) {
+      const wrap = document.createElement('div');
+      wrap.className = 'cab-profile-group';
+      const title = document.createElement('div');
+      title.className = 'cab-profile-group-title';
+      title.textContent = t('cabanaProfileChecksum', '校验和位，已排除');
+      wrap.appendChild(title);
+      const cards = document.createElement('div');
+      cards.className = 'cab-profile-cards';
+      for (const [addrBlock, cand] of checksumCands) {
+        cards.appendChild(buildProfileCard(addrBlock, cand, {
+          address: addrBlock.address,
+          name: cand.name,
+          confidence: cand.confidence,
+        }, truthOk));
+      }
+      wrap.appendChild(cards);
+      els.profileGroups.appendChild(wrap);
+    }
+  }
+
+  function buildProfileCard(addrBlock, cand, entry, truthOk) {
+    const card = document.createElement('div');
+    card.className = 'cab-profile-card';
+    if (!addrBlock || !cand) {
+      card.textContent = `${entry.name} · 0x${Number(entry.address).toString(16).toUpperCase()}`;
+      return card;
+    }
+    const head = document.createElement('div');
+    head.className = 'cab-profile-card-head';
+    head.appendChild(renderConfBadge(cand));
+    const name = document.createElement('span');
+    name.className = 'cab-profile-sig-name mono';
+    name.textContent = cand.name;
+    head.appendChild(name);
+    const meta = document.createElement('span');
+    meta.className = 'cab-profile-sig-meta';
+    meta.textContent = `0x${Number(addrBlock.address).toString(16).toUpperCase()}`
+      + ` · ${cand.start_bit}|${cand.size}${cand.endian === 'big' ? ' BE' : ' LE'}`
+      + (cand.kind && cand.kind !== 'signal' ? ` · ${cand.kind}` : '');
+    head.appendChild(meta);
+    card.appendChild(head);
+    if (cand.flag === 'checksum') {
+      appendProfileFlag(card, t('cabanaProfileChecksum', '校验和位，已排除'));
+    } else if (cand.flag === 'mux') {
+      appendProfileFlag(card, t('cabanaProfileMux', '疑似复用字段'));
+    } else if (truthOk && !cand.anchor) {
+      appendProfileFlag(card, t('cabanaProfileUnanchored', '未锚定'));
+    }
+    const evidence = Array.isArray(cand.evidence) ? cand.evidence : (cand.evidence ? [String(cand.evidence)] : []);
+    if (evidence.length) {
+      const eviWrap = document.createElement('div');
+      eviWrap.className = 'cab-profile-evi';
+      const ul = document.createElement('ul');
+      evidence.forEach((item, idx) => {
+        const li = document.createElement('li');
+        li.textContent = item;
+        if (idx > 0) li.classList.add('extra');
+        ul.appendChild(li);
+      });
+      eviWrap.appendChild(ul);
+      if (evidence.length > 1) {
+        eviWrap.classList.add('collapsed');
+        const toggle = document.createElement('button');
+        toggle.type = 'button';
+        toggle.className = 'btn small ghost cab-profile-evi-toggle';
+        toggle.textContent = `${t('cabanaProfileEvidence', '证据链')} (${evidence.length})`;
+        toggle.addEventListener('click', () => toggleProfileEvi(eviWrap));
+        eviWrap.appendChild(toggle);
+      }
+      card.appendChild(eviWrap);
+    }
+    if (cand.preview?.t?.length > 1) {
+      const spark = buildSparkline(cand.preview);
+      spark.title = t('cabanaTabPlot', '曲线');
+      spark.addEventListener('click', () => showProfilePreview(Number(addrBlock.address), cand));
+      card.appendChild(spark);
+    }
+    // Checksum fields are not real signals — no AI naming for them.
+    if (cand.flag !== 'checksum') {
+      const namingBtn = document.createElement('button');
+      namingBtn.type = 'button';
+      namingBtn.className = 'btn small ghost cab-profile-naming-btn';
+      namingBtn.textContent = t('cabanaProfileNaming', 'AI 命名');
+      namingBtn.addEventListener('click', () => runProfileNaming(Number(addrBlock.address), namingBtn).catch(console.error));
+      card.appendChild(namingBtn);
+    }
+    return card;
+  }
+
+  function appendProfileFlag(card, text) {
+    const flag = document.createElement('div');
+    flag.className = 'cab-profile-flag';
+    flag.textContent = text;
+    card.appendChild(flag);
+  }
+
+  /** SVG confidence ring: hi(≥80 green) / mid(50-79 orange) / low(<50 gray). */
+  function renderConfBadge(cand) {
+    const svgNs = 'http://www.w3.org/2000/svg';
+    const span = document.createElement('span');
+    span.className = 'cab-profile-conf';
+    const conf = typeof cand.confidence === 'number' ? cand.confidence : null;
+    const pct = conf === null ? 0 : Math.max(0, Math.min(100, conf));
+    span.classList.add(conf === null ? 'low' : (pct >= 80 ? 'hi' : (pct >= 50 ? 'mid' : 'low')));
+    // r=15 → circumference ≈ 94.25
+    span.innerHTML = `<svg viewBox="0 0 36 36" width="28" height="28">`
+      + `<circle class="ring-bg" cx="18" cy="18" r="15"></circle>`
+      + `<circle class="ring" cx="18" cy="18" r="15" transform="rotate(-90 18 18)"`
+      + ` stroke-dasharray="${(pct * 0.9425).toFixed(1)} 94.25"></circle></svg>`
+      + `<span class="cab-profile-conf-num">${conf === null ? '–' : pct}</span>`;
+    span.title = `${t('cabanaProfileConf', '置信度')}: ${conf === null ? '–' : pct}`;
+    return span;
+  }
+
+  /** 120×32 SVG sparkline from a preview {t, v} pair. */
+  function buildSparkline(preview) {
+    const svgNs = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(svgNs, 'svg');
+    svg.setAttribute('viewBox', '0 0 120 32');
+    svg.setAttribute('class', 'cab-profile-mini');
+    const tArr = preview.t;
+    const vArr = preview.v;
+    const tMin = Math.min(...tArr);
+    const tMax = Math.max(...tArr);
+    const vMin = Math.min(...vArr);
+    const vMax = Math.max(...vArr);
+    const spanT = Math.max(tMax - tMin, 1e-9);
+    const spanV = Math.max(vMax - vMin, 1e-9);
+    const points = tArr.map((tv, i) =>
+      `${(2 + 116 * (tv - tMin) / spanT).toFixed(1)},${(30 - 28 * (vArr[i] - vMin) / spanV).toFixed(1)}`,
+    ).join(' ');
+    const poly = document.createElementNS(svgNs, 'polyline');
+    poly.setAttribute('points', points);
+    poly.setAttribute('fill', 'none');
+    poly.setAttribute('stroke', 'currentColor');
+    poly.setAttribute('stroke-width', '1.5');
+    svg.appendChild(poly);
+    return svg;
+  }
+
+  /** Expand/collapse the evidence list of one candidate card. */
+  function toggleProfileEvi(eviWrap) {
+    eviWrap?.classList.toggle('collapsed');
+  }
+
+  /** Push the candidate preview into the existing uPlot pipeline (no fetch). */
+  function showProfilePreview(address, cand) {
+    if (!cand?.preview?.t?.length) return;
+    const key = `0:${address}`;
+    plotSeriesList = [{
+      id: plotSeriesId(key, cand.name),
+      key,
+      signalName: cand.name,
+      label: `${cand.name} · 0x${Number(address).toString(16).toUpperCase()}`,
+      times: cand.preview.t.slice(),
+      values: cand.preview.v.slice(),
+    }];
+    if (els.inspector) els.inspector.hidden = false;
+    if (els.plotWrap) els.plotWrap.hidden = false;
+    setInspectorTab('plot');
+    renderPlotChart();
+  }
+
+  async function runProfileNaming(address, btn) {
+    if (!profileReport || profileNamingBusyAddr === address) return;
+    const addrBlock = (profileReport.addresses || []).find((a) => Number(a.address) === address);
+    if (!addrBlock) return;
+    const wanted = (addrBlock.candidates || [])
+      .filter((c) => c.flag !== 'checksum')
+      .slice(0, 8)
+      .map((c) => ({ start_bit: c.start_bit, size: c.size, endian: c.endian }));
+    if (!wanted.length) return;
+    profileNamingBusyAddr = address;
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = t('cabanaProfileNamingBusy', 'AI 命名中…');
+    }
+    try {
+      const data = await api('POST', '/api/cabana/profile/naming', {
+        route: profileRoute,
+        address,
+        candidates: wanted,
+        hints: '',
+      }, { timeoutMs: 180000 });
+      if (!data.ok) {
+        setProfileStatus(data.error || t('cabanaProfileFail', '画像扫描失败'), true);
+        return;
+      }
+      addrBlock.candidates = data.candidates || addrBlock.candidates;
+      addrBlock.dbc_text_draft = data.dbc_text_draft || addrBlock.dbc_text_draft;
+      setProfileStatus(data.llm_used ? '' : (data.llm_error || ''));
+      renderProfileReport(profileReport);
+    } finally {
+      profileNamingBusyAddr = null;
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = t('cabanaProfileNaming', 'AI 命名');
+      }
+    }
+  }
+
+  async function commitProfileDbc() {
+    if (!profileReport) return;
+    if (els.profileCommitBtn) els.profileCommitBtn.disabled = true;
+    setProfileStatus(t('cabanaDbcCommitting', '正在提交…'), false, true);
+    try {
+      const base = String(profileReport.fingerprint?.carFingerprint || profileRoute || 'profile')
+        .replace(/[^A-Za-z0-9_.-]+/g, '_');
+      const name = /^[A-Za-z_]/.test(base) ? `${base}_profile` : `P_${base}_profile`;
+      const addresses = (profileReport.addresses || [])
+        .map((a) => ({
+          address: Number(a.address),
+          candidates: (a.candidates || [])
+            .filter((c) => c.flag !== 'checksum')
+            .map((c) => ({ start_bit: c.start_bit, size: c.size, endian: c.endian })),
+        }))
+        .filter((a) => a.candidates.length);
+      const data = await api('POST', '/api/cabana/profile/commit', {
+        route: profileRoute,
+        name,
+        addresses,
+      }, { timeoutMs: 120000 });
+      if (!data.ok) {
+        setProfileStatus(data.error || t('cabanaDbcCommitFail', '提交失败（校验未通过）'), true);
+        return;
+      }
+      setProfileStatus(t('cabanaDbcSaved', '已保存，新会话生效'));
+      if (typeof showToast === 'function') showToast(t('cabanaDbcSaved', '已保存，新会话生效'), 'success');
+      dbcVersionsName = data.name || name;
+      if (els.dbcVersionsName) els.dbcVersionsName.value = dbcVersionsName;
+      loadDbcVersions(dbcVersionsName).catch(console.error);
+    } finally {
+      if (els.profileCommitBtn) els.profileCommitBtn.disabled = false;
+    }
+  }
+
   function toggleAutoLabel() {
     autoLabelEnabled = !autoLabelEnabled;
     updateAiButtons();
@@ -4089,10 +4468,13 @@ const CabanaPanel = (() => {
         binary: t('cabanaTabBinary', '二进制'),
         ai: 'AI',
         dbc: 'DBC',
+        profile: t('cabanaProfileTab', '画像'),
       };
       const label = labels[btn.dataset.itab];
       if (label) btn.textContent = label;
     });
+    if (els.profileBtn) els.profileBtn.textContent = t('cabanaProfileBtn', '一键车辆画像');
+    if (els.profileCommitBtn) els.profileCommitBtn.textContent = t('cabanaProfileCommit', '生成 DBC');
     if (els.dbcInferBtn) els.dbcInferBtn.textContent = t('cabanaDbcInfer', 'AI 推断信号');
     if (els.dbcCommitBtn) els.dbcCommitBtn.textContent = t('cabanaDbcCommit', '确认提交');
     if (els.dbcDiscardBtn) els.dbcDiscardBtn.textContent = t('cabanaDbcDiscard', '放弃');
@@ -4244,6 +4626,13 @@ const CabanaPanel = (() => {
     els.dbcStatus = $('#cabanaDbcStatus');
     els.dbcVersionsName = $('#cabanaDbcVersionsName');
     els.dbcVersionsList = $('#cabanaDbcVersionsList');
+    // One-click vehicle profile (P1)
+    els.profileBtn = $('#cabanaProfileBtn');
+    els.profilePanel = $('#cabanaProfile');
+    els.profileStatus = $('#cabanaProfileStatus');
+    els.profileGroups = $('#cabanaProfileGroups');
+    els.profileCommitBtn = $('#cabanaProfileCommitBtn');
+    els.profileTruthNote = $('#cabanaProfileTruthNote');
 
     renderFilterChips();
     root?.querySelectorAll('#cabanaTable th[data-sort]').forEach((th) => {
@@ -4317,6 +4706,17 @@ const CabanaPanel = (() => {
     els.dbcInferBtn?.addEventListener('click', () => runDbcInfer().catch(console.error));
     els.dbcCommitBtn?.addEventListener('click', () => commitDbcDraft().catch(console.error));
     els.dbcDiscardBtn?.addEventListener('click', discardDbcDraft);
+    // One-click vehicle profile: replay mode only (same gating pattern as DBC infer).
+    els.profileBtn?.addEventListener('click', () => {
+      if (session.mode !== 'replay' || !currentReplayRoute()) {
+        if (els.inspector) els.inspector.hidden = false;
+        setProfileStatus(t('cabanaProfileNeedReplay', '车辆画像需要回放模式'), true);
+        setInspectorTab('profile');
+        return;
+      }
+      runProfileScan().catch(console.error);
+    });
+    els.profileCommitBtn?.addEventListener('click', () => commitProfileDbc().catch(console.error));
 
     els.modeTabs?.forEach((tab) => {
       tab.addEventListener('click', () => setPanelMode(tab.dataset.mode || 'live'));

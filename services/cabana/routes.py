@@ -30,6 +30,11 @@ from ai.services.cabana.dbc_edit import (
   api_dbc_versions,
 )
 from ai.services.cabana.live import ws_live
+from ai.services.cabana.profile import (
+  api_profile_commit,
+  api_profile_naming,
+  api_profile_scan,
+)
 from ai.services.cabana.replay_ws import ws_offline
 from ai.services.cabana.stream_ws import ws_stream
 
@@ -60,6 +65,10 @@ def register_routes(app: web.Application, static_root: Path) -> None:
   app.router.add_post("/api/cabana/dbc/commit", api_dbc_commit)
   app.router.add_get("/api/cabana/dbc/versions", api_dbc_versions)
   app.router.add_post("/api/cabana/dbc/rollback", api_dbc_rollback)
+  # One-click vehicle profile + auto DBC reverse engineering
+  app.router.add_post("/api/cabana/profile/scan", api_profile_scan)
+  app.router.add_post("/api/cabana/profile/naming", api_profile_naming)
+  app.router.add_post("/api/cabana/profile/commit", api_profile_commit)
   app.router.add_get("/api/cabana/ws", ws_live)
   app.router.add_get("/api/cabana/offline/ws", ws_offline)
   app.router.add_get("/api/cabana/stream/ws", ws_stream)
