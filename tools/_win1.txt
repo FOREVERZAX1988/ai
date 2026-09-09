@@ -1,0 +1,94 @@
+  -0.79 v= 10.2 aE=+0.14 aT=+0.00 aO=+0.00 L=.  0/+0.0 |st=3 mom= 77 vz=+0.00 FV=0 FM=1 loes=0 anh=0 axG=+0.00
+  -0.53 v= 10.2 aE=+0.09 aT=+0.03 aO=+0.00 L=Y 50/-2.8 |st=3 mom= 73 vz=+0.00 FV=0 FM=1 loes=0 anh=0 axG=+0.00
+  -0.28 v= 10.3 aE=+0.18 aT=-0.22 aO=+0.00 L=Y 52/+3.3 |st=3 mom= 71 vz=+0.00 FV=0 FM=1 loes=0 anh=0 axG=+0.00
+  -0.03 v= 10.2 aE=-0.18 aT=-0.21 aO=+0.00 L=Y 52/+3.2 |st=3 mom= 69 vz=+0.00 FV=0 FM=1 loes=0 anh=0 axG=+0.00
+   0.22 v= 10.2 aE=-0.15 aT=-0.07 aO=+0.00 L=Y 54/+3.1 |st=3 mom= 69 vz=+0.00 FV=0 FM=1 loes=0 anh=0 axG=+0.00
+   0.47 v= 10.1 aE=-0.54 aT=-0.13 aO=+0.00 L=Y 41/-2.6 |st=3 mom= 72 vz=+0.00 FV=0 FM=1 loes=0 anh=0 axG=+0.00
+   0.72 v= 10.0 aE=-0.24 aT=-0.28 aO=+0.00 L=Y 54/+3.2 |st=3 mom= 80 vz=+0.00 FV=0 FM=1 loes=0 anh=0 axG=+0.00
+   0.98 v=  9.9 aE=-0.40 aT=-0.27 aO=+0.00 L=Y 56/+3.1 |st=3 mom= 88 vz=+0.00 FV=0 FM=1 loes=0 anh=0 axG=+0.00
+   1.23 v=  9.8 aE=-0.44 aT=-0.35 aO=+0.00 L=Y 53/+3.2 |st=3 mom= 97 vz=+0.00 FV=0 FM=1 loes=0 anh=0 axG=+0.00
+   1.49 v=  9.7 aE=-0.53 aT=-0.28 aO=+0.00 L=Y 54/+3.1 |st=3 mom=103 vz=+0.00 FV=0 FM=1 loes=0 anh=0 axG=+0.00
+   1.74 v=  9.5 aE=-0.42 aT=-0.20 aO=+0.00 L=Y 56/-1.5 |st=3 mom=110 vz=+0.00 FV=0 FM=1 loes=0 anh=0 axG=+0.00
+   1.99 v=  9.4 aE=-0.46 aT=-0.10 aO=+0.00 L=Y 63/-1.9 |st=3 mom=111 vz=+0.00 FV=0 FM=1 loes=0 anh=0 axG=+0.00
+   2.24 v=  9.4 aE=-0.31 aT=-0.07 aO=+0.00 L=Y 54/+2.7 |st=3 mom=111 vz=+0.00 FV=0 FM=1 loes=0 anh=0 axG=+0.00
+   2.50 v=  9.3 aE=-0.35 aT=+0.03 aO=+0.00 L=Y 55/+0.9 |st=3 mom=110 vz=+0.00 FV=0 FM=1 loes=0 anh=0 axG=+0.00
+   2.76 v=  9.2 aE=-0.33 aT=+0.00 aO=+0.00 L=Y 58/-9.2 |st=3 mom=115 vz=+0.00 FV=0 FM=1 loes=0 anh=0 axG=+0.02
+   3.02 v=  9.1 aE=-0.05 aT=-0.06 aO=+0.00 L=Y 56/-9.1 |st=3 mom=121 vz=+0.00 FV=0 FM=1 loes=0 anh=0 axG=+0.07
+   3.27 v=  9.1 aE=-0.11 aT=-0.03 aO=+0.00 L=Y 55/+1.3 |st=3 mom=120 vz=+0.00 FV=0 FM=1 loes=0 anh=0 axG=+0.07
+   3.52 v=  9.1 aE=+0.05 aT=-0.02 aO=+0.00 L=Y 54/+0.9 |st=3 mom=123 vz=+0.00 FV=0 FM=1 loes=0 anh=0 axG=+0.07
+   3.77 v=  9.1 aE=+0.09 aT=-0.05 aO=+0.00 L=Y 55/+0.5 |st=3 mom=120 vz=+0.00 FV=0 FM=1 loes=0 anh=0 axG=+0.07
+   4.03 v=  9.1 aE=-0.00 aT=-0.00 aO=+0.00 L=Y 55/+0.2 |st=3 mom=117 vz=+0.00 FV=0 FM=1 loes=0 anh=0 axG=+0.07
+   4.29 v=  9.1 aE=+0.00 aT=-0.02 aO=+0.00 L=Y 55/-9.1 |st=3 mom=116 vz=+0.00 FV=0 FM=1 loes=0 anh=0 axG=+0.07
+   4.55 v=  9.2 aE=+0.11 aT=+0.02 aO=+0.00 L=Y 56/-1.2 |st=3 mom=115 vz=+0.00 FV=0 FM=1 loes=0 anh=0 axG=+0.07
+   4.80 v=  9.2 aE=+0.01 aT=+0.02 aO=+0.00 L=Y 58/-0.6 |st=3 mom=109 vz=+0.00 FV=0 FM=1 loes=0 anh=0 axG=+0.07
+   5.06 v=  9.2 aE=+0.04 aT=+0.02 aO=+0.00 L=Y 58/-2.6 |st=3 mom=109 vz=+0.00 FV=0 FM=1 loes=0 anh=0 axG=+0.07
+   5.31 v=  9.3 aE=+0.09 aT=+0.12 aO=+0.00 L=Y 73/-3.3 |st=3 mom=106 vz=+0.00 FV=0 FM=1 loes=0 anh=0 axG=+0.07
+   5.57 v=  9.2 aE=-0.08 aT=+0.11 aO=+0.00 L=.  0/+0.0 |st=3 mom= 99 vz=+0.00 FV=0 FM=1 loes=0 anh=0 axG=+0.05
+   5.83 v=  9.3 aE=+0.14 aT=+0.04 aO=+0.00 L=.  0/+0.0 |st=3 mom= 92 vz=+0.00 FV=0 FM=1 loes=0 anh=0 axG=+0.00
+   6.08 v=  9.3 aE=+0.10 aT=+0.01 aO=+0.00 L=.  0/+0.0 |st=3 mom= 87 vz=+0.00 FV=0 FM=1 loes=0 anh=0 axG=+0.00
+   6.33 v=  9.3 aE=+0.05 aT=-0.05 aO=+0.00 L=.  0/+0.0 |st=3 mom= 85 vz=+0.00 FV=0 FM=1 loes=0 anh=0 axG=+0.00
+   6.59 v=  9.4 aE=+0.08 aT=-0.11 aO=+0.00 L=.  0/+0.0 |st=3 mom= 82 vz=+0.00 FV=0 FM=1 loes=0 anh=0 axG=+0.00
+   6.84 v=  9.3 aE=-0.29 aT=-0.14 aO=+0.00 L=.  0/+0.0 |st=3 mom= 81 vz=+0.00 FV=0 FM=1 loes=0 anh=0 axG=+0.00
+   7.09 v=  9.2 aE=-0.20 aT=-0.19 aO=+0.00 L=.  0/+0.0 |st=3 mom= 81 vz=+0.00 FV=0 FM=1 loes=0 anh=0 axG=+0.00
+   7.35 v=  9.2 aE=-0.35 aT=-0.24 aO=+0.00 L=.  0/+0.0 |st=3 mom= 84 vz=+0.00 FV=0 FM=1 loes=0 anh=0 axG=+0.00
+   7.60 v=  9.0 aE=-0.44 aT=-0.41 aO=+0.00 L=.  0/+0.0 |st=3 mom=122 vz=+0.00 FV=0 FM=1 loes=0 anh=0 axG=+0.07
+   7.85 v=  8.9 aE=-0.55 aT=-0.66 aO=+0.00 L=.  0/+0.0 |st=3 mom=127 vz=+0.00 FV=0 FM=1 loes=0 anh=0 axG=+0.07
+   8.10 v=  8.7 aE=-0.70 aT=-0.69 aO=+0.00 L=.  0/+0.0 |st=3 mom=139 vz=+0.00 FV=0 FM=1 loes=0 anh=0 axG=+0.10
+   8.35 v=  8.5 aE=-0.69 aT=-0.74 aO=+0.00 L=.  0/+0.0 |st=3 mom=160 vz=+0.00 FV=0 FM=1 loes=0 anh=0 axG=+0.17
+   8.61 v=  8.4 aE=-0.60 aT=-0.58 aO=+0.00 L=.  0/+0.0 |st=3 mom=167 vz=+0.00 FV=0 FM=1 loes=0 anh=0 axG=+0.19
+   8.86 v=  8.1 aE=-1.19 aT=-0.48 aO=+0.00 L=.  0/+0.0 |st=3 mom=182 vz=+0.00 FV=0 FM=1 loes=0 anh=0 axG=+0.19
+   9.11 v=  8.0 aE=-0.47 aT=-0.58 aO=+0.00 L=.  0/+0.0 |st=3 mom=215 vz=+0.00 FV=0 FM=1 loes=0 anh=0 axG=+0.31
+   9.37 v=  7.7 aE=-0.95 aT=-0.54 aO=+0.00 L=.  0/+0.0 |st=3 mom=237 vz=+0.00 FV=0 FM=1 loes=0 anh=0 axG=+0.31
+   9.63 v=  7.5 aE=-0.82 aT=-0.65 aO=+0.00 L=.  0/+0.0 |st=3 mom=252 vz=+0.00 FV=0 FM=1 loes=0 anh=0 axG=+0.36
+   9.89 v=  7.3 aE=-0.83 aT=-0.71 aO=+0.00 L=.  0/+0.0 |st=3 mom=236 vz=+0.00 FV=0 FM=1 loes=0 anh=0 axG=+0.41
+  10.14 v=  7.1 aE=-0.92 aT=-0.78 aO=+0.00 L=.  0/+0.0 |st=3 mom=233 vz=+0.00 FV=0 FM=1 loes=0 anh=0 axG=+0.48
+  10.39 v=  6.9 aE=-0.94 aT=-0.86 aO=+0.00 L=.  0/+0.0 |st=3 mom=241 vz=+0.00 FV=0 FM=1 loes=0 anh=0 axG=+0.53
+  10.65 v=  6.6 aE=-0.98 aT=-0.93 aO=+0.00 L=.  0/+0.0 |st=3 mom=252 vz=+0.00 FV=0 FM=1 loes=0 anh=0 axG=+0.58
+  10.91 v=  6.3 aE=-1.02 aT=-0.95 aO=+0.00 L=.  0/+0.0 |st=3 mom=260 vz=+0.00 FV=0 FM=1 loes=0 anh=0 axG=+0.62
+  11.16 v=  6.0 aE=-1.09 aT=-1.00 aO=+0.00 L=.  0/+0.0 |st=3 mom=271 vz=+0.00 FV=0 FM=1 loes=0 anh=0 axG=+0.67
+  11.42 v=  5.8 aE=-1.07 aT=-0.94 aO=+0.00 L=.  0/+0.0 |st=3 mom=279 vz=+0.00 FV=0 FM=1 loes=0 anh=0 axG=+0.74
+  11.67 v=  5.4 aE=-1.29 aT=-1.20 aO=+0.00 L=.  0/+0.0 |st=3 mom=290 vz=+0.00 FV=0 FM=1 loes=0 anh=0 axG=+0.82
+  11.93 v=  5.1 aE=-1.29 aT=-1.20 aO=+0.00 L=.  0/+0.0 |st=3 mom=294 vz=+0.00 FV=0 FM=1 loes=0 anh=0 axG=+0.86
+  12.19 v=  4.8 aE=-1.35 aT=-1.20 aO=+0.00 L=.  0/+0.0 |st=3 mom=305 vz=+0.00 FV=0 FM=1 loes=0 anh=0 axG=+0.94
+  12.44 v=  4.5 aE=-1.28 aT=-1.13 aO=+0.00 L=.  0/+0.0 |st=3 mom=317 vz=+0.00 FV=0 FM=1 loes=0 anh=0 axG=+1.03
+  12.69 v=  4.1 aE=-1.42 aT=-0.92 aO=+0.00 L=.  0/+0.0 |st=3 mom=325 vz=+0.00 FV=0 FM=1 loes=0 anh=0 axG=+1.08
+  12.95 v=  3.9 aE=-0.75 aT=-1.08 aO=+0.00 L=.  0/+0.0 |st=3 mom=334 vz=+0.00 FV=0 FM=1 loes=0 anh=0 axG=+1.20
+  13.20 v=  3.8 aE=-0.50 aT=-0.72 aO=+0.00 L=.  0/+0.0 |st=3 mom=285 vz=+0.00 FV=0 FM=1 loes=0 anh=0 axG=+1.20
+  13.46 v=  3.6 aE=-0.42 aT=-0.97 aO=+0.00 L=.  0/+0.0 |st=3 mom=235 vz=+0.00 FV=0 FM=1 loes=0 anh=0 axG=+1.20
+  13.71 v=  3.5 aE=-0.34 aT=+0.53 aO=+0.00 L=.  0/+0.0 |st=3 mom=217 vz=+0.00 FV=0 FM=1 loes=0 anh=0 axG=+1.20
+  13.97 v=  3.4 aE=-0.30 aT=+0.27 aO=+0.00 L=.  0/+0.0 |st=3 mom=201 vz=+0.00 FV=0 FM=1 loes=0 anh=0 axG=+1.20
+  14.23 v=  3.4 aE=-0.04 aT=+0.41 aO=+0.00 L=.  0/+0.0 |st=3 mom=194 vz=+0.00 FV=0 FM=1 loes=0 anh=0 axG=+1.20
+  14.49 v=  3.4 aE=-0.10 aT=+0.34 aO=+0.00 L=.  0/+0.0 |st=3 mom=184 vz=+0.00 FV=0 FM=1 loes=0 anh=0 axG=+1.20
+  14.74 v=  3.4 aE=+0.13 aT=+0.71 aO=+0.00 L=.  0/+0.0 |st=3 mom=181 vz=+0.00 FV=0 FM=1 loes=0 anh=0 axG=+1.20
+  14.99 v=  3.5 aE=+0.17 aT=+1.08 aO=+0.00 L=.  0/+0.0 |st=3 mom=173 vz=+0.00 FV=0 FM=1 loes=0 anh=0 axG=+1.20
+  15.24 v=  3.5 aE=+0.34 aT=+1.18 aO=+0.00 L=.  0/+0.0 |st=3 mom=166 vz=+0.00 FV=0 FM=1 loes=0 anh=0 axG=+1.20
+  15.50 v=  3.8 aE=+1.20 aT=+1.01 aO=+0.00 L=.  0/+0.0 |st=3 mom=157 vz=+0.00 FV=0 FM=1 loes=0 anh=0 axG=+1.20
+  15.75 v=  4.1 aE=+1.08 aT=+0.69 aO=+0.00 L=.  0/+0.0 |st=3 mom=154 vz=+0.00 FV=0 FM=1 loes=0 anh=0 axG=+1.20
+  16.00 v=  4.3 aE=+0.57 aT=+0.83 aO=+0.00 L=.  0/+0.0 |st=3 mom=150 vz=+0.00 FV=0 FM=1 loes=0 anh=0 axG=+1.20
+  16.26 v=  4.4 aE=+0.59 aT=+1.19 aO=+0.00 L=.  0/+0.0 |st=3 mom=162 vz=+0.00 FV=0 FM=1 loes=0 anh=0 axG=+1.20
+  16.51 v=  4.6 aE=+1.01 aT=+1.42 aO=+0.00 L=.  0/+0.0 |st=3 mom=159 vz=+0.00 FV=0 FM=1 loes=0 anh=0 axG=+1.20
+  16.76 v=  5.0 aE=+1.38 aT=+1.40 aO=+0.00 L=.  0/+0.0 |st=3 mom=157 vz=+0.00 FV=0 FM=1 loes=0 anh=0 axG=+1.20
+  17.01 v=  5.3 aE=+1.41 aT=+1.39 aO=+0.00 L=.  0/+0.0 |st=3 mom=144 vz=+0.00 FV=0 FM=1 loes=0 anh=0 axG=+1.20
+  17.26 v=  5.6 aE=+1.20 aT=+1.18 aO=+0.00 L=.  0/+0.0 |st=3 mom=142 vz=+0.00 FV=0 FM=1 loes=0 anh=0 axG=+1.20
+  17.52 v=  5.9 aE=+1.14 aT=+0.77 aO=+0.00 L=.  0/+0.0 |st=3 mom=142 vz=+0.00 FV=0 FM=1 loes=0 anh=0 axG=+0.89
+  17.78 v=  6.2 aE=+1.05 aT=+0.43 aO=+0.00 L=.  0/+0.0 |st=3 mom=138 vz=+0.00 FV=0 FM=1 loes=0 anh=0 axG=+0.82
+  18.04 v=  6.3 aE=+0.39 aT=+0.16 aO=+0.00 L=.  0/+0.0 |st=3 mom=127 vz=+0.00 FV=0 FM=1 loes=0 anh=0 axG=+0.74
+  18.29 v=  6.3 aE=-0.25 aT=-0.25 aO=+0.00 L=.  0/+0.0 |st=3 mom=123 vz=+0.00 FV=0 FM=1 loes=0 anh=0 axG=+0.72
+  18.55 v=  6.1 aE=-0.49 aT=-0.59 aO=+0.00 L=.  0/+0.0 |st=3 mom=127 vz=+0.00 FV=0 FM=1 loes=0 anh=0 axG=+0.70
+  18.80 v=  6.0 aE=-0.53 aT=-0.34 aO=+0.00 L=.  0/+0.0 |st=3 mom=137 vz=+0.00 FV=0 FM=1 loes=0 anh=0 axG=+0.72
+  19.05 v=  5.8 aE=-0.61 aT=-0.00 aO=+0.00 L=.  0/+0.0 |st=3 mom=148 vz=+0.00 FV=0 FM=1 loes=0 anh=0 axG=+0.74
+  19.31 v=  5.7 aE=-0.48 aT=+0.34 aO=+0.00 L=.  0/+0.0 |st=3 mom=162 vz=+0.00 FV=0 FM=1 loes=0 anh=0 axG=+0.79
+  19.57 v=  5.7 aE=-0.07 aT=+0.68 aO=+0.00 L=.  0/+0.0 |st=3 mom=164 vz=+0.00 FV=0 FM=1 loes=0 anh=0 axG=+0.82
+  19.82 v=  5.7 aE=+0.27 aT=+0.92 aO=+0.00 L=.  0/+0.0 |st=3 mom=162 vz=+0.00 FV=0 FM=1 loes=0 anh=0 axG=+0.82
+  20.07 v=  5.9 aE=+0.75 aT=+0.77 aO=+0.00 L=.  0/+0.0 |st=3 mom=161 vz=+0.00 FV=0 FM=1 loes=0 anh=0 axG=+0.82
+  20.32 v=  6.2 aE=+0.87 aT=+1.08 aO=+0.00 L=.  0/+0.0 |st=3 mom=157 vz=+0.00 FV=0 FM=1 loes=0 anh=0 axG=+0.79
+  20.57 v=  6.4 aE=+0.98 aT=+1.35 aO=+0.00 L=.  0/+0.0 |st=3 mom=154 vz=+0.00 FV=0 FM=1 loes=0 anh=0 axG=+0.74
+  20.83 v=  6.7 aE=+1.26 aT=+1.33 aO=+0.00 L=.  0/+0.0 |st=3 mom=136 vz=+0.00 FV=0 FM=1 loes=0 anh=0 axG=+0.72
+  21.08 v=  7.0 aE=+0.89 aT=+1.32 aO=+0.00 L=.  0/+0.0 |st=3 mom=129 vz=+0.00 FV=0 FM=1 loes=0 anh=0 axG=+0.65
+  21.33 v=  7.2 aE=+0.84 aT=+1.31 aO=+0.00 L=.  0/+0.0 |st=3 mom=121 vz=+0.00 FV=0 FM=1 loes=0 anh=0 axG=+0.58
+  21.58 v=  7.4 aE=+0.76 aT=+1.31 aO=+0.00 L=.  0/+0.0 |st=3 mom=133 vz=+0.00 FV=0 FM=1 loes=0 anh=0 axG=+0.53
+  21.83 v=  7.5 aE=+0.60 aT=+1.30 aO=+0.00 L=.  0/+0.0 |st=3 mom=153 vz=+0.00 FV=0 FM=1 loes=0 anh=0 axG=+0.53
+  22.09 v=  7.7 aE=+0.78 aT=+1.29 aO=+0.00 L=.  0/+0.0 |st=3 mom=147 vz=+0.00 FV=0 FM=1 loes=0 anh=0 axG=+0.46
+  22.35 v=  7.9 aE=+0.70 aT=+1.29 aO=+0.00 L=.  0/+0.0 |st=3 mom=142 vz=+0.00 FV=0 FM=1 loes=0 anh=0 axG=+0.41
+  22.60 v=  8.1 aE=+0.63 aT=+1.28 aO=+0.00 L=.  0/+0.0 |st=3 mom=137 vz=+0.00 FV=0 FM=1 loes=0 anh=0 axG=+0.38
+  22.86 v=  8.2 aE=+0.42 aT=+1.27 aO=+0.00 L=.  0/+0.0 |st=3 mom=135 vz=+0.00 FV=0 FM=1 loes=0 anh=0 axG=+0.34

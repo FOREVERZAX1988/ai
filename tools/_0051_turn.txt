@@ -1,0 +1,181 @@
+t=  -3.99 v= 4.4 转角=   -7.0° 握盘=0 G0B0 en=1/1/1 aT=+0.00 vz=+0.00 mom=  0 FM0FV0 M=+0.00Nm 
+t=  -3.79 v= 4.3 转角=   -7.9° 握盘=0 G0B0 en=1/1/1 aT=-0.27 vz=-0.26 mom=  0 FM0FV1 M=-0.96Nm 
+t=  -3.59 v= 4.3 转角=   -8.3° 握盘=0 G0B0 en=1/1/1 aT=-0.51 vz=-0.48 mom=  0 FM0FV1 M=-1.72Nm 
+t=  -3.39 v= 4.1 转角=  -12.6° 握盘=0 G0B0 en=1/1/1 aT=-0.75 vz=-0.68 mom=  0 FM0FV1 M=-1.77Nm 
+t=  -3.18 v= 3.9 转角=  -16.1° 握盘=0 G0B0 en=1/1/1 aT=-0.84 vz=-0.82 mom=  0 FM0FV1 M=-0.67Nm 
+t=  -2.98 v= 3.7 转角=  -16.2° 握盘=0 G0B0 en=1/1/1 aT=-0.91 vz=-0.89 mom=  0 FM0FV1 M=+0.30Nm 
+t=  -2.77 v= 3.5 转角=  -15.4° 握盘=0 G0B0 en=1/1/1 aT=-0.97 vz=-0.95 mom=  0 FM0FV1 M=-0.36Nm 
+t=  -2.57 v= 3.3 转角=  -14.9° 握盘=0 G0B0 en=1/1/1 aT=-1.06 vz=-1.08 mom=  0 FM0FV1 M=+0.13Nm 
+t=  -2.36 v= 3.0 转角=  -15.2° 握盘=0 G0B0 en=1/1/1 aT=-1.00 vz=-0.92 mom=  0 FM0FV1 M=+0.77Nm 
+t=  -2.16 v= 2.9 转角=  -15.0° 握盘=0 G0B0 en=1/1/1 aT=-0.90 vz=-0.92 mom=  0 FM0FV1 M=+1.29Nm 
+t=  -1.95 v= 2.7 转角=  -15.1° 握盘=1 G0B0 en=1/1/1 aT=-0.82 vz=-0.81 mom=  0 FM0FV1 M=+1.72Nm steerOverride
+t=  -1.74 v= 2.5 转角=  -12.8° 握盘=1 G0B0 en=1/1/1 aT=-0.81 vz=-0.78 mom=  0 FM0FV1 M=+2.15Nm steerOverride
+t=  -1.54 v= 2.4 转角=   -9.9° 握盘=1 G0B0 en=1/1/1 aT=-0.74 vz=-0.73 mom=  0 FM0FV1 M=+1.43Nm steerOverride
+t=  -1.34 v= 2.2 转角=   -8.2° 握盘=0 G0B0 en=1/1/1 aT=-0.74 vz=-0.70 mom=  0 FM0FV1 M=+1.43Nm 
+t=  -1.13 v= 2.0 转角=   -7.2° 握盘=0 G0B0 en=1/1/1 aT=-0.56 vz=-0.54 mom=  0 FM0FV1 M=+1.33Nm 
+t=  -0.93 v= 1.9 转角=   -8.5° 握盘=1 G0B0 en=1/1/1 aT=-0.44 vz=-0.45 mom=  0 FM0FV1 M=+1.28Nm steerOverride
+t=  -0.73 v= 1.8 转角=  -19.0° 握盘=1 G0B0 en=1/1/1 aT=-0.37 vz=-0.35 mom=  0 FM0FV1 M=+0.36Nm steerOverride
+t=  -0.52 v= 1.7 转角=  -33.0° 握盘=1 G0B0 en=1/1/1 aT=+0.00 vz=+0.00 mom= 24 FM1FV0 M=+0.33Nm steerOverride
+t=  -0.32 v= 1.7 转角=  -44.4° 握盘=1 G1B0 en=1/1/1 aT=-0.20 vz=-0.17 mom=  0 FM0FV1 M=+0.78Nm steerOverride
+t=  -0.11 v= 1.7 转角=  -54.9° 握盘=1 G1B0 en=1/1/1 aT=-0.34 vz=+0.00 mom= 34 FM1FV0 M=+0.73Nm steerOverride
+t=  +0.09 v= 1.7 转角=  -64.3° 握盘=1 G1B0 en=1/1/1 aT=-0.41 vz=+0.00 mom= 35 FM1FV0 M=+0.69Nm steerOverride
+t=  +0.30 v= 1.8 转角=  -75.7° 握盘=1 G1B0 en=1/1/1 aT=-0.47 vz=+0.00 mom= 35 FM1FV0 M=+0.46Nm steerOverride
+t=  +0.50 v= 1.9 转角=  -86.5° 握盘=1 G1B0 en=1/1/1 aT=-0.43 vz=+0.00 mom= 35 FM1FV0 M=+0.51Nm steerOverride
+t=  +0.71 v= 1.9 转角=  -88.4° 握盘=0 G0B0 en=1/1/1 aT=-0.14 vz=+0.00 mom= 36 FM1FV0 M=+1.38Nm 
+t=  +0.91 v= 2.0 转角=  -86.8° 握盘=1 G0B0 en=1/1/1 aT=-0.28 vz=-0.30 mom=  0 FM0FV1 M=+1.77Nm steerOverride
+t=  +1.12 v= 2.0 转角=  -83.5° 握盘=1 G0B0 en=1/1/1 aT=-0.13 vz=-0.01 mom=  0 FM0FV1 M=+1.50Nm steerOverride
+t=  +1.32 v= 2.0 转角=  -83.6° 握盘=1 G0B0 en=1/1/1 aT=-0.30 vz=-0.30 mom=  0 FM0FV1 M=+1.20Nm steerOverride
+t=  +1.52 v= 1.9 转角=  -83.7° 握盘=1 G0B0 en=1/1/1 aT=-0.50 vz=-0.50 mom=  0 FM0FV1 M=+1.07Nm steerOverride
+t=  +1.73 v= 1.9 转角=  -83.7° 握盘=1 G0B0 en=1/1/1 aT=-0.62 vz=-0.59 mom=  0 FM0FV1 M=+1.23Nm steerOverride
+t=  +1.93 v= 1.7 转角=  -83.7° 握盘=1 G0B0 en=1/1/1 aT=-0.68 vz=-0.67 mom=  0 FM0FV1 M=+1.23Nm steerOverride
+t=  +2.14 v= 1.6 转角=  -84.4° 握盘=1 G0B0 en=1/1/1 aT=-0.71 vz=-0.72 mom=  0 FM0FV1 M=+1.07Nm steerOverride
+t=  +2.34 v= 1.4 转角=  -85.4° 握盘=1 G1B0 en=1/1/1 aT=-0.72 vz=-0.72 mom=  0 FM0FV1 M=+0.93Nm steerOverride
+t=  +2.54 v= 1.3 转角=  -87.2° 握盘=1 G1B0 en=1/1/1 aT=-0.71 vz=+0.00 mom= 42 FM1FV0 M=+0.81Nm steerOverride
+t=  +2.75 v= 1.3 转角=  -91.5° 握盘=1 G1B0 en=1/1/1 aT=-0.70 vz=+0.00 mom= 34 FM1FV0 M=+0.56Nm steerOverride
+t=  +2.96 v= 1.4 转角=  -97.3° 握盘=1 G1B0 en=1/1/1 aT=-0.69 vz=+0.00 mom= 34 FM1FV0 M=+0.90Nm steerOverride
+t=  +3.16 v= 1.4 转角=  -97.8° 握盘=1 G1B0 en=1/1/1 aT=-0.68 vz=+0.00 mom= 34 FM1FV0 M=+1.02Nm steerOverride
+t=  +3.37 v= 1.5 转角=  -97.6° 握盘=1 G0B0 en=1/1/1 aT=-0.61 vz=+0.00 mom= 34 FM1FV0 M=+1.35Nm steerOverride
+t=  +3.57 v= 1.5 转角=  -97.6° 握盘=1 G0B0 en=1/1/1 aT=-0.59 vz=-0.59 mom=  0 FM0FV1 M=+0.95Nm steerOverride
+t=  +3.78 v= 1.5 转角=  -98.0° 握盘=1 G0B0 en=1/1/1 aT=-0.45 vz=-0.54 mom=  0 FM0FV1 M=+0.81Nm steerOverride
+t=  +3.98 v= 1.4 转角=  -98.6° 握盘=1 G0B0 en=1/1/1 aT=-0.48 vz=-0.43 mom=  0 FM0FV1 M=+0.96Nm steerOverride
+t=  +4.19 v= 1.4 转角= -100.0° 握盘=1 G0B0 en=1/1/1 aT=-0.51 vz=-0.48 mom=  0 FM0FV1 M=+0.72Nm steerOverride
+t=  +4.39 v= 1.3 转角= -101.2° 握盘=1 G0B0 en=1/1/1 aT=-0.63 vz=-0.60 mom=  0 FM0FV1 M=+0.96Nm steerOverride
+t=  +4.60 v= 1.3 转角= -101.3° 握盘=1 G0B1 en=0/1/0 aT=-0.70 vz=+3.01 mom=  0 FM0FV0 M=+0.84Nm steerOverride
+t=  +4.81 v= 1.2 转角= -102.2° 握盘=1 G0B1 en=0/1/0 aT=-0.72 vz=+3.01 mom=  0 FM0FV0 M=+0.81Nm steerOverride
+t=  +5.01 v= 1.3 转角= -104.8° 握盘=1 G0B1 en=0/1/0 aT=-0.73 vz=+3.01 mom=  0 FM0FV0 M=+0.60Nm steerOverride
+t=  +5.21 v= 1.3 转角= -114.4° 握盘=1 G0B1 en=0/1/0 aT=-0.72 vz=+3.01 mom=  0 FM0FV0 M=+0.16Nm steerOverride
+t=  +5.42 v= 1.4 转角= -124.4° 握盘=1 G0B1 en=0/1/0 aT=-0.71 vz=+3.01 mom=  0 FM0FV0 M=+0.54Nm steerOverride
+t=  +5.62 v= 1.4 转角= -124.7° 握盘=1 G0B0 en=0/1/0 aT=-0.68 vz=+3.01 mom=  0 FM0FV0 M=+0.78Nm steerOverride
+t=  +5.82 v= 1.4 转角= -124.6° 握盘=1 G0B0 en=0/1/0 aT=-0.45 vz=+3.01 mom=  0 FM0FV0 M=+1.19Nm steerOverride
+t=  +6.03 v= 1.5 转角= -128.4° 握盘=1 G0B0 en=0/1/0 aT=-0.33 vz=+3.01 mom=  0 FM0FV0 M=+0.19Nm steerOverride
+t=  +6.23 v= 1.5 转角= -141.6° 握盘=1 G1B0 en=0/1/0 aT=-0.41 vz=+3.01 mom=  0 FM0FV0 M=+0.00Nm steerOverride
+t=  +6.43 v= 1.5 转角= -152.5° 握盘=1 G1B0 en=0/1/0 aT=-0.27 vz=+3.01 mom=  0 FM0FV0 M=+0.00Nm steerOverride
+t=  +6.63 v= 1.6 转角= -154.4° 握盘=1 G1B0 en=0/1/0 aT=-0.25 vz=+3.01 mom=  0 FM0FV0 M=+0.30Nm steerOverride
+t=  +6.84 v= 1.6 转角= -157.5° 握盘=1 G1B0 en=0/1/0 aT=+0.00 vz=+3.01 mom=  0 FM0FV0 M=+0.19Nm steerOverride
+t=  +7.04 v= 1.7 转角= -159.4° 握盘=1 G1B0 en=0/1/0 aT=+0.00 vz=+3.01 mom=  0 FM0FV0 M=+0.45Nm steerOverride
+t=  +7.24 v= 1.8 转角= -159.4° 握盘=1 G1B0 en=0/1/0 aT=+0.17 vz=+3.01 mom=  0 FM0FV0 M=+0.81Nm steerOverride
+t=  +7.45 v= 2.0 转角= -159.5° 握盘=1 G1B0 en=0/1/0 aT=+0.36 vz=+3.01 mom=  0 FM0FV0 M=+0.99Nm steerOverride
+t=  +7.65 v= 2.2 转角= -159.5° 握盘=1 G1B0 en=0/1/0 aT=+0.36 vz=+3.01 mom=  0 FM0FV0 M=+0.81Nm steerOverride
+t=  +7.85 v= 2.4 转角= -159.2° 握盘=1 G1B0 en=0/1/0 aT=+0.36 vz=+3.01 mom=  0 FM0FV0 M=+0.99Nm steerOverride
+t=  +8.06 v= 2.5 转角= -156.3° 握盘=1 G1B0 en=0/1/0 aT=+0.36 vz=+3.01 mom=  0 FM0FV0 M=+1.24Nm steerOverride
+t=  +8.27 v= 2.7 转角= -153.1° 握盘=1 G1B0 en=0/1/0 aT=+0.36 vz=+3.01 mom=  0 FM0FV0 M=+0.84Nm steerOverride
+t=  +8.47 v= 2.9 转角= -151.8° 握盘=1 G1B0 en=0/1/0 aT=+0.36 vz=+3.01 mom=  0 FM0FV0 M=+1.21Nm steerOverride
+t=  +8.68 v= 3.1 转角= -146.3° 握盘=1 G1B0 en=0/1/0 aT=+0.36 vz=+3.01 mom=  0 FM0FV0 M=+1.03Nm steerOverride
+t=  +8.88 v= 3.3 转角= -139.3° 握盘=1 G1B0 en=0/1/0 aT=+0.36 vz=+3.01 mom=  0 FM0FV0 M=+0.03Nm steerOverride
+t=  +9.08 v= 3.5 转角= -133.0° 握盘=0 G1B0 en=0/1/0 aT=+0.36 vz=+3.01 mom=  0 FM0FV0 M=-0.11Nm 
+t=  +9.28 v= 3.6 转角= -127.4° 握盘=0 G1B0 en=0/1/0 aT=+0.36 vz=+3.01 mom=  0 FM0FV0 M=-0.98Nm 
+t=  +9.49 v= 3.8 转角= -122.0° 握盘=0 G1B0 en=0/1/0 aT=+0.36 vz=+3.01 mom=  0 FM0FV0 M=-1.48Nm 
+t=  +9.69 v= 4.0 转角= -115.7° 握盘=0 G1B0 en=0/1/0 aT=+0.36 vz=+3.01 mom=  0 FM0FV0 M=-1.59Nm 
+t=  +9.90 v= 4.2 转角= -105.3° 握盘=1 G1B0 en=0/1/0 aT=+0.36 vz=+3.01 mom=  0 FM0FV0 M=-2.37Nm steerOverride
+t= +10.10 v= 4.4 转角= -100.6° 握盘=1 G1B0 en=0/1/0 aT=+0.36 vz=+3.01 mom=  0 FM0FV0 M=-2.18Nm steerOverride
+t= +10.31 v= 4.6 转角=  -92.2° 握盘=1 G1B0 en=0/1/0 aT=+0.36 vz=+3.01 mom=  0 FM0FV0 M=-1.18Nm steerOverride
+t= +10.51 v= 4.7 转角=  -76.2° 握盘=1 G1B0 en=0/1/0 aT=+0.36 vz=+3.01 mom=  0 FM0FV0 M=-0.99Nm steerOverride
+t= +10.71 v= 4.9 转角=  -64.1° 握盘=1 G1B0 en=0/1/0 aT=+0.36 vz=+3.01 mom=  0 FM0FV0 M=-0.98Nm steerOverride
+t= +10.91 v= 5.1 转角=  -52.3° 握盘=1 G1B0 en=0/1/0 aT=+0.36 vz=+3.01 mom=  0 FM0FV0 M=-1.26Nm steerOverride
+t= +11.12 v= 5.3 转角=  -44.6° 握盘=1 G1B0 en=0/1/0 aT=+0.36 vz=+3.01 mom=  0 FM0FV0 M=-1.26Nm steerOverride
+t= +11.33 v= 5.6 转角=  -45.6° 握盘=0 G1B0 en=0/1/0 aT=+0.36 vz=+3.01 mom=  0 FM0FV0 M=-1.85Nm 
+t= +11.53 v= 5.8 转角=  -45.2° 握盘=0 G1B0 en=0/1/0 aT=+0.36 vz=+3.01 mom=  0 FM0FV0 M=-0.85Nm 
+t= +11.73 v= 6.0 转角=  -43.5° 握盘=0 G1B0 en=0/1/0 aT=+0.36 vz=+3.01 mom=  0 FM0FV0 M=+0.14Nm 
+t= +11.93 v= 6.3 转角=  -37.5° 握盘=1 G1B0 en=0/1/0 aT=+0.36 vz=+3.01 mom=  0 FM0FV0 M=-0.29Nm steerOverride
+t= +12.13 v= 6.5 转角=  -31.0° 握盘=1 G1B0 en=0/1/0 aT=+0.36 vz=+3.01 mom=  0 FM0FV0 M=-0.92Nm steerOverride
+t= +12.34 v= 6.7 转角=  -26.2° 握盘=1 G1B0 en=0/1/0 aT=+0.36 vz=+3.01 mom=  0 FM0FV0 M=-0.75Nm steerOverride
+t= +12.54 v= 6.8 转角=  -16.2° 握盘=1 G1B0 en=0/1/0 aT=+0.43 vz=+3.01 mom=  0 FM0FV0 M=-0.63Nm steerOverride
+t= +12.74 v= 6.9 转角=  -11.5° 握盘=1 G1B0 en=0/1/0 aT=+0.69 vz=+3.01 mom=  0 FM0FV0 M=-0.31Nm steerOverride
+t= +12.95 v= 7.1 转角=  -11.2° 握盘=0 G1B0 en=0/1/0 aT=+0.85 vz=+3.01 mom=  0 FM0FV0 M=-0.45Nm 
+t= +13.16 v= 7.3 转角=  -11.2° 握盘=0 G1B0 en=0/1/0 aT=+0.85 vz=+3.01 mom=  0 FM0FV0 M=+0.50Nm 
+t= +13.37 v= 7.5 转角=   -9.8° 握盘=0 G1B0 en=0/1/0 aT=+0.88 vz=+3.01 mom=  0 FM0FV0 M=+0.93Nm 
+t= +13.57 v= 7.7 转角=   -7.6° 握盘=0 G1B0 en=0/1/0 aT=+1.03 vz=+3.01 mom=  0 FM0FV0 M=+0.20Nm 
+t= +13.78 v= 7.8 转角=   -6.8° 握盘=0 G1B0 en=0/1/0 aT=+1.06 vz=+3.01 mom=  0 FM0FV0 M=+0.62Nm 
+t= +13.98 v= 8.0 转角=   -6.1° 握盘=0 G1B0 en=0/1/0 aT=+1.11 vz=+3.01 mom=  0 FM0FV0 M=+0.91Nm 
+t= +14.18 v= 8.2 转角=   -4.7° 握盘=0 G1B0 en=0/1/0 aT=+1.16 vz=+3.01 mom=  0 FM0FV0 M=+0.90Nm 
+t= +14.39 v= 8.3 转角=   -4.1° 握盘=0 G1B0 en=1/1/1 aT=+1.14 vz=+0.00 mom=  0 FM0FV0 M=+0.70Nm 
+t= +14.60 v= 8.4 转角=   -3.6° 握盘=0 G0B0 en=1/1/1 aT=+0.88 vz=+0.00 mom= 42 FM0FV0 M=+0.93Nm 
+t= +14.81 v= 8.4 转角=   -2.8° 握盘=0 G0B0 en=1/1/1 aT=+0.63 vz=+0.00 mom=  9 FM0FV0 M=+0.62Nm 
+t= +15.01 v= 8.3 转角=   -2.8° 握盘=0 G0B0 en=1/1/1 aT=+0.38 vz=+0.00 mom=  0 FM0FV0 M=+0.54Nm 
+t= +15.22 v= 8.2 转角=   -2.8° 握盘=0 G0B0 en=1/1/1 aT=+0.14 vz=+0.00 mom=  0 FM0FV0 M=+0.68Nm 
+t= +15.43 v= 8.1 转角=   -2.6° 握盘=0 G0B0 en=1/1/1 aT=+0.22 vz=+0.00 mom= 40 FM1FV0 M=+1.14Nm 
+t= +15.63 v= 8.0 转角=   -2.1° 握盘=0 G0B0 en=1/1/1 aT=+0.44 vz=+0.00 mom=106 FM1FV0 M=+0.93Nm 
+t= +15.83 v= 8.0 转角=   -1.9° 握盘=0 G0B0 en=1/1/1 aT=+0.61 vz=+0.00 mom=119 FM1FV0 M=+1.34Nm 
+t= +16.03 v= 8.0 转角=   -0.7° 握盘=0 G0B0 en=1/1/1 aT=+0.62 vz=+0.00 mom=126 FM1FV0 M=+1.35Nm 
+t= +16.23 v= 8.1 转角=   +0.9° 握盘=0 G0B0 en=1/1/1 aT=+0.53 vz=+0.00 mom=113 FM1FV0 M=+1.52Nm 
+t= +16.45 v= 8.2 转角=   +3.5° 握盘=0 G0B0 en=1/1/1 aT=+0.62 vz=+0.00 mom=120 FM1FV0 M=+0.65Nm 
+t= +16.65 v= 8.2 转角=   +3.4° 握盘=0 G0B0 en=1/1/1 aT=+0.68 vz=+0.00 mom=126 FM1FV0 M=+0.55Nm 
+t= +16.86 v= 8.3 转角=   +3.5° 握盘=0 G0B0 en=1/1/1 aT=+0.58 vz=+0.00 mom=121 FM1FV0 M=+0.66Nm 
+t= +17.06 v= 8.4 转角=   +3.4° 握盘=0 G0B0 en=1/1/1 aT=+0.51 vz=+0.00 mom=114 FM1FV0 M=+0.52Nm 
+t= +17.27 v= 8.5 转角=   +3.4° 握盘=0 G0B0 en=1/1/1 aT=+0.53 vz=+0.00 mom=117 FM1FV0 M=+0.35Nm 
+t= +17.47 v= 8.5 转角=   +3.4° 握盘=0 G0B0 en=1/1/1 aT=+0.77 vz=+0.00 mom=138 FM1FV0 M=+0.03Nm 
+t= +17.67 v= 8.6 转角=   +3.4° 握盘=0 G0B0 en=1/1/1 aT=+1.09 vz=+0.00 mom=160 FM1FV0 M=+0.05Nm 
+t= +17.88 v= 8.8 转角=   +3.3° 握盘=0 G0B0 en=1/1/1 aT=+1.00 vz=+0.00 mom=161 FM1FV0 M=-0.01Nm 
+t= +18.09 v= 8.9 转角=   +3.3° 握盘=0 G0B0 en=1/1/1 aT=+0.84 vz=+0.00 mom=147 FM1FV0 M=-0.09Nm 
+t= +18.30 v= 9.0 转角=   +3.3° 握盘=0 G0B0 en=1/1/1 aT=+0.74 vz=+0.00 mom=140 FM1FV0 M=-0.17Nm 
+t= +18.50 v= 9.1 转角=   +3.2° 握盘=0 G0B0 en=1/1/1 aT=+0.64 vz=+0.00 mom=128 FM1FV0 M=-0.22Nm 
+t= +18.70 v= 9.2 转角=   +3.2° 握盘=0 G0B0 en=1/1/1 aT=+0.54 vz=+0.00 mom=123 FM1FV0 M=-0.21Nm 
+t= +18.90 v= 9.3 转角=   +3.3° 握盘=0 G0B0 en=1/1/1 aT=+0.47 vz=+0.00 mom=116 FM1FV0 M=-0.39Nm 
+t= +19.10 v= 9.3 转角=   +3.3° 握盘=0 G0B0 en=1/1/1 aT=+0.39 vz=+0.00 mom=110 FM1FV0 M=-0.45Nm 
+t= +19.30 v= 9.4 转角=   +3.4° 握盘=0 G0B0 en=1/1/1 aT=+0.33 vz=+0.00 mom=104 FM1FV0 M=-0.57Nm 
+t= +19.51 v= 9.5 转角=   +3.4° 握盘=0 G0B0 en=1/1/1 aT=+0.26 vz=+0.00 mom=100 FM1FV0 M=-0.46Nm 
+t= +19.71 v= 9.5 转角=   +3.5° 握盘=0 G0B0 en=1/1/1 aT=+0.24 vz=+0.00 mom= 97 FM1FV0 M=-0.45Nm 
+t= +19.91 v= 9.5 转角=   +3.6° 握盘=1 G0B0 en=1/1/1 aT=+0.21 vz=+0.00 mom= 96 FM1FV0 M=-0.45Nm steerOverride
+t= +20.12 v= 9.5 转角=   +3.8° 握盘=1 G0B0 en=1/1/1 aT=+0.18 vz=+0.00 mom= 95 FM1FV0 M=-0.51Nm steerOverride
+t= +20.33 v= 9.6 转角=   +3.7° 握盘=1 G0B0 en=1/1/1 aT=+0.15 vz=+0.00 mom= 92 FM1FV0 M=-0.52Nm steerOverride
+t= +20.53 v= 9.6 转角=   +3.5° 握盘=0 G0B0 en=1/1/1 aT=+0.13 vz=+0.00 mom= 90 FM1FV0 M=-0.39Nm steerOverride
+t= +20.73 v= 9.6 转角=   +3.5° 握盘=0 G0B0 en=1/1/1 aT=+0.13 vz=+0.00 mom= 90 FM1FV0 M=-0.14Nm 
+t= +20.93 v= 9.6 转角=   +3.4° 握盘=0 G0B0 en=1/1/1 aT=+0.14 vz=+0.00 mom= 91 FM1FV0 M=+0.02Nm 
+t= +21.13 v= 9.6 转角=   +3.3° 握盘=0 G0B0 en=1/1/1 aT=+0.12 vz=+0.00 mom= 88 FM1FV0 M=+0.16Nm 
+t= +21.33 v= 9.6 转角=   +3.2° 握盘=0 G0B0 en=1/1/1 aT=+0.12 vz=+0.00 mom= 89 FM1FV0 M=+0.26Nm 
+t= +21.53 v= 9.6 转角=   +3.2° 握盘=0 G0B0 en=1/1/1 aT=+0.00 vz=+0.00 mom= 79 FM1FV0 M=+0.40Nm 
+t= +21.74 v= 9.6 转角=   +3.2° 握盘=0 G0B0 en=1/1/1 aT=+0.00 vz=+0.00 mom= 76 FM1FV0 M=+0.66Nm 
+t= +21.95 v= 9.7 转角=   +3.2° 握盘=0 G0B0 en=1/1/1 aT=+0.00 vz=+0.00 mom= 77 FM1FV0 M=+0.79Nm 
+t= +22.15 v= 9.5 转角=   +3.3° 握盘=0 G0B0 en=1/1/1 aT=+0.21 vz=+0.00 mom=102 FM1FV0 M=+1.04Nm 
+t= +22.36 v= 9.6 转角=   +3.3° 握盘=0 G0B0 en=1/1/1 aT=+0.11 vz=+0.00 mom= 91 FM1FV0 M=+1.26Nm 
+t= +22.56 v= 9.6 转角=   +3.6° 握盘=0 G0B0 en=1/1/1 aT=+0.12 vz=+0.00 mom= 86 FM1FV0 M=+1.00Nm 
+t= +22.77 v= 9.6 转角=   +3.6° 握盘=0 G0B0 en=1/1/1 aT=+0.16 vz=+0.00 mom= 95 FM1FV0 M=+0.84Nm 
+t= +22.97 v= 9.6 转角=   +3.6° 握盘=0 G0B0 en=1/1/1 aT=+0.15 vz=+0.00 mom= 93 FM1FV0 M=+0.57Nm 
+t= +23.17 v= 9.6 转角=   +3.7° 握盘=0 G0B0 en=1/1/1 aT=+0.11 vz=+0.00 mom= 86 FM1FV0 M=+0.51Nm 
+t= +23.38 v= 9.5 转角=   +3.6° 握盘=0 G0B0 en=1/1/1 aT=+0.22 vz=+0.00 mom=102 FM1FV0 M=+0.02Nm 
+t= +23.58 v= 9.4 转角=   +3.5° 握盘=0 G0B0 en=1/1/1 aT=+0.32 vz=+0.00 mom=112 FM1FV0 M=-0.29Nm 
+t= +23.78 v= 9.6 转角=   +2.9° 握盘=0 G0B0 en=1/1/1 aT=+0.14 vz=+0.00 mom= 82 FM1FV0 M=-0.55Nm 
+t= +23.98 v= 9.6 转角=   +2.5° 握盘=0 G0B0 en=1/1/1 aT=+0.00 vz=+0.00 mom= 32 FM1FV0 M=-0.75Nm 
+t= +24.18 v= 9.5 转角=   +1.1° 握盘=0 G0B0 en=1/1/1 aT=+0.20 vz=+0.00 mom= 99 FM1FV0 M=-1.07Nm 
+t= +24.39 v= 9.5 转角=   +0.2° 握盘=0 G0B0 en=1/1/1 aT=+0.19 vz=+0.00 mom= 95 FM1FV0 M=-1.39Nm 
+t= +24.59 v= 9.6 转角=   -1.9° 握盘=0 G0B0 en=1/1/1 aT=+0.16 vz=+0.00 mom= 91 FM1FV0 M=-1.37Nm 
+t= +24.80 v= 9.6 转角=   -3.5° 握盘=0 G0B0 en=1/1/1 aT=+0.13 vz=+0.00 mom= 90 FM1FV0 M=-1.02Nm 
+t= +25.00 v= 9.6 转角=   -4.3° 握盘=0 G0B0 en=1/1/1 aT=+0.11 vz=+0.00 mom= 86 FM1FV0 M=-1.03Nm 
+t= +25.21 v= 9.6 转角=   -5.2° 握盘=0 G0B0 en=1/1/1 aT=+0.00 vz=+0.00 mom= 77 FM1FV0 M=-0.58Nm 
+t= +25.41 v= 9.7 转角=   -5.2° 握盘=0 G0B0 en=1/1/1 aT=+0.00 vz=+0.00 mom= 72 FM1FV0 M=-0.35Nm 
+t= +25.61 v= 9.7 转角=   -5.2° 握盘=0 G0B0 en=1/1/1 aT=+0.00 vz=+0.00 mom= 77 FM1FV0 M=-0.54Nm 
+t= +25.82 v= 9.7 转角=   -5.2° 握盘=0 G0B0 en=1/1/1 aT=+0.00 vz=+0.00 mom= 79 FM1FV0 M=-0.42Nm 
+t= +26.02 v= 9.7 转角=   -5.2° 握盘=0 G0B0 en=1/1/1 aT=+0.00 vz=+0.00 mom= 76 FM1FV0 M=+0.07Nm 
+t= +26.22 v= 9.7 转角=   -5.2° 握盘=0 G0B0 en=1/1/1 aT=+0.00 vz=+0.00 mom= 50 FM0FV0 M=+0.22Nm 
+t= +26.43 v= 9.7 转角=   -5.0° 握盘=0 G0B0 en=1/1/1 aT=+0.00 vz=+0.00 mom= 17 FM0FV0 M=+0.40Nm 
+t= +26.64 v= 9.6 转角=   -4.6° 握盘=0 G0B0 en=1/1/1 aT=+0.00 vz=+0.00 mom=  0 FM0FV0 M=+0.65Nm 
+t= +26.84 v= 9.6 转角=   -3.6° 握盘=0 G0B0 en=1/1/1 aT=+0.10 vz=+0.00 mom=  0 FM0FV0 M=+0.61Nm 
+t= +27.04 v= 9.5 转角=   -2.6° 握盘=0 G0B0 en=1/1/1 aT=+0.19 vz=+0.00 mom=  0 FM0FV0 M=+0.98Nm 
+t= +27.25 v= 9.5 转角=   -1.6° 握盘=0 G0B0 en=1/1/1 aT=+0.24 vz=+0.00 mom=  0 FM0FV0 M=+0.89Nm 
+t= +27.46 v= 9.4 转角=   -1.2° 握盘=0 G0B0 en=1/1/1 aT=+0.35 vz=+0.00 mom=  0 FM0FV0 M=+1.25Nm 
+t= +27.66 v= 9.3 转角=   -0.2° 握盘=0 G0B0 en=1/1/1 aT=+0.42 vz=+0.00 mom= 40 FM1FV0 M=+1.22Nm 
+t= +27.87 v= 9.2 转角=   +0.5° 握盘=0 G0B0 en=1/1/1 aT=+0.48 vz=+0.00 mom=115 FM1FV0 M=+1.30Nm 
+t= +28.09 v= 9.2 转角=   +1.7° 握盘=0 G0B0 en=1/1/1 aT=+0.50 vz=+0.00 mom=114 FM1FV0 M=+0.85Nm 
+t= +28.29 v= 9.3 转角=   +1.7° 握盘=0 G0B0 en=1/1/1 aT=+0.45 vz=+0.00 mom=111 FM1FV0 M=+0.84Nm 
+t= +28.50 v= 9.4 转角=   +1.7° 握盘=0 G0B0 en=1/1/1 aT=+0.33 vz=+0.00 mom=101 FM1FV0 M=+0.83Nm 
+t= +28.71 v= 9.5 转角=   +1.7° 握盘=0 G0B0 en=1/1/1 aT=+0.22 vz=+0.00 mom= 94 FM1FV0 M=+0.80Nm 
+t= +28.91 v= 9.6 转角=   +1.7° 握盘=0 G0B0 en=1/1/1 aT=+0.17 vz=+0.00 mom= 83 FM0FV0 M=+0.74Nm 
+t= +29.11 v= 9.6 转角=   +1.7° 握盘=0 G0B0 en=1/1/1 aT=+0.12 vz=+0.00 mom= 53 FM0FV0 M=+0.62Nm 
+t= +29.32 v= 9.6 转角=   +1.7° 握盘=0 G0B0 en=1/1/1 aT=+0.11 vz=+0.00 mom= 23 FM0FV0 M=+0.56Nm 
+t= +29.53 v= 9.6 转角=   +1.7° 握盘=0 G0B0 en=1/1/1 aT=+0.14 vz=+0.00 mom=  0 FM0FV0 M=+0.53Nm 
+t= +29.73 v= 9.6 转角=   +1.7° 握盘=0 G0B0 en=1/1/1 aT=+0.16 vz=+0.00 mom=  0 FM0FV0 M=+0.51Nm 
+t= +29.94 v= 9.5 转角=   +1.7° 握盘=0 G0B0 en=1/1/1 aT=+0.21 vz=+0.00 mom=  0 FM0FV0 M=+0.43Nm 
+t= +30.15 v= 9.5 转角=   +1.7° 握盘=0 G0B0 en=1/1/1 aT=+0.26 vz=+0.00 mom=  0 FM0FV0 M=+0.44Nm 
+t= +30.36 v= 9.4 转角=   +1.7° 握盘=0 G0B0 en=1/1/1 aT=+0.29 vz=+0.00 mom=  0 FM0FV0 M=+0.34Nm 
+t= +30.57 v= 9.4 转角=   +1.7° 握盘=0 G0B0 en=1/1/1 aT=+0.36 vz=+0.00 mom=  0 FM0FV0 M=+0.25Nm 
+t= +30.77 v= 9.3 转角=   +1.7° 握盘=0 G0B0 en=1/1/1 aT=+0.44 vz=+0.00 mom=  0 FM0FV0 M=+0.21Nm 
+t= +30.97 v= 9.3 转角=   +1.7° 握盘=0 G0B0 en=1/1/1 aT=+0.46 vz=+0.00 mom=  0 FM0FV0 M=+0.21Nm 
+t= +31.17 v= 9.2 转角=   +1.7° 握盘=0 G0B0 en=1/1/1 aT=+0.53 vz=+0.00 mom=  0 FM0FV0 M=+0.09Nm 
+t= +31.38 v= 9.1 转角=   +1.7° 握盘=0 G0B0 en=1/1/1 aT=+0.61 vz=+0.00 mom=  0 FM0FV0 M=-0.04Nm 
+t= +31.59 v= 9.0 转角=   +1.6° 握盘=0 G0B0 en=1/1/1 aT=+0.69 vz=+0.00 mom=  0 FM0FV0 M=+0.02Nm 
+t= +31.79 v= 9.0 转角=   +1.6° 握盘=0 G0B0 en=1/1/1 aT=+0.72 vz=+0.00 mom=  0 FM0FV0 M=-0.09Nm 
+t= +32.01 v= 8.9 转角=   +1.6° 握盘=0 G0B0 en=1/1/1 aT=+0.82 vz=+0.00 mom=  0 FM0FV0 M=-0.22Nm 
+t= +32.21 v= 8.8 转角=   +1.6° 握盘=0 G0B0 en=1/1/1 aT=+0.87 vz=+0.00 mom=  0 FM0FV0 M=-0.23Nm 
+t= +32.41 v= 8.8 转角=   +1.6° 握盘=0 G0B0 en=1/1/1 aT=+0.93 vz=+0.00 mom=  0 FM0FV0 M=-0.25Nm 
+t= +32.61 v= 8.7 转角=   +1.5° 握盘=0 G0B0 en=1/1/1 aT=+0.99 vz=+0.00 mom=  0 FM0FV0 M=-0.36Nm 
+t= +32.82 v= 8.7 转角=   +1.3° 握盘=0 G0B0 en=1/1/1 aT=+1.03 vz=+0.00 mom=  0 FM0FV0 M=-0.28Nm 
