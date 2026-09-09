@@ -79,11 +79,11 @@ def is_tune_param(key: str) -> bool:
   return meta.get("tier") == "write_offroad_tune"
 
 
-def validate_write_batch(writes: dict[str, Any], *, admin: bool = False) -> tuple[bool, str]:
+def validate_write_batch(writes: dict[str, Any], *, admin: bool = False, skip_tune_limit: bool = False) -> tuple[bool, str]:
   if not writes:
     return False, "No params to write."
   writes = normalize_param_writes(writes)
-  if not admin:
+  if not admin and not skip_tune_limit:
     tune_count = sum(1 for k in writes if is_tune_param(k))
     if tune_count > _MAX_TUNE_WRITES_PER_CALL:
       return False, f"At most {_MAX_TUNE_WRITES_PER_CALL} driving-tune params per call."

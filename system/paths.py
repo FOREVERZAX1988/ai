@@ -131,7 +131,9 @@ def routes_dir() -> str:
     return "/data/media/0/realdata"
   try:
     from openpilot.common.hardware.hw import Paths
-    return Paths.log_root()
+    log_root = Path(Paths.log_root())
+    if log_root.is_dir():
+      return str(log_root)
   except Exception:
     pass
   home = Path.home()
@@ -143,6 +145,26 @@ def routes_dir() -> str:
     if path.is_dir():
       return str(path)
   return str(candidates[0])
+
+
+def dev_log_path() -> str:
+  """
+  设备运行日志（manager/swaglog 汇总）路径。
+  - 车机：/data/log/latest.log
+  - PC：openpilot swaglog 目录中最新的 swaglog.* 文件；没有则回退 ~/.comma/log/latest.log
+  """
+  if is_comma_device():
+    return "/data/log/latest.log"
+  try:
+    from openpilot.common.hardware.hw import Paths
+    root = Path(Paths.swaglog_root())
+    if root.is_dir():
+      logs = sorted(root.glob("swaglog.*"), key=lambda p: p.stat().st_mtime, reverse=True)
+      if logs:
+        return str(logs[0])
+  except Exception:
+    pass
+  return str(Path.home() / ".comma" / "log" / "latest.log")
 
 
 def workspace_path(*parts: str, mkdir: bool = False) -> Path:

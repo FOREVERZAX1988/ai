@@ -109,8 +109,11 @@ def github_request(
     return {"ok": False, "error": "invalid_json", "message": str(e)}
 
 
-def _api_ok(data: dict[str, Any]) -> bool:
-  return data.get("ok") is not False and "error" not in data
+def _api_ok(data: Any) -> bool:
+  # GitHub API 部分端点直接返回 list（labels、pulls 等），非 dict 一律视为成功
+  if isinstance(data, dict):
+    return data.get("ok") is not False and "error" not in data
+  return True
 
 
 def summarize_workflow_run(run: dict[str, Any]) -> dict[str, Any]:

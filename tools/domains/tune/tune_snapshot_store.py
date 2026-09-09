@@ -87,8 +87,10 @@ def restore_tune_snapshot(params: Params, snapshot_id: str = "") -> dict[str, An
     return {"ok": False, "error": str(e)}
 
   writes = data.get("params") or {}
+  # 快照恢复是用户主动的批量回滚：跳过 LLM 单次调参的数量限流，
+  # 但保留逐 key 的 tier/forbidden 校验（skip_tune_limit 只跳过计数）。
   from ai.tools.domains.platform.params_policy import validate_write_batch
-  ok, reason = validate_write_batch(writes)
+  ok, reason = validate_write_batch(writes, skip_tune_limit=True)
   if not ok:
     return {"ok": False, "error": reason}
 

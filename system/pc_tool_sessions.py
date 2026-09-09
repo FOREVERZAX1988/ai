@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 import time
 import uuid
 from pathlib import Path
@@ -51,6 +52,22 @@ def route_folder_name(route: str) -> str:
 def pid_alive(pid: int | None) -> bool:
   if not pid or pid <= 0:
     return False
+  if sys.platform == "win32":
+    # os.kill(pid, 0) 在 Windows 上会触发 OSError(WinError 87) 甚至 CPython SystemError，
+    # 改用 Win32 OpenProcess + GetExitCodeProcess 检测（259 = STILL_ACTIVE）。
+    import ctypes
+    PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+    k32 = ctypes.windll.kernel32
+    handle = k32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, int(pid))
+    if not handle:
+      return False
+    try:
+      exit_code = ctypes.c_ulong()
+      if k32.GetExitCodeProcess(handle, ctypes.byref(exit_code)):
+        return exit_code.value == 259
+      return True
+    finally:
+      k32.CloseHandle(handle)
   try:
     os.kill(pid, 0)
     return True

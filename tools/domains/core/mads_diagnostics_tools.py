@@ -85,13 +85,22 @@ def _read_onroad_event_names(get_state_reader: Callable | None) -> list[str]:
 
 
 def _dev_tree_has_main_latch() -> bool | None:
-  """Return True if mads.h contains latch helper (dev checkout only)."""
+  """Return True if mads.h contains MAIN latch mechanism (dev checkout only).
+
+  兼容两代实现：旧命名 mads_acc_main_lateral_latch；上游 ded06883 重构后的
+  controls_allowed_lateral（状态机 + controls_requested_lateral 门控，等价功能）。
+  """
   try:
     path = openpilot_root() / "opendbc_repo" / "opendbc" / "safety" / "sunnypilot" / "mads.h"
     if not path.is_file():
       return None
     text = path.read_text(encoding="utf-8", errors="replace")
-    return "mads_acc_main_lateral_latch" in text
+    if "mads_acc_main_lateral_latch" in text:
+      return True
+    # 新实现：controls_allowed_lateral 状态 + requested 门控 + MAIN 请求入口
+    return ("controls_allowed_lateral" in text
+            and "controls_requested_lateral" in text
+            and "system_enabled" in text)
   except Exception:
     return None
 
@@ -185,7 +194,7 @@ def diagnose_mads_lateral(
   elif dev_data_sample is True:
     checklist.append("代码：data_sample 已禁用 ✓")
   if dev_latch is False:
-    checklist.insert(0, "代码：mads.h 缺少 mads_acc_main_lateral_latch — 需更新 opendbc 并刷 Panda")
+    checklist.insert(0, "代码：mads.h 缺少 MAIN latch（mads_acc_main_lateral_latch 或新版 controls_allowed_lateral）— 需更新 opendbc 并刷 Panda")
   elif dev_latch is True:
     checklist.append("代码：mads.h MAIN latch 已合入 ✓（仍须刷 Panda 才上车生效）")
 
