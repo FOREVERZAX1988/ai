@@ -42,3 +42,19 @@
 - **00000049**（ac8e2bc7b1，39seg）：vmax 最高 ~17 km/h，完全低速市区。
 - **00000002 / 00000003 / 00000071 / 00000072**: vmax 最高 ~16 / 8.8 / 13.2 / 16.3 km/h，均无高速。
 - **结论：现有全部 routes 均无 >80 km/h 高速路段，无法用现有数据做高速标定样本；高速标定需新采集。**
+
+---
+## 追加：config 清理被 daemon 内存覆盖（2026-09-09 同会话）
+- 现象：直接编辑 `/data/ai/config.json` 的 `ai_tool_desc_overrides` 清除 call_* 污染后，
+  运行中的 `ai.aid` daemon（pid 33584，listen:5090，由 launch_chffrplus.sh watchdog 每 45s 守护）
+  持有 config store 内存缓存，下一次 `put` 写盘时把内存里的旧污染重新写回 → 我的文件修改被回滚（48→26）。
+- 机制：`ai/common/config_store.py` 单例内存缓存 + 节流异步写盘；`_load` 从 Params/config.json 读、
+  `_save` 限制 `_MAX_OVERRIDES=48`。`ai_tool_desc_overrides` 未暴露 REST API。
+- **修复需重启 daemon 生效**：`kill 33584`（或 `kill $(pgrep -f "ai\.aid")`），watchdog 45s 内自动重启，
+  从已清理的 config.json 重新加载；内存旧缓存即失效。
+- 备份：`/data/ai/config.json.bak-toolchain-20260909-045919`（清理前全量）。
+- 根因分级：
+  - **实质根因**：config.json 的 `ai_tool_desc_overrides` 累积 13 个 `call_*` 历史会话失败
+    "Evolved hint" + 13 个 `__meta_call_*`（共 26）污染工具描述。清除后需重启 daemon 固化。
+  - 上游 me.../main 合并仅是次要（引入 cabana 新功能），**不会丢本地工具**（47 个工具脚本已在本会话
+    commit dd8b9dd 固化到 macan-long-0907）。
