@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from typing import Any
 
-from ai.tools.agent_tools import TOOL_META
-
 TOOLSETS: dict[str, dict[str, Any]] = {
   "driving_readonly": {
     "label": "行驶只读",
@@ -63,6 +61,8 @@ def tool_allowed_in_set(name: str, toolset_id: str) -> bool:
   spec = TOOLSETS.get(toolset_id)
   if not spec:
     return True
+  # 懒加载避免循环导入：agent_tools -> extensions -> platform_extensions -> toolsets -> agent_tools
+  from ai.tools.agent_tools import TOOL_META
   meta = TOOL_META.get(name, {})
   if name in spec.get("exclude", ()):
     return False

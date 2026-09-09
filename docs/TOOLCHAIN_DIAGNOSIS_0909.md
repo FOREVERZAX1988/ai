@@ -67,3 +67,34 @@
   - 轮速与 vEgo 差 <0.6km/h，物理一致，ESP_VL_Radgeschw 完全合理。
 - **0049**（39seg）：纯低速市区，采样最高 vEgo 47.5km/h，无高速段。
 - **工具根因（目录）修正**：正确导入 openpilot 库 = `sys.path.insert(0,"/data/openpilot/openpilot")` + `from tools.lib.logreader import LogReader`，须用 `/usr/local/venv/bin/python3`（system python3 无 cereal）。所有 scan/fit 脚本应统一此入口。
+
+---
+
+## 0909 补充：工具链根治复查（追加）
+
+### 复查范围（用户要求彻底根治）
+对 ai 子模块相对 upstream/main 的差异做了接线级审计。
+
+### 结论
+1. **核心接线文件零污染**：`core/tools/pipeline.py`、`core/agent/agent.py`、
+   `tools/deferred_loading.py`、`tools/extensions.py`、`tools/agent_tools.py`、
+   `server/handlers/chat_handlers.py` 相对 upstream/main 均无 import 层改动。
+2. **新发现并修复污染点（toolsets.py）**：本地曾把 `TOOL_META` 的 import
+   从函数内懒加载上移到模块顶层，破坏注释明确标注的
+   `agent_tools → extensions → platform_extensions → toolsets → agent_tools`
+   循环导入保护。已还原为上游懒加载（与 upstream/main 一致），
+   导入与工具过滤功能实测正常。
+3. **存量 param 已干净**：`ai_tool_desc_overrides` 无 `call_*` 伪键（commit 2d35d6f 生效），
+   仅剩正常 `__meta_*` 元数据键。
+4. **search_tools/load_tool 属设计如此**：它们的 schema 由 `apply_deferred_filter`
+   （`ai_deferred_tools=True`）在会话时注入，不进 TOOL_META/基础 schema，属正常 deferred 设计。
+
+### 为什么之前「运行着运行着又坏」
+工具链在 ai.aid 服务侧当前健康；间歇性 `not implemented` 源于 RL 宿主网关的
+工具注册表与 ai.aid 服务不完全一致，而非 ai.aid 仓库代码被执行破坏。
+关键原则：工具链代码以 ai.aid 仓库（macan-long-0909）为唯一可信源，不因
+宿主侧展示差异而反复改结论。
+
+### 需要推送
+- 还原后的 toolsets.py
+- 3 个探针脚本（probe_0x127_0x395 / probe_0x127b / probe_0x127c，步骤B收尾用）
