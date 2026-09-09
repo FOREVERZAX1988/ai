@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import time
 from typing import Any
 
@@ -43,6 +44,10 @@ def set_tool_desc_override(params: Params, tool_name: str, description: str, *, 
   desc = (description or "").strip()
   if not name or not desc:
     return {"ok": False, "error": "tool_name and description required"}
+  # 根治：拒绝 call_<id> / __meta_* 等伪工具名（工具结果被会话以调用ID命名，
+  # 进化机制误当工具名写回，污染 ai_tool_desc_overrides 并挤占 _MAX_OVERRIDES 配额）
+  if name.startswith(("call_", "__meta_call_", "__meta_")) or re.match(r"^call_[0-9A-Za-z_]{4,}$", name):
+    return {"ok": False, "error": f"refusing pseudo tool name '{name}' (call_id/meta), not a real tool"}
   data = _load(params)
   data[name] = desc
   data[f"__meta_{name}"] = json.dumps({"source": source, "at": int(time.time())}, ensure_ascii=False)
