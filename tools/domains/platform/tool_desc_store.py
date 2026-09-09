@@ -48,6 +48,17 @@ def set_tool_desc_override(params: Params, tool_name: str, description: str, *, 
   # 进化机制误当工具名写回，污染 ai_tool_desc_overrides 并挤占 _MAX_OVERRIDES 配额）
   if name.startswith(("call_", "__meta_call_", "__meta_")) or re.match(r"^call_[0-9A-Za-z_]{4,}$", name):
     return {"ok": False, "error": f"refusing pseudo tool name '{name}' (call_id/meta), not a real tool"}
+
+  # 根治(0909): 拒绝给 meta/core 元工具(search_tools/load_tool)写入 'not implemented/UNKNOWN_TOOL'
+  # 误导性描述。历史 bug 曾把这两个工具的误报错误持久化进 overrides，进化管线反复回写，
+  # 造成 '修好了又坏' 的复发性污染。这些工具由 deferred_loading 作为 special/meta 提供，
+  # 其行为固定，任何将其标为不可用的描述都是环境误报，必须拒绝。
+  _META_GUARD = ("search_tools", "load_tool")
+  _MISLEADING = ("not implemented", "not_implemented", "unknown_tool", "does not exist", "not exist")
+  if name in _META_GUARD:
+    low = desc.lower()
+    if any(m in low for m in _MISLEADING):
+      return {"ok": False, "error": f"refusing misleading 'not implemented' description for meta tool '{name}'"}
   data = _load(params)
   data[name] = desc
   data[f"__meta_{name}"] = json.dumps({"source": source, "at": int(time.time())}, ensure_ascii=False)
