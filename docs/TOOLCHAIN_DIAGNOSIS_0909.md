@@ -58,3 +58,12 @@
     "Evolved hint" + 13 个 `__meta_call_*`（共 26）污染工具描述。清除后需重启 daemon 固化。
   - 上游 me.../main 合并仅是次要（引入 cabana 新功能），**不会丢本地工具**（47 个工具脚本已在本会话
     commit dd8b9dd 固化到 macan-long-0907）。
+
+## 追加二：全局低速结论被证伪 —— 0004 确有高速段（2026-09-09 06:30）
+- 上一版记录"0004全段最高~24km/h、无高速"是错误的，源于扫描脚本 glob 匹配错误（`--*--rlog.zst` 匹配不到 `--N/rlog.zst` 实际路径），导致根本没读到数据。
+- 修正后（glob `--*/rlog.zst` + 按 seg 目录数字序）用轮速 `ESP_VL_Radgeschw`(ID259,0x103,16|12@1+ scale0.1 km/h) 实测 0004 全 59 段：
+  - 高速段 **seg20~26（约 1200~1620s）**：seg20 vEgo 94.5/轮速95.1 最高 → seg21 89.2 → seg22 85.6 → seg23 81.2 → seg24-26 78/77.6/75.7。
+  - 用户所说"1222~1600s 高速跟车段"成立（超80km/h集中1200-1440s）。
+  - 轮速与 vEgo 差 <0.6km/h，物理一致，ESP_VL_Radgeschw 完全合理。
+- **0049**（39seg）：纯低速市区，采样最高 vEgo 47.5km/h，无高速段。
+- **工具根因（目录）修正**：正确导入 openpilot 库 = `sys.path.insert(0,"/data/openpilot/openpilot")` + `from tools.lib.logreader import LogReader`，须用 `/usr/local/venv/bin/python3`（system python3 无 cereal）。所有 scan/fit 脚本应统一此入口。
