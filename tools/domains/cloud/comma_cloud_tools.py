@@ -19,6 +19,22 @@ def _api_call(func) -> dict[str, Any]:
     return {"ok": False, "error": str(e)}
 
 
+def comma_auth_status() -> dict[str, Any]:
+  """Check comma API auth token presence and validity (never raises)."""
+  try:
+    from openpilot.tools.lib.auth_config import get_token
+    token = get_token()
+  except Exception:
+    token = None
+  if not token:
+    return {"ok": True, "authenticated": False, "hint": "Run comma auth on device or PC."}
+  res = _api_call(lambda api: api.get("v1/me/devices/"))
+  if not res.get("ok"):
+    return {"ok": True, "authenticated": False, "error": res.get("error")}
+  data = res.get("data") or []
+  return {"ok": True, "authenticated": True, "device_count": len(data) if isinstance(data, list) else 0}
+
+
 def list_comma_devices() -> dict[str, Any]:
   """List comma devices for authenticated user."""
   res = _api_call(lambda api: api.get("v1/me/devices/"))

@@ -33,6 +33,7 @@ from ai.services.cabana.decoder import decode_frames as _decode_frames
 from ai.services.cabana.deps import cloudlog
 from ai.services.cabana.handlers import _filter_frames_rel, _query_frames
 from ai.services.cabana.http import json_response as _json_response
+from ai.services.cabana.truth import _load_truth_cached
 
 _INFER_SAMPLE_LIMIT_DEFAULT = 200
 _INFER_SAMPLE_LIMIT_MAX = 1000
@@ -358,6 +359,8 @@ def _statistical_candidates(frames: list[dict[str, Any]]) -> list[dict[str, Any]
       if len(values) >= 4 and increments / (len(values) - 1) >= 0.8 and len(unique) > 2:
         kind = "counter"
       default_name = f"S{start}_{size}"
+      # Evidence is a list of "<source>: <content>" strings across the whole
+      # codebase (sources: statistical / anchor / fit / decode / mux_hint).
       candidates.append({
         "name": default_name,
         "default_name": default_name,
@@ -370,10 +373,11 @@ def _statistical_candidates(frames: list[dict[str, Any]]) -> list[dict[str, Any]
         "unit": "",
         "kind": kind,
         "confidence": "statistical",
-        "evidence": (
-          f"{len(unique)} unique raw values, min={min(values)}, max={max(values)}, "
+        "evidence": [
+          "statistical: "
+          + f"{len(unique)} unique raw values, min={min(values)}, max={max(values)}, "
           + f"transitions={transitions}/{len(values)}"
-        ),
+        ],
       })
       seen_bitsets.add(bitset)
   # Prefer shorter, higher-signal runs first for LLM context readability.
@@ -409,17 +413,30 @@ def _build_dbc_draft(address: int, candidates: list[dict[str, Any]]) -> str:
 # LLM naming pass
 # -----------------------------------------------------------------------------
 
-def _infer_llm_messages(candidates: list[dict[str, Any]], address: int, hints: str, sample_count: int) -> list[dict[str, str]]:
-  compact = [
-    {
+def _infer_llm_messages(
+  candidates: list[dict[str, Any]],
+  address: int,
+  hints: str,
+  sample_count: int,
+  anchor_notes: dict[str, Any] | None = None,
+) -> list[dict[str, str]]:
+  compact: list[dict[str, Any]] = []
+  for c in candidates:
+    evidence = c.get("evidence") or []
+    if isinstance(evidence, str):
+      evidence = [evidence]
+    item: dict[str, Any] = {
       "start_bit": c["start_bit"],
       "size": c["size"],
       "endian": c["endian"],
       "kind": c.get("kind", "signal"),
-      "stats": c.get("evidence", ""),
+      "stats": " | ".join(str(e) for e in evidence),
     }
-    for c in candidates
-  ]
+    if c.get("anchor"):
+      item["anchor"] = c["anchor"]
+    if c.get("functions"):
+      item["functions"] = c["functions"]
+    compact.append(item)
   prompt = (
     f"You are given {len(candidates)} candidate bit-fields extracted statistically from "
     + f"{sample_count} frames of one CAN message (address 0x{address:X}).\n"
@@ -435,10 +452,31 @@ def _infer_llm_messages(candidates: list[dict[str, Any]], address: int, hints: s
     + "Bool candidates get factor 1 and offset 0. Counter candidates get factor 1 and offset 0. "
     + "Output ONLY the JSON array."
   )
+  if anchor_notes:
+    prompt += (
+      "\n\nPhysical anchoring is available: the anchor field of each candidate is its correlation "
+      + "with hardware truth series (accel_long = longitudinal acceleration m/s^2, accel_vert = "
+      + "vertical acceleration, yaw_rate = yaw rate rad/s, gps_speed = GPS speed m/s). Brake "
+      + "candidates correlate negatively with accel_long, throttle positively; steering correlates "
+      + "with yaw_rate; speed tracks gps_speed. Prefer the anchor evidence for naming and give a "
+      + "factor suggestion consistent with it."
+    )
   return [
     {"role": "system", "content": "You are a DBC signal definition assistant for CAN reverse engineering. Output only a JSON array."},
     {"role": "user", "content": prompt},
   ]
+
+
+def _anchor_notes(candidates: list[dict[str, Any]]) -> dict[str, Any] | None:
+  """Prompt addendum payload when any candidate carries anchor evidence."""
+  if not any(c.get("anchor") for c in candidates):
+    return None
+  return {
+    "legend": (
+      "accel_long=longitudinal acceleration m/s^2, accel_vert=vertical acceleration, "
+      + "yaw_rate=yaw rate rad/s, gps_speed=GPS speed m/s"
+    ),
+  }
 
 
 def _parse_llm_candidates(text: str) -> list[dict[str, Any]]:
@@ -484,17 +522,24 @@ def _merge_llm_candidates(candidates: list[dict[str, Any]], llm_items: list[dict
     except (TypeError, ValueError):
       confidence = 0.5
     target["name"] = _safe_signal_name(item.get("name"), target["default_name"])
+    # A physical calibration (anchor fit) beats the LLM's generic 1.0/0.0
+    # factor guess — keep it unless the candidate has no calibration at all.
+    has_fit = isinstance(target.get("calibration"), dict) and target.get("calibration")
     for field in ("factor", "offset"):
+      if has_fit:
+        continue
       try:
         target[field] = float(item.get(field, target[field]))
       except (TypeError, ValueError):
         pass
-    target["unit"] = str(item.get("unit") or "")
+    target["unit"] = str(item.get("unit") or "") or str(target.get("unit") or "")
     target["signed"] = bool(item.get("signed", False))
     target["confidence"] = confidence
     evidence = str(item.get("evidence") or "").strip()
     if evidence:
-      target["evidence"] = f"{target['evidence']} | LLM: {evidence[:120]}"
+      prev = target.get("evidence")
+      prev_list = [prev] if isinstance(prev, str) else list(prev or [])
+      target["evidence"] = [*prev_list, f"LLM: {evidence[:120]}"]
     order.append(target)
   for c in candidates:
     if id(c) not in matched:
@@ -742,15 +787,19 @@ def _fetch_samples(
   t0: float | None,
   t1: float | None,
   sample_limit: int,
-) -> tuple[list[dict[str, Any]] | None, str | None]:
-  """Same data path as the /frames endpoint (cache + in-flight dedup included)."""
+) -> tuple[list[dict[str, Any]], float, str | None]:
+  """Same data path as the /frames endpoint (cache + in-flight dedup included).
+
+  Returns ``(samples, base, error)``; ``base`` is the route-relative time
+  origin (first frame's absolute time) used for truth-series alignment.
+  """
   frames, err = _query_frames(route)
   if err or frames is None:
-    return None, err or "Route not found"
-  window, _base = _filter_frames_rel(frames, address, t0, t1)
+    return [], 0.0, err or "Route not found"
+  window, base = _filter_frames_rel(frames, address, t0, t1)
   if not window:
-    return [], None
-  return window[-sample_limit:], None
+    return [], base, None
+  return window[-sample_limit:], base, None
 
 
 async def api_dbc_ai_infer(request: web.Request) -> web.Response:
@@ -776,9 +825,11 @@ async def api_dbc_ai_infer(request: web.Request) -> web.Response:
     sample_limit = _INFER_SAMPLE_LIMIT_DEFAULT
   sample_limit = max(3, min(sample_limit, _INFER_SAMPLE_LIMIT_MAX))
   hints = str(body.get("hints") or "").strip()
+  use_anchor = body.get("use_anchor")
+  use_anchor = True if use_anchor is None else bool(use_anchor)
 
   loop = asyncio.get_running_loop()
-  samples, err = await loop.run_in_executor(None, _fetch_samples, route, address, t0, t1, sample_limit)
+  samples, base, err = await loop.run_in_executor(None, _fetch_samples, route, address, t0, t1, sample_limit)
   if err:
     return _json_response({"ok": False, "error": err}, status=404)
   if not samples:
@@ -791,6 +842,25 @@ async def api_dbc_ai_infer(request: web.Request) -> web.Response:
       "error": "No active bit-fields found in samples (payload may be constant)",
     }, status=422)
 
+  # Optional physical anchoring: annotate candidates with hardware-truth
+  # correlations, factor/offset fits and checksum detection (zero LLM cost).
+  if use_anchor:
+    truth = _load_truth_cached(route)
+    if truth and truth.get("available"):
+      try:
+        from ai.services.cabana.anchor import _annotate_candidates
+
+        candidates = _annotate_candidates(address, samples, truth, base)
+      except Exception as e:
+        cloudlog.warning(f"cabana: dbc ai infer anchor pass failed: {e}")
+  candidates = [c for c in candidates if c.get("flag") != "checksum"]
+  if not candidates:
+    return _json_response({
+      "ok": False,
+      "error": "All candidates are checksum/counter fields; nothing to infer",
+    }, status=422)
+
+  anchor_notes = _anchor_notes(candidates)
   dbc_text_draft = _build_dbc_draft(address, candidates)
   llm_used = False
   llm_error = None
@@ -798,7 +868,7 @@ async def api_dbc_ai_infer(request: web.Request) -> web.Response:
     from ai.services.cabana.ai_explain import _cabana_ai_complete
 
     result = await _cabana_ai_complete(
-      _infer_llm_messages(candidates, address, hints, len(samples)),
+      _infer_llm_messages(candidates, address, hints, len(samples), anchor_notes),
       prefer_json=True,
       lang="en",
       temperature=0.2,

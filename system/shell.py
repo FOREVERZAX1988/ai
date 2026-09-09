@@ -41,13 +41,7 @@ ALLOWED_COMMANDS: dict[str, AllowedCommand] = {
   "list_routes": AllowedCommand("list_routes", ("ls", "-1t", "__ROUTES_DIR__")),
   "tail_params_log": AllowedCommand(
     "tail_params_log",
-    (
-      "python",
-      "-c",
-      "import glob;f=sorted(glob.glob('/data/log/swaglog.*'),key=__import__('os').path.getmtime,reverse=True)\n"
-      "print(open(f[0],encoding='utf-8',errors='replace').read().splitlines()[-80:]) if f else print('(no swaglog)')",
-    ),
-    timeout=12,
+    ("tail", "-n", "80", "__DEV_LOG__"),
   ),
   "list_adaptation_drafts": AllowedCommand(
     "list_adaptation_drafts",
@@ -59,10 +53,11 @@ ALLOWED_COMMANDS: dict[str, AllowedCommand] = {
     (
       "python",
       "-c",
-      "import glob,os,re;f=sorted(glob.glob('/data/log/swaglog.*'),key=os.path.getmtime,reverse=True)\n"
-      "lines=open(f[0],encoding='utf-8',errors='replace').read().splitlines()[-300:] if f else []\n"
-      "hits=[l for l in lines if re.search(r'error|warn|fault|crash',l,re.I)]\n"
-      "print('\\n'.join(hits[-50:]) if hits else '(no matches)')",
+      "import re;p=r'__DEV_LOG__'\n"
+      "try:\n lines=open(p,encoding='utf-8',errors='replace').read().splitlines()[-300:]\n"
+      " hits=[l for l in lines if re.search(r'error|warn|fault|crash',l,re.I)]\n"
+      " print('\\n'.join(hits[-50:]) if hits else '(no matches)')\n"
+      "except Exception as e: print(e)",
     ),
     timeout=12,
     max_output_lines=80,
@@ -71,7 +66,7 @@ ALLOWED_COMMANDS: dict[str, AllowedCommand] = {
 
 
 def _resolve_args(command_name: str, args: tuple[str, ...]) -> tuple[str, ...]:
-  from ai.system.paths import adaptation_drafts_dir, routes_dir
+  from ai.system.paths import adaptation_drafts_dir, dev_log_path, routes_dir
 
   resolved: list[str] = []
   for a in args:
@@ -79,6 +74,8 @@ def _resolve_args(command_name: str, args: tuple[str, ...]) -> tuple[str, ...]:
       resolved.append(routes_dir())
     elif a == "__ADAPTATION_DRAFTS__":
       resolved.append(str(adaptation_drafts_dir()))
+    elif "__DEV_LOG__" in a:
+      resolved.append(a.replace("__DEV_LOG__", dev_log_path()))
     else:
       resolved.append(a)
   return tuple(resolved)

@@ -14,10 +14,12 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
   sys.path.insert(0, str(ROOT))
 
+import ai.tests.bootstrap_pc  # noqa: F401,E402 — side effect: PC openpilot mocks
+
 
 class TestFingerprintLib(unittest.TestCase):
   def test_extract_hex_ids(self):
-    from ai.tools.fingerprint_lib import extract_hex_ids_from_text, extract_observed_fingerprint
+    from ai.tools.domains.vehicle.fingerprint_lib import extract_hex_ids_from_text, extract_observed_fingerprint
 
     text = "addr=0x50 len=8 data=01 02\nid: 0x140"
     ids = extract_hex_ids_from_text(text)
@@ -27,7 +29,7 @@ class TestFingerprintLib(unittest.TestCase):
     self.assertEqual(obs.get(0x50), 8)
 
   def test_compare_fingerprint_empty(self):
-    from ai.tools.fingerprint_lib import compare_fingerprint
+    from ai.tools.domains.vehicle.fingerprint_lib import compare_fingerprint
 
     res = compare_fingerprint(hex_ids=[])
     self.assertFalse(res.get("ok"))
@@ -36,7 +38,7 @@ class TestFingerprintLib(unittest.TestCase):
 class TestAdaptationSignals(unittest.TestCase):
   def test_suggest_signals_invalid(self):
     try:
-      from ai.tools.adaptation import suggest_signals_for_adaptation
+      from ai.tools.domains.vehicle.adaptation import suggest_signals_for_adaptation
       res = suggest_signals_for_adaptation("")
     except ModuleNotFoundError:
       self.skipTest("cabana dependencies not available")
@@ -49,14 +51,14 @@ class TestTuneSnapshot(unittest.TestCase):
       from openpilot.common.params import Params
     except ModuleNotFoundError:
       self.skipTest("openpilot runtime not available")
-    from ai.tools.tune_snapshot_store import save_tune_snapshot, restore_tune_snapshot, list_tune_snapshots
+    from ai.tools.domains.tune.tune_snapshot_store import save_tune_snapshot, restore_tune_snapshot, list_tune_snapshots
 
     with tempfile.TemporaryDirectory() as td:
       snap_dir = Path(td) / "snaps"
       snap_dir.mkdir()
-      import ai.tools.tune_snapshot_store as ts
-      orig = ts._SNAPSHOT_DIR
-      ts._SNAPSHOT_DIR = str(snap_dir)
+      import ai.tools.domains.tune.tune_snapshot_store as ts
+      orig = ts._dir
+      ts._dir = lambda: snap_dir
       try:
         params = Params()
         # Put a known tune param if exists
@@ -72,18 +74,18 @@ class TestTuneSnapshot(unittest.TestCase):
         snaps = list_tune_snapshots()
         self.assertGreaterEqual(len(snaps.get("snapshots", [])), 1)
       finally:
-        ts._SNAPSHOT_DIR = orig
+        ts._dir = orig
 
 
 class TestSecocLookup(unittest.TestCase):
   def test_toyota_tier(self):
-    from ai.tools.secoc_lookup import lookup_secoc_tier
+    from ai.tools.domains.secoc.secoc_lookup import lookup_secoc_tier
 
     res = lookup_secoc_tier("TOYOTA COROLLA TSS2 2019", "toyota")
     self.assertEqual(res.get("tier"), "green")
 
   def test_non_toyota(self):
-    from ai.tools.secoc_lookup import lookup_secoc_tier
+    from ai.tools.domains.secoc.secoc_lookup import lookup_secoc_tier
 
     res = lookup_secoc_tier("HONDA CIVIC", "honda")
     self.assertEqual(res.get("tier"), "n/a")
@@ -91,8 +93,8 @@ class TestSecocLookup(unittest.TestCase):
 
 class TestCarPortingTools(unittest.TestCase):
   def test_validate_route_empty(self):
-    from ai.tools.car_porting_tools import car_porting_auto_fingerprint, _validate_route_ref
-    from ai.tools.op_run import resolve_route_ref
+    from ai.tools.domains.vehicle.car_porting_tools import car_porting_auto_fingerprint, _validate_route_ref
+    from ai.tools.domains.platform.op_run import resolve_route_ref
 
     self.assertEqual(_validate_route_ref(""), "route is required")
     self.assertEqual(_validate_route_ref("../x"), "Invalid route (path traversal)")
@@ -107,7 +109,7 @@ class TestManeuverTools(unittest.TestCase):
       from openpilot.common.params import Params
     except ModuleNotFoundError:
       self.skipTest("openpilot runtime not available")
-    from ai.tools.maneuver_tools import maneuver_mode_status
+    from ai.tools.domains.tune.maneuver_tools import maneuver_mode_status
     res = maneuver_mode_status()
     self.assertTrue(res.get("ok"))
     self.assertIn("longitudinal_maneuver_mode", res)
@@ -115,7 +117,7 @@ class TestManeuverTools(unittest.TestCase):
 
 class TestRouteTools(unittest.TestCase):
   def test_search_local_routes_empty(self):
-    from ai.tools.route_tools import search_local_routes_for_can
+    from ai.tools.domains.media.route_tools import search_local_routes_for_can
     res = search_local_routes_for_can([])
     self.assertFalse(res.get("ok"))
 
@@ -123,7 +125,7 @@ class TestRouteTools(unittest.TestCase):
 class TestPlotjugglerTools(unittest.TestCase):
   def test_read_dbc_platform_map(self):
     try:
-      from ai.tools.plotjuggler_tools import read_dbc_platform_map
+      from ai.tools.domains.media.plotjuggler_tools import read_dbc_platform_map
       res = read_dbc_platform_map(limit=5)
     except ModuleNotFoundError:
       self.skipTest("opendbc not available")
@@ -133,7 +135,7 @@ class TestPlotjugglerTools(unittest.TestCase):
 
 class TestCommaCloudTools(unittest.TestCase):
   def test_comma_auth_status(self):
-    from ai.tools.comma_cloud_tools import comma_auth_status
+    from ai.tools.domains.cloud.comma_cloud_tools import comma_auth_status
     res = comma_auth_status()
     self.assertTrue(res.get("ok"))
     self.assertIn("authenticated", res)
@@ -161,26 +163,26 @@ class TestHostEnv(unittest.TestCase):
 
 class TestPcDevTools(unittest.TestCase):
   def test_require_pc_on_dev(self):
-    from ai.tools.pc_dev_tools import pc_launch_replay
+    from ai.tools.domains.devops.pc_dev_tools import pc_launch_replay
     res = pc_launch_replay("demo", demo=True)
     # May fail if binary not built, but should not be "comma device only"
     self.assertNotIn("only available on PC", (res.get("error") or "").lower())
 
   def test_capture_route_context_invalid(self):
-    from ai.tools.pc_dev_tools import pc_capture_route_context
+    from ai.tools.domains.devops.pc_dev_tools import pc_capture_route_context
     res = pc_capture_route_context("")
     self.assertFalse(res.get("ok"))
 
   def test_replay_viz_stream_bad_viz(self):
-    from ai.tools.pc_dev_tools import pc_launch_replay_viz_stream
+    from ai.tools.domains.devops.pc_dev_tools import pc_launch_replay_viz_stream
     res = pc_launch_replay_viz_stream("demo", demo=True, viz="invalid")
     self.assertFalse(res.get("ok"))
 
 
 class TestMpcReport(unittest.TestCase):
   def test_mpc_script_present(self):
-    from ai.tools.op_run import OPENPILOT_ROOT
-    script = OPENPILOT_ROOT / "tools" / "longitudinal_maneuvers" / "mpc_longitudinal_tuning_report.py"
+    from ai.tools.domains.platform.op_run import OPENPILOT_ROOT
+    script = OPENPILOT_ROOT / "openpilot" / "tools" / "longitudinal_maneuvers" / "mpc_longitudinal_tuning_report.py"
     self.assertTrue(script.is_file())
 
 
@@ -208,7 +210,7 @@ class TestPcToolSessions(unittest.TestCase):
 
 class TestWorkflows(unittest.TestCase):
   def test_list_workflows(self):
-    from ai.tools.workflows import list_workflows, workflow_system_prompt
+    from ai.tools.domains.platform.workflows import list_workflows, workflow_system_prompt
 
     wfs = list_workflows()
     self.assertGreater(len(wfs), 0)
@@ -217,7 +219,7 @@ class TestWorkflows(unittest.TestCase):
 
 class TestCommaDocsRag(unittest.TestCase):
   def test_comma_docs_structure(self):
-    from ai.tools.comma_docs_rag import COMMA_DOCS_RAG
+    from ai.tools.domains.core.comma_docs_rag import COMMA_DOCS_RAG
 
     self.assertGreaterEqual(len(COMMA_DOCS_RAG), 9)
     for doc in COMMA_DOCS_RAG:
@@ -228,7 +230,7 @@ class TestCommaDocsRag(unittest.TestCase):
 
 class TestDevAssets(unittest.TestCase):
   def test_list_dev_assets(self):
-    from ai.tools.dev_assets import list_dev_assets, resolve_dev_asset
+    from ai.tools.domains.devops.dev_assets import list_dev_assets, resolve_dev_asset
 
     res = list_dev_assets(limit=5)
     self.assertTrue(res.get("ok"))
@@ -240,7 +242,7 @@ class TestDevAssets(unittest.TestCase):
 
 class TestVizLayouts(unittest.TestCase):
   def test_plotjuggler_layouts(self):
-    from ai.tools.viz_layout_tools import list_plotjuggler_layouts, list_jotpluggler_layouts
+    from ai.tools.domains.platform.viz_layout_tools import list_plotjuggler_layouts, list_jotpluggler_layouts
 
     pj = list_plotjuggler_layouts()
     self.assertTrue(pj.get("ok"))
@@ -250,7 +252,7 @@ class TestVizLayouts(unittest.TestCase):
 
 class TestSystemInfo(unittest.TestCase):
   def test_get_build_info(self):
-    from ai.tools.system_info_tools import get_build_info
+    from ai.tools.domains.platform.system_info_tools import get_build_info
 
     info = get_build_info()
     self.assertTrue(info.get("ok"))
@@ -261,7 +263,7 @@ class TestSystemInfo(unittest.TestCase):
 class TestRouteAnalysis(unittest.TestCase):
   def test_list_cabana_routes_shape(self):
     try:
-      from ai.tools.cabana_route_tools import list_cabana_routes
+      from ai.tools.domains.can.cabana_route_tools import list_cabana_routes
     except ModuleNotFoundError:
       self.skipTest("openpilot runtime not available")
     res = list_cabana_routes(limit=5)
@@ -275,14 +277,14 @@ class TestRouteAnalysis(unittest.TestCase):
         self.assertIn("name", r)
 
   def test_route_can_stats_invalid(self):
-    from ai.tools.route_analysis_tools import route_can_stats, compare_route_signals
+    from ai.tools.domains.media.route_analysis_tools import route_can_stats, compare_route_signals
 
     self.assertFalse(route_can_stats("").get("ok"))
     self.assertFalse(compare_route_signals("", "b").get("ok"))
 
   def test_batch_route_summary(self):
     try:
-      from ai.tools.route_analysis_tools import batch_route_summary
+      from ai.tools.domains.media.route_analysis_tools import batch_route_summary
       res = batch_route_summary(limit=0)
     except ModuleNotFoundError:
       self.skipTest("openpilot runtime not available")
@@ -291,7 +293,7 @@ class TestRouteAnalysis(unittest.TestCase):
 
 class TestWorkflowsBatch2(unittest.TestCase):
   def test_compare_and_batch_workflows(self):
-    from ai.tools.workflows import list_workflows, workflow_system_prompt
+    from ai.tools.domains.platform.workflows import list_workflows, workflow_system_prompt
 
     ids = {w["id"] for w in list_workflows()}
     self.assertIn("compare_routes_tune", ids)
@@ -301,7 +303,7 @@ class TestWorkflowsBatch2(unittest.TestCase):
 
 class TestDevsyncStatus(unittest.TestCase):
   def test_pc_devsync_status_local(self):
-    from ai.tools.devops_tools import pc_devsync_status
+    from ai.tools.domains.devops.devops_tools import pc_devsync_status
 
     res = pc_devsync_status()
     self.assertTrue(res.get("ok"))
@@ -310,7 +312,7 @@ class TestDevsyncStatus(unittest.TestCase):
     self.assertIn("suggested_command", res)
 
   def test_pc_devsync_status_bad_ip(self):
-    from ai.tools.devops_tools import pc_devsync_status
+    from ai.tools.domains.devops.devops_tools import pc_devsync_status
 
     res = pc_devsync_status(device_ip="bad ip!")
     self.assertFalse(res.get("ok"))
@@ -318,23 +320,23 @@ class TestDevsyncStatus(unittest.TestCase):
 
 class TestExtensionTools(unittest.TestCase):
   def test_git_status(self):
-    from ai.tools.git_tools import git_status
+    from ai.tools.domains.devops.git_tools import git_status
     res = git_status()
     self.assertIn("ok", res)
 
   def test_git_list_branches(self):
-    from ai.tools.git_tools import git_list_branches
+    from ai.tools.domains.devops.git_tools import git_list_branches
     res = git_list_branches(limit=10)
     self.assertTrue(res.get("ok"))
     self.assertIn("local", res)
 
   def test_git_checkout_invalid(self):
-    from ai.tools.git_tools import git_checkout
+    from ai.tools.domains.devops.git_tools import git_checkout
     res = git_checkout(branch="bad branch name")
     self.assertFalse(res.get("ok"))
 
   def test_audit_trail_roundtrip(self):
-    import ai.tools.audit_store as audit
+    import ai.tools.domains.platform.audit_store as audit
     with tempfile.TemporaryDirectory() as td:
       audit._AUDIT_PATH = Path(td) / "audit.jsonl"
       audit.record_audit(action="test", tool="unit", detail={"x": 1})
@@ -343,7 +345,7 @@ class TestExtensionTools(unittest.TestCase):
       self.assertGreaterEqual(out.get("count", 0), 1)
 
   def test_compare_tune_ab_invalid(self):
-    from ai.tools.route_analysis_tools import compare_tune_ab
+    from ai.tools.domains.media.route_analysis_tools import compare_tune_ab
     res = compare_tune_ab("", "b")
     self.assertFalse(res.get("ok"))
 
@@ -375,8 +377,8 @@ class TestExtensionTools(unittest.TestCase):
     from ai.plugins.builtin import git_github
     self.assertIn("git_publish_pull_request", git_github.TOOL_META)
     self.assertIn("report_bug_and_publish_pr", git_github.TOOL_META)
-    self.assertEqual(len(git_github.TOOL_SCHEMAS), 7)
-    from ai.tools.git_pr_tools import git_publish_pull_request, merge_github_pull_request
+    self.assertEqual(len(git_github.TOOL_SCHEMAS), 14)
+    from ai.tools.domains.devops.git_pr_tools import git_publish_pull_request, merge_github_pull_request
     preview = git_publish_pull_request(title="test change", confirm=False)
     self.assertTrue(preview.get("needs_confirmation") or preview.get("preview"))
     self.assertEqual(preview.get("preview", {}).get("repo_target"), "openpilot")
@@ -409,7 +411,7 @@ class TestExtensionTools(unittest.TestCase):
     self.assertIn(LABEL_SAFE_MERGE, labels)
 
   def test_report_bug_preview(self):
-    from ai.tools.bug_report_tools import report_bug_and_publish_pr
+    from ai.tools.domains.platform.bug_report_tools import report_bug_and_publish_pr
     preview = report_bug_and_publish_pr(
       title="web button broken",
       repro_steps="click",
@@ -421,7 +423,7 @@ class TestExtensionTools(unittest.TestCase):
 
   def test_add_pull_request_labels_mock(self):
     from unittest.mock import patch
-    from ai.tools import github_api_client as api
+    from ai.tools.domains.devops import github_api_client as api
     with patch.object(api, "github_request") as req:
       req.return_value = [{"name": "ai-auto-review"}]
       out = api.add_pull_request_labels("tok", "o", "r", 3, ["ai-auto-review", "ai-safe-merge"])
@@ -429,7 +431,7 @@ class TestExtensionTools(unittest.TestCase):
 
   def test_github_api_pr_client_mock(self):
     from unittest.mock import patch
-    from ai.tools import github_api_client as api
+    from ai.tools.domains.devops import github_api_client as api
 
     fake_pr = {
       "number": 7,
@@ -458,7 +460,7 @@ class TestExtensionTools(unittest.TestCase):
     import tempfile
     from pathlib import Path
     from ai.common.config_store import reset_config_store_for_tests
-    from ai.tools.github_api_client import PAT_KEY, get_pat, set_pat
+    from ai.tools.domains.devops.github_api_client import PAT_KEY, get_pat, set_pat
 
     with tempfile.TemporaryDirectory() as td:
       path = Path(td) / "config.json"
@@ -476,7 +478,7 @@ class TestExtensionTools(unittest.TestCase):
     self.assertIn("trigger_github_workflow", github_ci.TOOL_META)
     self.assertEqual(len(github_ci.TOOL_SCHEMAS), 4)
     try:
-      from ai.tools.github_actions_tools import trigger_github_workflow, check_github_runner_health
+      from ai.tools.domains.devops.github_actions_tools import trigger_github_workflow, check_github_runner_health
       preview = trigger_github_workflow(confirm=False)
       self.assertTrue(preview.get("needs_confirmation"))
       health = check_github_runner_health()
@@ -485,13 +487,13 @@ class TestExtensionTools(unittest.TestCase):
       self.skipTest("openpilot runtime not available")
 
   def test_branch_tools_preview(self):
-    from ai.tools.branch_tools import checkout_prebuilt_branch, prebuilt_branch_status
+    from ai.tools.domains.devops.branch_tools import checkout_prebuilt_branch, prebuilt_branch_status
     preview = checkout_prebuilt_branch(confirm=False)
     self.assertTrue(preview.get("needs_confirmation"))
     status = prebuilt_branch_status()
     self.assertTrue(status.get("ok"))
     try:
-      from ai.tools.branch_tools import ota_preflight_checklist
+      from ai.tools.domains.devops.branch_tools import ota_preflight_checklist
       pre = ota_preflight_checklist()
       self.assertIn("checks", pre)
     except ModuleNotFoundError:
@@ -512,14 +514,14 @@ class TestExtensionTools(unittest.TestCase):
       self.assertIn(sid, ids)
 
   def test_github_runner_tools_preview(self):
-    from ai.tools.github_runner_tools import (
+    from ai.tools.domains.devops.github_runner_tools import (
       github_runner_status,
       github_runner_recovery_hint,
       install_github_runner_preview,
       resolve_service_name,
     )
-    from ai.tools.github_api_client import parse_repo_url, summarize_workflow_run, summarize_job
-    from ai.tools.github_actions_tools import (
+    from ai.tools.domains.devops.github_api_client import parse_repo_url, summarize_workflow_run, summarize_job
+    from ai.tools.domains.devops.github_actions_tools import (
       github_actions_auth_status,
       set_github_actions_pat,
       list_github_workflow_runs,
@@ -572,7 +574,7 @@ class TestExtensionTools(unittest.TestCase):
 
   def test_github_api_client_mock(self):
     from unittest.mock import patch
-    from ai.tools import github_api_client as api
+    from ai.tools.domains.devops import github_api_client as api
 
     fake_run = {"id": 42, "status": "in_progress", "name": "build", "head_branch": "master-c3"}
     with patch.object(api, "github_request") as req:
@@ -588,7 +590,7 @@ class TestExtensionTools(unittest.TestCase):
     self.assertFalse(check.get("valid"))
 
   def test_sp_extension_github_runner_tools_registered(self):
-    from ai.tools.sp_tool_extensions import SP_EXTENSION_TOOL_META, SP_EXTENSION_SCHEMAS
+    from ai.tools.domains.platform.sp_tool_extensions import SP_EXTENSION_TOOL_META, SP_EXTENSION_SCHEMAS
     for name in (
       "github_runner_status",
       "github_runner_recovery_hint",
@@ -607,7 +609,7 @@ class TestExtensionTools(unittest.TestCase):
     self.assertIn("cancel_github_workflow_run", schema_names)
 
   def test_panda_flash_tools_preview(self):
-    from ai.tools.panda_flash_tools import recover_dos_panda, panda_recovery_hint, flash_panda_firmware
+    from ai.tools.domains.platform.panda_flash_tools import recover_dos_panda, panda_recovery_hint, flash_panda_firmware
 
     preview = recover_dos_panda(confirm=False, internal=True)
     self.assertTrue(preview.get("needs_confirmation"))
@@ -618,7 +620,7 @@ class TestExtensionTools(unittest.TestCase):
     self.assertTrue(flash_preview.get("needs_confirmation") or flash_preview.get("onroad") is not None)
     self.assertIn("preview", flash_preview)
 
-    from ai.tools.panda_flash_tools import detect_onroad, offroad_flash_guard
+    from ai.tools.domains.platform.panda_flash_tools import detect_onroad, offroad_flash_guard
     from unittest.mock import MagicMock
 
     mock_state = MagicMock()
@@ -636,7 +638,7 @@ class TestExtensionTools(unittest.TestCase):
     self.assertEqual(hint.get("skill"), "c3-dos-panda")
     self.assertIn("multi_panda", hint)
 
-    from ai.tools.panda_flash_tools import _analyze_multi_panda
+    from ai.tools.domains.platform.panda_flash_tools import _analyze_multi_panda
 
     multi = _analyze_multi_panda([
       {"is_f4": True, "is_h7": False, "internal": True},
@@ -644,7 +646,7 @@ class TestExtensionTools(unittest.TestCase):
     ])
     self.assertEqual(multi.get("scenario"), "heterogeneous_f4_h7")
 
-    from ai.tools.panda_flash_tools import _firmware_scenario_guidance
+    from ai.tools.domains.platform.panda_flash_tools import _firmware_scenario_guidance
 
     single_f4 = _firmware_scenario_guidance({"count": 1, "f4_count": 1, "h7_count": 0})
     self.assertEqual(single_f4.get("scenario"), "single_f4")
@@ -659,15 +661,18 @@ class TestExtensionTools(unittest.TestCase):
     self.assertTrue(hetero.get("build_h7"))
     self.assertIn("panda_h7", hetero.get("summary_zh", "") + hetero.get("mads_zh", ""))
 
-    from ai.tools.panda_flash_tools import _coerce_hw_type, _hw_type_label
-    from panda import Panda
+    from ai.tools.domains.platform.panda_flash_tools import _coerce_hw_type, _hw_type_label
+    try:
+      from panda import Panda
+    except (ModuleNotFoundError, ImportError):
+      self.skipTest("panda (usb1) not available on this host")
 
     self.assertEqual(_coerce_hw_type(bytearray(b"\x06")), b"\x06")
     self.assertEqual(_hw_type_label(bytearray(b"\x06")), "DOS")
     self.assertEqual(_hw_type_label(Panda.HW_TYPE_DOS), "DOS")
 
   def test_sp_extension_panda_tools_registered(self):
-    from ai.tools.sp_tool_extensions import SP_EXTENSION_TOOL_META, SP_EXTENSION_SCHEMAS
+    from ai.tools.domains.platform.sp_tool_extensions import SP_EXTENSION_TOOL_META, SP_EXTENSION_SCHEMAS
     for name in (
       "list_f4_pandas", "list_all_pandas", "recover_dos_panda", "flash_panda_firmware",
       "rebuild_pandad",
@@ -683,12 +688,12 @@ class TestExtensionTools(unittest.TestCase):
     self.assertIn("flash_panda_firmware", schema_names)
 
   def test_batch_compare_empty(self):
-    from ai.tools.route_scoring_tools import batch_compare_routes_tune
+    from ai.tools.domains.tune.route_scoring_tools import batch_compare_routes_tune
     res = batch_compare_routes_tune([])
     self.assertFalse(res.get("ok"))
 
   def test_ota_status(self):
-    from ai.tools.ota_tools import ota_status
+    from ai.tools.domains.devops.ota_tools import ota_status
 
     class _P:
       def get(self, key):
@@ -698,18 +703,18 @@ class TestExtensionTools(unittest.TestCase):
     self.assertTrue(res.get("ok"))
 
   def test_ssh_blocks_destructive(self):
-    from ai.tools.ssh_tools import ssh_readonly_exec
+    from ai.tools.domains.platform.ssh_tools import ssh_readonly_exec
     res = ssh_readonly_exec(host="1.2.3.4", command="rm -rf /")
     self.assertFalse(res.get("ok"))
 
   def test_plotjuggler_apply_missing(self):
-    from ai.tools.viz_layout_tools import plotjuggler_apply_layout
+    from ai.tools.domains.platform.viz_layout_tools import plotjuggler_apply_layout
     res = plotjuggler_apply_layout("__no_such_layout__")
     self.assertFalse(res.get("ok"))
 
   def test_scheduler_defaults_helper(self):
     try:
-      import ai.tools.scheduler as sched
+      import ai.tools.domains.platform.scheduler as sched
     except ModuleNotFoundError:
       self.skipTest("openpilot runtime not available")
     with tempfile.TemporaryDirectory() as td:
@@ -733,7 +738,7 @@ class TestExtensionTools(unittest.TestCase):
     self.assertEqual(cfg.model, base.model)
 
   def test_tune_passport(self):
-    import ai.tools.tune_passport_store as tp
+    import ai.tools.domains.tune.tune_passport_store as tp
     with tempfile.TemporaryDirectory() as td:
       path = Path(td) / "ai_tune_passport.jsonl"
       orig = tp._passport_path
@@ -747,23 +752,23 @@ class TestExtensionTools(unittest.TestCase):
         tp._passport_path = orig
 
   def test_generate_pr_draft(self):
-    from ai.tools.adaptation_pr_tools import generate_adaptation_pr_draft
+    from ai.tools.domains.vehicle.adaptation_pr_tools import generate_adaptation_pr_draft
     res = generate_adaptation_pr_draft(project_name="test-car")
     self.assertTrue(res.get("ok"))
     self.assertIn("markdown", res)
 
   def test_device_health(self):
-    from ai.tools.device_health_tools import device_health
+    from ai.tools.domains.platform.device_health_tools import device_health
     res = device_health()
     self.assertTrue(res.get("ok"))
 
   def test_git_fetch(self):
-    from ai.tools.git_tools import git_fetch
+    from ai.tools.domains.devops.git_tools import git_fetch
     res = git_fetch()
     self.assertIn("ok", res)
 
   def test_workflows_post_tune(self):
-    from ai.tools.workflows import get_workflow, list_workflows
+    from ai.tools.domains.platform.workflows import get_workflow, list_workflows
     wf = get_workflow("post_tune_validation")
     self.assertIsNotNone(wf)
     self.assertIn("score_tune_session", " ".join(wf.get("steps", [])))
@@ -830,7 +835,7 @@ class TestMadsDiagnostics(unittest.TestCase):
       from openpilot.common.params import Params
     except ModuleNotFoundError:
       self.skipTest("openpilot runtime not available")
-    from ai.tools.mads_diagnostics_tools import diagnose_mads_lateral
+    from ai.tools.domains.core.mads_diagnostics_tools import diagnose_mads_lateral
 
     res = diagnose_mads_lateral(Params(), None, user_scenario="MAIN+MADS LKAS故障")
     self.assertTrue(res.get("ok"))
@@ -839,7 +844,7 @@ class TestMadsDiagnostics(unittest.TestCase):
     self.assertEqual(res.get("skill"), "mads-lateral-troubleshoot")
 
   def test_dev_source_checks_mads_h(self):
-    from ai.tools.mads_diagnostics_tools import _dev_tree_has_main_latch
+    from ai.tools.domains.core.mads_diagnostics_tools import _dev_tree_has_main_latch
 
     latch = _dev_tree_has_main_latch()
     if latch is not None:
@@ -848,7 +853,7 @@ class TestMadsDiagnostics(unittest.TestCase):
 
 class TestPlatformBackup(unittest.TestCase):
   def test_opbak_roundtrip(self):
-    from ai.tools.platform_backup import BUNDLE_VERSION, pack_opbak, parse_uploaded_payload, unpack_opbak
+    from ai.tools.domains.platform.platform_backup import BUNDLE_VERSION, pack_opbak, parse_uploaded_payload, unpack_opbak
 
     sample = {
       "version": BUNDLE_VERSION,
@@ -868,14 +873,14 @@ class TestPlatformBackup(unittest.TestCase):
     self.assertEqual(inner.get("version"), BUNDLE_VERSION)
     parsed = parse_uploaded_payload(blob)
     self.assertTrue(parsed.get("ok"))
-    self.assertEqual(parsed["bundle"]["bundle"]["ai_model"], "deepseek-v4-flash")
+    self.assertEqual(parsed["bundle"]["bundle"]["ai_config"]["ai_model"], "deepseek-v4-flash")
 
 
 
 
 class TestDevCacheTools(unittest.TestCase):
   def test_clear_within_window(self):
-    from ai.tools import dev_cache_tools
+    from ai.tools.domains.devops import dev_cache_tools
 
     with tempfile.TemporaryDirectory() as tmp:
       root = Path(tmp)
@@ -903,7 +908,7 @@ class TestDevCacheTools(unittest.TestCase):
         dev_cache_tools._cache_group_defs = original
 
   def test_status_filter_within(self):
-    from ai.tools import dev_cache_tools
+    from ai.tools.domains.devops import dev_cache_tools
 
     with tempfile.TemporaryDirectory() as tmp:
       root = Path(tmp)

@@ -164,14 +164,14 @@ class AgentLoop:
       return False
     if self.workflow_id:
       from ai.tools.domains.platform.workflow_graph import advance_graph_workflow, get_graph_workflow
-      graph = get_graph_workflow(self.workflow_id)
-      if graph is None:
-        # Prompt-based workflow (batch_route_review / compare_routes_tune / ...):
-        # runner.py already injects workflow_system_prompt into the system context,
-        # so run a normal agent turn. Only hard-fail when the id is unknown to BOTH
-        # the graph registry and the prompt-workflow catalog.
+      if get_graph_workflow(self.workflow_id) is None:
+        # 不是 graph 工作流：内置 prompt 工作流（workflows.py 的 WORKFLOWS，如
+        # engage_triage / secoc_tsk）的 prompt 已由 build_chat_messages 注入
+        # system 消息，直接按普通回合执行即可，不做 graph 步进。
         from ai.tools.domains.platform.workflows import workflow_system_prompt
-        if not workflow_system_prompt(self.workflow_id):
+        if workflow_system_prompt(self.workflow_id):
+          self.workflow_id = None
+        else:
           error = f"workflow '{self.workflow_id}' not found"
           await self.emit_event({"type": "error", "error": error})
           self.log.append(EventType.LIFECYCLE, {"kind": "workflow_error", "workflowId": self.workflow_id, "error": error})
