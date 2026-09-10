@@ -22,3 +22,10 @@ data
 # Panda firmware is built under openpilot/panda/board/obj — never vendor into ai/
 **/*.signed
 **/panda/board/obj/
+
+# 扫描缓存/落盘产物（2026-09-10）
+tools/.scan/
+tools/.scan2/
+tools/cache_0910/
+tools/*.out
+tools/*.jsonl
