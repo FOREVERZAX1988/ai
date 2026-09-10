@@ -167,3 +167,30 @@ A2 复刻（ratio 在 idx 域、w 0.7→1.0 连续、dist_factor 分段、视觉
 4. **可执行的下一步**：在 `radar_interface.py`（A3）与 `radard.py::_macan_t_from_idx/_macan_drel_to_idx`（A2）**同步**改成 B1（单表，优先）
    或 B4（按 `ACC_Gesetzte_Zeitluecke` 选表），**并删除 `idx<100→0.8s`、`idx>560→6.0s` 两处伪分段**；
    随后按 §2.3 分段残差重标 A2 的 ratio 阈值/`dist_factor`。
+
+---
+
+## 7. 落地（2026-09-10，代码已改：B1 单表）
+
+| # | 文件 | 位置 | 改动 |
+|---|---|---|---|
+| A3 | `opendbc_repo/opendbc/car/volkswagen/radar_interface.py` | `RadarInterface._update_macan` | `t = MACAN_B1_T_A*idx + MACAN_B1_T_B`；**删除** `idx<100 -> 0.8 s`、`idx>560 -> 6.0 s` 两处伪分段（原 `idx=100` 处 `0.8 -> 1.89 s` 突跳 = 1.09 s/idx；现全段直线，逐 idx 最大 Δt = 0.00897 s） |
+| A2 | `openpilot/selfdrive/controls/radard.py` | `_macan_t_from_idx` / `_macan_idx_to_drel` / `_macan_drel_to_idx` | 同一组常量；反解改为 `clip((t - B)/A, 1, 1020)`，**删除** `t<=0.8 -> 100` / `t>=6.0 -> 561` 硬锚（两端阶梯与 A3 不一致的来源） |
+| — | 两文件模块顶层 | `MACAN_B1_T_A = 0.008969` / `MACAN_B1_T_B = 0.332` | 跨仓库无法共享常量，故各留一份；复核脚本强制断言 A2 == A3 |
+
+**复核工具（新增，保留）**：`ai/tools/verify_planB_code_0910.py`
+- 不硬编码系数：直接从两个源文件正则提取 `MACAN_B1_T_A/B`，先做同源断言，再在 `/tmp/rows_*.npy` 干净同目标集上复现指标。
+- 实测（2026-09-10）：同源 True；池化 **−0.76 m / 1.89 m / 82.0% ≤5 m / A2 替换率 6.3%** —— 与本文 §2.1 基线（−0.77 / 1.90 / 82.0% / 6.3%）一致。
+- 逐 route 与 §3 一致（B1 在 6 条 route 上全部优于 newcode）。
+
+**变更幅度**（同一 idx，v=20 m/s 口径）：idx=100 −35.0%、idx=200 −23.0%、idx=300 −16.8%、idx=400 −13.0%、idx=560 −9.2% —— 即把"新线性 +1.02 s 截距"造成的系统性偏远收回。
+
+## 8. 已知遗留：第三个映射（仪表显示源换算）尚未统一 —— 待决
+
+`opendbc/car/volkswagen/carcontroller.py::CarController.op_lead_to_index`（被 `:505` 用于**仪表车距显示源的 30% 迟滞比较**）仍在用 **0902 单调表 `_MACAN_ABSTAND_T_MONO`（153 点、idx 27~1021）** 做 `t -> idx` 反解：
+
+- 该表与 A2/A3 **本来就不一致**（A2 用 newcode、它用 0902 表），本次改动**没有让它变差，也没有修好**；
+- 数值差异：idx=400 时 0902 表 t=3.128 s，B1 为 3.92 s（+25%）；idx=780 时 7.149 vs 7.33 s；
+- 风险：`vis_raw` 与 `lead_distance` 不在同一尺度上，30% 迟滞判断被系统偏置污染 —— 这正是 2026-08-25 修过的"两源在边界来回切"同源问题；
+- 但该段代码附带大量硬挣来的仪表修复（显示变化率限速、无目标透传 0、`lead_hold` 保持窗），动它需要单独验证。
+- **建议**：下次可用 `vis_raw = A2._macan_drel_to_idx`（B1 反解）替换 `op_lead_to_index` 的表，使显示源比较落在同一尺度；先仅改这一处、单独一条 commit，便于回退。
