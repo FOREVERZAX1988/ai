@@ -1803,6 +1803,19 @@ def make_handlers(
   from ai.tools.harness_tools import register_harness_handlers, register_mcp_handlers
   register_harness_handlers(handlers, params=p, get_state_reader=get_state_reader)
   register_mcp_handlers(handlers, params=p)
+
+  # 根治(修复): search_tools/load_tool 的 schema 由 apply_deferred_filter 在会话时注入,
+  # 但此前从未注册进 handler 表。Agent 的 _execute_special_tool 会较早拦截它们走旁路,
+  # 因此在不走 Agent(或直查 handler 表/pipeline)的执行层里它们会 UNKNOWN_TOOL。
+  # 这里注入兜底 handler, 委托给 deferred_loading 实现, 使任何查表执行路径都能工作。
+  # Agent 旁路优先, 兜底仅作保底, 二者互不冲突。
+  from ai.tools.deferred_loading import handle_search_tools, handle_load_tool
+  def _meta_tool_router(name: str):
+    def _h(args):
+      return handle_search_tools(args or {}) if name == "search_tools" else handle_load_tool(args or {})
+    return _h
+  handlers.setdefault("search_tools", _meta_tool_router("search_tools"))
+  handlers.setdefault("load_tool", _meta_tool_router("load_tool"))
   return handlers
 
 

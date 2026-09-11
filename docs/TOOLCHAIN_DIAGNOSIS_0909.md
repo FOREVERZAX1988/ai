@@ -98,3 +98,33 @@
 ### 需要推送
 - 还原后的 toolsets.py
 - 3 个探针脚本（probe_0x127_0x395 / probe_0x127b / probe_0x127c，步骤B收尾用）
+
+---
+
+## 存档追加：search_tools/load_tool 反复 UNKNOWN_TOOL 的真正根因与根治（2026-09-11）
+
+### 复现 + 实证（本会话）
+- ai.aid 侧代码完全健康：直接调用 `handle_search_tools`/`handle_load_tool` 返回 ok:True。
+- 但宿主/直查 handler 表执行时返回 `{'error': "Tool 'search_tools' not implemented", 'error_code': 'UNKNOWN_TOOL'}`
+  —— 措辞与 `pipeline.execute` 第 216 行完全一致，证明调用进了 **handler 表查找**而非 Agent 的 `_execute_special_tool` 旁路。
+
+### 真正根因（接线缺口，非代码损坏）
+- `search_tools`/`load_tool` 的 **schema** 由 `deferred_loading.apply_deferred_filter` 在会话时强制注入 LLM 可见工具列表；
+- 但它们的 **handler 从未注册进 `make_handlers()` 的 handler 表**（agent_tools.py，329 个 handler 不含这两个）。
+- Agent(`_execute_special_tool`) 会较早拦截走旁路 → ai.aid 正常；但任何**不走 Agent、直查 handler 表**的执行层
+  （pipeline / execute_tool_async / 宿主 RPC / 串行执行器）都会 `UNKNOWN_TOOL`。
+- 这就是"反复修反复坏"的本质：schema 层永远可见、handler 层永远缺失 → 非对称 → 一换执行入口就复发。
+  （此前误以为是"RL 宿主网关注册表不一致"，实为本仓库内的接线缺口；宿主只是暴露了它。）
+
+### 根治（本会话已改）
+- `ai/tools/agent_tools.py::make_handlers()` 在 `register_mcp_handlers` 之后、`return` 之前，
+  为 `search_tools`/`load_tool` 注入兜底 handler，委托给 `deferred_loading.handle_search_tools/load_tool`，
+  并用 `handlers.setdefault(...)` 保证不覆盖（Agent 旁路仍优先，兜底仅在查表路径触发）。
+- 验证：make_handlers 返回 331 handler（含 meta 两个）；Agent catalog 初始化后 search/load 返回 ok:True；
+  `ai.aid` 完整导入链路 smoke 通过。
+- 需重启 ai.aid（kill 现有进程，watchdog 45s 自动拉起）让单例 handler 缓存重载。
+
+### 备忘
+- 用户终端里 `python -c "from ai.plugins import loader; loader.collect_plugins()"` 报 AttributeError：
+  `loader` 无 `collect_plugins`（正确 API 是 `list_plugins`）。这是 MD/文档指引过时的又一例证，
+  与工具路径文档未同步的情况同类。

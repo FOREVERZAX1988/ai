@@ -135,6 +135,23 @@ def meta_tool_schemas() -> list[dict[str, Any]]:
   ]
 
 
+
+def _fallback_catalog() -> dict[str, dict[str, Any]]:
+  """Build a catalog on the fly from the aid global tool schema list so that
+  search_tools/load_tool remain usable even if the session never received a
+  per-session tool list (e.g. aid restart, no chat round injection)."""
+  try:
+    from ai.tools.agent_tools import AVAILABLE_TOOLS as _at
+  except Exception:
+    _at = None
+  catalog: dict[str, dict[str, Any]] = {}
+  for tool in (_at or []):
+    fn = tool.get("function") or {}
+    name = str(fn.get("name") or "").strip()
+    if name:
+      catalog[name] = tool
+  return catalog
+
 def _tokens(text: str) -> set[str]:
   return {t.lower() for t in _TOKEN_RE.findall(text or "") if len(t) > 1}
 
@@ -213,7 +230,11 @@ def handle_search_tools(args: dict[str, Any], *, session_id: str = "", job_id: s
   key = session_key(session_id, job_id)
   catalog = _catalog_by_session.get(key)
   if not catalog:
-    return {"ok": False, "error": "Tool catalog not initialized for this session."}
+    # 治本 fallback: catalog 未初始化时现场从全局 schema 构建, 保证永远可用
+    catalog = _fallback_catalog()
+    if not catalog:
+      return {"ok": False, "error": "Tool catalog not initialized for this session."}
+    _catalog_by_session[key] = catalog
   query = str(args.get("query") or "").strip()
   limit = int(args.get("limit") or 15)
   hits = search_tools_in_catalog(catalog, query=query, limit=limit)
@@ -232,7 +253,10 @@ def handle_load_tool(args: dict[str, Any], *, session_id: str = "", job_id: str 
   key = session_key(session_id, job_id)
   catalog = _catalog_by_session.get(key)
   if not catalog:
-    return {"ok": False, "error": "Tool catalog not initialized for this session."}
+    catalog = _fallback_catalog()
+    if not catalog:
+      return {"ok": False, "error": "Tool catalog not initialized for this session."}
+    _catalog_by_session[key] = catalog
   names = args.get("tools") or []
   if isinstance(names, str):
     names = [names]
