@@ -122,7 +122,7 @@ SP_TUNE_PRESETS: dict[str, dict[str, Any]] = {
     "params": {
       "CustomAccIncrementsEnabled": "1",
       "CustomAccShortPressIncrement": "1",
-      "CustomAccLongPressIncrement": "5",
+      "CustomAccLongPressIncrement": "10",
     },
   },
   "sp_dec_on": {
