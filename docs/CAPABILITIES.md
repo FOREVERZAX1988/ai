@@ -52,6 +52,55 @@
 
 `list_plugins` 查看：github-ci、git-github、branch-ota、tsk-secoc、sunnylink-cloud、device-extras 等。
 
+## P2 增量能力
+
+> P2 在 P0/P1 主线之上新增三项后端能力，Web 设置中默认关闭，通过平台工具或 HTTP 路由调用。
+
+### WorkflowEngine（脚本式工作流）
+
+- 位置：`ai/core/workflow/`
+- 入口：`run_workflow` 平台工具 / `WorkflowEngine.run(definition, inputs)`
+- 能力：
+  - 声明式 YAML/JSON workflow definition
+  - 变量作用域与步骤输出绑定：`${inputs.x}`、`${steps.step_id.output.field}`
+  - 条件分支：`condition: "${steps.check.ok} == true"`
+  - 循环：`for_each: "item in ${steps.list.output.items}"`
+  - 并行分支：`parallel: [step_a, step_b]`
+  - 子代理调用：`agent: {id, prompt, tools, max_rounds}`
+  - 结构化错误码与 `cancel(run_id)` / `dispose(run_id)` 生命周期
+  - 事件投影：`workflow/start`、`phase/start`、`phase/log`、`agent-start`、`agent-end`、`workflow/end`
+- 调用示例：
+  ```json
+  {
+    "definition": {
+      "id": "route-summary",
+      "steps": [
+        {"id": "load", "kind": "tool", "inputs": {"tool": "list_routes", "limit": 5}},
+        {"id": "summarize", "kind": "agent", "agent": {"prompt": " summarize routes", "max_rounds": 3}}
+      ],
+      "outputs": {"summary": "${steps.summarize.output.content}"}
+    }
+  }
+  ```
+
+### Skill 生命周期（scope / version / dispose）
+
+- 位置：`ai/skill/`
+- 新增字段：`scope`（global/session）、`version`（semver）、`capabilities`、`dependencies`、`source`
+- HTTP 路由：
+  - `POST /api/ai/skills/{id}/dispose`：调用 skill dispose hook 并移除
+  - `GET /api/ai/skills/{id}/diagnose`：返回依赖满足情况、能力授权、来源可信度
+  - `POST /api/ai/skills/diagnose-all`：批量诊断 + 冲突检测
+  - `POST /api/ai/skills/session/register`：在当前会话注册 session scope skill
+- 会话隔离：`SkillRegistry.for_session(session_id)` 返回 `SessionSkillRegistry` overlay，session skill 可覆盖同名全局 skill，不影响其他会话。
+
+### MCP resources/read 与 prompts/get
+
+- 位置：`ai/mcp/host.py`、`ai/server/handlers/phase2.py`
+- 平台工具：`read_mcp_resource`、`get_mcp_prompt`（与 `call_mcp_tool`、`discover_mcp_tools` 风格一致）
+- HTTP 路由：`POST /api/ai/mcp` 请求体 `{operation: "read_resource", server_id, uri}` 或 `{operation: "get_prompt", server_id, name, arguments}`
+- 复用现有 `MCPStdioClient` stdio transport，按 session 加锁。
+
 详细用户文档：[QUICKSTART.md](QUICKSTART.md)、[TROUBLESHOOTING.md](TROUBLESHOOTING.md)、[TUNING_GUIDE.md](TUNING_GUIDE.md)、[FAQ.md](FAQ.md)。
 
 详细维护者文档：`ai/docs/PLUGIN_DEV.md`、`ai/docs/SKILL_AUTHORING.md`。

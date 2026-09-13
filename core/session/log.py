@@ -26,6 +26,8 @@ class EventType(StrEnum):
   ASSISTANT_MESSAGE = "assistant/message"
   TOOL_CALL = "tool/call"
   TOOL_RESULT = "tool/result"
+  FUNCTION_CALL = "function_call"
+  FUNCTION_CALL_RESULT = "function_call_result"
   REQUEST_HEADER = "request/header"
   REQUEST_CONTEXT = "request/context"
   LIFECYCLE = "lifecycle"
@@ -36,6 +38,10 @@ class EventType(StrEnum):
   SUBAGENT_START = "subagent/start"
   SUBAGENT_END = "subagent/end"
   SCHEDULE_CHANGE = "schedule/change"
+  COMMAND_RUN = "command/run"
+  COMMAND_DONE = "command/done"
+  MCP_TRUST_ASKED = "mcp/trust_asked"
+  MCP_TRUST_DECIDED = "mcp/trust_decided"
 
 
 class SurfaceOp(StrEnum):
@@ -378,9 +384,14 @@ class SessionLog:
           continue
         surface_op = data.get("surfaceOp")
         source_seqs = data.get("sourceEventSeqs")
+        # P0 harness storage writes events with payload in "payload"; dsh-style
+        # storage uses "data". Normalize both keys.
+        event_data = data.get("data")
+        if event_data is None:
+          event_data = data.get("payload")
         self.append(
           ev_type,
-          data.get("data"),
+          event_data,
           surface_op=SurfaceOp(surface_op) if surface_op else None,
           source_seqs=tuple(source_seqs) if isinstance(source_seqs, list) else None,
         )
@@ -395,6 +406,21 @@ class SessionLog:
 
   def __del__(self) -> None:
     self.close()
+
+  def reset(self) -> None:
+    """Clear in-memory events and reload from disk on next access."""
+    self.close()
+    self._events.clear()
+    self._surface.clear()
+    if self._persist_path is not None and self._persist_path.is_file():
+      self._load_from_disk()
+    # Reopen append handle.
+    if self._persist_path is not None:
+      try:
+        self._persist_path.parent.mkdir(parents=True, exist_ok=True)
+        self._persist_file = open(self._persist_path, "a", encoding="utf-8")
+      except Exception:
+        self._persist_file = None
 
   def _apply_surface(self, event: SessionEvent) -> None:
     _fold_one(self._surface, event)

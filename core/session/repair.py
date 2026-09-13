@@ -19,8 +19,17 @@ def interrupted_turn_closers(events: Iterable[SessionEvent]) -> list[tuple[Event
       call_id = str(data.get("callId") or data.get("tool_call_id") or "")
       if call_id:
         calls[call_id] = dict(data)
+    elif event.type == EventType.FUNCTION_CALL:
+      # P0 harness simple_loop writes function_call events with call_id.
+      call_id = str(data.get("call_id") or data.get("callId") or "")
+      if call_id:
+        calls[call_id] = dict(data)
     elif event.type == EventType.TOOL_RESULT:
       call_id = str(data.get("tool_call_id") or data.get("callId") or "")
+      if call_id:
+        results.add(call_id)
+    elif event.type == EventType.FUNCTION_CALL_RESULT:
+      call_id = str(data.get("tool_call_id") or data.get("call_id") or data.get("callId") or "")
       if call_id:
         results.add(call_id)
     elif event.type == EventType.ASSISTANT_MESSAGE:

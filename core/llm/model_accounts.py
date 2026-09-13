@@ -510,13 +510,17 @@ def resolve_chat_chain_with_route(
 
 def route_to_embedding_config(account: dict[str, Any], route: dict[str, Any]) -> "EmbeddingConfig":
   from ai.core.llm.embedding import EmbeddingConfig
+  from ai.core.llm.client import DEFAULT_USER_AGENT
 
   model = str(route.get("model") or "").strip()
+  version = DEFAULT_USER_AGENT.split("/", 1)[1] if "/" in DEFAULT_USER_AGENT else "0.0.0"
   return EmbeddingConfig(
     provider=str(account.get("provider") or ""),
     model=model,
     api_key=str(account.get("apiKey") or account.get("api_key") or ""),
     base_url=str(account.get("baseUrl") or account.get("base_url") or ""),
+    session_id="",
+    user_agent=f"op-assistant-rag/{version}",
   )
 
 

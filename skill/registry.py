@@ -10,6 +10,8 @@ import uuid
 from pathlib import Path
 from typing import Any, Callable
 
+from ai.skill.conflicts import SkillConflictReport, check_conflicts
+from ai.skill.diagnostics import SkillDiagnosticsReport, diagnose_skill
 from ai.skill.models import (
   Skill,
   SkillError,
@@ -17,6 +19,8 @@ from ai.skill.models import (
   SkillParameter,
   SkillPolicy,
 )
+from ai.skill.session_registry import SessionSkillRegistry
+from ai.skill.semver import Semver
 
 _SKILL_BASE_DIR: Path | None = None
 
@@ -161,6 +165,49 @@ class SkillRegistry:
   def confirm_invocation(self, request_id: str) -> SkillInvocation | None:
     """Synchronous confirmation placeholder; real flow would persist pending requests."""
     return None
+
+  def for_session(self, session_id: str) -> SessionSkillRegistry:
+    """Create a session-local overlay view of this registry."""
+    return SessionSkillRegistry(session_id, self)
+
+  def dispose(self, skill_id: str) -> dict[str, Any]:
+    """Dispose a global skill by calling its dispose handler if present.
+
+    The skill remains registered but marked disabled if dispose fails.
+    """
+    try:
+      skill = self.get(skill_id)
+    except SkillError as e:
+      return {"ok": False, "skill_id": skill_id, "error": e.message}
+
+    error = ""
+    try:
+      if skill.handler is not None and hasattr(skill.handler, "dispose"):
+        dispose_fn = getattr(skill.handler, "dispose")
+        if callable(dispose_fn):
+          dispose_fn()
+    except Exception as e:
+      error = str(e)
+      skill.policy = "disabled"
+      self._save_manifest()
+
+    return {"ok": not bool(error), "skill_id": skill_id, "error": error or None}
+
+  def diagnose(self, skill_id: str) -> SkillDiagnosticsReport:
+    """Return a structured diagnostics report for a skill."""
+    try:
+      skill = self.get(skill_id)
+    except SkillError as e:
+      return SkillDiagnosticsReport(
+        skill_id=skill_id,
+        ok=False,
+        error=e.message,
+      )
+    return diagnose_skill(skill, resolve_dependency=self.get)
+
+  def check_conflicts(self) -> SkillConflictReport:
+    """Detect duplicate skill ids, cyclic dependencies and missing deps."""
+    return check_conflicts(self.list_skills(), resolve_dependency=self.get)
 
   def build_tool_definitions(self) -> list[dict[str, Any]]:
     """Return OpenAI-style function definitions for registered skills."""

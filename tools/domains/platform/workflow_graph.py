@@ -43,6 +43,7 @@ def graph_path() -> Path:
   global _GRAPH_PATH
   if _GRAPH_PATH is None:
     d = workspace_path("workflows", mkdir=True)
+    d.mkdir(parents=True, exist_ok=True)
     _GRAPH_PATH = d / "graphs.json"
   return _GRAPH_PATH
 
@@ -181,3 +182,45 @@ def list_graph_workflows() -> list[dict[str, Any]]:
     {"id": wid, "name": w.get("name", wid), "mode": "graph", "custom": True}
     for wid, w in load_graphs().items()
   ]
+
+
+def graph_workflow_requires_tools(workflow_id: str) -> dict[str, Any]:
+  """Return the set of tool names referenced by TOOL_CALL nodes in a graph workflow."""
+  graph = get_graph_workflow(workflow_id)
+  if graph is None:
+    return {"ok": False, "error": f"graph workflow '{workflow_id}' not found"}
+  tools: set[str] = set()
+  for node in graph.nodes.values():
+    if node.kind == NodeKind.TOOL_CALL:
+      tool = (node.config or {}).get("tool")
+      if tool:
+        tools.add(str(tool))
+  return {"ok": True, "workflowId": workflow_id, "requiresTools": sorted(tools)}
+
+
+async def run_graph_workflow_step(
+  workflow_id: str,
+  action: str,
+  *,
+  node_id: str | None = None,
+  inputs: dict[str, Any] | None = None,
+  tool_handlers: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+  """Advance or execute a single step of a graph workflow.
+
+  Combines stateful advancement (pause/resume/step/retry) with optional
+  per-step tool execution when ``tool_handlers`` are provided.
+  """
+  advance = advance_graph_workflow(workflow_id, action, node_id=node_id)
+  if not advance.get("ok"):
+    return advance
+
+  if tool_handlers and inputs is not None and action in ("step", "resume"):
+    result = await execute_graph_workflow(workflow_id, inputs=inputs, tool_handlers=tool_handlers)
+    advance["stepResult"] = {
+      "ok": result.ok,
+      "error": result.error,
+      "outputs": result.outputs if hasattr(result, "outputs") else {},
+    }
+
+  return advance

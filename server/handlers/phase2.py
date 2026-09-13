@@ -137,7 +137,15 @@ async def api_platform_sessions_search(request: web.Request) -> web.Response:
 
 async def api_platform_mcp(request: web.Request) -> web.Response:
   from ai.server.deps import json_response, params
-  from ai.mcp.host import list_mcp_servers, upsert_mcp_server, discover_mcp_tools
+  from ai.mcp.host import (
+    list_mcp_servers,
+    upsert_mcp_server,
+    discover_mcp_tools,
+    discover_mcp_resources,
+    discover_mcp_prompts,
+    read_mcp_resource,
+    get_mcp_prompt,
+  )
 
   p = request.app.get("params") or params()
   if request.method == "GET":
@@ -149,8 +157,30 @@ async def api_platform_mcp(request: web.Request) -> web.Response:
   if not isinstance(body, dict):
     body = {}
   op = str(body.get("operation") or "upsert")
+  server_id = str(body.get("server_id") or body.get("serverId") or "")
   if op == "discover":
-    return json_response(await discover_mcp_tools(p, str(body.get("server_id") or "")))
+    return json_response(await discover_mcp_tools(p, server_id))
+  if op == "discover_resources":
+    return json_response(await discover_mcp_resources(p, server_id))
+  if op == "discover_prompts":
+    return json_response(await discover_mcp_prompts(p, server_id))
+  if op == "read_resource":
+    uri = str(body.get("uri") or "")
+    if not uri:
+      return json_response({"ok": False, "error": "uri required"}, status=400)
+    return json_response(await read_mcp_resource(
+      p, server_id, uri,
+      session_id=str(body.get("session_id") or body.get("sessionId") or ""),
+    ))
+  if op == "get_prompt":
+    name = str(body.get("name") or "")
+    if not name:
+      return json_response({"ok": False, "error": "name required"}, status=400)
+    return json_response(await get_mcp_prompt(
+      p, server_id, name,
+      arguments=body.get("arguments") if isinstance(body.get("arguments"), dict) else {},
+      session_id=str(body.get("session_id") or body.get("sessionId") or ""),
+    ))
   return json_response(upsert_mcp_server(p, body))
 
 

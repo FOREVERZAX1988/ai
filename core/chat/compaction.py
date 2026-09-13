@@ -110,6 +110,7 @@ async def maybe_compact_messages(
     ],
     max_tokens=1200,
     timeout_total=90,
+    session_id=session_id,
   )
   if err or not content.strip():
     return messages

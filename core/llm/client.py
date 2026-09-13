@@ -8,10 +8,24 @@ Streams content, reasoning_content, tool_calls, and usage.
 import json
 import os
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, AsyncIterator, Literal
 
 import aiohttp
 
+
+def _default_user_agent() -> str:
+  try:
+    version = (Path(__file__).resolve().parents[2] / "VERSION").read_text(encoding="utf-8").strip()
+  except Exception:
+    version = "0.0.0"
+  return f"op-assistant/{version}"
+
+
+DEFAULT_USER_AGENT = _default_user_agent()
+
+# Providers that require a stable x-opencode-session header per conversation.
+OPENCODE_PROVIDERS = frozenset({"opencode-zen", "opencode-go"})
 
 DEFAULT_ENDPOINTS = {
   "opencode-zen": "https://opencode.ai/zen/v1",
@@ -65,6 +79,8 @@ class AIConfig:
   max_tokens: int = 4096
   thinking_enabled: bool = True
   thinking_keep: str = ""
+  session_id: str = ""
+  user_agent: str = DEFAULT_USER_AGENT
 
   @property
   def endpoint(self) -> str:
@@ -400,6 +416,10 @@ async def _stream_chat_completion(
   if config.provider == "openrouter":
     headers["HTTP-Referer"] = "https://openpilot.com/"
     headers["X-Title"] = "Openpilot AI Agent"
+  if config.provider in OPENCODE_PROVIDERS and config.session_id:
+    headers["x-opencode-session"] = config.session_id
+  if config.user_agent:
+    headers["User-Agent"] = config.user_agent
 
   payload = _build_payload(config, messages, tools, temperature, max_tokens, thinking_mode=thinking_mode)
 
@@ -441,8 +461,11 @@ async def chat_completion(
   *,
   thinking_mode: ThinkingMode = "user",
   timeout_total: float = 120,
+  session_id: str = "",
 ) -> AsyncIterator[ChatChunk]:
   """Stream chat completion chunks from the configured provider."""
+  if session_id:
+    config.session_id = session_id
   modes: list[ThinkingMode] = [thinking_mode]
   if thinking_mode == "user" and config.is_thinking_model():
     modes = ["user", "disabled"]
@@ -493,6 +516,7 @@ async def chat_completion_collect(
   max_tokens: int | None = None,
   thinking_mode: ThinkingMode = "user",
   timeout_total: float = 120,
+  session_id: str = "",
 ) -> tuple[str, str, str | None]:
   """Collect a full completion. Returns (content, reasoning, error)."""
   content_parts: list[str] = []
@@ -505,6 +529,7 @@ async def chat_completion_collect(
     max_tokens=max_tokens,
     thinking_mode=thinking_mode,
     timeout_total=timeout_total,
+    session_id=session_id,
   ):
     if chunk.error:
       return "", "", chunk.error
@@ -559,6 +584,10 @@ async def list_models(config: AIConfig) -> dict[str, Any]:
 
   url = f"{config.endpoint}/models"
   headers = {"Authorization": f"Bearer {config.api_key}"}
+  if config.provider in OPENCODE_PROVIDERS and config.session_id:
+    headers["x-opencode-session"] = config.session_id
+  if config.user_agent:
+    headers["User-Agent"] = config.user_agent
   timeout = aiohttp.ClientTimeout(total=30, connect=10)
   try:
     async with aiohttp.ClientSession(timeout=timeout) as session:
