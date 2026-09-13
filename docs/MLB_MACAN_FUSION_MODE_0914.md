@@ -94,8 +94,8 @@
 
 ## 五、推送与验证记录
 
-- 主仓库 `macan-long-0914`：HEAD=`06d583462`，已 push 至 `origin/macan-long-0914`（同步 0/0）
-- `opendbc_repo`：`macan-long-0914` 分支已 push，指向 `2d888f442`（与主仓库引用一致）
+- 主仓库 `macan-long-0914`：HEAD=`5422ed102`（含 06d583462 融合模式 + efb04fc 327.04 对齐 + 5422ed bump ai），已 push 至 `origin/macan-long-0914`
+- `opendbc_repo`：`macan-long-0914` 分支已 push，指向 `73f15ddc`（327.04 哨兵对齐，原 2d888f442 基础）
 - `ai` 子模块：`macan-long-0914` 分支已 push，指向 `36cdacdfe`（0912 CustomAcc step 改动，主仓库 0914 沿用该指针；因远程原不可达，本次补建同名分支推送）
 - webui：指针未变（沿用 `1a963cf7e`），不属本仓库维护。
 
