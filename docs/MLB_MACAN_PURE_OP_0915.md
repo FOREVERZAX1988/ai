@@ -56,3 +56,42 @@
 - `opendbc/car/volkswagen/tests/test_volkswagen.py`：4 passed, 96 subtests。
 - `opendbc/safety/tests/test_volkswagen_mlb.py`：58 passed, 74 skipped, 40 subtests。
 - 完整 `opendbc/car/volkswagen/tests/`：29 passed, 96 subtests。
+
+## 四、本机 routes 扫描结论（2026-09-15 夜间）
+
+> 用户要求扫描本机全部 routes：按"bus2 与 bus0/bus128 是否重合"区分原厂 ACC vs OP 融合路由；
+> 分析 ACC 各状态（关/待命/激活）信号规律；标注潜在 bug。
+
+### 4.1 分类（bus2 vs bus128 重合法）
+对所有 8 个 session（00000002/03/04/49/70/71/72/74 = 269 段）抽样 ACC_02(raw Wunsch,Status) 与 ACC_05 Status：
+- **全部 route 均 100% bus2=bus128 重合**（ACC_02 重合度 100%）→ 全部为本机 **原厂 ACC 控制** 路由。
+- ACC_05 Status 恒为 **0**（待命/关闭），未发现 st∈(2,3,4) 激活段 → 本机 routes 均为停车巡检/台架
+  捕获，**无真实路试激活段**。纯 OP 纵向路由尚不存在（与用户"纯OP还没路试"一致）。
+
+### 4.2 ACC 信号状态规律（本机 stock 路由）
+- **关/待命（st=0）**：bus2 仍持续发 ACC_02/04/05（Status=0），**Abstandsindex(距离)/ZielV(前车速度)
+  持续发送**（验证用户猜想：基础信息信号雷达持续发）。Wunschgeschw 保留上次设定值（~82-312 km/h），
+  **未出现 327.04/327.36 哨兵**——点火初始化段 Wunsch raw≈960-975（≈307-312 km/h）。
+- **代码 `_WUNSCH_NO_DISPLAY=327.04` 为纯显示件安全值**（DBC VAL 语义 1022 keine Anzeige），
+  与 stock 路由的"保留上次值"不冲突（OP 自算显示时用 327.04 表示"无设定"仅供仪表清空，零执行风险）。
+- 结论：纯OP模式 ACC02/04 保持 st=0 时仍发距离/前车速度信号，符合原厂"基础信号持续发送"行为。
+
+### 4.3 纯OP 状态机新增测试（opendbc test_macan_mlb.py）
+新增 `TestMacanPureOPLongStateMachine`（9 用例），逐条对齐用户 0915 规范：
+- LS_Hauptschalter=0 → acc_control=0（关闭）
+- LS_Hauptschalter=1 未激活 → 2（待命，踩油门仍 2）
+- 激活（TSK_Status 1/2 确认）→ 3
+- 激活中踩油门 → 4（超驰）
+- 故障 → 6
+- stock_st 在纯OP 恒 None（不镜像原厂）
+- ACC_02 HUD：激活→Status=3/Prim=1；待命→Status=2/Prim=0
+
+### 4.4 测试结果
+- `opendbc/car/volkswagen/tests/test_macan_mlb.py`：**33 passed**（含新增 9 用例）
+- `opendbc/car/volkswagen/tests/` 全量：**37 passed, 96 subtests**
+- 主仓 `openpilot/selfdrive/car/tests/test_car_interfaces.py -k volkswagen`：**19 passed**
+
+### 4.5 依赖
+- 纯OP 中 `long_active = CC.longActive`（OP 自定，非原厂 TSK）→ 纯OP 激活由 OP 自身 long 状态门控，
+  不依赖已停用雷达的 TSK 激活。TSK_Status 仅用于 `cruiseState.enabled`/accFaulted 诊断回读。
+- 待路试验证：纯OP 下 TSK_Status_GRA_ACC_02 是否如实反映 1/2（engaged/超驰）。
