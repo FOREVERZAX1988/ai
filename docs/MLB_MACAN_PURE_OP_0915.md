@@ -95,3 +95,15 @@
 - 纯OP 中 `long_active = CC.longActive`（OP 自定，非原厂 TSK）→ 纯OP 激活由 OP 自身 long 状态门控，
   不依赖已停用雷达的 TSK 激活。TSK_Status 仅用于 `cruiseState.enabled`/accFaulted 诊断回读。
 - 待路试验证：纯OP 下 TSK_Status_GRA_ACC_02 是否如实反映 1/2（engaged/超驰）。
+
+### 4.6 原厂 route 0004 实证实锤：ACC ↔ TSK 状态映射 (2026-09-15 补充)
+用 CANParser 直接解码 route `00000004--915ebf086f`（原厂 ACC 控制）：
+- **待命态 (LS_Hauptschalter=1)**：`ACC_05/st=2` + `ACC_02/anzeige=2` + `TSK_Status_GRA_ACC_02=0`，
+  ACC_04 Texte_Zusatzanz 在 0/2 间切换。→ **TSK=0 即对应 ACC 待命 (st=2)**，与用户 0915 规范完全一致。
+- **激活 (LS_HS=1)**：`ACC_05/st=3` + `ACC_02/anzeige=3` + `ACC_04/Texte_Zusatzanz=8(或7)` + **`TSK=1`(engaged)**。
+- **驾驶员超驰 (LS_HS=1)**：`ACC_05/st=4` + `ACC_02/anzeige=4` + `ACC_04/Texte_Zusatzanz=3` + **`TSK=2`(override)**。
+- **主开关关 (LS_Hauptschalter=0)**：`ACC_05/st=0` + `ACC_02/anzeige=0` + `ACC_04/Texte_Zusatzanz=1` + TSK=0
+  → 印证用户铁律：**LS_Hauptschalter=0 时所有状态信号必须=0/待命**。
+- **激活时刻 (seg20)**: 待命(st=2,TSK=0) → 激活操作 → ACC 2→3 且 TSK 0→1 同步, SET=0 HS=1。
+- **TSK 映射总表**：`TSK=0↔ACC待命(2)/关闭(0)`，`TSK=1↔ACC激活(3)`，`TSK=2↔ACC超驰(4)`，`TSK=3↔故障(6)`。
+  → 与用户规范、代码 `acc_control_value` 完全吻合，纯OP 状态机已对齐原厂实测。
