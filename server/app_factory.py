@@ -11,7 +11,7 @@ from openpilot.common.swaglog import cloudlog
 from ai.services.cabana.app import register_routes as register_cabana_routes
 from ai.core.llm.embedding import load_embedding_config
 from ai.server.deps import WEB_DIR, json_response, params, read_ai_config
-from ai.server.runtime import scheduler_loop, status_watch_loop
+from ai.server.runtime import gps_auto_timezone_loop, scheduler_loop, status_watch_loop
 from ai.server.routes import register_routes as register_server_routes
 from ai.core.sync.hub import register_sync_routes
 from ai.lsp.index import SymbolIndex
@@ -183,6 +183,7 @@ def create_app() -> web.Application:
     application["get_state_reader"] = get_state_reader
     application["scheduler_task"] = asyncio.create_task(scheduler_loop(application))
     application["status_watch_task"] = asyncio.create_task(status_watch_loop(application))
+    application["gps_tz_task"] = asyncio.create_task(gps_auto_timezone_loop(application))
     try:
       from ai.core.wspace.store import ensure_default_workspace_files
       ensure_default_workspace_files()
@@ -227,7 +228,7 @@ def create_app() -> web.Application:
       cloudlog.warning(f"aid: dbc catalog warm skipped: {e}")
 
   async def _on_cleanup(application: web.Application) -> None:
-    for key in ("scheduler_task", "status_watch_task", "memory_index_task", "session_index_task", "rag_reindex_task", "dbc_warm_task"):
+    for key in ("scheduler_task", "status_watch_task", "gps_tz_task", "memory_index_task", "session_index_task", "rag_reindex_task", "dbc_warm_task"):
       task = application.get(key)
       if task:
         task.cancel()
