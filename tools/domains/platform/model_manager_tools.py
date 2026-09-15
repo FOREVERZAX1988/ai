@@ -173,6 +173,7 @@ def select_model_bundle(params: Params, ref: str) -> dict[str, Any]:
 
 def refresh_model_list(params: Params) -> dict[str, Any]:
   params.put("ModelManager_LastSyncTime", 0)
+  params.put("ModelManager_LastSyncTime_Chestnut", 0)
   return list_model_bundles(params, refresh=False)
 
 
