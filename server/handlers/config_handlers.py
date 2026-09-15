@@ -228,6 +228,12 @@ async def api_post_config(request: web.Request) -> web.Response:
     tz = body.get("timezone")
     if tz is not None and str(tz).strip():
       _put("ai_timezone", str(tz).strip())
+      # 用户手动设置时区同步到 OS 系统时钟
+      try:
+        from ai.infra.timezone import apply_os_timezone
+        apply_os_timezone(str(tz).strip())
+      except Exception:
+        pass
     embedding_routes_changed = False
     if "modelHub" in body and isinstance(body.get("modelHub"), dict):
       hub_result = save_model_hub(_PARAMS, body["modelHub"])

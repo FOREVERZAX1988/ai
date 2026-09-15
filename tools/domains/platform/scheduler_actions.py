@@ -65,4 +65,26 @@ async def execute_scheduler_action(
       return f"blockers: {blockers}"
     return "ota preflight ok"
 
+  if action == "sync_timezone_wifi":
+    """On-network-connect timezone calibration (一联网就自动校准时区).
+
+    Runs when the device joins WiFi (on_wifi trigger). Detects the timezone from
+    the network egress IP (works without GPS fix / ignition) and, if the UTC
+    offset differs from the saved zone, updates ai_timezone + OS system clock.
+    """
+    from ai.infra.timezone import detect_timezone_from_ip, read_ai_timezone_name, apply_os_timezone, utc_offset_hours
+    from ai.common.storage import write_param
+    try:
+      detected = await _to_thread(detect_timezone_from_ip)
+      if not detected:
+        return "no ip zone"
+      current = read_ai_timezone_name(params)
+      if detected != current and abs(utc_offset_hours(detected) - utc_offset_hours(current)) > 0.01:
+        write_param(params, "ai_timezone", detected)
+        applied = await _to_thread(apply_os_timezone, detected)
+        return f"tz {current}->{detected} applied={applied}"
+      return "tz unchanged"
+    except Exception as e:
+      return f"tz error: {e}"
+
   return ""

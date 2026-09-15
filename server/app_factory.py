@@ -184,6 +184,13 @@ def create_app() -> web.Application:
     application["scheduler_task"] = asyncio.create_task(scheduler_loop(application))
     application["status_watch_task"] = asyncio.create_task(status_watch_loop(application))
     application["gps_tz_task"] = asyncio.create_task(gps_auto_timezone_loop(application))
+    # 启动时把保存的 ai_timezone 同步到 OS 系统时钟
+    # （不仅仅等 GPS 改变时才生效；一联网/启动即应用）
+    try:
+      from ai.infra.timezone import apply_os_timezone, read_ai_timezone_name
+      apply_os_timezone(read_ai_timezone_name(_PARAMS))
+    except Exception as e:
+      cloudlog.warning(f"aid: boot tz apply skipped: {e}")
     try:
       from ai.core.wspace.store import ensure_default_workspace_files
       ensure_default_workspace_files()

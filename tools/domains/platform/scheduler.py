@@ -28,7 +28,7 @@ VALID_ACTIONS = frozenset({
   "trip_review_offroad", "reindex_rag_wifi", "ingest_community_wiki_wifi", "check_critical_events",
   "post_drive_review_offroad", "check_param_watchlist_offroad", "git_fetch_wifi",
   "check_runner_health_offroad", "check_device_health_offroad", "check_github_ci_failed",
-  "ota_preflight_offroad", "chat_notify",
+  "ota_preflight_offroad", "sync_timezone_wifi", "chat_notify",
 })
 VALID_TRIGGERS = frozenset({"interval", "on_offroad", "on_ignition", "on_wifi", "daily_at"})
 
@@ -210,6 +210,7 @@ def ensure_default_scheduler_tasks(params: Params) -> dict[str, Any]:
     {"name": "参数漂移检查", "action": "check_param_watchlist_offroad", "trigger": "on_offroad", "interval_minutes": 60, "payload": {}},
     {"name": "Runner/CI 健康", "action": "check_runner_health_offroad", "trigger": "on_offroad", "interval_minutes": 120, "payload": {"notify": True}},
     {"name": "设备健康巡检", "action": "check_device_health_offroad", "trigger": "interval", "interval_minutes": 360, "payload": {}},
+    {"name": "WiFi 自动校准时区", "action": "sync_timezone_wifi", "trigger": "on_wifi", "interval_minutes": 60, "payload": {}},
     {"name": "CI 失败告警", "action": "check_github_ci_failed", "trigger": "on_wifi", "interval_minutes": 60, "payload": {}},
     {"name": "Heartbeat 巡检", "action": "heartbeat_tick", "trigger": "interval", "interval_minutes": 30, "payload": {}},
   ]
