@@ -70,6 +70,15 @@
 5. 操作员在 SSH TTY 执行 writer，输入大写 `YES`，断电重启，重复直到 PASS。
 6. 若中途失败：`eps_patch_diagnose` → `eps_patch_prepare_restore`。
 
+### Web 弹窗面板
+
+除了 chat 工具，还可以在 op 助手 Web UI 顶部工具栏点击 **EPS 刷写** 图标打开独立弹窗面板：
+
+- 步骤进度条：探测 → 分类 → Probe → 手动 Writer
+- 实时日志区：显示 telescope / patch probe 的 stdout
+- 命令卡：生成 `python3.12 eps_patch.py patch` 等手动命令，支持一键复制
+- 所有写操作仍需 offroad + 后端 confirm；writer 仍不通过 HTTP 自动执行
+
 ### chat 可调用工具
 
 | 工具 | 类型 | 说明 |

@@ -608,6 +608,8 @@ async def api_fallback(request: web.Request) -> web.Response:
     return web.json_response({"ok": True, "canvas": []})
   if "/terminal/" in path:
     return web.json_response({"ok": True, "output": ""})
+  if path.startswith("/api/eps/"):
+    return web.json_response({"ok": True, "mode": "local-dev", "path": path})
   if "/write/" in path or "/tune" in path:
     return web.json_response({"ok": True})
   if "/test" in path or "/test_connection" in path:

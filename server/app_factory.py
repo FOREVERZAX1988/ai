@@ -341,4 +341,10 @@ def create_app() -> web.Application:
   except Exception as e:
     if cloudlog is not None:
       cloudlog.warning(f"aid: panda routes skipped: {e}")
+  try:
+    from ai.services.eps.routes import register_eps_routes
+    register_eps_routes(app)
+  except Exception as e:
+    if cloudlog is not None:
+      cloudlog.warning(f"aid: eps routes skipped: {e}")
   return app
