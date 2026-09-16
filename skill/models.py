@@ -7,6 +7,7 @@ from typing import Any, Callable, Literal
 
 SkillId = str
 SkillPolicy = Literal["auto", "confirm", "disabled"]
+SkillScope = Literal["global", "session", "project"]
 SkillInvocationStatus = Literal["pending", "allowed", "denied", "running", "success", "error"]
 SkillErrorCode = Literal[
   "SKILL_NOT_FOUND",
@@ -52,6 +53,30 @@ class SkillParameter:
     )
 
 
+@dataclass(frozen=True)
+class SkillDependency:
+  """Structured dependency declaration for a skill."""
+
+  name: str
+  version_constraint: str = ""
+  optional: bool = False
+
+  def to_dict(self) -> dict[str, Any]:
+    return {
+      "name": self.name,
+      "version_constraint": self.version_constraint,
+      "optional": self.optional,
+    }
+
+  @staticmethod
+  def from_dict(data: dict[str, Any]) -> SkillDependency:
+    return SkillDependency(
+      name=str(data.get("name", "")),
+      version_constraint=str(data.get("version_constraint", "")),
+      optional=bool(data.get("optional", False)),
+    )
+
+
 @dataclass
 class Skill:
   id: SkillId
@@ -61,6 +86,12 @@ class Skill:
   parameters: list[SkillParameter]
   handler: Callable[..., Any] | None = field(default=None, compare=False, repr=False)
   metadata: dict[str, Any] = field(default_factory=dict)
+  # P2 lifecycle fields
+  scope: SkillScope = "global"
+  version: str = "0.0.0"
+  capabilities: list[str] = field(default_factory=list)
+  dependencies: list[SkillDependency] = field(default_factory=list)
+  source: str = ""
 
   def to_dict(self) -> dict[str, Any]:
     return {
@@ -70,10 +101,23 @@ class Skill:
       "policy": self.policy,
       "parameters": [p.to_dict() for p in self.parameters],
       "metadata": dict(self.metadata),
+      "scope": self.scope,
+      "version": self.version,
+      "capabilities": list(self.capabilities),
+      "dependencies": [d.to_dict() for d in self.dependencies],
+      "source": self.source,
     }
 
   @staticmethod
   def from_dict(data: dict[str, Any], handler: Callable[..., Any] | None = None) -> Skill:
+    raw_deps = data.get("dependencies") or []
+    deps: list[SkillDependency] = []
+    if isinstance(raw_deps, list):
+      for dep in raw_deps:
+        if isinstance(dep, dict):
+          deps.append(SkillDependency.from_dict(dep))
+        elif isinstance(dep, str):
+          deps.append(SkillDependency(name=dep))
     return Skill(
       id=str(data.get("id", "")),
       name=str(data.get("name", "")),
@@ -82,7 +126,17 @@ class Skill:
       parameters=[SkillParameter.from_dict(p) for p in data.get("parameters", [])],
       handler=handler,
       metadata=dict(data.get("metadata") or {}),
+      scope=str(data.get("scope", "global")),
+      version=str(data.get("version", "0.0.0")),
+      capabilities=list(data.get("capabilities") or []),
+      dependencies=deps,
+      source=str(data.get("source", "")),
     )
+
+  @property
+  def version_from_metadata(self) -> str:
+    """Backward-compatible version lookup into metadata."""
+    return str(self.metadata.get("version") or self.version or "0.0.0")
 
 
 @dataclass

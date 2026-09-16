@@ -7,10 +7,14 @@ and inspected without re-reading every object.
 
 from __future__ import annotations
 
+import hashlib
+import io
 import json
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
+
 from ai.attachment.models import (
   AttachmentRef,
   content_id,
@@ -29,6 +33,15 @@ BROAD_MEDIA_TYPES: frozenset[str] = frozenset([
   "application/json",
   "application/pdf",
 ])
+
+
+def _has_pillow() -> bool:
+  """Probe Pillow availability without importing at module load time."""
+  try:
+    import PIL.Image  # noqa: F401
+    return True
+  except Exception:
+    return False
 
 
 class AttachmentError(Exception):
@@ -66,12 +79,28 @@ class AttachmentLimits:
       raise AttachmentError("Attachment exceeds the configured byte limit.", "ATTACHMENT_TOO_LARGE")
 
 
+@dataclass
+class ImageVariantSpec:
+  """Requested image variant."""
+
+  max_size: tuple[int, int] = (512, 512)
+  grayscale: bool = False
+  fmt: str = "PNG"
+
+
+def _sha256_prefix(attachment_id: str) -> tuple[str, str]:
+  """Validate a sha256: attachment id and return (digest, prefix)."""
+  if not attachment_id.startswith("sha256:") or len(attachment_id) != 71:
+    raise AttachmentError("Invalid attachment id.", "INVALID_ATTACHMENT_ID")
+  digest = attachment_id[7:]
+  return digest, digest[:2]
+
+
 class AttachmentStore:
   """Content-addressed file attachment backend.
 
-  The store is intentionally dependency-light: it does not require image
-  processing libraries or openpilot imports. Callers may layer normalization
-  on top by replacing the uploaded bytes before calling ``upload``.
+  Supports optional image normalization when Pillow is available. Without
+  Pillow, image uploads are stored as opaque blobs (metadata only).
   """
 
   def __init__(
@@ -84,20 +113,25 @@ class AttachmentStore:
     self.limits = limits or AttachmentLimits()
     self.objects_dir = self.base_dir / "objects"
     self.meta_dir = self.base_dir / "meta"
+    self.variants_dir = self.base_dir / "variants"
     self.objects_dir.mkdir(parents=True, exist_ok=True)
     self.meta_dir.mkdir(parents=True, exist_ok=True)
+    self.variants_dir.mkdir(parents=True, exist_ok=True)
 
   def _object_path(self, attachment_id: str) -> Path:
-    if not attachment_id.startswith("sha256:") or len(attachment_id) != 71:
-      raise AttachmentError("Invalid attachment id.", "INVALID_ATTACHMENT_ID")
-    digest = attachment_id[7:]
-    return self.objects_dir / digest[:2] / digest
+    digest, prefix = _sha256_prefix(attachment_id)
+    return self.objects_dir / prefix / digest
 
   def _meta_path(self, attachment_id: str) -> Path:
-    if not attachment_id.startswith("sha256:") or len(attachment_id) != 71:
-      raise AttachmentError("Invalid attachment id.", "INVALID_ATTACHMENT_ID")
-    digest = attachment_id[7:]
+    digest, prefix = _sha256_prefix(attachment_id)
     return self.meta_dir / f"{digest}.json"
+
+  def _variant_path(self, attachment_id: str, spec: ImageVariantSpec) -> Path:
+    digest, prefix = _sha256_prefix(attachment_id)
+    fmt = spec.fmt.lower()
+    gray = "g" if spec.grayscale else "c"
+    size_tag = f"{spec.max_size[0]}x{spec.max_size[1]}"
+    return self.variants_dir / prefix / f"{digest}_{size_tag}_{gray}.{fmt}"
 
   def _load_meta(self, attachment_id: str) -> AttachmentRef:
     path = self._meta_path(attachment_id)
@@ -108,6 +142,57 @@ class AttachmentStore:
     except json.JSONDecodeError as exc:
       raise AttachmentError("Attachment metadata is corrupt.", "ATTACHMENT_CORRUPT") from exc
     return AttachmentRef.from_dict(data)
+
+  def _atomic_write_bytes(self, path: Path, data: bytes) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = path.with_suffix(".tmp")
+    try:
+      tmp_path.write_bytes(data)
+      tmp_path.replace(path)
+    except OSError as exc:
+      raise AttachmentError("Unable to persist attachment.", "ATTACHMENT_WRITE_FAILED") from exc
+    finally:
+      tmp_path.unlink(missing_ok=True)
+
+  def _atomic_write_text(self, path: Path, text: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = path.with_suffix(".tmp")
+    try:
+      tmp_path.write_text(text, encoding="utf-8")
+      tmp_path.replace(path)
+    except OSError as exc:
+      raise AttachmentError("Unable to persist attachment metadata.", "ATTACHMENT_WRITE_FAILED") from exc
+    finally:
+      tmp_path.unlink(missing_ok=True)
+
+  def _is_image(self, mime_type: str) -> bool:
+    return mime_type.startswith("image/")
+
+  def _normalize_image(
+    self,
+    data: bytes,
+    mime_type: str,
+    spec: ImageVariantSpec,
+  ) -> bytes | None:
+    """Return normalized image bytes if Pillow is available, else None."""
+    if not self._is_image(mime_type):
+      return None
+    if not _has_pillow():
+      return None
+    try:
+      import PIL.Image
+      source = PIL.Image.open(io.BytesIO(data))
+      source = source.convert("RGB") if source.mode not in ("RGB", "RGBA", "L") else source
+      if spec.grayscale:
+        source = source.convert("L")
+      source.thumbnail(spec.max_size, PIL.Image.Resampling.LANCZOS)
+      fmt = spec.fmt.upper() if spec.fmt.upper() in ("PNG", "JPEG", "WEBP") else "PNG"
+      out = io.BytesIO()
+      source.save(out, format=fmt)
+      return out.getvalue()
+    except Exception:
+      # Normalization is best-effort; return None to fall back to original.
+      return None
 
   def upload(
     self,
@@ -143,15 +228,7 @@ class AttachmentStore:
     meta_path = self._meta_path(attachment_id)
 
     if not object_path.exists():
-      object_path.parent.mkdir(parents=True, exist_ok=True)
-      tmp_path = object_path.with_suffix(".tmp")
-      try:
-        tmp_path.write_bytes(data)
-        tmp_path.replace(object_path)
-      except OSError as exc:
-        raise AttachmentError("Unable to persist attachment.", "ATTACHMENT_WRITE_FAILED") from exc
-      finally:
-        tmp_path.unlink(missing_ok=True)
+      self._atomic_write_bytes(object_path, bytes(data))
 
     ref = AttachmentRef(
       attachment_id=attachment_id,
@@ -161,15 +238,7 @@ class AttachmentStore:
     )
 
     if not meta_path.exists():
-      meta_path.parent.mkdir(parents=True, exist_ok=True)
-      tmp_meta = meta_path.with_suffix(".tmp")
-      try:
-        tmp_meta.write_text(json.dumps(ref.to_dict(), ensure_ascii=False), encoding="utf-8")
-        tmp_meta.replace(meta_path)
-      except OSError as exc:
-        raise AttachmentError("Unable to persist attachment metadata.", "ATTACHMENT_WRITE_FAILED") from exc
-      finally:
-        tmp_meta.unlink(missing_ok=True)
+      self._atomic_write_text(meta_path, json.dumps(ref.to_dict(), ensure_ascii=False))
 
     return ref
 
@@ -217,6 +286,52 @@ class AttachmentStore:
     """Return only the metadata for an attachment."""
     return self._load_meta(attachment_id)
 
+  def get_variant(
+    self,
+    attachment_id: str,
+    spec: ImageVariantSpec | None = None,
+  ) -> tuple[AttachmentRef, bytes]:
+    """Return a request-image variant, creating it on first access.
+
+    Falls back to the original bytes if Pillow is unavailable or normalization
+    fails. The variant is cached under ``variants/``.
+    """
+    spec = spec or ImageVariantSpec()
+    ref, data = self.get(attachment_id)
+    normalized = self._normalize_image(data, ref.mime_type, spec)
+    if normalized is None:
+      return ref, data
+
+    variant_path = self._variant_path(attachment_id, spec)
+    if not variant_path.exists():
+      self._atomic_write_bytes(variant_path, normalized)
+    else:
+      normalized = variant_path.read_bytes()
+
+    variant_ref = AttachmentRef(
+      attachment_id=attachment_id,
+      mime_type=guess_mime_type(str(variant_path)),
+      size=len(normalized),
+      name=ref.name,
+    )
+    return variant_ref, normalized
+
+  def get_thumbnail(
+    self,
+    attachment_id: str,
+    size: tuple[int, int] = (256, 256),
+  ) -> tuple[AttachmentRef, bytes]:
+    """Convenience accessor for a thumbnail variant."""
+    return self.get_variant(attachment_id, ImageVariantSpec(max_size=size, grayscale=False))
+
+  def get_grayscale(
+    self,
+    attachment_id: str,
+    size: tuple[int, int] = (512, 512),
+  ) -> tuple[AttachmentRef, bytes]:
+    """Convenience accessor for a grayscale variant."""
+    return self.get_variant(attachment_id, ImageVariantSpec(max_size=size, grayscale=True))
+
   def delete(self, attachment_id: str) -> bool:
     """Remove an attachment's metadata and object if no other reference exists.
 
@@ -234,6 +349,16 @@ class AttachmentStore:
       object_path.unlink()
     except FileNotFoundError:
       pass
+    if self.variants_dir.exists():
+      digest, prefix = _sha256_prefix(attachment_id)
+      variant_dir = self.variants_dir / prefix
+      if variant_dir.exists():
+        for path in variant_dir.iterdir():
+          if path.name.startswith(digest):
+            try:
+              path.unlink()
+            except FileNotFoundError:
+              pass
     return removed
 
   def object_path(self, attachment_id: str) -> Path:

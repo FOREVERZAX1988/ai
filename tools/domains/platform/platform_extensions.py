@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import asyncio
+import json
 from typing import Any, Callable
 
 from openpilot.common.params import Params
 
-from ai.mcp.host import call_mcp_tool, discover_mcp_tools, list_mcp_servers, upsert_mcp_server
+from ai.mcp.host import call_mcp_tool, discover_mcp_tools, get_mcp_prompt, list_mcp_servers, read_mcp_resource, upsert_mcp_server
 from ai.tools.domains.platform.session_index import (
   get_session_history,
   list_sessions_brief,
@@ -46,6 +48,8 @@ PLATFORM_TOOL_META: dict[str, dict[str, Any]] = {
   "list_mcp_servers": {"label": "MCP 服务列表", "group": "read", "default_enabled": True, "driving": True},
   "manage_mcp_server": {"label": "管理 MCP 服务", "group": "config", "default_enabled": True, "driving": True},
   "call_mcp_tool": {"label": "调用 MCP 工具", "group": "read", "default_enabled": True, "driving": True},
+  "read_mcp_resource": {"label": "读取 MCP resource", "group": "read", "default_enabled": True, "driving": True},
+  "get_mcp_prompt": {"label": "获取 MCP prompt", "group": "read", "default_enabled": True, "driving": True},
   "discover_mcp_tools": {"label": "发现 MCP 工具", "group": "read", "default_enabled": True, "driving": True},
   "list_learned_skills": {"label": "已学技能列表", "group": "read", "default_enabled": True, "driving": True},
   "propose_learned_skill": {"label": "提议新技能", "group": "memory", "default_enabled": True, "driving": True},
@@ -65,6 +69,7 @@ PLATFORM_TOOL_META: dict[str, dict[str, Any]] = {
   "load_skill": {"label": "按需加载技能", "group": "read", "default_enabled": True, "driving": True},
   "run_evolution_pipeline": {"label": "运行进化管线", "group": "config", "default_enabled": True, "driving": True},
   "run_gepa_evolution": {"label": "GEPA 技能进化", "group": "config", "default_enabled": True, "driving": True},
+  "run_workflow": {"label": "运行 WorkflowEngine workflow", "group": "config", "default_enabled": True, "driving": True},
   "list_tool_desc_overrides": {"label": "工具描述覆盖", "group": "read", "default_enabled": True, "driving": True},
 }
 
@@ -79,6 +84,8 @@ PLATFORM_SCHEMAS: list[dict[str, Any]] = [
   {"type": "function", "function": {"name": "manage_mcp_server", "description": "Add or update an MCP stdio server config.", "parameters": {"type": "object", "properties": {"id": {"type": "string"}, "name": {"type": "string"}, "command": {"type": "string"}, "args": {"type": "array", "items": {"type": "string"}}, "enabled": {"type": "boolean"}}, "required": ["id", "command"]}}},
   {"type": "function", "function": {"name": "discover_mcp_tools", "description": "Call MCP tools/list for a server and cache tool names.", "parameters": {"type": "object", "properties": {"server_id": {"type": "string"}}, "required": ["server_id"]}}},
   {"type": "function", "function": {"name": "call_mcp_tool", "description": "Invoke a tool on a configured MCP server.", "parameters": {"type": "object", "properties": {"server_id": {"type": "string"}, "tool_name": {"type": "string"}, "arguments": {"type": "object"}}, "required": ["server_id", "tool_name"]}}},
+  {"type": "function", "function": {"name": "read_mcp_resource", "description": "Read a resource from a configured MCP server.", "parameters": {"type": "object", "properties": {"server_id": {"type": "string"}, "uri": {"type": "string"}}, "required": ["server_id", "uri"]}}},
+  {"type": "function", "function": {"name": "get_mcp_prompt", "description": "Get a prompt template from a configured MCP server.", "parameters": {"type": "object", "properties": {"server_id": {"type": "string"}, "name": {"type": "string"}, "arguments": {"type": "object"}}, "required": ["server_id", "name"]}}},
   {"type": "function", "function": {"name": "list_learned_skills", "description": "List agent-proposed learned skills.", "parameters": {"type": "object", "properties": {}, "required": []}}},
   {"type": "function", "function": {"name": "propose_learned_skill", "description": "Save a reusable skill draft from a completed workflow.", "parameters": {"type": "object", "properties": {"title": {"type": "string"}, "body": {"type": "string"}, "tags": {"type": "array", "items": {"type": "string"}}}, "required": ["title", "body"]}}},
   {"type": "function", "function": {"name": "approve_learned_skill", "description": "Approve a pending learned skill for future prompts.", "parameters": {"type": "object", "properties": {"skill_id": {"type": "string"}}, "required": ["skill_id"]}}},
@@ -95,7 +102,9 @@ PLATFORM_SCHEMAS: list[dict[str, Any]] = [
   {"type": "function", "function": {"name": "analyze_execution_traces", "description": "Mine recent sessions for failures and corrections (Hermes-style trace collection).", "parameters": {"type": "object", "properties": {"limit": {"type": "integer"}}, "required": []}}},
   {"type": "function", "function": {"name": "evolve_skill_proposal", "description": "Draft an improved learned skill from execution traces with LLM reflection and Pareto selection.", "parameters": {"type": "object", "properties": {"title": {"type": "string"}, "trace_session_id": {"type": "string"}, "focus": {"type": "string"}, "body": {"type": "string"}, "use_llm": {"type": "boolean"}}, "required": []}}},
   {"type": "function", "function": {"name": "load_skill", "description": "Progressive disclosure: load full SKILL.md body for a skill id from registry.", "parameters": {"type": "object", "properties": {"skill_id": {"type": "string"}}, "required": ["skill_id"]}}},
+  {"type": "function", "function": {"name": "run_evolution_pipeline", "description": "Run built-in Hermes evolution pipeline.", "parameters": {"type": "object", "properties": {"session_id": {"type": "string"}, "focus": {"type": "string"}}, "required": []}}},
   {"type": "function", "function": {"name": "run_gepa_evolution", "description": "Run built-in Hermes GEPA skill evolution (eval dataset + reflective mutate + constraints). Requires approval.", "parameters": {"type": "object", "properties": {"skill_id": {"type": "string"}, "eval_source": {"type": "string", "enum": ["sessiondb", "synthetic", "golden", "trace"]}, "focus": {"type": "string"}, "iterations": {"type": "integer"}}, "required": ["skill_id"]}}},
+  {"type": "function", "function": {"name": "run_workflow", "description": "Run a WorkflowEngine definition by id or inline definition.", "parameters": {"type": "object", "properties": {"workflow_id": {"type": "string"}, "definition": {"type": "object"}, "inputs": {"type": "object"}}, "required": []}}},
   {"type": "function", "function": {"name": "list_tool_desc_overrides", "description": "List evolved tool description overrides applied to tool schemas.", "parameters": {"type": "object", "properties": {}, "required": []}}},
 ]
 
@@ -149,6 +158,23 @@ def make_platform_handlers(
       server_id=str(args.get("server_id") or ""),
       tool_name=str(args.get("tool_name") or ""),
       arguments=args.get("arguments") if isinstance(args.get("arguments"), dict) else {},
+    )
+
+  async def h_read_mcp_resource(args: dict[str, Any]) -> dict[str, Any]:
+    return await read_mcp_resource(
+      p,
+      server_id=str(args.get("server_id") or ""),
+      uri=str(args.get("uri") or ""),
+      session_id=str(args.get("session_id") or args.get("sessionId") or ""),
+    )
+
+  async def h_get_mcp_prompt(args: dict[str, Any]) -> dict[str, Any]:
+    return await get_mcp_prompt(
+      p,
+      server_id=str(args.get("server_id") or ""),
+      name=str(args.get("name") or ""),
+      arguments=args.get("arguments") if isinstance(args.get("arguments"), dict) else {},
+      session_id=str(args.get("session_id") or args.get("sessionId") or ""),
     )
 
   def h_list_learned(_a: dict[str, Any]) -> dict[str, Any]:
@@ -291,6 +317,19 @@ def make_platform_handlers(
     from ai.tools.domains.platform.tool_desc_store import list_tool_desc_overrides
     return list_tool_desc_overrides(p)
 
+  async def h_run_workflow(args: dict[str, Any]) -> dict[str, Any]:
+    from ai.core.workflow import WorkflowEngine
+    definition = args.get("definition") or {}
+    if not isinstance(definition, dict) or not definition.get("id"):
+      stored = _workflow_engine_definitions().get(str(args.get("workflow_id") or ""))
+      if stored is None:
+        return {"ok": False, "error": "workflow definition or workflow_id required"}
+      definition = stored
+    engine = WorkflowEngine()
+    engine.set_tool_runner(lambda name, a: _dispatch_workflow_tool(name, a, p))
+    result = await engine.run(definition, dict(args.get("inputs") or {}))
+    return {"ok": result.ok, "output": result.output, "error": result.message, "code": result.error.value}
+
   return {
     "sessions_list": h_sessions_list,
     "sessions_history": h_sessions_history,
@@ -302,6 +341,8 @@ def make_platform_handlers(
     "manage_mcp_server": h_manage_mcp,
     "discover_mcp_tools": h_discover_mcp,
     "call_mcp_tool": h_call_mcp,
+    "read_mcp_resource": h_read_mcp_resource,
+    "get_mcp_prompt": h_get_mcp_prompt,
     "list_learned_skills": h_list_learned,
     "propose_learned_skill": h_propose_learned,
     "approve_learned_skill": h_approve_learned,
@@ -320,5 +361,37 @@ def make_platform_handlers(
     "load_skill": h_load_skill,
     "run_evolution_pipeline": h_run_evolution_pipeline,
     "run_gepa_evolution": h_run_gepa_evolution,
+    "run_workflow": h_run_workflow,
     "list_tool_desc_overrides": h_list_tool_desc,
   }
+
+
+def _workflow_engine_definitions() -> dict[str, dict[str, Any]]:
+  """Return a small in-memory registry of WorkflowEngine definitions.
+
+  Currently loads from workspace ``workflows/engine_definitions.json`` if
+  present; otherwise returns an empty dict so callers can pass ``definition``
+  directly to the ``run_workflow`` tool.
+  """
+  from ai.system.paths import workspace_path
+  from pathlib import Path
+  path = workspace_path("workflows", mkdir=True) / "engine_definitions.json"
+  try:
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if isinstance(data, dict):
+      return {k: v for k, v in data.items() if isinstance(v, dict)}
+  except Exception:
+    pass
+  return {}
+
+
+async def _dispatch_workflow_tool(name: str, args: dict[str, Any], params: Params) -> dict[str, Any]:
+  """Dispatch a tool call from within a WorkflowEngine TOOL step."""
+  from ai.tools.agent_tools import make_handlers
+  handlers = make_handlers()
+  handler = handlers.get(name)
+  if handler is None:
+    return {"ok": False, "error": f"tool '{name}' not found"}
+  if asyncio.iscoroutinefunction(handler):
+    return await handler(args)
+  return handler(args)

@@ -318,6 +318,7 @@ class Agent:
           self._chat_messages,
           tools=active_tools,
           body=self.body,
+          session_id=self.session_id,
         ):
           self.config = active_cfg
           yield chunk
@@ -704,6 +705,7 @@ class Agent:
           request.get("messages", []),
           tools=request.get("tools"),
           body=self.body,
+          session_id=self.session_id,
         ):
           self.config = active_cfg
           yield chunk

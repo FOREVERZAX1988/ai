@@ -242,6 +242,80 @@ async def call_mcp_tool(
 
 
 async def discover_mcp_tools(params: Params, server_id: str, session_id: str = "", sessionId: str | None = None) -> dict[str, Any]:
+  return await _mcp_discovery_request(params, server_id, "tools/list", "tools", session_id=session_id, sessionId=sessionId)
+
+
+async def discover_mcp_resources(params: Params, server_id: str, session_id: str = "", sessionId: str | None = None) -> dict[str, Any]:
+  return await _mcp_discovery_request(params, server_id, "resources/list", "resources", session_id=session_id, sessionId=sessionId)
+
+
+async def discover_mcp_prompts(params: Params, server_id: str, session_id: str = "", sessionId: str | None = None) -> dict[str, Any]:
+  return await _mcp_discovery_request(params, server_id, "prompts/list", "prompts", session_id=session_id, sessionId=sessionId)
+
+
+def _get_client(params: Params, server_id: str, session_id: str) -> MCPStdioClient | None:
+  """Resolve or create a cached MCP stdio client for a server/session pair."""
+  servers = _load_servers(params)
+  server = next((s for s in servers if s.get("id") == server_id), None)
+  if not server:
+    return None
+  cmd = str(server.get("command") or "")
+  if not cmd:
+    return None
+  args = list(map(str, server.get("args") or []))
+  env = {str(k): str(v) for k, v in (server.get("env") or {}).items()}
+  return _client_for(server_id, session_id, cmd, args, env)
+
+
+async def read_mcp_resource(
+  params: Params,
+  server_id: str,
+  uri: str,
+  session_id: str = "",
+  sessionId: str | None = None,
+) -> dict[str, Any]:
+  """Read an MCP resource by URI."""
+  sid = str(sessionId or session_id or "")
+  try:
+    client = _get_client(params, server_id, sid)
+    if client is None:
+      return {"ok": False, "error": f"MCP server '{server_id}' not found", "server_id": server_id, "uri": uri}
+    async with client.lock:
+      result = await client.request("resources/read", {"uri": uri})
+    return {"ok": True, "server_id": server_id, "uri": uri, "contents": result}
+  except Exception as e:
+    return {"ok": False, "error": str(e), "server_id": server_id, "uri": uri}
+
+
+async def get_mcp_prompt(
+  params: Params,
+  server_id: str,
+  name: str,
+  arguments: dict[str, Any] | None = None,
+  session_id: str = "",
+  sessionId: str | None = None,
+) -> dict[str, Any]:
+  """Get an MCP prompt by name with optional arguments."""
+  sid = str(sessionId or session_id or "")
+  try:
+    client = _get_client(params, server_id, sid)
+    if client is None:
+      return {"ok": False, "error": f"MCP server '{server_id}' not found", "server_id": server_id, "name": name}
+    async with client.lock:
+      result = await client.request("prompts/get", {"name": name, "arguments": arguments or {}})
+    return {"ok": True, "server_id": server_id, "name": name, "messages": result}
+  except Exception as e:
+    return {"ok": False, "error": str(e), "server_id": server_id, "name": name}
+
+
+async def _mcp_discovery_request(
+  params: Params,
+  server_id: str,
+  method: str,
+  result_key: str,
+  session_id: str = "",
+  sessionId: str | None = None,
+) -> dict[str, Any]:
   servers = _load_servers(params)
   server = next((s for s in servers if s.get("id") == server_id), None)
   if not server:
@@ -251,17 +325,19 @@ async def discover_mcp_tools(params: Params, server_id: str, session_id: str = "
     return {"ok": False, "error": "server command not configured"}
   try:
     sid = str(sessionId or session_id or "")
+    env = {str(k): str(v) for k, v in (server.get("env") or {}).items()}
+    args = list(map(str, server.get("args") or []))
+    config = (cmd, tuple(args), tuple(sorted(env.items())))
     if sid:
-      env = {str(k): str(v) for k, v in (server.get("env") or {}).items()}
-      client = _client_for(server_id, sid, cmd, list(map(str, server.get("args") or [])), env)
-      async with _session_lock(server_id, sid, (cmd, tuple(map(str, server.get("args") or [])), tuple(sorted(env.items())))):
-        result = await client.request("tools/list", {})
+      client = _client_for(server_id, sid, cmd, args, env)
+      async with _session_lock(server_id, sid, config):
+        result = await client.request(method, {})
     else:
-      result = await _rpc_stdio(cmd, list(server.get("args") or []), {str(k): str(v) for k, v in (server.get("env") or {}).items()}, "tools/list", {})
-    tools = result.get("tools") if isinstance(result, dict) else result
-    if isinstance(tools, list):
-      server["tools"] = [t.get("name") for t in tools if isinstance(t, dict) and t.get("name")]
+      result = await _rpc_stdio(cmd, args, env, method, {})
+    items = result.get(result_key) if isinstance(result, dict) else result
+    if method == "tools/list" and isinstance(items, list):
+      server["tools"] = [t.get("name") for t in items if isinstance(t, dict) and t.get("name")]
       _save_servers(params, servers)
-    return {"ok": True, "serverId": server_id, "tools": tools}
+    return {"ok": True, "serverId": server_id, "type": result_key, "items": items}
   except Exception as e:
-    return {"ok": False, "error": str(e)}
+    return {"ok": False, "error": str(e), "serverId": server_id}

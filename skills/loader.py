@@ -6,6 +6,8 @@ from __future__ import annotations
 
 import json
 import logging
+import re
+from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -18,6 +20,74 @@ _SKILLS_ROOT = Path(__file__).resolve().parent
 _REGISTRY = _SKILLS_ROOT / "registry.json"
 _MAX_CHARS_PER_SKILL = 6000
 _MAX_TOTAL_CHARS = 28000
+
+# YAML-style frontmatter delimiters.
+_FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n", re.DOTALL)
+
+
+@dataclass(frozen=True)
+class SkillFrontmatter:
+  """Parsed frontmatter from a SKILL.md file."""
+
+  name: str = ""
+  version: str = ""
+  scope: str = ""
+  trust: str = "normal"
+  triggers: list[str] = None  # type: ignore[assignment]
+
+  def __post_init__(self) -> None:
+    object.__setattr__(self, "triggers", list(self.triggers or []))
+
+  def to_dict(self) -> dict[str, Any]:
+    return {
+      "name": self.name,
+      "version": self.version,
+      "scope": self.scope,
+      "trust": self.trust,
+      "triggers": list(self.triggers or []),
+    }
+
+
+def _parse_frontmatter(text: str) -> tuple[SkillFrontmatter, str]:
+  """Extract YAML-style frontmatter and return (metadata, body).
+
+  Accepts a simple subset of YAML: ``key: value`` pairs and list values using
+  ``- item`` syntax. Does not require PyYAML.
+  """
+  match = _FRONTMATTER_RE.match(text)
+  if not match:
+    return SkillFrontmatter(), text
+
+  raw = match.group(1)
+  body = text[match.end():]
+  data: dict[str, Any] = {}
+  current_key: str | None = None
+
+  for line in raw.splitlines():
+    stripped = line.strip()
+    if not stripped or stripped.startswith("#"):
+      continue
+    if stripped.startswith("-"):
+      item = stripped[1:].strip()
+      if current_key:
+        if current_key not in data or not isinstance(data[current_key], list):
+          data[current_key] = []
+        data[current_key].append(item)
+      continue
+    if ":" in stripped:
+      key, value = stripped.split(":", 1)
+      key = key.strip().lower()
+      value = value.strip().strip('"\'')
+      data[key] = value
+      current_key = key
+
+  return SkillFrontmatter(
+    name=str(data.get("name", "")),
+    version=str(data.get("version", "")),
+    scope=str(data.get("scope", "")),
+    trust=str(data.get("trust", "normal")).lower() or "normal",
+    triggers=list(data.get("triggers") or []),
+  ), body
 
 
 @lru_cache(maxsize=1)
@@ -77,14 +147,16 @@ def save_enabled_skill_ids(params, ids: list[str]) -> None:
   write_param(params, "ai_skills_enabled", json.dumps(ids, ensure_ascii=False))
 
 
-def _read_skill_body(rel_path: str) -> str:
+def _read_skill_body(rel_path: str) -> tuple[str, SkillFrontmatter]:
+  """Read a skill file and parse its frontmatter."""
   path = _SKILLS_ROOT / rel_path
   if not path.is_file():
-    return ""
+    return "", SkillFrontmatter()
   text = path.read_text(encoding="utf-8")
-  if len(text) > _MAX_CHARS_PER_SKILL:
-    return text[:_MAX_CHARS_PER_SKILL] + "\n\n[... skill truncated ...]"
-  return text
+  frontmatter, body = _parse_frontmatter(text)
+  if len(body) > _MAX_CHARS_PER_SKILL:
+    body = body[:_MAX_CHARS_PER_SKILL] + "\n\n[... skill truncated ...]"
+  return body, frontmatter
 
 
 def _brand_matches(entry: dict[str, Any], brand: str) -> bool:
@@ -120,10 +192,12 @@ def build_skills_prompt(
   total = 0
   for entry in selected:
     sid = entry.get("id")
-    body = _read_skill_body(entry.get("path", ""))
+    body, frontmatter = _read_skill_body(entry.get("path", ""))
     if not body:
       continue
-    header = f"## Skill: {entry.get('name', sid)}\n"
+    header = f"## Skill: {frontmatter.name or entry.get('name', sid)}\n"
+    if frontmatter.version:
+      header += f"*version {frontmatter.version}*\n"
     chunk = header + body
     if total + len(chunk) > _MAX_TOTAL_CHARS:
       parts.append("\n[... remaining loaded skills truncated ...]")
@@ -145,17 +219,24 @@ def load_skill_body_by_id(skill_id: str) -> dict[str, Any]:
   sid = (skill_id or "").strip()
   for entry in list_skills():
     if entry.get("id") == sid:
-      body = _read_skill_body(entry.get("path", ""))
+      body, frontmatter = _read_skill_body(entry.get("path", ""))
       if not body:
         return {"ok": False, "error": "skill file empty or missing"}
       return {
         "ok": True,
         "id": sid,
-        "name": entry.get("name", sid),
+        "name": frontmatter.name or entry.get("name", sid),
         "body": body,
         "path": entry.get("path"),
+        "frontmatter": frontmatter.to_dict(),
       }
   return {"ok": False, "error": f"skill not found: {sid}"}
+
+
+def parse_skill_frontmatter(skill_path: str) -> SkillFrontmatter:
+  """Parse the frontmatter of a single skill file by relative path."""
+  _, frontmatter = _read_skill_body(skill_path)
+  return frontmatter
 
 
 def clear_cache() -> None:

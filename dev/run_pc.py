@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import logging
 import os
+import signal
 import sys
 import types
 from pathlib import Path
@@ -98,6 +99,13 @@ def main() -> None:
   parser.add_argument("--port", type=int, default=5090)
   parser.add_argument("--host", type=str, default="127.0.0.1")
   args = parser.parse_args()
+
+  # Ignore console close signals so the server keeps running when launched
+  # from a terminal/session that later exits (Windows SIGBREAK / Linux SIGHUP).
+  if hasattr(signal, "SIGBREAK"):
+    signal.signal(signal.SIGBREAK, signal.SIG_IGN)
+  if hasattr(signal, "SIGHUP"):
+    signal.signal(signal.SIGHUP, signal.SIG_IGN)
 
   _install_openpilot_mocks()
 
