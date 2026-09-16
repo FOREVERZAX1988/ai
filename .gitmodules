@@ -1,0 +1,3 @@
+[submodule "vendor/eps_patch"]
+	path = vendor/eps_patch
+	url = https://github.com/mouxangithub/8965B4512000-FW-PATCH.git

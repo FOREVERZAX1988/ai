@@ -54,6 +54,27 @@
 - **不要** onroad 跑 TSK 采集/安装
 - 密文 CAN 无法靠 `cabana_analyze` 猜算法；先解决密钥再谈适配
 
+## 8965B4512000 EPS 固件补丁（静止台架）
+
+部分丰田车型（如 2024 RAV4 Prime、2026 Sienna）在 SecOC 密钥之外还需 EPS 固件补丁才能横向控车。本模块已将 `8965B4512000-FW-PATCH` 集成到 `ai/vendor/eps_patch/`，并暴露为 chat 工具。
+
+### chat 可调用工具
+
+| 工具 | 类型 | 说明 |
+|------|------|------|
+| `eps_patch_status` | 只读 | 查看当前 state、probe 证据、下一步命令 |
+| `eps_patch_diagnose` | 只读 | 汇总最近的失败/不确定 incident |
+| `eps_patch_probe(confirm=true, serial?)` | 写操作 | 停止 manager/pandad，执行只读 probe |
+| `eps_patch_prepare_patch` | 只读规划 | 检查 patch 前置条件并输出手动命令 |
+| `eps_patch_prepare_restore` | 只读规划 | 检查 restore 前置条件并输出手动命令 |
+
+### 安全边界
+
+- 仅支持 EPS 零件号 `8965B4512000`。
+- `patch` / `restore` 的破坏性 writer **不能** 通过 chat 自动执行；必须由操作员在前台交互 SSH TTY 运行 `python3.12 eps_patch.py patch` / `restore`，并输入大写 `YES`。
+- 每个 writer 阶段后需要完整断电重启 comma/EPS，再重新 SSH 执行同一命令。
+- 刷写前必须已有 probe PASS 证据；失败时按 diagnose 指引处理，禁止编辑 `state.json`。
+
 ## 相关技能
 
 - `engage-troubleshooting` — 无法开启 OP 总入口
