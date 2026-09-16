@@ -146,6 +146,9 @@ TOOL_META: dict[str, dict[str, Any]] = {
   "openpilotci_segment_url": {"label": "OpenpilotCI URL", "group": "read", "default_enabled": True, "driving": True},
   "live_cereal_summary": {"label": "实时 cereal 摘要", "group": "read", "default_enabled": True, "driving": False},
   "lookup_secoc_tier": {"label": "SecOC 档位", "group": "read", "default_enabled": True, "driving": True},
+  "eps_telescope_status": {"label": "EPS 望远镜状态", "group": "read", "default_enabled": True, "driving": True},
+  "eps_telescope_classify": {"label": "EPS 望远镜判定", "group": "read", "default_enabled": True, "driving": True},
+  "eps_telescope_probe": {"label": "EPS 望远镜探测", "group": "write", "default_enabled": True, "driving": False},
   "eps_patch_status": {"label": "EPS 补丁状态", "group": "read", "default_enabled": True, "driving": True},
   "eps_patch_diagnose": {"label": "EPS 补丁诊断", "group": "read", "default_enabled": True, "driving": True},
   "eps_patch_probe": {"label": "EPS 只读探测", "group": "write", "default_enabled": True, "driving": False},
@@ -340,9 +343,12 @@ def build_tool_schemas() -> list[dict[str, Any]]:
     {"type": "function", "function": {"name": "live_cereal_summary", "description": "Short live ZMQ cereal sample (read-only).", "parameters": {"type": "object", "properties": {"services": {"type": "array", "items": {"type": "string"}}, "addr": {"type": "string"}, "duration_sec": {"type": "number"}, "max_messages": {"type": "integer"}}, "required": []}}},
     {"type": "function", "function": {"name": "pc_auth_login_hint", "description": "PC only: how to run tools/lib/auth.py for comma connect login.", "parameters": {"type": "object", "properties": {}, "required": []}}},
     {"type": "function", "function": {"name": "lookup_secoc_tier", "description": "Lookup Toyota/Lexus SecOC support tier (read-only).", "parameters": {"type": "object", "properties": {"car_fingerprint": {"type": "string"}, "brand": {"type": "string"}}, "required": []}}},
+    {"type": "function", "function": {"name": "eps_telescope_status", "description": "Read the latest eps-telescope layered probe report (read-only).", "parameters": {"type": "object", "properties": {"artifacts_dir": {"type": "string"}}, "required": []}}},
+    {"type": "function", "function": {"name": "eps_telescope_classify", "description": "Return eps-telescope classification and whether it is safe to proceed to eps_patch_probe (read-only).", "parameters": {"type": "object", "properties": {"artifacts_dir": {"type": "string"}}, "required": []}}},
+    {"type": "function", "function": {"name": "eps_telescope_probe", "description": "Run read-only eps-telescope layered probe (uds/sa/shellcode). Requires confirm=true and offroad; stops manager/pandad.", "parameters": {"type": "object", "properties": {"serial": {"type": "string"}, "addr": {"type": "string"}, "depth": {"type": "string"}, "no_egg_scan": {"type": "boolean"}, "no_fingerprint": {"type": "boolean"}, "artifacts_dir": {"type": "string"}, "confirm": {"type": "boolean"}}, "required": ["confirm"]}}},
     {"type": "function", "function": {"name": "eps_patch_status", "description": "Read current EPS 8965B4512000 patch workflow state and probe evidence (read-only).", "parameters": {"type": "object", "properties": {}, "required": []}}},
     {"type": "function", "function": {"name": "eps_patch_diagnose", "description": "Diagnose the latest EPS patch failure or indeterminate incident (read-only).", "parameters": {"type": "object", "properties": {}, "required": []}}},
-    {"type": "function", "function": {"name": "eps_patch_probe", "description": "Run read-only EPS 8965B4512000 probe. Requires confirm=true and offroad; stops manager/pandad.", "parameters": {"type": "object", "properties": {"serial": {"type": "string"}, "confirm": {"type": "boolean"}}, "required": ["confirm"]}}},
+    {"type": "function", "function": {"name": "eps_patch_probe", "description": "Run read-only EPS 8965B4512000 probe. Requires confirm=true and offroad; stops manager/pandad. Gated by eps-telescope verified_variant/already_patched.", "parameters": {"type": "object", "properties": {"serial": {"type": "string"}, "confirm": {"type": "boolean"}}, "required": ["confirm"]}}},
     {"type": "function", "function": {"name": "eps_patch_prepare_patch", "description": "Check EPS patch prerequisites and emit the manual patch command (read-only planning).", "parameters": {"type": "object", "properties": {}, "required": []}}},
     {"type": "function", "function": {"name": "eps_patch_prepare_restore", "description": "Check EPS restore prerequisites and emit the manual restore command (read-only planning).", "parameters": {"type": "object", "properties": {}, "required": []}}},
     {"type": "function", "function": {"name": "suggest_tune_from_route", "description": "Route-based tune suggestions (read-only).", "parameters": {"type": "object", "properties": {"route_name": {"type": "string"}}, "required": []}}},
@@ -1511,6 +1517,27 @@ def make_handlers(
     brand = str(args.get("brand", "")) or getattr(state, "brand", "") or ""
     return lookup_secoc_tier(fp, brand)
 
+  def h_eps_telescope_status(args):
+    from ai.tools.domains.secoc.eps_patch_tools import eps_telescope_status
+    return eps_telescope_status(artifacts_dir=str(args.get("artifacts_dir", "")))
+
+  def h_eps_telescope_classify(args):
+    from ai.tools.domains.secoc.eps_patch_tools import eps_telescope_classify
+    return eps_telescope_classify(artifacts_dir=str(args.get("artifacts_dir", "")))
+
+  def h_eps_telescope_probe(args):
+    from ai.tools.domains.secoc.eps_patch_tools import eps_telescope_probe
+    return eps_telescope_probe(
+      serial=str(args.get("serial", "")),
+      addr=str(args.get("addr", "")),
+      depth=str(args.get("depth", "shellcode")),
+      no_egg_scan=bool(args.get("no_egg_scan", False)),
+      no_fingerprint=bool(args.get("no_fingerprint", False)),
+      artifacts_dir=str(args.get("artifacts_dir", "")),
+      confirm=bool(args.get("confirm", False)),
+      get_state_reader=get_state_reader,
+    )
+
   def h_eps_patch_status(_a):
     from ai.tools.domains.secoc.eps_patch_tools import eps_patch_status
     return eps_patch_status()
@@ -1810,6 +1837,9 @@ def make_handlers(
     "openpilotci_segment_url": h_openpilotci_segment_url,
     "live_cereal_summary": h_live_cereal_summary,
     "lookup_secoc_tier": h_lookup_secoc_tier,
+    "eps_telescope_status": h_eps_telescope_status,
+    "eps_telescope_classify": h_eps_telescope_classify,
+    "eps_telescope_probe": h_eps_telescope_probe,
     "eps_patch_status": h_eps_patch_status,
     "eps_patch_diagnose": h_eps_patch_diagnose,
     "eps_patch_probe": h_eps_patch_probe,

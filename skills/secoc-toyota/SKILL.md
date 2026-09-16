@@ -56,12 +56,27 @@
 
 ## 8965B4512000 EPS 固件补丁（静止台架）
 
-部分丰田车型（如 2024 RAV4 Prime、2026 Sienna）在 SecOC 密钥之外还需 EPS 固件补丁才能横向控车。本模块已将 `8965B4512000-FW-PATCH` 集成到 `ai/vendor/eps_patch/`，并暴露为 chat 工具。
+部分丰田车型（如 2024 RAV4 Prime、2026 Sienna）在 SecOC 密钥之外还需 EPS 固件补丁才能横向控车。本模块已将两个仓库集成到 `ai/vendor/`，并暴露为 chat 工具：
+
+- `eps-telescope` (`ai/vendor/eps_telescope`)：只读分层探测，判断车辆是否具备 patch 条件。
+- `8965B4512000-FW-PATCH` (`ai/vendor/eps_patch`)：针对已确认零件号的破坏性 writer。
+
+### 推荐流程
+
+1. `eps_telescope_probe(confirm=true)` — 只读分层探测（默认 `--depth shellcode`）。
+2. `eps_telescope_classify` — 确认分类为 `verified_variant` 或 `already_patched` 才可继续。
+3. `eps_patch_probe(confirm=true)` — 为 FW-PATCH 建立 probe PASS 证据。
+4. `eps_patch_prepare_patch` — 输出前台 SSH 手动执行的 `python3.12 eps_patch.py patch` 命令。
+5. 操作员在 SSH TTY 执行 writer，输入大写 `YES`，断电重启，重复直到 PASS。
+6. 若中途失败：`eps_patch_diagnose` → `eps_patch_prepare_restore`。
 
 ### chat 可调用工具
 
 | 工具 | 类型 | 说明 |
 |------|------|------|
+| `eps_telescope_status` | 只读 | 读取最新 telescope report |
+| `eps_telescope_classify` | 只读 | 返回分类与是否可进入 patch |
+| `eps_telescope_probe(confirm=true, ...)` | 写操作 | 只读分层探测 |
 | `eps_patch_status` | 只读 | 查看当前 state、probe 证据、下一步命令 |
 | `eps_patch_diagnose` | 只读 | 汇总最近的失败/不确定 incident |
 | `eps_patch_probe(confirm=true, serial?)` | 写操作 | 停止 manager/pandad，执行只读 probe |
@@ -71,9 +86,10 @@
 ### 安全边界
 
 - 仅支持 EPS 零件号 `8965B4512000`。
+- `eps_patch_probe` 被 `eps_telescope_classify` 结果门禁：只有 `verified_variant` / `already_patched` 才能进入。
 - `patch` / `restore` 的破坏性 writer **不能** 通过 chat 自动执行；必须由操作员在前台交互 SSH TTY 运行 `python3.12 eps_patch.py patch` / `restore`，并输入大写 `YES`。
 - 每个 writer 阶段后需要完整断电重启 comma/EPS，再重新 SSH 执行同一命令。
-- 刷写前必须已有 probe PASS 证据；失败时按 diagnose 指引处理，禁止编辑 `state.json`。
+- 刷写前必须已有 probe PASS 证据；失败时按 diagnose 指引处理，禁止编辑 `state.json` 或 telescope report。
 
 ## 相关技能
 
