@@ -18,14 +18,21 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-import pty
-import select
 import subprocess
 import sys
 import time
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
+
+try:
+  import pty
+  import select
+  _PTY_AVAILABLE = True
+except Exception:
+  pty = None  # type: ignore[assignment]
+  select = None  # type: ignore[assignment]
+  _PTY_AVAILABLE = False
 
 
 EPS_PATCH_SCRIPT = Path(__file__).resolve().parents[3] / "vendor" / "eps_patch" / "eps_patch.py"
@@ -635,8 +642,7 @@ class WriterRunner:
       except Exception:
         pass
 
-  def run(self) -> dict[str, Any]:
-    """Run the writer synchronously. Caller should run in a thread/executor."""
+  def _run_with_pty(self) -> dict[str, Any]:
     master_fd, slave_fd = pty.openpty()
     try:
       self.proc = subprocess.Popen(
@@ -737,6 +743,71 @@ class WriterRunner:
           self.proc.kill()
         except Exception:
           pass
+
+  def _run_with_pipe(self) -> dict[str, Any]:
+    """Windows/local-dev fallback without pty. Does NOT auto-send YES."""
+    try:
+      self.proc = subprocess.Popen(
+        self._build_cmd(),
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=False,
+        cwd=str(_patch_script().parent),
+      )
+    except Exception as exc:
+      return {"ok": False, "error": f"failed to start writer: {exc}"}
+
+    try:
+      assert self.proc.stdout is not None
+      buffer = b""
+      while True:
+        chunk = self.proc.stdout.read(4096)
+        if not chunk:
+          break
+        buffer += chunk
+        while b"\n" in buffer:
+          line, _, buffer = buffer.partition(b"\n")
+          text = line.decode("utf-8", errors="replace").rstrip("\r")
+          self._emit_line(text)
+          if "Checkpoint saved" in text or "断电重启" in text:
+            self.power_cycle_seen = True
+
+      try:
+        self.returncode = self.proc.wait(timeout=30)
+      except subprocess.TimeoutExpired:
+        self.proc.kill()
+        self.returncode = self.proc.wait()
+
+      if buffer:
+        text = buffer.decode("utf-8", errors="replace").rstrip("\r\n")
+        for line in text.splitlines():
+          self._emit_line(line)
+
+      result = {
+        "ok": self.returncode == 0,
+        "returncode": self.returncode,
+        "command": " ".join(self._build_cmd()),
+        "power_cycle_seen": self.power_cycle_seen,
+        "yes_sent": False,
+        "stage_after": _parse_state().get("stage"),
+        "note": "pty unavailable; YES must be sent manually",
+      }
+      if not result["ok"]:
+        result["error"] = self.lines[-1]["line"] if self.lines else "writer failed"
+      return result
+    finally:
+      if self.proc is not None and self.proc.poll() is None:
+        try:
+          self.proc.kill()
+        except Exception:
+          pass
+
+  def run(self) -> dict[str, Any]:
+    """Run the writer synchronously. Caller should run in a thread/executor."""
+    if _PTY_AVAILABLE:
+      return self._run_with_pty()
+    return self._run_with_pipe()
 
 
 def eps_patch_run_writer(

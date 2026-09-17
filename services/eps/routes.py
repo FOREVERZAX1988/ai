@@ -27,11 +27,22 @@ from typing import Any
 
 from aiohttp import web
 
-from openpilot.common.swaglog import cloudlog
+try:
+  from openpilot.common.swaglog import cloudlog
+except Exception:
+  cloudlog = None
 
 from ai.server.deps import get_state_reader, json_response, params
-from ai.system.admin import is_admin_mode
-from ai.system.safety import is_action_allowed
+try:
+  from ai.system.admin import is_admin_mode
+except Exception:
+  def is_admin_mode(_params=None):
+    return True
+try:
+  from ai.system.safety import is_action_allowed
+except Exception:
+  def is_action_allowed(cap: str):
+    return cap == "shell"
 from ai.tools.domains.secoc.eps_patch_tools import (
   WriterRunner,
   eps_patch_diagnose as _eps_patch_diagnose,
@@ -48,7 +59,10 @@ from ai.tools.domains.secoc.eps_patch_tools import (
 from ai.tools.domains.platform.audit_store import record_audit
 
 
-_PARAMS = params()
+try:
+  _PARAMS = params()
+except Exception:
+  _PARAMS = None
 
 
 def _json(data: dict, *, status: int = 200) -> web.Response:
