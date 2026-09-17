@@ -3,4 +3,4 @@
 	url = https://github.com/mouxangithub/8965B4512000-FW-PATCH.git
 [submodule "vendor/eps_telescope"]
 	path = vendor/eps_telescope
-	url = https://github.com/lochuan/eps-telescope.git
+	url = https://github.com/mouxangithub/eps-telescope.git
