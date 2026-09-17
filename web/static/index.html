@@ -1347,6 +1347,21 @@
           <strong>变砖警告：</strong>patch / restore 会擦写 EPS Flash。面板提供一键执行，但仍需双重确认并输入 YES；每次 writer checkpoint 后需完全断电重启 comma/EPS。
         </div>
 
+        <div class="eps-openpilot-card" id="epsOpenpilotCard">
+          <div class="eps-openpilot-head">
+            <div class="eps-openpilot-title">openpilot 状态</div>
+            <div class="eps-openpilot-status" id="epsOpenpilotStatus">检查中…</div>
+          </div>
+          <div class="eps-openpilot-detail" id="epsOpenpilotDetail">刷写 EPS 前必须停止 openpilot 主流程，否则无法打开 Panda 硬件。</div>
+          <div class="eps-openpilot-actions">
+            <button type="button" class="btn small danger" id="epsStopOpenpilotBtn">停止 openpilot</button>
+          </div>
+          <label class="eps-confirm-checkbox" id="epsStopOpenpilotConfirmLabel">
+            <input type="checkbox" id="epsStopOpenpilotCheckbox">
+            <span>我已了解停止 openpilot 后无法开车，且 ai 服务会继续运行</span>
+          </label>
+        </div>
+
         <div class="eps-hero-card eps-status-card">
           <div class="eps-status-row">
             <span class="eps-status-dot" id="epsStatusDot"></span>

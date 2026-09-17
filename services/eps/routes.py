@@ -45,6 +45,8 @@ except Exception:
     return cap == "shell"
 from ai.tools.domains.secoc.eps_patch_tools import (
   WriterRunner,
+  _openpilot_running,
+  _stop_openpilot,
   eps_patch_diagnose as _eps_patch_diagnose,
   eps_patch_export_backup as _eps_patch_export_backup,
   eps_patch_import_backup as _eps_patch_import_backup,
@@ -467,7 +469,7 @@ async def _read_json_body(request: web.Request) -> dict[str, Any]:
     return {}
 
 
-def _writer_request_gate(request: web.Request, *, require_backup: bool = False) -> tuple[dict[str, Any] | None, dict[str, Any]]:
+def _writer_request_gate(request: web.Request, *, require_backup: bool = False, check_openpilot: bool = True) -> tuple[dict[str, Any] | None, dict[str, Any]]:
   """Common permission/confirmation gate for patch/restore writer endpoints."""
   allowed, reason = _allowed("shell")
   if not allowed:
@@ -476,6 +478,16 @@ def _writer_request_gate(request: web.Request, *, require_backup: bool = False) 
   offroad = _offroad_reason()
   if offroad:
     return {"ok": False, "error": offroad}, {}
+
+  if check_openpilot:
+    op_status = _openpilot_running()
+    if op_status.get("running"):
+      return {
+        "ok": False,
+        "error": "openpilot 主流程仍在运行，刷写 EPS 前必须先停止。请点击面板上的“停止 openpilot”按钮。",
+        "needs_stop_openpilot": True,
+        "openpilot_status": op_status,
+      }, {}
 
   if require_backup:
     from ai.tools.domains.secoc.eps_patch_tools import _backup_info
@@ -538,6 +550,50 @@ async def api_eps_restore_writer(request: web.Request) -> web.Response:
   job = _start_writer_job("restore_writer", "restore", serial)
   _audit("eps_restore_writer", {"ok": True, "job_id": job.job_id, "kind": job.kind})
   return _json({"ok": True, "job_id": job.job_id, "status": job.status})
+
+
+async def api_eps_openpilot_status(_request: web.Request) -> web.Response:
+  """Return whether comma/openpilot is still running (and would block Panda)."""
+  result = await _run_sync(_openpilot_running)
+  return _json(result)
+
+
+async def api_eps_stop_openpilot(request: web.Request) -> web.Response:
+  """Stop comma/openpilot so EPS tools can open Panda hardware.
+
+  Requires the same shell capability as the writers and double confirmation.
+  """
+  allowed, reason = _allowed("shell")
+  if not allowed:
+    return _json({"ok": False, "error": reason}, status=403)
+
+  offroad = _offroad_reason()
+  if offroad:
+    return _json({"ok": False, "error": offroad}, status=403)
+
+  try:
+    body = await request.json()
+  except Exception:
+    body = {}
+
+  if not body.get("confirm"):
+    return _json({
+      "ok": True,
+      "needs_confirmation": True,
+      "hint": "将停止 comma/openpilot 主流程（tmux kill-session -t comma）并结束所有 pandad 进程。停止后无法开车，确认后继续。",
+    })
+
+  if body.get("i_understand") != "stop_openpilot":
+    return _json({
+      "ok": False,
+      "error": "缺少二次确认：请在面板勾选“我已了解停止 openpilot 的后果”后再执行。",
+    }, status=403)
+
+  result = await _run_sync(_stop_openpilot)
+  _audit("eps_stop_openpilot", result)
+  if not result.get("ok"):
+    return _json(result, status=500)
+  return _json(result)
 
 
 async def api_eps_panda_list(_request: web.Request) -> web.Response:
@@ -705,6 +761,8 @@ def register_eps_routes(app: web.Application) -> None:
   app.router.add_get("/api/eps/prepare-patch", api_eps_prepare_patch)
   app.router.add_get("/api/eps/prepare-restore", api_eps_prepare_restore)
   app.router.add_get("/api/eps/diagnose", api_eps_diagnose)
+  app.router.add_get("/api/eps/openpilot-status", api_eps_openpilot_status)
+  app.router.add_post("/api/eps/stop-openpilot", api_eps_stop_openpilot)
   app.router.add_get("/api/eps/panda-list", api_eps_panda_list)
   app.router.add_get("/api/eps/backup-info", api_eps_backup_info)
   app.router.add_get("/api/eps/backup/{name}", api_eps_backup_download)

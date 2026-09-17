@@ -84,6 +84,12 @@ const EpsPanel = (() => {
       confirmInput: $('epsConfirmInput'),
       confirmCancelBtn: $('epsConfirmCancelBtn'),
       confirmOkBtn: $('epsConfirmOkBtn'),
+      openpilotCard: $('epsOpenpilotCard'),
+      openpilotStatus: $('epsOpenpilotStatus'),
+      openpilotDetail: $('epsOpenpilotDetail'),
+      stopOpenpilotBtn: $('epsStopOpenpilotBtn'),
+      stopOpenpilotCheckbox: $('epsStopOpenpilotCheckbox'),
+      stopOpenpilotConfirmLabel: $('epsStopOpenpilotConfirmLabel'),
     };
   }
 
@@ -184,6 +190,71 @@ const EpsPanel = (() => {
     }
     if (!running) {
       setJobProgress(0);
+    }
+  }
+
+  function setOpenpilotStatus(running, details) {
+    const e = els();
+    if (!e.openpilotStatus) return;
+    if (running) {
+      e.openpilotStatus.textContent = '运行中';
+      e.openpilotStatus.className = 'eps-openpilot-status running';
+      e.openpilotDetail.textContent = '刷写 EPS 前必须先停止 openpilot 主流程，否则无法打开 Panda 硬件。';
+      if (e.stopOpenpilotBtn) e.stopOpenpilotBtn.disabled = false;
+      if (e.stopOpenpilotConfirmLabel) e.stopOpenpilotConfirmLabel.classList.remove('hidden');
+    } else {
+      e.openpilotStatus.textContent = '已停止';
+      e.openpilotStatus.className = 'eps-openpilot-status stopped';
+      e.openpilotDetail.textContent = 'openpilot 已停止，可以安全执行 EPS 探测/刷写。ai 服务会继续运行。';
+      if (e.stopOpenpilotBtn) e.stopOpenpilotBtn.disabled = true;
+      if (e.stopOpenpilotConfirmLabel) e.stopOpenpilotConfirmLabel.classList.add('hidden');
+    }
+  }
+
+  async function loadOpenpilotStatus() {
+    try {
+      const data = await fetchJson('/api/eps/openpilot-status');
+      state.openpilotRunning = data.running;
+      setOpenpilotStatus(data.running, data.details);
+      return data;
+    } catch (err) {
+      setOpenpilotStatus(false, {});
+      return { running: false };
+    }
+  }
+
+  async function stopOpenpilot() {
+    const e = els();
+    if (!e.stopOpenpilotCheckbox?.checked) {
+      notifyToast('请先勾选“我已了解停止 openpilot 的后果”', 'err');
+      return;
+    }
+    if (!confirm('即将停止 comma/openpilot 主流程。停止后无法开车，确认继续？')) return;
+
+    if (e.stopOpenpilotBtn) {
+      e.stopOpenpilotBtn.disabled = true;
+      e.stopOpenpilotBtn.textContent = '停止中…';
+    }
+    try {
+      const data = await postJson('/api/eps/stop-openpilot', {
+        confirm: true,
+        i_understand: 'stop_openpilot',
+      }, { timeoutMs: 30000 });
+      if (data.ok) {
+        notifyToast('openpilot 已停止', 'ok');
+        await loadOpenpilotStatus();
+      } else {
+        notifyToast(data.error || '停止失败', 'err');
+        await loadOpenpilotStatus();
+      }
+    } catch (err) {
+      notifyToast(`停止失败：${err.message}`, 'err');
+      await loadOpenpilotStatus();
+    } finally {
+      if (e.stopOpenpilotBtn) {
+        e.stopOpenpilotBtn.disabled = false;
+        e.stopOpenpilotBtn.textContent = '停止 openpilot';
+      }
     }
   }
 
@@ -529,6 +600,14 @@ const EpsPanel = (() => {
 
   async function runWriter(command) {
     if (state.running) return;
+
+    // Enforce openpilot is stopped before allowing destructive writers.
+    const op = await loadOpenpilotStatus();
+    if (op.running) {
+      notifyToast('openpilot 仍在运行，请先点击“停止 openpilot”', 'err');
+      return;
+    }
+
     const isPatch = command === 'patch';
     const title = isPatch ? '确认一键刷写 EPS？' : '确认一键恢复 EPS 到原车备份？';
     const body = isPatch
@@ -819,6 +898,7 @@ const EpsPanel = (() => {
 
   function startPoll() {
     refreshStatus();
+    loadOpenpilotStatus();
     loadPandaList();
     loadBackupInfo();
     loadHistory();
@@ -826,6 +906,7 @@ const EpsPanel = (() => {
     if (state.pollTimer) return;
     state.pollTimer = setInterval(() => {
       refreshStatus();
+      loadOpenpilotStatus();
       loadPandaList();
       loadBackupInfo();
     }, 4000);
@@ -864,6 +945,7 @@ const EpsPanel = (() => {
     });
     e.refreshHistoryBtn?.addEventListener('click', loadHistory);
     e.refreshAuditBtn?.addEventListener('click', loadAudit);
+    e.stopOpenpilotBtn?.addEventListener('click', stopOpenpilot);
   }
 
   return { init, startPoll, stopPoll };

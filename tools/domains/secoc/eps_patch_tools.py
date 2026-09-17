@@ -117,6 +117,122 @@ def _telescope_artifact_root() -> Path:
   return TELESCOPE_ARTIFACT_ROOT
 
 
+def _openpilot_running() -> dict[str, Any]:
+  """Check whether the comma/openpilot session or any pandad is running.
+
+  Mirrors the preflight checks in eps_patch.py so the UI can warn the user
+  before attempting a destructive EPS operation.
+  """
+  checks = {
+    "comma_tmux": False,
+    "native_pandad": False,
+    "python_pandad": False,
+  }
+  details: dict[str, str] = {}
+  try:
+    result = subprocess.run(
+      ["tmux", "has-session", "-t", "comma"],
+      capture_output=True,
+      text=True,
+      check=False,
+    )
+    checks["comma_tmux"] = result.returncode == 0
+    details["comma_tmux"] = "running" if checks["comma_tmux"] else "not running"
+  except FileNotFoundError:
+    details["comma_tmux"] = "tmux not available"
+  except Exception as exc:
+    details["comma_tmux"] = f"error: {exc}"
+
+  try:
+    result = subprocess.run(["pidof", "pandad"], capture_output=True, text=True, check=False)
+    checks["native_pandad"] = result.returncode == 0 and bool(result.stdout.strip())
+    details["native_pandad"] = "running" if checks["native_pandad"] else "not running"
+  except FileNotFoundError:
+    details["native_pandad"] = "pidof not available"
+  except Exception as exc:
+    details["native_pandad"] = f"error: {exc}"
+
+  try:
+    result = subprocess.run(
+      ["pgrep", "-f", r"selfdrive\.pandad\.pandad"],
+      capture_output=True,
+      text=True,
+      check=False,
+    )
+    checks["python_pandad"] = result.returncode == 0 and bool(result.stdout.strip())
+    details["python_pandad"] = "running" if checks["python_pandad"] else "not running"
+  except FileNotFoundError:
+    details["python_pandad"] = "pgrep not available"
+  except Exception as exc:
+    details["python_pandad"] = f"error: {exc}"
+
+  any_running = any(checks.values())
+  return {
+    "ok": not any_running,
+    "running": any_running,
+    "checks": checks,
+    "details": details,
+  }
+
+
+def _stop_openpilot() -> dict[str, Any]:
+  """Stop the comma/openpilot session and any pandad processes.
+
+  This is safe for the ai service because aid.py is started as a background
+  keep_alive process before manager.py/tmux in launch_chffrplus.sh.
+  """
+  results: dict[str, Any] = {}
+
+  # 1. Kill the comma tmux session if it exists.
+  try:
+    result = subprocess.run(
+      ["tmux", "kill-session", "-t", "comma"],
+      capture_output=True,
+      text=True,
+      check=False,
+    )
+    results["tmux_kill"] = {"ok": result.returncode in (0, 1), "stdout": result.stdout, "stderr": result.stderr}
+  except FileNotFoundError:
+    results["tmux_kill"] = {"ok": True, "note": "tmux not available"}
+  except Exception as exc:
+    results["tmux_kill"] = {"ok": False, "error": str(exc)}
+
+  # 2. Kill the Python pandad wrapper.
+  try:
+    result = subprocess.run(
+      ["pkill", "-f", r"selfdrive\.pandad\.pandad"],
+      capture_output=True,
+      text=True,
+      check=False,
+    )
+    results["pkill_python_pandad"] = {"ok": True, "returncode": result.returncode}
+  except FileNotFoundError:
+    results["pkill_python_pandad"] = {"ok": True, "note": "pkill not available"}
+  except Exception as exc:
+    results["pkill_python_pandad"] = {"ok": False, "error": str(exc)}
+
+  # 3. Kill native pandad.
+  try:
+    result = subprocess.run(["pkill", "pandad"], capture_output=True, text=True, check=False)
+    results["pkill_native_pandad"] = {"ok": True, "returncode": result.returncode}
+  except FileNotFoundError:
+    results["pkill_native_pandad"] = {"ok": True, "note": "pkill not available"}
+  except Exception as exc:
+    results["pkill_native_pandad"] = {"ok": False, "error": str(exc)}
+
+  # 4. Wait up to 10s for everything to actually stop.
+  deadline = time.monotonic() + 10.0
+  while time.monotonic() < deadline:
+    status = _openpilot_running()
+    if status.get("ok"):
+      results["wait_for_stop"] = {"ok": True, "waited_s": round(10.0 - (deadline - time.monotonic()), 1)}
+      return {"ok": True, "results": results}
+    time.sleep(0.5)
+
+  results["wait_for_stop"] = {"ok": False, "error": "timeout waiting for openpilot to stop"}
+  return {"ok": False, "running": True, "results": results}
+
+
 def list_pandas() -> dict[str, Any]:
   """Enumerate available comma pandas and label internal vs external USB.
 
