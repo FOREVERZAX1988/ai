@@ -468,6 +468,7 @@ function applyTranslations() {
   setI18nText('#tabKnowledge', 'tabKnowledge', '知识库');
   const tabSecocEl = $('#secocBtn');
   if (tabSecocEl) tabSecocEl.title = t('tabSecoc', 'SecOC');
+  if (els.epsBtn) els.epsBtn.title = t('epsBtnTitle', 'EPS 刷写');
   setI18nText('#tabScheduler', 'tabScheduler', '定时');
   setI18nText('#modelPaneDesc', 'modelPaneDesc', '配置模型列表与服务商账户；修改后自动保存。');
   setI18nText('#modelHubTitle', 'modelHubTitle', '模型中心');
