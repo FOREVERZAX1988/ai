@@ -63,6 +63,18 @@ const EpsPanel = (() => {
       backupDownloadTarget: $('epsBackupDownloadTarget'),
       backupDownloadCrc: $('epsBackupDownloadCrc'),
       backupDownloadMeta: $('epsBackupDownloadMeta'),
+      backupExportBtn: $('epsBackupExportBtn'),
+      importCard: $('epsImportCard'),
+      backupFileInput: $('epsBackupFileInput'),
+      backupImportBtn: $('epsBackupImportBtn'),
+      backupImportName: $('epsBackupImportName'),
+      backupImportStatus: $('epsBackupImportStatus'),
+      historyCard: $('epsHistoryCard'),
+      historyBody: $('epsHistoryBody'),
+      refreshHistoryBtn: $('epsRefreshHistoryBtn'),
+      auditCard: $('epsAuditCard'),
+      auditBody: $('epsAuditBody'),
+      refreshAuditBtn: $('epsRefreshAuditBtn'),
       continueCard: $('epsContinueCard'),
       continueHint: $('epsContinueHint'),
       confirmModal: $('epsConfirmModal'),
@@ -329,6 +341,7 @@ const EpsPanel = (() => {
     if (e.backupDownloadTarget) e.backupDownloadTarget.href = '/api/eps/backup/target';
     if (e.backupDownloadCrc) e.backupDownloadCrc.href = '/api/eps/backup/crc';
     if (e.backupDownloadMeta) e.backupDownloadMeta.href = '/api/eps/backup/metadata';
+    if (e.backupExportBtn) e.backupExportBtn.disabled = state.running;
   }
 
   async function loadBackupInfo() {
@@ -701,14 +714,120 @@ const EpsPanel = (() => {
     }
   }
 
+  async function exportBackup() {
+    const e = els();
+    if (e.backupExportBtn) e.backupExportBtn.disabled = true;
+    try {
+      const res = await fetchWithTimeout('/api/eps/backup-export', { method: 'GET' }, 60000);
+      if (!res.ok) {
+        const data = await readJsonResponse(res);
+        notifyToast(data.error || '导出失败', 'err');
+        return;
+      }
+      const blob = await res.blob();
+      const disp = res.headers.get('content-disposition') || '';
+      const match = disp.match(/filename="?([^";]+)"?/);
+      const filename = match ? match[1] : 'EPS_BACKUP.tar.gz';
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+      notifyToast('完整备份已导出', 'ok');
+    } catch (err) {
+      notifyToast(`导出失败: ${err}`, 'err');
+    } finally {
+      if (e.backupExportBtn) e.backupExportBtn.disabled = state.running;
+    }
+  }
+
+  async function importBackup(file) {
+    const e = els();
+    if (!file) return;
+    if (e.backupImportStatus) e.backupImportStatus.textContent = '正在上传并校验…';
+    const form = new FormData();
+    form.append('archive', file);
+    try {
+      const res = await fetchWithTimeout('/api/eps/backup-import', { method: 'POST', body: form }, 60000);
+      const data = await readJsonResponse(res);
+      if (data.ok) {
+        if (e.backupImportStatus) e.backupImportStatus.textContent = '导入成功，可执行一键恢复。';
+        notifyToast('备份导入成功', 'ok');
+        await loadBackupInfo();
+      } else {
+        if (e.backupImportStatus) e.backupImportStatus.textContent = `导入失败: ${data.error || '未知错误'}`;
+        notifyToast(data.error || '导入失败', 'err');
+      }
+    } catch (err) {
+      if (e.backupImportStatus) e.backupImportStatus.textContent = `上传失败: ${err}`;
+      notifyToast(`上传失败: ${err}`, 'err');
+    }
+  }
+
+  function renderHistory(entries) {
+    const e = els();
+    if (!e.historyCard || !e.historyBody) return;
+    if (!entries || !entries.length) {
+      e.historyBody.innerHTML = '<div class="eps-backup-row"><span>暂无历史备份</span></div>';
+      e.historyCard.classList.remove('hidden');
+      return;
+    }
+    e.historyBody.innerHTML = entries.map((entry) => `
+      <div class="eps-backup-row">
+        <span>${entry.name}</span>
+        <span>${entry.size} bytes · ${new Date(entry.mtime * 1000).toLocaleString()}</span>
+      </div>
+    `).join('');
+    e.historyCard.classList.remove('hidden');
+  }
+
+  async function loadHistory() {
+    try {
+      const data = await fetchJson('/api/eps/backup-history');
+      renderHistory(data.entries || []);
+    } catch (err) {
+      // non-fatal
+    }
+  }
+
+  function renderAudit(entries) {
+    const e = els();
+    if (!e.auditCard || !e.auditBody) return;
+    if (!entries || !entries.length) {
+      e.auditBody.innerHTML = '<div class="eps-backup-row"><span>暂无审计记录</span></div>';
+      e.auditCard.classList.remove('hidden');
+      return;
+    }
+    e.auditBody.innerHTML = entries.slice(0, 20).map((entry) => `
+      <div class="eps-backup-row">
+        <span>${new Date(entry.ts).toLocaleString()}</span>
+        <span>${entry.action} · ${entry.ok ? '成功' : '失败'}</span>
+      </div>
+    `).join('');
+    e.auditCard.classList.remove('hidden');
+  }
+
+  async function loadAudit() {
+    try {
+      const data = await fetchJson('/api/eps/audit');
+      renderAudit(data.entries || []);
+    } catch (err) {
+      // non-fatal
+    }
+  }
+
   function startPoll() {
     refreshStatus();
     loadPandaList();
     loadBackupInfo();
+    loadHistory();
+    loadAudit();
     if (state.pollTimer) return;
     state.pollTimer = setInterval(() => {
       refreshStatus();
       loadPandaList();
+      loadBackupInfo();
     }, 4000);
   }
 
@@ -735,6 +854,16 @@ const EpsPanel = (() => {
       if (!command) return;
       navigator.clipboard?.writeText(command).then(() => notifyToast('已复制命令', 'ok')).catch(() => notifyToast('复制失败', 'err'));
     });
+    e.backupExportBtn?.addEventListener('click', exportBackup);
+    e.backupImportBtn?.addEventListener('click', () => e.backupFileInput?.click());
+    e.backupFileInput?.addEventListener('change', (ev) => {
+      const file = ev.target.files?.[0];
+      if (!file) return;
+      if (e.backupImportName) e.backupImportName.textContent = file.name;
+      importBackup(file);
+    });
+    e.refreshHistoryBtn?.addEventListener('click', loadHistory);
+    e.refreshAuditBtn?.addEventListener('click', loadAudit);
   }
 
   return { init, startPoll, stopPoll };

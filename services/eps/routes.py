@@ -46,11 +46,14 @@ except Exception:
 from ai.tools.domains.secoc.eps_patch_tools import (
   WriterRunner,
   eps_patch_diagnose as _eps_patch_diagnose,
+  eps_patch_export_backup as _eps_patch_export_backup,
+  eps_patch_import_backup as _eps_patch_import_backup,
   eps_patch_prepare_patch as _eps_patch_prepare_patch,
   eps_patch_prepare_restore as _eps_patch_prepare_restore,
   eps_patch_probe as _eps_patch_probe,
   eps_patch_run_writer as _eps_patch_run_writer,
   eps_patch_status as _eps_patch_status,
+  eps_patch_validate_backup as _eps_patch_validate_backup,
   eps_telescope_classify as _eps_telescope_classify,
   eps_telescope_probe as _eps_telescope_probe,
   eps_telescope_status as _eps_telescope_status,
@@ -464,7 +467,7 @@ async def _read_json_body(request: web.Request) -> dict[str, Any]:
     return {}
 
 
-def _writer_request_gate(request: web.Request) -> tuple[dict[str, Any] | None, dict[str, Any]]:
+def _writer_request_gate(request: web.Request, *, require_backup: bool = False) -> tuple[dict[str, Any] | None, dict[str, Any]]:
   """Common permission/confirmation gate for patch/restore writer endpoints."""
   allowed, reason = _allowed("shell")
   if not allowed:
@@ -474,11 +477,21 @@ def _writer_request_gate(request: web.Request) -> tuple[dict[str, Any] | None, d
   if offroad:
     return {"ok": False, "error": offroad}, {}
 
+  if require_backup:
+    from ai.tools.domains.secoc.eps_patch_tools import _backup_info
+    info = _backup_info()
+    if not info.get("available"):
+      return {
+        "ok": False,
+        "error": "未检测到有效的原车 EPS 备份，无法执行刷写/恢复。请先运行 Probe 或导入备份。",
+        "next_step": "eps_patch_probe",
+      }, {}
+
   return None, {}
 
 
 async def api_eps_patch_writer(request: web.Request) -> web.Response:
-  err, _ = _writer_request_gate(request)
+  err, _ = _writer_request_gate(request, require_backup=True)
   if err:
     return _json(err, status=403)
   body = await _read_json_body(request)
@@ -503,7 +516,7 @@ async def api_eps_patch_writer(request: web.Request) -> web.Response:
 
 
 async def api_eps_restore_writer(request: web.Request) -> web.Response:
-  err, _ = _writer_request_gate(request)
+  err, _ = _writer_request_gate(request, require_backup=True)
   if err:
     return _json(err, status=403)
   body = await _read_json_body(request)
@@ -563,6 +576,121 @@ async def api_eps_backup_download(request: web.Request) -> web.Response:
   return web.Response(body=data, headers=headers)
 
 
+async def api_eps_backup_export(_request: web.Request) -> web.Response:
+  """Export the current probe backup as a packaged archive with manifest."""
+  from ai.tools.domains.secoc.eps_patch_tools import _load_backup_metadata
+  metadata = _load_backup_metadata(_artifact_root() / "probe")
+  vin = metadata.get("vin", "UNKNOWN") or "UNKNOWN"
+  variant = metadata.get("variant", "")
+  result = _eps_patch_export_backup(vin=vin, variant=variant)
+  if not result.get("ok"):
+    return _json(result, status=400)
+  path = Path(result["path"])
+  try:
+    data = path.read_bytes()
+  except Exception as exc:
+    return _json({"ok": False, "error": str(exc)}, status=500)
+  headers = {
+    "Content-Type": "application/gzip",
+    "Content-Disposition": f"attachment; filename={path.name}",
+  }
+  _audit("eps_backup_export", {"ok": True, "path": str(path)})
+  return web.Response(body=data, headers=headers)
+
+
+async def api_eps_backup_import(request: web.Request) -> web.Response:
+  """Import an external backup archive into the probe artifact directory."""
+  reader = await request.multipart()
+  files: dict[str, bytes] = {}
+  try:
+    while True:
+      part = await reader.next()
+      if part is None:
+        break
+      name = part.name or ""
+      if name == "archive":
+        payload = await part.read(decode=True)
+        try:
+          import tarfile
+          import io
+          with tarfile.open(fileobj=io.BytesIO(payload), mode="r:gz") as tar:
+            for member in tar.getmembers():
+              if member.isfile():
+                key = None
+                if member.name == "original-sector-0x88000.bin":
+                  key = "target"
+                elif member.name == "original-sector-0xf8000.bin":
+                  key = "crc"
+                elif member.name == "recovery-metadata.json":
+                  key = "metadata"
+                elif member.name == "manifest.json":
+                  key = "manifest"
+                if key:
+                  files[key] = tar.extractfile(member).read()
+        except Exception as exc:
+          return _json({"ok": False, "error": f"invalid archive: {exc}"}, status=400)
+      elif name in ("target", "crc", "metadata"):
+        files[name] = await part.read(decode=True)
+  except Exception as exc:
+    return _json({"ok": False, "error": f"upload failed: {exc}"}, status=400)
+
+  if not {"target", "crc", "metadata"}.issubset(files.keys()):
+    return _json({"ok": False, "error": "missing required backup files"}, status=400)
+
+  result = _eps_patch_import_backup(
+    files,
+    expected_part_number="8965B4512000",
+  )
+  _audit("eps_backup_import", {"ok": result.get("ok"), "error": result.get("error")})
+  if not result.get("ok"):
+    return _json(result, status=400)
+  return _json({"ok": True, "path": result["path"], "validation": result["validation"]})
+
+
+async def api_eps_backup_history(_request: web.Request) -> web.Response:
+  """List archived backup snapshots under the artifact root."""
+  root = Path("/data/eps-patch/artifacts")
+  history_dir = root / "history"
+  entries = []
+  if history_dir.exists():
+    for path in sorted(history_dir.iterdir(), key=lambda p: p.stat().st_mtime, reverse=True):
+      if path.suffix in (".gz", ".tar.gz") or path.name.startswith("snapshot-"):
+        try:
+          st = path.stat()
+          entries.append({
+            "name": path.name,
+            "path": str(path),
+            "size": st.st_size,
+            "mtime": st.st_mtime,
+          })
+        except OSError:
+          pass
+  return _json({"ok": True, "entries": entries[:20]})
+
+
+async def api_eps_audit(_request: web.Request) -> web.Response:
+  """Return recent EPS-related audit entries."""
+  from ai.tools.domains.platform.audit_store import list_audit_trail
+  result = list_audit_trail(limit=100)
+  if not result.get("ok"):
+    return _json(result, status=500)
+  eps_entries = [e for e in result.get("entries", []) if str(e.get("action", "")).startswith("eps_")]
+  return _json({"ok": True, "entries": eps_entries, "count": len(eps_entries)})
+
+
+async def api_eps_snapshot(request: web.Request) -> web.Response:
+  """Create a pre-patch snapshot of the current EPS sectors (read-only).
+
+  This is a safety net: before a destructive writer runs we re-read the current
+  EPS state and archive it separately from the probe backup.
+  """
+  err, _ = _writer_request_gate(request)
+  if err:
+    return _json(err, status=403)
+  result = await _run_sync(_eps_patch_run_writer, command="snapshot", serial="")
+  return _json(result)
+
+
 def register_eps_routes(app: web.Application) -> None:
   app.router.add_get("/api/eps/status", api_eps_status)
   app.router.add_get("/api/eps/telescope-status", api_eps_telescope_status)
@@ -580,3 +708,8 @@ def register_eps_routes(app: web.Application) -> None:
   app.router.add_get("/api/eps/panda-list", api_eps_panda_list)
   app.router.add_get("/api/eps/backup-info", api_eps_backup_info)
   app.router.add_get("/api/eps/backup/{name}", api_eps_backup_download)
+  app.router.add_get("/api/eps/backup-export", api_eps_backup_export)
+  app.router.add_post("/api/eps/backup-import", api_eps_backup_import)
+  app.router.add_get("/api/eps/backup-history", api_eps_backup_history)
+  app.router.add_get("/api/eps/audit", api_eps_audit)
+  app.router.add_post("/api/eps/snapshot", api_eps_snapshot)

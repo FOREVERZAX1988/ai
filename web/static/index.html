@@ -1442,9 +1442,41 @@
               <a class="btn ghost small" id="epsBackupDownloadTarget" href="#" download>目标扇区</a>
               <a class="btn ghost small" id="epsBackupDownloadCrc" href="#" download>CRC 扇区</a>
               <a class="btn ghost small" id="epsBackupDownloadMeta" href="#" download>元数据</a>
+              <button type="button" class="btn primary small" id="epsBackupExportBtn">导出完整备份</button>
             </div>
           </div>
           <div class="eps-backup-body" id="epsBackupBody"></div>
+        </div>
+
+        <div class="eps-backup-card" id="epsImportCard">
+          <div class="eps-backup-head">
+            <div class="eps-backup-title">导入外部备份</div>
+          </div>
+          <div class="eps-backup-body">
+            <p class="field-hint">刷砖后或换机恢复时，导入之前导出的完整备份包（.tar.gz），然后执行一键恢复。</p>
+            <div class="eps-import-actions">
+              <input type="file" id="epsBackupFileInput" accept=".tar.gz,.bin,.json" style="display:none" />
+              <button type="button" class="btn small" id="epsBackupImportBtn">选择备份包</button>
+              <span id="epsBackupImportName" class="eps-import-filename"></span>
+            </div>
+            <div id="epsBackupImportStatus" class="eps-import-status"></div>
+          </div>
+        </div>
+
+        <div class="eps-backup-card hidden" id="epsHistoryCard">
+          <div class="eps-backup-head">
+            <div class="eps-backup-title">备份历史</div>
+            <button type="button" class="btn ghost small" id="epsRefreshHistoryBtn">刷新</button>
+          </div>
+          <div class="eps-backup-body" id="epsHistoryBody"></div>
+        </div>
+
+        <div class="eps-backup-card hidden" id="epsAuditCard">
+          <div class="eps-backup-head">
+            <div class="eps-backup-title">EPS 操作审计</div>
+            <button type="button" class="btn ghost small" id="epsRefreshAuditBtn">刷新</button>
+          </div>
+          <div class="eps-backup-body" id="epsAuditBody"></div>
         </div>
       </div>
     </div>

@@ -467,6 +467,196 @@ def _backup_info() -> dict[str, Any]:
   return info
 
 
+def _read_backup_files(probe_dir: Path) -> dict[str, bytes]:
+  """Read the three backup files from a probe directory."""
+  files = {
+    "target": probe_dir / "original-sector-0x88000.bin",
+    "crc": probe_dir / "original-sector-0xf8000.bin",
+    "metadata": probe_dir / "recovery-metadata.json",
+  }
+  data: dict[str, bytes] = {}
+  for key, path in files.items():
+    if not path.exists():
+      raise FileNotFoundError(f"backup file missing: {path.name}")
+    data[key] = path.read_bytes()
+  return data
+
+
+def _compute_backup_hashes(data: dict[str, bytes]) -> dict[str, str]:
+  return {k: hashlib.sha256(v).hexdigest() for k, v in data.items()}
+
+
+def _load_backup_metadata(probe_dir: Path) -> dict[str, Any]:
+  meta_path = probe_dir / "recovery-metadata.json"
+  if not meta_path.exists():
+    return {}
+  try:
+    return json.loads(meta_path.read_text(encoding="utf-8"))
+  except Exception:
+    return {}
+
+
+def _backup_paths(probe_dir: Path | None = None) -> dict[str, Path]:
+  probe_dir = probe_dir or (_artifact_root() / "probe")
+  return {
+    "target": probe_dir / "original-sector-0x88000.bin",
+    "crc": probe_dir / "original-sector-0xf8000.bin",
+    "metadata": probe_dir / "recovery-metadata.json",
+  }
+
+
+def eps_patch_export_backup(
+  vin: str = "UNKNOWN",
+  variant: str = "",
+  destination: Path | None = None,
+) -> dict[str, Any]:
+  """Export the current probe backup as a packaged archive with manifest.
+
+  Returns {"ok": True, "path": str, "manifest": {...}} on success.
+  """
+  probe_dir = _artifact_root() / "probe"
+  try:
+    data = _read_backup_files(probe_dir)
+  except FileNotFoundError as exc:
+    return {"ok": False, "error": str(exc)}
+
+  hashes = _compute_backup_hashes(data)
+  metadata = _load_backup_metadata(probe_dir)
+  timestamp = time.strftime("%Y%m%d_%H%M%S")
+  filename = f"EPS_BACKUP_{vin.replace(' ', '_')}_{timestamp}.tar.gz"
+
+  manifest = {
+    "version": 1,
+    "created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+    "vin": vin,
+    "variant": variant or metadata.get("variant", ""),
+    "part_number": metadata.get("part_number", "8965B4512000"),
+    "files": {
+      "target": {"name": "original-sector-0x88000.bin", "sha256": hashes["target"]},
+      "crc": {"name": "original-sector-0xf8000.bin", "sha256": hashes["crc"]},
+      "metadata": {"name": "recovery-metadata.json", "sha256": hashes["metadata"]},
+    },
+  }
+
+  try:
+    import tarfile
+    import io
+
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w:gz") as tar:
+      for key, raw in data.items():
+        info_name = manifest["files"][key]["name"]
+        info = tarfile.TarInfo(name=info_name)
+        info.size = len(raw)
+        info.mtime = int(time.time())
+        tar.addfile(info, io.BytesIO(raw))
+      manifest_bytes = json.dumps(manifest, indent=2, ensure_ascii=False).encode("utf-8")
+      info = tarfile.TarInfo(name="manifest.json")
+      info.size = len(manifest_bytes)
+      info.mtime = int(time.time())
+      tar.addfile(info, io.BytesIO(manifest_bytes))
+
+    out_path = destination or (probe_dir.parent / filename)
+    out_path = Path(out_path)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_bytes(buf.getvalue())
+    return {"ok": True, "path": str(out_path), "manifest": manifest}
+  except Exception as exc:
+    return {"ok": False, "error": f"failed to create backup archive: {exc}"}
+
+
+def eps_patch_validate_backup(
+  data: dict[str, bytes],
+  expected_part_number: str | None = None,
+  expected_variant: str | None = None,
+) -> dict[str, Any]:
+  """Validate an imported backup archive contents.
+
+  Checks file presence, sha256, metadata JSON, and optionally part number / variant.
+  """
+  required = {"target", "crc", "metadata"}
+  missing = required - set(data.keys())
+  if missing:
+    return {"ok": False, "error": f"missing files: {sorted(missing)}"}
+
+  extra = set(data.keys()) - required
+  if extra:
+    return {"ok": False, "error": f"unexpected files: {sorted(extra)}"}
+
+  try:
+    metadata = json.loads(data["metadata"].decode("utf-8"))
+  except Exception as exc:
+    return {"ok": False, "error": f"invalid metadata JSON: {exc}"}
+
+  manifest = data.get("manifest")
+  if manifest:
+    try:
+      manifest_obj = json.loads(manifest.decode("utf-8"))
+      expected_hashes = {
+        k: manifest_obj.get("files", {}).get(k, {}).get("sha256")
+        for k in required
+      }
+    except Exception:
+      expected_hashes = {}
+  else:
+    expected_hashes = {}
+
+  actual_hashes = _compute_backup_hashes({k: data[k] for k in required})
+  for key in required:
+    if expected_hashes.get(key) and expected_hashes[key] != actual_hashes[key]:
+      return {"ok": False, "error": f"sha256 mismatch for {key}: manifest vs actual"}
+
+  part_number = metadata.get("part_number", "")
+  if expected_part_number and part_number != expected_part_number:
+    return {
+      "ok": False,
+      "error": f"part number mismatch: backup={part_number}, expected={expected_part_number}",
+    }
+
+  variant = metadata.get("variant", "")
+  if expected_variant and variant != expected_variant:
+    return {
+      "ok": False,
+      "error": f"variant mismatch: backup={variant}, expected={expected_variant}",
+    }
+
+  return {
+    "ok": True,
+    "part_number": part_number,
+    "variant": variant,
+    "sha256": actual_hashes,
+  }
+
+
+def eps_patch_import_backup(
+  data: dict[str, bytes],
+  expected_part_number: str | None = None,
+  expected_variant: str | None = None,
+) -> dict[str, Any]:
+  """Import an external backup into the probe artifact directory.
+
+  The input dict maps file keys (target, crc, metadata) to raw bytes.
+  If a manifest is present it is also accepted (and ignored after validation).
+  """
+  validation = eps_patch_validate_backup(
+    {k: v for k, v in data.items() if k in ("target", "crc", "metadata")},
+    expected_part_number=expected_part_number,
+    expected_variant=expected_variant,
+  )
+  if not validation["ok"]:
+    return validation
+
+  probe_dir = _artifact_root() / "probe"
+  probe_dir.mkdir(parents=True, exist_ok=True)
+  paths = _backup_paths(probe_dir)
+  try:
+    for key in ("target", "crc", "metadata"):
+      paths[key].write_bytes(data[key])
+    return {"ok": True, "path": str(probe_dir), "validation": validation}
+  except Exception as exc:
+    return {"ok": False, "error": f"failed to write backup files: {exc}"}
+
+
 def eps_patch_prepare_patch(
   *,
   get_state_reader: Callable[..., Any] | None = None,
