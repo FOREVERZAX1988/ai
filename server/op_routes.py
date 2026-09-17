@@ -338,7 +338,7 @@ async def api_chat_jobs_create(request: web.Request) -> web.Response:
   result = await _run_chat_local_dev(cwd, config, body, prompt or "help", session_id)
   _JOBS[job_id]["status"] = "completed"
   _JOBS[job_id]["result"] = result
-  return web.json_response({"ok": True, "job_id": job_id, "status": "completed", "data": result})
+  return web.json_response({"ok": True, "job_id": job_id, "jobId": job_id, "status": "completed", "data": result})
 
 
 async def api_chat_jobs_get(request: web.Request) -> web.Response:
