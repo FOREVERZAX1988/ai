@@ -1116,6 +1116,154 @@ class WriterRunner:
     return self._run_with_pipe()
 
 
+def _copy_backup_files(src_dir: Path, dst_dir: Path) -> dict[str, Any]:
+  """Copy the three backup files from src_dir to dst_dir, returning a summary."""
+  dst_dir.mkdir(parents=True, exist_ok=True)
+  paths = _backup_paths(src_dir)
+  copied: dict[str, Any] = {}
+  for key, src in paths.items():
+    if not src.exists():
+      continue
+    dst = dst_dir / src.name
+    try:
+      dst.write_bytes(src.read_bytes())
+      copied[key] = {"path": str(dst), "size": dst.stat().st_size}
+    except Exception as exc:
+      copied[key] = {"error": str(exc)}
+  return copied
+
+
+def eps_patch_run_snapshot(
+  *,
+  serial: str = "",
+  confirm: bool = False,
+  get_state_reader: Callable[..., Any] | None = None,
+) -> dict[str, Any]:
+  """Create a read-only snapshot of the current EPS sectors before a writer.
+
+  Runs ``eps_patch.py probe`` and archives the resulting sector backups into
+  ``<artifact_root>/snapshots/<timestamp>/`` without disturbing the existing
+  probe backup used by patch/restore.
+  """
+  if not confirm:
+    return {
+      "ok": True,
+      "needs_confirmation": True,
+      "hint": "将执行 EPS 只读快照：重新读取当前 EPS 扇区并归档到 snapshots/。设置 confirm=true 执行。",
+    }
+
+  err = _offroad_guard(get_state_reader)
+  if err:
+    return err
+
+  tel = _parse_telescope_report()
+  classification = tel.get("classification", {}).get("classification") if tel else None
+  if classification not in ("verified_variant", "already_patched"):
+    return {
+      "ok": False,
+      "error": "eps-telescope 尚未判定为 verified_variant / already_patched，不能进入 snapshot。",
+      "classification": classification,
+      "next_step": "eps_telescope_probe",
+    }
+
+  root = _artifact_root()
+  probe_dir = root / "probe"
+  timestamp = time.strftime("%Y%m%d_%H%M%S")
+  snapshot_dir = root / "snapshots" / f"snapshot-{timestamp}"
+  swap_dir = root / f"probe.snapshot-swap-{os.getpid()}"
+
+  # Preserve the existing probe backup so patch/restore can still use it.
+  had_existing = probe_dir.exists() and any(probe_dir.iterdir()) if probe_dir.exists() else False
+  if had_existing:
+    try:
+      if swap_dir.exists():
+        import shutil
+        shutil.rmtree(swap_dir)
+      probe_dir.rename(swap_dir)
+    except Exception as exc:
+      return {"ok": False, "error": f"无法为 snapshot 临时迁移现有 probe 备份: {exc}"}
+
+  try:
+    args = ["probe"]
+    if serial:
+      args += ["--serial", serial]
+    result = _run_patch(*args, timeout=900)
+    result["stage_after"] = _parse_state().get("stage")
+    result["probe_pass"] = _parse_probe_report().get("outcome") == "PASS"
+
+    if result.get("ok") and result.get("probe_pass"):
+      copied = _copy_backup_files(probe_dir, snapshot_dir)
+      result["snapshot_dir"] = str(snapshot_dir)
+      result["snapshot_files"] = copied
+      result["message"] = f"快照已保存到 {snapshot_dir}"
+    elif result.get("ok"):
+      result["ok"] = False
+      result["error"] = result.get("error") or "probe 未报告 PASS，未生成快照"
+  finally:
+    # Always restore the original probe backup if we swapped it out.
+    if had_existing and swap_dir.exists():
+      try:
+        if probe_dir.exists():
+          import shutil
+          shutil.rmtree(probe_dir)
+        swap_dir.rename(probe_dir)
+      except Exception as exc:
+        result["restore_warning"] = f"恢复原有 probe 备份失败: {exc}"
+
+  return _attach_ui_card(_audit("eps_patch_run_snapshot", result))
+
+
+def eps_patch_run_verify(
+  *,
+  serial: str = "",
+  confirm: bool = False,
+  get_state_reader: Callable[..., Any] | None = None,
+) -> dict[str, Any]:
+  """Post-patch verification probe (read-only).
+
+  Runs ``eps_patch.py probe`` again and checks whether the state machine has
+  advanced to ``already_patched``. This is the safety net that confirms the
+  flash writer actually succeeded before the operator drives away.
+  """
+  if not confirm:
+    return {
+      "ok": True,
+      "needs_confirmation": True,
+      "hint": "将重新运行只读 probe 验证刷写结果。设置 confirm=true 执行。",
+    }
+
+  err = _offroad_guard(get_state_reader)
+  if err:
+    return err
+
+  args = ["probe"]
+  if serial:
+    args += ["--serial", serial]
+  result = _run_patch(*args, timeout=900)
+  state = _parse_state()
+  probe_report = _parse_probe_report()
+  tel = _parse_telescope_report()
+  classification = tel.get("classification", {}).get("classification") if tel else None
+
+  result["stage_after"] = state.get("stage")
+  result["outcome"] = state.get("outcome") or probe_report.get("outcome")
+  result["probe_pass"] = probe_report.get("outcome") == "PASS"
+  result["telescope_classification"] = classification
+  result["already_patched"] = classification == "already_patched"
+
+  if result.get("ok") and result.get("already_patched"):
+    result["verified"] = True
+    result["message"] = "验证通过：telescope 判定 EPS 已刷写（already_patched）。"
+  elif result.get("ok") and result.get("probe_pass"):
+    result["verified"] = False
+    result["error"] = "probe PASS 但 telescope 未判定 already_patched，请手动确认刷写是否成功。"
+  else:
+    result["verified"] = False
+    result["error"] = result.get("error") or "验证 probe 失败"
+
+  return _attach_ui_card(_audit("eps_patch_run_verify", result))
+
+
 def eps_patch_run_writer(
   *,
   command: str,
@@ -1297,3 +1445,121 @@ def eps_telescope_probe(
   result = _run_telescope(*args, timeout=1200)
   result["classification_after"] = _parse_telescope_report().get("classification", {}).get("classification")
   return _telescope_ui_card(_audit("eps_telescope_probe", result))
+
+
+# --- backup cleanup / retention policy -----------------------------------------
+
+
+def _backup_history_entries(root: Path | None = None) -> list[dict[str, Any]]:
+  """List archived backup snapshots under the artifact root."""
+  root = root or _artifact_root()
+  history_dir = root / "history"
+  entries: list[dict[str, Any]] = []
+  if not history_dir.exists():
+    return entries
+  for path in history_dir.iterdir():
+    if not path.is_file():
+      continue
+    try:
+      st = path.stat()
+      entries.append({
+        "name": path.name,
+        "path": str(path),
+        "size": st.st_size,
+        "mtime": st.st_mtime,
+      })
+    except OSError:
+      pass
+  return entries
+
+
+def _backup_retention_sort_key(entry: dict[str, Any]) -> float:
+  """Sort key: prefer newest by mtime, then by name for stable ordering."""
+  return float(entry.get("mtime", 0))
+
+
+def eps_patch_cleanup_backups(
+  *,
+  max_age_days: int = 30,
+  max_count: int = 20,
+  dry_run: bool = False,
+  get_state_reader: Callable[..., Any] | None = None,
+) -> dict[str, Any]:
+  """Apply retention policy to archived backups under ``<artifact_root>/history``.
+
+  Rules (applied in order):
+  1. Delete entries older than ``max_age_days`` days.
+  2. If more than ``max_count`` entries remain, keep the newest ``max_count``
+     and delete the rest.
+  3. Never delete the single most recent backup (safety net).
+
+  ``dry_run=True`` returns the planned deletions without touching the filesystem.
+  """
+  if max_age_days < 1:
+    return {"ok": False, "error": "max_age_days must be >= 1"}
+  if max_count < 1:
+    return {"ok": False, "error": "max_count must be >= 1"}
+
+  root = _artifact_root()
+  history_dir = root / "history"
+  entries = _backup_history_entries(root)
+  now = time.time()
+  cutoff = now - (max_age_days * 86400)
+
+  to_delete: list[dict[str, Any]] = []
+  survivors: list[dict[str, Any]] = []
+
+  for e in entries:
+    if e["mtime"] < cutoff:
+      to_delete.append(e)
+    else:
+      survivors.append(e)
+
+  survivors.sort(key=_backup_retention_sort_key, reverse=True)
+  if len(survivors) > max_count:
+    to_delete.extend(survivors[max_count:])
+    survivors = survivors[:max_count]
+
+  # Safety net: never delete the single most recent backup.
+  if survivors and any(d["name"] == survivors[0]["name"] for d in to_delete):
+    to_delete = [d for d in to_delete if d["name"] != survivors[0]["name"]]
+
+  planned = [
+    {"name": d["name"], "path": d["path"], "size": d["size"], "mtime": d["mtime"]}
+    for d in to_delete
+  ]
+
+  if dry_run:
+    return {
+      "ok": True,
+      "dry_run": True,
+      "total_entries": len(entries),
+      "planned_deletions": planned,
+      "kept": [
+        {"name": s["name"], "size": s["size"], "mtime": s["mtime"]}
+        for s in survivors
+      ],
+    }
+
+  deleted: list[dict[str, Any]] = []
+  errors: list[dict[str, Any]] = []
+  for d in to_delete:
+    try:
+      Path(d["path"]).unlink()
+      deleted.append({"name": d["name"], "path": d["path"]})
+    except OSError as exc:
+      errors.append({"name": d["name"], "path": d["path"], "error": str(exc)})
+
+  result = {
+    "ok": True,
+    "dry_run": False,
+    "total_entries": len(entries),
+    "deleted": deleted,
+    "errors": errors,
+    "kept": [
+      {"name": s["name"], "size": s["size"], "mtime": s["mtime"]}
+      for s in survivors
+    ],
+    "retention": {"max_age_days": max_age_days, "max_count": max_count},
+  }
+  return _attach_ui_card(_audit("eps_patch_cleanup_backups", result))

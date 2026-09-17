@@ -201,6 +201,15 @@
   margin-top: 0.15rem;
 }
 
+.eps-step-detail-tag {
+  margin-left: 0.4rem;
+  font-size: 0.64rem;
+  padding: 0 0.3rem;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--danger, #f07178) 18%, var(--surface, #1a1a1a));
+  color: var(--danger, #f07178);
+}
+
 .eps-options {
   display: grid;
   grid-template-columns: 1fr 1fr;

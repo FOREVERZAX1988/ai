@@ -53,7 +53,9 @@ from ai.tools.domains.secoc.eps_patch_tools import (
   eps_patch_prepare_patch as _eps_patch_prepare_patch,
   eps_patch_prepare_restore as _eps_patch_prepare_restore,
   eps_patch_probe as _eps_patch_probe,
+  eps_patch_run_snapshot as _eps_patch_run_snapshot,
   eps_patch_run_writer as _eps_patch_run_writer,
+  eps_patch_run_verify as _eps_patch_run_verify,
   eps_patch_status as _eps_patch_status,
   eps_patch_validate_backup as _eps_patch_validate_backup,
   eps_telescope_classify as _eps_telescope_classify,
@@ -609,8 +611,9 @@ async def api_eps_backup_info(_request: web.Request) -> web.Response:
 
 async def api_eps_backup_download(request: web.Request) -> web.Response:
   """Download one backup file by name (target, crc, metadata)."""
+  from ai.tools.domains.secoc.eps_patch_tools import _artifact_root
   name = request.match_info.get("name", "")
-  probe_dir = Path("/data/eps-patch/artifacts/probe")
+  probe_dir = _artifact_root() / "probe"
   mapping = {
     "target": probe_dir / "original-sector-0x88000.bin",
     "crc": probe_dir / "original-sector-0xf8000.bin",
@@ -705,7 +708,8 @@ async def api_eps_backup_import(request: web.Request) -> web.Response:
 
 async def api_eps_backup_history(_request: web.Request) -> web.Response:
   """List archived backup snapshots under the artifact root."""
-  root = Path("/data/eps-patch/artifacts")
+  from ai.tools.domains.secoc.eps_patch_tools import _artifact_root
+  root = _artifact_root()
   history_dir = root / "history"
   entries = []
   if history_dir.exists():
@@ -724,14 +728,73 @@ async def api_eps_backup_history(_request: web.Request) -> web.Response:
   return _json({"ok": True, "entries": entries[:20]})
 
 
-async def api_eps_audit(_request: web.Request) -> web.Response:
-  """Return recent EPS-related audit entries."""
+async def api_eps_backup_history_download(request: web.Request) -> web.Response:
+  """Download a single historical backup entry by name."""
+  name = request.match_info.get("name", "")
+  from ai.tools.domains.secoc.eps_patch_tools import _artifact_root
+  root = _artifact_root()
+  history_dir = root / "history"
+  path = history_dir / name
+  if not path.exists() or not path.is_file():
+    return _json({"ok": False, "error": "backup entry not found"}, status=404)
+  try:
+    data = path.read_bytes()
+  except Exception as exc:
+    return _json({"ok": False, "error": str(exc)}, status=500)
+  headers = {
+    "Content-Type": "application/gzip",
+    "Content-Disposition": f"attachment; filename={path.name}",
+  }
+  _audit("eps_backup_history_download", {"ok": True, "name": name})
+  return web.Response(body=data, headers=headers)
+
+
+async def api_eps_audit(request: web.Request) -> web.Response:
+  """Return recent EPS-related audit entries.
+
+  Supports optional query params:
+  - ``job_id``: filter entries to a specific EPS job id
+  - ``limit``: cap the number of entries returned (default 100, max 200)
+  """
   from ai.tools.domains.platform.audit_store import list_audit_trail
-  result = list_audit_trail(limit=100)
+
+  try:
+    limit = int(request.query.get("limit", "100"))
+  except ValueError:
+    limit = 100
+  job_id = request.query.get("job_id", "").strip()
+
+  result = list_audit_trail(limit=limit)
   if not result.get("ok"):
     return _json(result, status=500)
   eps_entries = [e for e in result.get("entries", []) if str(e.get("action", "")).startswith("eps_")]
-  return _json({"ok": True, "entries": eps_entries, "count": len(eps_entries)})
+
+  filtered = eps_entries
+  if job_id:
+    filtered = [
+      e for e in filtered
+      if str(e.get("job_id", "")) == job_id
+      or str(e.get("payload", {}).get("job_id", "")) == job_id
+      or str(e.get("payload", {}).get("snapshot_dir", "")).endswith(job_id)
+    ]
+
+  by_action: dict[str, int] = {}
+  for e in filtered:
+    action = str(e.get("action", "unknown"))
+    by_action[action] = by_action.get(action, 0) + 1
+
+  return _json({
+    "ok": True,
+    "entries": filtered,
+    "count": len(filtered),
+    "total_eps": len(eps_entries),
+    "by_action": by_action,
+    "job_id": job_id or None,
+    "limit": limit,
+    "chain_ok": result.get("chain_ok"),
+    "chain_verified": result.get("chain_verified"),
+    "path": result.get("path"),
+  })
 
 
 async def api_eps_snapshot(request: web.Request) -> web.Response:
@@ -740,11 +803,112 @@ async def api_eps_snapshot(request: web.Request) -> web.Response:
   This is a safety net: before a destructive writer runs we re-read the current
   EPS state and archive it separately from the probe backup.
   """
-  err, _ = _writer_request_gate(request)
-  if err:
-    return _json(err, status=403)
-  result = await _run_sync(_eps_patch_run_writer, command="snapshot", serial="")
-  return _json(result)
+  allowed, reason = _allowed("shell")
+  if not allowed:
+    return _json({"ok": False, "error": reason}, status=403)
+
+  offroad = _offroad_reason()
+  if offroad:
+    return _json({"ok": False, "error": offroad}, status=403)
+
+  try:
+    body = await request.json()
+  except Exception:
+    body = {}
+
+  if not body.get("confirm"):
+    return _json({
+      "ok": True,
+      "needs_confirmation": True,
+      "hint": "将重新读取当前 EPS 扇区并归档为 snapshot，不会擦写 Flash。确认后继续。",
+    })
+
+  # Gate on telescope classification before starting a subprocess.
+  tel = _eps_telescope_classify()
+  classification = tel.get("classification") if tel.get("ok") else None
+  if classification not in ("verified_variant", "already_patched"):
+    return _json({
+      "ok": False,
+      "error": "eps-telescope 尚未判定为 verified_variant / already_patched，不能进入 snapshot。",
+      "classification": classification,
+      "next_step": "eps_telescope_probe",
+    }, status=403)
+
+  serial = str(body.get("serial") or "")
+  runner = Path(__file__).resolve().parent.parent.parent / "tools" / "domains" / "secoc" / "eps_snapshot_runner.py"
+  cmd = [_python(), str(runner)]
+  if serial:
+    cmd += [serial]
+
+  job = _start_job("snapshot", cmd, runner.parent)
+  _audit("eps_snapshot", {"ok": True, "job_id": job.job_id, "kind": job.kind})
+  return _json({"ok": True, "job_id": job.job_id, "status": job.status})
+
+
+async def api_eps_cleanup(request: web.Request) -> web.Response:
+  """Apply backup retention policy (delete old backups)."""
+  allowed, reason = _allowed("shell")
+  if not allowed:
+    return _json({"ok": False, "error": reason}, status=403)
+
+  try:
+    body = await request.json()
+  except Exception:
+    body = {}
+
+  if not body.get("confirm"):
+    return _json({
+      "ok": True,
+      "needs_confirmation": True,
+      "hint": "将清理过期备份（默认保留 30 天 / 20 条）。可通过 max_age_days 和 max_count 自定义。",
+    })
+
+  max_age_days = int(body.get("max_age_days", 30))
+  max_count = int(body.get("max_count", 20))
+  dry_run = bool(body.get("dry_run", False))
+
+  serial = str(body.get("serial") or "")
+  runner = Path(__file__).resolve().parent.parent.parent / "tools" / "domains" / "secoc" / "eps_cleanup_runner.py"
+  cmd = [_python(), str(runner), str(max_age_days), str(max_count)]
+  if dry_run:
+    cmd.append("--dry-run")
+
+  job = _start_job("cleanup", cmd, runner.parent)
+  _audit("eps_cleanup", {"ok": True, "job_id": job.job_id, "kind": job.kind})
+  return _json({"ok": True, "job_id": job.job_id, "status": job.status})
+
+
+async def api_eps_verify(request: web.Request) -> web.Response:
+  """Post-patch verification probe (read-only). Runs probe and checks classification."""
+  allowed, reason = _allowed("shell")
+  if not allowed:
+    return _json({"ok": False, "error": reason}, status=403)
+
+  offroad = _offroad_reason()
+  if offroad:
+    return _json({"ok": False, "error": offroad}, status=403)
+
+  try:
+    body = await request.json()
+  except Exception:
+    body = {}
+
+  if not body.get("confirm"):
+    return _json({
+      "ok": True,
+      "needs_confirmation": True,
+      "hint": "将重新运行只读 probe 验证刷写结果，确认 EPS 已切换为 already_patched。确认后继续。",
+    })
+
+  serial = str(body.get("serial") or "")
+  runner = Path(__file__).resolve().parent.parent.parent / "tools" / "domains" / "secoc" / "eps_verify_runner.py"
+  cmd = [_python(), str(runner)]
+  if serial:
+    cmd += [serial]
+
+  job = _start_job("verify", cmd, runner.parent)
+  _audit("eps_verify", {"ok": True, "job_id": job.job_id, "kind": job.kind})
+  return _json({"ok": True, "job_id": job.job_id, "status": job.status})
 
 
 def register_eps_routes(app: web.Application) -> None:
@@ -769,5 +933,8 @@ def register_eps_routes(app: web.Application) -> None:
   app.router.add_get("/api/eps/backup-export", api_eps_backup_export)
   app.router.add_post("/api/eps/backup-import", api_eps_backup_import)
   app.router.add_get("/api/eps/backup-history", api_eps_backup_history)
+  app.router.add_get("/api/eps/backup-history/{name}", api_eps_backup_history_download)
   app.router.add_get("/api/eps/audit", api_eps_audit)
   app.router.add_post("/api/eps/snapshot", api_eps_snapshot)
+  app.router.add_post("/api/eps/cleanup", api_eps_cleanup)
+  app.router.add_post("/api/eps/verify", api_eps_verify)

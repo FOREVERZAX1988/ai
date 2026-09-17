@@ -96,7 +96,7 @@
           <button type="button" id="secocBtn" class="btn icon header-tool-secondary" title="SecOC" aria-label="SecOC" data-i18n-title="tabSecoc">
             <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0 3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
           </button>
-          <button type="button" id="epsBtn" class="btn icon header-tool-secondary" title="EPS 刷写" aria-label="EPS Flash">
+          <button type="button" id="epsBtn" class="btn icon header-tool-secondary" data-i18n="epsBtnTitle" aria-label="EPS Flash">
             <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M12 2a10 10 0 1 0 10 10h-2a8 8 0 1 1-16 0 8 8 0 0 1 8-8V2z"/><path d="M12 2v8l5-5"/></svg>
           </button>
           <button type="button" id="officeBtn" class="btn icon header-tool-secondary" title="OP 办公室" aria-label="OP Office">
@@ -1335,7 +1335,7 @@
     <div class="modal-content eps-modal-content">
       <div class="modal-header eps-modal-header">
         <div class="eps-modal-head-text">
-          <h2 id="epsModalTitle">EPS 刷写助手</h2>
+          <h2 id="epsModalTitle" data-i18n="epsModalTitle">EPS 刷写助手</h2>
           <p class="settings-pane-desc" id="epsPaneDesc">仅 offroad · 当前支持 EPS 零件号 8965B4512000 · 刷写过程可能变砖</p>
         </div>
         <button type="button" id="epsCloseBtn" class="btn icon" aria-label="Close">
@@ -1401,12 +1401,20 @@
             <span class="eps-step-dot" id="epsStepDotWriter"></span>
             <div class="eps-step-body">
               <div class="eps-step-title">4. 一键刷写 / 恢复</div>
-              <div class="eps-step-detail" id="epsStepDetailWriter">自动输入 YES，checkpoint 后断电重启</div>
+              <div class="eps-step-detail" id="epsStepDetailWriter">自动输入 YES（在 AGNOS/Linux pty 环境下有效；PC/dev 环境下需手动确认 YES）<span class="eps-step-detail-tag">注意：Windows dev 环境下需手动点击确认</span></div>
             </div>
             <div class="eps-step-actions">
               <button type="button" class="btn small danger" id="epsWriterBtn">一键刷写</button>
               <button type="button" class="btn small ghost" id="epsRestoreBtn">一键恢复</button>
             </div>
+          </div>
+          <div class="eps-step" data-step="snapshot">
+            <span class="eps-step-dot" id="epsStepDotSnapshot"></span>
+            <div class="eps-step-body">
+              <div class="eps-step-title">5. 刷写前快照（只读）</div>
+              <div class="eps-step-detail" id="epsStepDetailSnapshot">在刷写前重新读取当前 EPS 扇区并单独归档</div>
+            </div>
+            <button type="button" class="btn small ghost" id="epsSnapshotBtn">生成快照</button>
           </div>
         </div>
 

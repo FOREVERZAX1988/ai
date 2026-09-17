@@ -35,15 +35,18 @@ const EpsPanel = (() => {
       stepDotClassify: $('epsStepDotClassify'),
       stepDotProbe: $('epsStepDotProbe'),
       stepDotWriter: $('epsStepDotWriter'),
+      stepDotSnapshot: $('epsStepDotSnapshot'),
       stepDetailTelescope: $('epsStepDetailTelescope'),
       stepDetailClassify: $('epsStepDetailClassify'),
       stepDetailProbe: $('epsStepDetailProbe'),
       stepDetailWriter: $('epsStepDetailWriter'),
+      stepDetailSnapshot: $('epsStepDetailSnapshot'),
       telescopeBtn: $('epsTelescopeBtn'),
       classifyBtn: $('epsClassifyBtn'),
       probeBtn: $('epsProbeBtn'),
       writerBtn: $('epsWriterBtn'),
       restoreBtn: $('epsRestoreBtn'),
+      snapshotBtn: $('epsSnapshotBtn'),
       continueBtn: $('epsContinueBtn'),
       serialSelect: $('epsSerialSelect'),
       depthSelect: $('epsDepthSelect'),
@@ -182,6 +185,7 @@ const EpsPanel = (() => {
     [
       e.telescopeBtn, e.classifyBtn, e.probeBtn,
       e.writerBtn, e.restoreBtn, e.continueBtn,
+      e.snapshotBtn,
     ].forEach((btn) => {
       if (btn) btn.disabled = running;
     });
@@ -462,6 +466,9 @@ const EpsPanel = (() => {
       e.probeBtn.disabled = state.running || !canRunProbe() || already;
     }
     if (e.telescopeBtn) e.telescopeBtn.disabled = state.running || already;
+    if (e.snapshotBtn) {
+      e.snapshotBtn.disabled = state.running || already || !(high === 'probe_pass' || high === 'patch_in_progress');
+    }
 
     // Status summary.
     let title = '未开始';
@@ -598,6 +605,42 @@ const EpsPanel = (() => {
     }
   }
 
+  async function runSnapshot() {
+    if (state.running) return;
+    if (!canRunProbe()) {
+      notifyToast('telescope 分类未通过，不能生成 snapshot', 'err');
+      return;
+    }
+    setRunning(true);
+    clearLog();
+    hideCommandCard();
+    const e = els();
+    if (e.jobTitle) e.jobTitle.textContent = 'EPS 刷写前快照';
+    setStepStatus('snapshot', 'running', '正在重新读取 EPS 当前扇区…');
+    updateStatus('快照中', '只读读取当前 EPS 扇区并归档', 'running');
+
+    try {
+      const result = await postJson('/api/eps/snapshot', {
+        confirm: true,
+        serial: selectedSerial(),
+      }, { timeoutMs: 30000 });
+
+      if (!result.ok) {
+        logLine(result.error || '启动失败', 'err');
+        setStepStatus('snapshot', 'error', result.error || '启动失败');
+        setRunning(false);
+        return;
+      }
+      state.jobId = result.job_id;
+      state.jobKind = 'snapshot';
+      pollJob();
+    } catch (err) {
+      logLine(String(err), 'err');
+      setStepStatus('snapshot', 'error', String(err));
+      setRunning(false);
+    }
+  }
+
   async function runWriter(command) {
     if (state.running) return;
 
@@ -709,6 +752,10 @@ const EpsPanel = (() => {
       } else if (state.jobKind === 'restore_writer') {
         if (/RESTORED|PASS/.test(joined)) pct = 90;
         else if (/RESTORE-SECTOR/.test(joined)) pct = 50;
+      } else if (state.jobKind === 'snapshot') {
+        if (/snapshot saved|snapshot_dir/.test(joined)) pct = 95;
+        else if (/original-sector|recovery-metadata/.test(joined)) pct = 70;
+        else if (/probe/i.test(joined)) pct = 40;
       }
       setJobProgress(pct);
 
@@ -728,6 +775,8 @@ const EpsPanel = (() => {
           setStepStatus('telescope', 'ready', '探测完成');
         } else if (state.jobKind === 'patch') {
           setStepStatus('probe', 'ready', 'Probe 完成');
+        } else if (state.jobKind === 'snapshot') {
+          setStepStatus('snapshot', 'ready', '快照完成');
         } else {
           setStepStatus('writer', 'ready', state.jobKind === 'patch_writer' ? 'Patch 完成' : 'Restore 完成');
         }
@@ -737,6 +786,7 @@ const EpsPanel = (() => {
         logLine(job.error || '执行出错', 'err');
         if (state.jobKind === 'telescope') setStepStatus('telescope', 'error', job.error || '出错');
         else if (state.jobKind === 'patch') setStepStatus('probe', 'error', job.error || '出错');
+        else if (state.jobKind === 'snapshot') setStepStatus('snapshot', 'error', job.error || '出错');
         else setStepStatus('writer', 'error', job.error || '出错');
       }
     } catch (err) {
@@ -924,6 +974,7 @@ const EpsPanel = (() => {
     e.telescopeBtn?.addEventListener('click', runTelescopeProbe);
     e.classifyBtn?.addEventListener('click', showClassify);
     e.probeBtn?.addEventListener('click', runPatchProbe);
+    e.snapshotBtn?.addEventListener('click', runSnapshot);
     e.writerBtn?.addEventListener('click', () => runWriter('patch'));
     e.restoreBtn?.addEventListener('click', () => runWriter('restore'));
     e.continueBtn?.addEventListener('click', continueWriter);
