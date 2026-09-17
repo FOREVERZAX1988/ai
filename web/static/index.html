@@ -1331,8 +1331,8 @@
     <div class="modal-content eps-modal-content">
       <div class="modal-header eps-modal-header">
         <div class="eps-modal-head-text">
-          <h2 id="epsModalTitle">EPS 8965B4512000 刷写助手</h2>
-          <p class="settings-pane-desc" id="epsPaneDesc">仅 offroad · 仅支持 EPS 零件号 8965B4512000 · 刷写过程可能变砖</p>
+          <h2 id="epsModalTitle">EPS 刷写助手</h2>
+          <p class="settings-pane-desc" id="epsPaneDesc">仅 offroad · 当前支持 EPS 零件号 8965B4512000 · 刷写过程可能变砖</p>
         </div>
         <button type="button" id="epsCloseBtn" class="btn icon" aria-label="Close">
           <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
@@ -1373,8 +1373,8 @@
           <div class="eps-step" data-step="probe">
             <span class="eps-step-dot" id="epsStepDotProbe"></span>
             <div class="eps-step-body">
-              <div class="eps-step-title">3. EPS 只读 Probe</div>
-              <div class="eps-step-detail" id="epsStepDetailProbe">验证 patch 点前状态</div>
+              <div class="eps-step-title">3. EPS 只读 Probe（自动备份原车扇区）</div>
+              <div class="eps-step-detail" id="epsStepDetailProbe">验证 patch 点前状态，成功后生成原车扇区备份</div>
             </div>
             <button type="button" class="btn small" id="epsProbeBtn" disabled>运行 Probe</button>
           </div>
@@ -1437,7 +1437,7 @@
 
         <div class="eps-backup-card hidden" id="epsBackupCard">
           <div class="eps-backup-head">
-            <div class="eps-backup-title">原车 EPS 备份</div>
+            <div class="eps-backup-title">原车 EPS 备份（Probe 成功后生成）</div>
             <div class="eps-backup-actions">
               <a class="btn ghost small" id="epsBackupDownloadTarget" href="#" download>目标扇区</a>
               <a class="btn ghost small" id="epsBackupDownloadCrc" href="#" download>CRC 扇区</a>
