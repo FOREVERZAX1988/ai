@@ -1340,7 +1340,7 @@
       </div>
       <div class="modal-body eps-modal-body">
         <div class="eps-warning-box" id="epsBrickWarning">
-          <strong>变砖警告：</strong>patch / restore 会擦写 EPS Flash。writer 阶段必须在 SSH 终端手动执行，不可通过此面板一键完成。
+          <strong>变砖警告：</strong>patch / restore 会擦写 EPS Flash。面板提供一键执行，但仍需双重确认并输入 YES；每次 writer checkpoint 后需完全断电重启 comma/EPS。
         </div>
 
         <div class="eps-hero-card eps-status-card">
@@ -1381,17 +1381,28 @@
           <div class="eps-step" data-step="writer">
             <span class="eps-step-dot" id="epsStepDotWriter"></span>
             <div class="eps-step-body">
-              <div class="eps-step-title">4. 准备 Writer 命令</div>
-              <div class="eps-step-detail" id="epsStepDetailWriter">手动在 SSH 终端执行</div>
+              <div class="eps-step-title">4. 一键刷写 / 恢复</div>
+              <div class="eps-step-detail" id="epsStepDetailWriter">自动输入 YES，checkpoint 后断电重启</div>
             </div>
-            <button type="button" class="btn small ghost" id="epsWriterBtn">生成命令</button>
+            <div class="eps-step-actions">
+              <button type="button" class="btn small danger" id="epsWriterBtn">一键刷写</button>
+              <button type="button" class="btn small ghost" id="epsRestoreBtn">一键恢复</button>
+            </div>
           </div>
+        </div>
+
+        <div class="eps-continue-card hidden" id="epsContinueCard">
+          <div class="eps-continue-title">需要继续</div>
+          <div class="eps-continue-hint" id="epsContinueHint">writer 已保存 checkpoint 并退出；请完全断电重启 comma/EPS，然后点击“继续”。</div>
+          <button type="button" class="btn small" id="epsContinueBtn">继续刷写</button>
         </div>
 
         <div class="eps-options" id="epsOptions">
           <label class="eps-option">
-            <span class="eps-option-label">Panda serial（可选）</span>
-            <input type="text" id="epsSerialInput" class="eps-option-input" placeholder="留空自动查找" autocomplete="off">
+            <span class="eps-option-label">Panda</span>
+            <select id="epsSerialSelect" class="eps-option-input">
+              <option value="">自动选择</option>
+            </select>
           </label>
           <label class="eps-option">
             <span class="eps-option-label">探测深度</span>
@@ -1422,6 +1433,40 @@
           <pre class="eps-command-body" id="epsCommandBody"></pre>
           <ol class="eps-command-steps" id="epsCommandSteps"></ol>
           <div class="eps-command-warning" id="epsCommandWarning"></div>
+        </div>
+
+        <div class="eps-backup-card hidden" id="epsBackupCard">
+          <div class="eps-backup-head">
+            <div class="eps-backup-title">原车 EPS 备份</div>
+            <div class="eps-backup-actions">
+              <a class="btn ghost small" id="epsBackupDownloadTarget" href="#" download>目标扇区</a>
+              <a class="btn ghost small" id="epsBackupDownloadCrc" href="#" download>CRC 扇区</a>
+              <a class="btn ghost small" id="epsBackupDownloadMeta" href="#" download>元数据</a>
+            </div>
+          </div>
+          <div class="eps-backup-body" id="epsBackupBody"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal eps-confirm-modal hidden" id="epsConfirmModal">
+      <div class="modal-backdrop" id="epsConfirmBackdrop"></div>
+      <div class="modal-content eps-confirm-content">
+        <div class="modal-header eps-confirm-header">
+          <h3 id="epsConfirmTitle">确认</h3>
+        </div>
+        <div class="modal-body eps-confirm-body" id="epsConfirmBody"></div>
+        <label class="eps-confirm-checkbox">
+          <input type="checkbox" id="epsConfirmCheckbox">
+          <span>我已了解变砖风险，并确认车辆静止、台架稳定供电</span>
+        </label>
+        <label class="eps-confirm-input">
+          <span>在下方输入大写 YES 继续：</span>
+          <input type="text" id="epsConfirmInput" class="eps-option-input" placeholder="YES" autocomplete="off">
+        </label>
+        <div class="eps-confirm-actions">
+          <button type="button" class="btn ghost" id="epsConfirmCancelBtn">取消</button>
+          <button type="button" class="btn danger" id="epsConfirmOkBtn">确认</button>
         </div>
       </div>
     </div>

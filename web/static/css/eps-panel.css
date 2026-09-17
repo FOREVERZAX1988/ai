@@ -287,3 +287,126 @@
 .eps-command-warning.hidden {
   display: none;
 }
+
+.eps-step-actions {
+  display: flex;
+  gap: 0.45rem;
+}
+
+.eps-continue-card {
+  margin: 0.85rem 0;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid color-mix(in srgb, var(--accent, #0a84ff) 45%, transparent);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--accent, #0a84ff) 10%, var(--surface, #1a1a1a));
+}
+
+.eps-continue-card.hidden {
+  display: none;
+}
+
+.eps-continue-title {
+  font-weight: 600;
+  font-size: 0.85rem;
+  margin-bottom: 0.25rem;
+}
+
+.eps-continue-hint {
+  font-size: 0.76rem;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  margin-bottom: 0.55rem;
+}
+
+.eps-backup-card {
+  margin-top: 0.85rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  padding: 0.65rem 0.75rem;
+}
+
+.eps-backup-card.hidden {
+  display: none;
+}
+
+.eps-backup-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.45rem;
+}
+
+.eps-backup-title {
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.eps-backup-actions {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.eps-backup-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  font-size: 0.74rem;
+  color: var(--text-secondary);
+  padding: 0.2rem 0;
+}
+
+.eps-confirm-modal {
+  z-index: 260;
+}
+
+.eps-confirm-content {
+  width: min(90vw, 440px);
+}
+
+.eps-confirm-body {
+  font-size: 0.84rem;
+  line-height: 1.55;
+  margin-bottom: 0.75rem;
+}
+
+.eps-confirm-checkbox,
+.eps-confirm-input {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.45rem;
+  font-size: 0.78rem;
+  margin-bottom: 0.55rem;
+  color: var(--text-secondary);
+}
+
+.eps-confirm-checkbox input {
+  margin-top: 0.15rem;
+}
+
+.eps-confirm-input {
+  flex-direction: column;
+}
+
+.eps-confirm-input input {
+  width: 100%;
+  margin-top: 0.25rem;
+}
+
+.eps-confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+.btn.danger {
+  background: var(--danger, #f07178);
+  color: #fff;
+  border-color: var(--danger, #f07178);
+}
+
+.btn.danger:disabled {
+  opacity: 0.55;
+}

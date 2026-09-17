@@ -4,9 +4,9 @@ Design constraints (keep the brick risk as low as possible):
 
 - All probe operations are read-only but stop manager/pandad; they run in a
   background thread pool and are polled by the UI.
-- The destructive ``patch`` / ``restore`` writers are **never** exposed as HTTP
-  endpoints. The panel only shows the prepared command and asks the operator to
-  run it manually in a foreground interactive SSH TTY with upper-case YES.
+- The destructive ``patch`` / ``restore`` writers are exposed as HTTP endpoints
+  ONLY through a pty-based runner that automates the required YES confirmation.
+  They still require offroad + is_action_allowed('shell') + double confirmation.
 - Offroad + confirm gates are enforced both on the backend and in the UI.
 - Telescope classification must be ``verified_variant`` or ``already_patched``
   before eps_patch_probe is accepted.
@@ -33,14 +33,17 @@ from ai.server.deps import get_state_reader, json_response, params
 from ai.system.admin import is_admin_mode
 from ai.system.safety import is_action_allowed
 from ai.tools.domains.secoc.eps_patch_tools import (
+  WriterRunner,
   eps_patch_diagnose as _eps_patch_diagnose,
   eps_patch_prepare_patch as _eps_patch_prepare_patch,
   eps_patch_prepare_restore as _eps_patch_prepare_restore,
   eps_patch_probe as _eps_patch_probe,
+  eps_patch_run_writer as _eps_patch_run_writer,
   eps_patch_status as _eps_patch_status,
   eps_telescope_classify as _eps_telescope_classify,
   eps_telescope_probe as _eps_telescope_probe,
   eps_telescope_status as _eps_telescope_status,
+  list_pandas as _list_pandas,
 )
 from ai.tools.domains.platform.audit_store import record_audit
 
@@ -61,15 +64,19 @@ def _json(data: dict, *, status: int = 200) -> web.Response:
 @dataclasses.dataclass
 class _Job:
   job_id: str
-  kind: str  # "telescope_probe" | "patch_probe"
+  kind: str  # "telescope_probe" | "patch_probe" | "patch_writer" | "restore_writer"
   command: list[str]
   cwd: Path
-  status: str  # "pending" | "running" | "done" | "error" | "cancelled"
+  status: str  # "pending" | "running" | "done" | "error" | "cancelled" | "power_cycle"
   returncode: int | None = None
   lines: list[dict[str, str]] = dataclasses.field(default_factory=list)
   error: str = ""
   cancelled: bool = False
+  power_cycle_seen: bool = False
+  yes_sent: bool = False
+  stage_after: str | None = None
   _proc: subprocess.Popen[str] | None = None
+  _runner: WriterRunner | None = None
   _lock: threading.RLock = dataclasses.field(default_factory=threading.RLock)
 
   def to_dict(self) -> dict[str, Any]:
@@ -83,6 +90,9 @@ class _Job:
         "lines": list(self.lines),
         "error": self.error,
         "cancelled": self.cancelled,
+        "power_cycle_seen": self.power_cycle_seen,
+        "yes_sent": self.yes_sent,
+        "stage_after": self.stage_after,
       }
 
 
@@ -173,6 +183,71 @@ def _start_job(kind: str, command: list[str], cwd: Path) -> _Job:
   return job
 
 
+def _start_writer_job(kind: str, command: str, serial: str) -> _Job:
+  """Start a pty-based patch/restore writer job."""
+  job_id = uuid.uuid4().hex[:12]
+  script = _eps_patch_script()
+  job = _Job(
+    job_id=job_id,
+    kind=kind,
+    command=[_python(), str(script), command],
+    cwd=script.parent,
+  )
+  with _JOBS_LOCK:
+    _JOBS[job_id] = job
+
+  def on_line(line: str) -> None:
+    with job._lock:
+      job.lines.append({"t": f"{time.monotonic():.3f}", "line": line})
+
+  runner = WriterRunner(command, serial=serial, on_line=on_line)
+  job._runner = runner
+
+  def writer_worker() -> None:
+    try:
+      with job._lock:
+        if job.cancelled:
+          job.status = "cancelled"
+          return
+        job.status = "running"
+      result = runner.run()
+      with job._lock:
+        job.returncode = result.get("returncode")
+        job.power_cycle_seen = result.get("power_cycle_seen", False)
+        job.yes_sent = result.get("yes_sent", False)
+        job.stage_after = result.get("stage_after")
+        if job.cancelled:
+          job.status = "cancelled"
+        elif result.get("power_cycle_seen") and result.get("returncode") == 0:
+          job.status = "power_cycle"
+        elif result.get("ok"):
+          job.status = "done"
+        else:
+          job.status = "error"
+          job.error = result.get("error") or "writer failed"
+    except Exception as exc:
+      cloudlog.exception("eps writer job failed")
+      with job._lock:
+        job.error = str(exc)
+        job.status = "error"
+
+  thread = threading.Thread(target=writer_worker, daemon=True)
+  thread.start()
+  return job
+
+
+def _eps_patch_script() -> Path:
+  from ai.tools.domains.secoc.eps_patch_tools import EPS_PATCH_SCRIPT
+  if EPS_PATCH_SCRIPT.exists():
+    return EPS_PATCH_SCRIPT
+  return Path("/data/eps-patch/app/eps_patch.py")
+
+
+def _python() -> str:
+  from ai.tools.domains.secoc.eps_patch_tools import _python as py
+  return py()
+
+
 def _get_job(job_id: str) -> _Job | None:
   with _JOBS_LOCK:
     return _JOBS.get(job_id)
@@ -195,6 +270,18 @@ def _run_sync(fn: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
 
 async def api_eps_status(_request: web.Request) -> web.Response:
   status = await _run_sync(_eps_patch_status)
+  # Append a resumable checkpoint hint so the UI can offer "continue".
+  state = status.get("state") or {}
+  stage = status.get("stage")
+  power_cycle = state.get("power_cycle") if isinstance(state, dict) else None
+  if power_cycle and stage not in (None, "PASS"):
+    status["power_cycle_checkpoint"] = {
+      "completed_state": power_cycle.get("completed_state"),
+      "next_state": power_cycle.get("next_state"),
+      "hint": "writer 已保存 checkpoint 并退出；请完全断电重启 comma/EPS，然后点击“继续刷写”恢复同一命令。",
+    }
+  elif status.get("state_name") == "patch_in_progress":
+    status["continue_hint"] = "patch 流程已部分执行；可点击“继续刷写”恢复同一命令。"
   return _json(status)
 
 
@@ -322,7 +409,7 @@ async def api_eps_job(request: web.Request) -> web.Response:
   return _json({"ok": True, "job": job.to_dict()})
 
 
-async def api_eps_cancel_job(request: web.Request) -> web.Request:
+async def api_eps_cancel_job(request: web.Request) -> web.Response:
   try:
     body = await request.json()
   except Exception:
@@ -333,6 +420,12 @@ async def api_eps_cancel_job(request: web.Request) -> web.Request:
     return _json({"ok": False, "error": "job not found"}, status=404)
   with job._lock:
     job.cancelled = True
+    if job._runner is not None:
+      try:
+        if job._runner.proc is not None and job._runner.proc.poll() is None:
+          job._runner.proc.terminate()
+      except Exception:
+        pass
     if job._proc is not None:
       try:
         job._proc.terminate()
@@ -349,15 +442,127 @@ async def api_eps_jobs(_request: web.Request) -> web.Response:
   return _json({"ok": True, "jobs": payload})
 
 
+async def _read_json_body(request: web.Request) -> dict[str, Any]:
+  try:
+    body = await request.json()
+    return body if isinstance(body, dict) else {}
+  except Exception:
+    return {}
+
+
+def _writer_request_gate(request: web.Request) -> tuple[dict[str, Any] | None, dict[str, Any]]:
+  """Common permission/confirmation gate for patch/restore writer endpoints."""
+  allowed, reason = _allowed("shell")
+  if not allowed:
+    return {"ok": False, "error": reason}, {}
+
+  offroad = _offroad_reason()
+  if offroad:
+    return {"ok": False, "error": offroad}, {}
+
+  return None, {}
+
+
+async def api_eps_patch_writer(request: web.Request) -> web.Response:
+  err, _ = _writer_request_gate(request)
+  if err:
+    return _json(err, status=403)
+  body = await _read_json_body(request)
+
+  if not body.get("confirm"):
+    return _json({
+      "ok": True,
+      "needs_confirmation": True,
+      "hint": "将执行 EPS 8965B4512000 patch writer，会擦写 EPS Flash，失败可能变砖。确认后继续。",
+    })
+
+  if body.get("i_understand") != "brick_risk":
+    return _json({
+      "ok": False,
+      "error": "缺少二次确认：请在面板勾选“我已了解变砖风险”后再执行。",
+    }, status=403)
+
+  serial = str(body.get("serial") or "")
+  job = _start_writer_job("patch_writer", "patch", serial)
+  _audit("eps_patch_writer", {"ok": True, "job_id": job.job_id, "kind": job.kind})
+  return _json({"ok": True, "job_id": job.job_id, "status": job.status})
+
+
+async def api_eps_restore_writer(request: web.Request) -> web.Response:
+  err, _ = _writer_request_gate(request)
+  if err:
+    return _json(err, status=403)
+  body = await _read_json_body(request)
+
+  if not body.get("confirm"):
+    return _json({
+      "ok": True,
+      "needs_confirmation": True,
+      "hint": "将执行 EPS restore writer，把 EPS 恢复到 probe 时的原车备份。失败也可能变砖。确认后继续。",
+    })
+
+  if body.get("i_understand") != "brick_risk":
+    return _json({
+      "ok": False,
+      "error": "缺少二次确认：请在面板勾选“我已了解变砖风险”后再执行。",
+    }, status=403)
+
+  serial = str(body.get("serial") or "")
+  job = _start_writer_job("restore_writer", "restore", serial)
+  _audit("eps_restore_writer", {"ok": True, "job_id": job.job_id, "kind": job.kind})
+  return _json({"ok": True, "job_id": job.job_id, "status": job.status})
+
+
+async def api_eps_panda_list(_request: web.Request) -> web.Response:
+  result = await _run_sync(_list_pandas)
+  return _json(result)
+
+
+async def api_eps_backup_info(_request: web.Request) -> web.Response:
+  from ai.tools.domains.secoc.eps_patch_tools import _backup_info
+  info = await _run_sync(_backup_info)
+  return _json({"ok": True, **info})
+
+
+async def api_eps_backup_download(request: web.Request) -> web.Response:
+  """Download one backup file by name (target, crc, metadata)."""
+  name = request.match_info.get("name", "")
+  probe_dir = Path("/data/eps-patch/artifacts/probe")
+  mapping = {
+    "target": probe_dir / "original-sector-0x88000.bin",
+    "crc": probe_dir / "original-sector-0xf8000.bin",
+    "metadata": probe_dir / "recovery-metadata.json",
+  }
+  path = mapping.get(name)
+  if path is None or not path.exists():
+    return _json({"ok": False, "error": "backup file not found"}, status=404)
+
+  try:
+    data = path.read_bytes()
+  except Exception as exc:
+    return _json({"ok": False, "error": str(exc)}, status=500)
+
+  headers = {
+    "Content-Type": "application/octet-stream",
+    "Content-Disposition": f"attachment; filename={path.name}",
+  }
+  return web.Response(body=data, headers=headers)
+
+
 def register_eps_routes(app: web.Application) -> None:
   app.router.add_get("/api/eps/status", api_eps_status)
   app.router.add_get("/api/eps/telescope-status", api_eps_telescope_status)
   app.router.add_get("/api/eps/telescope-classify", api_eps_telescope_classify)
   app.router.add_post("/api/eps/telescope-probe", api_eps_telescope_probe)
   app.router.add_post("/api/eps/patch-probe", api_eps_patch_probe)
+  app.router.add_post("/api/eps/patch-writer", api_eps_patch_writer)
+  app.router.add_post("/api/eps/restore-writer", api_eps_restore_writer)
   app.router.add_get("/api/eps/job/{job_id}", api_eps_job)
   app.router.add_get("/api/eps/jobs", api_eps_jobs)
   app.router.add_post("/api/eps/cancel-job", api_eps_cancel_job)
   app.router.add_get("/api/eps/prepare-patch", api_eps_prepare_patch)
   app.router.add_get("/api/eps/prepare-restore", api_eps_prepare_restore)
   app.router.add_get("/api/eps/diagnose", api_eps_diagnose)
+  app.router.add_get("/api/eps/panda-list", api_eps_panda_list)
+  app.router.add_get("/api/eps/backup-info", api_eps_backup_info)
+  app.router.add_get("/api/eps/backup/{name}", api_eps_backup_download)
