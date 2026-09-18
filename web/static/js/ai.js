@@ -270,7 +270,6 @@ let pendingFileRefs = [];
 let editingUserMsgIdx = null;
 let cabanaOpen = false;
 let secocOpen = false;
-let epsOpen = false;
 let cabanaInited = false;
 const OPTIONAL_BASE_URL_PROVIDERS = new Set(['qwen', 'minimax', 'mimo', 'bigmodel']);
 
