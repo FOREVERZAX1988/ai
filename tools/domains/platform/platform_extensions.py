@@ -112,8 +112,25 @@ PLATFORM_SCHEMAS: list[dict[str, Any]] = [
 def make_platform_handlers(
   *,
   params: Params,
+  stationary_check=None,
+  needs_confirm=None,
 ) -> dict[str, Callable[..., Any]]:
   p = params
+
+  def _confirm(kind: str, args: dict[str, Any], hint: str = "Set confirm=true to proceed.") -> dict[str, Any] | None:
+    """Return a needs_confirmation response if confirm gate is required, else None."""
+    if needs_confirm is None:
+      return None
+    if args.get("confirm") is False or str(args.get("confirm", "")).lower() in ("0", "false", "no"):
+      if needs_confirm():
+        return {"ok": True, "needs_confirmation": True, "hint": hint}
+    return None
+
+  def _stationary(kind: str) -> dict[str, Any] | None:
+    """Return a stationary-required error if the write guard blocks, else None."""
+    if stationary_check is None:
+      return None
+    return stationary_check(kind)
 
   def h_sessions_list(args: dict[str, Any]) -> dict[str, Any]:
     return list_sessions_brief(p, limit=int(args.get("limit") or 20))
@@ -126,6 +143,9 @@ def make_platform_handlers(
     msg = str(args.get("message") or "").strip()
     if not sid or not msg:
       return {"ok": False, "error": "session_id and message required"}
+    guard = _confirm("sessions_send", args)
+    if guard:
+      return guard
     append_note(p, f"[会话 {sid[:8]}] {msg}", tags=["sessions_send", f"session:{sid[:12]}"])
     try:
       from ai.tools.domains.platform.notifications import push_notification
@@ -189,6 +209,9 @@ def make_platform_handlers(
     )
 
   def h_approve_learned(args: dict[str, Any]) -> dict[str, Any]:
+    stationary = _stationary("approve_learned_skill")
+    if stationary:
+      return stationary
     return approve_learned_skill(p, str(args.get("skill_id") or ""))
 
   def h_get_user_profile(_a: dict[str, Any]) -> dict[str, Any]:
@@ -204,6 +227,9 @@ def make_platform_handlers(
     content = str(args.get("content") or "").strip()
     if not content:
       return {"ok": False, "error": "content required"}
+    guard = _confirm("update_user_profile", args)
+    if guard:
+      return guard
     if args.get("append"):
       prev = read_workspace_file("user")
       content = (prev + "\n\n" + content).strip() if prev else content
@@ -211,6 +237,9 @@ def make_platform_handlers(
     return {"ok": True, "chars": len(content)}
 
   def h_update_workspace(args: dict[str, Any]) -> dict[str, Any]:
+    guard = _confirm("update_workspace_file", args)
+    if guard:
+      return guard
     return enrich_update_workspace(
       p,
       key=str(args.get("key") or ""),
@@ -265,6 +294,12 @@ def make_platform_handlers(
     bundle = args.get("bundle")
     if not isinstance(bundle, dict):
       return {"ok": False, "error": "bundle object required"}
+    stationary = _stationary("restore_platform_backup")
+    if stationary:
+      return stationary
+    guard = _confirm("restore_platform_backup", args)
+    if guard:
+      return guard
     return restore_platform_bundle(
       p,
       bundle,
@@ -325,6 +360,9 @@ def make_platform_handlers(
       if stored is None:
         return {"ok": False, "error": "workflow definition or workflow_id required"}
       definition = stored
+    stationary = _stationary("run_workflow")
+    if stationary:
+      return stationary
     engine = WorkflowEngine()
     engine.set_tool_runner(lambda name, a: _dispatch_workflow_tool(name, a, p))
     result = await engine.run(definition, dict(args.get("inputs") or {}))
