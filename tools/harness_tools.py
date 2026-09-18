@@ -132,6 +132,44 @@ def harness_tool_schemas(params=None) -> list[dict[str, Any]]:
 
 
 # ---------------------------------------------------------------------------
+# Tool metadata (T-P0.3)
+# ---------------------------------------------------------------------------
+# Module-level metadata so toolset/permission/Web-panel logic can reason about
+# harness tools from a stable constant instead of a dynamic function. Kept in
+# sync with ``harness_tool_schemas``. ``group`` follows the same taxonomy used
+# by ``TOOL_META`` (read/write/agent/coding/mcp).
+HARNESS_TOOL_META: dict[str, dict[str, Any]] = {
+  "goal_create": {"label": "创建目标", "group": "agent", "default_enabled": True, "driving": True},
+  "goal_get": {"label": "读取目标", "group": "agent", "default_enabled": True, "driving": True},
+  "goal_edit": {"label": "编辑目标", "group": "agent", "default_enabled": True, "driving": True},
+  "goal_pause": {"label": "暂停目标", "group": "agent", "default_enabled": True, "driving": True},
+  "goal_resume": {"label": "恢复目标", "group": "agent", "default_enabled": True, "driving": True},
+  "goal_complete": {"label": "完成目标", "group": "agent", "default_enabled": True, "driving": True},
+  "goal_block": {"label": "阻塞目标", "group": "agent", "default_enabled": True, "driving": True},
+  "plan_generate": {"label": "生成计划", "group": "agent", "default_enabled": True, "driving": True},
+  "plan_update": {"label": "更新计划", "group": "agent", "default_enabled": True, "driving": True},
+  "plan_activate": {"label": "激活计划", "group": "agent", "default_enabled": True, "driving": True},
+  "plan_step_status": {"label": "步骤状态", "group": "agent", "default_enabled": True, "driving": True},
+  "plan_complete": {"label": "完成计划", "group": "agent", "default_enabled": True, "driving": True},
+  "todo_write": {"label": "写入待办", "group": "agent", "default_enabled": True, "driving": True},
+  "todo_clear": {"label": "清理待办", "group": "agent", "default_enabled": True, "driving": True},
+  "todo_get": {"label": "读取待办", "group": "agent", "default_enabled": True, "driving": True},
+  "subagent_start": {"label": "启动子代理", "group": "agent", "default_enabled": True, "driving": True},
+  "subagent_start_many": {"label": "批量启动子代理", "group": "agent", "default_enabled": True, "driving": True},
+  "subagent_query": {"label": "查询子代理", "group": "agent", "default_enabled": True, "driving": True},
+  "subagent_cancel": {"label": "取消子代理", "group": "agent", "default_enabled": True, "driving": True},
+  "subagent_report": {"label": "子代理汇报", "group": "agent", "default_enabled": True, "driving": True},
+  "lsp": {"label": "LSP 查询", "group": "coding", "default_enabled": True, "driving": True},
+  "run_python_code": {"label": "运行 Python", "group": "coding", "default_enabled": True, "driving": True},
+  "workflow_advance": {"label": "推进工作流", "group": "agent", "default_enabled": True, "driving": True},
+  "schedule_create": {"label": "创建定时任务", "group": "write", "default_enabled": True, "driving": True},
+  "schedule_list": {"label": "定时任务列表", "group": "read", "default_enabled": True, "driving": True},
+  "schedule_delete": {"label": "删除定时任务", "group": "write", "default_enabled": True, "driving": True},
+  "mcp_discover": {"label": "发现 MCP 工具", "group": "mcp", "default_enabled": True, "driving": True},
+}
+
+
+# ---------------------------------------------------------------------------
 # Goal handlers
 # ---------------------------------------------------------------------------
 
@@ -811,8 +849,9 @@ def _h_schedule_delete(a: dict[str, Any]) -> dict[str, Any]:
 # Registration entry points
 # ---------------------------------------------------------------------------
 
-def register_harness_handlers(handlers, *, params=None, get_state_reader=None, toolbox=None) -> None:
-  handlers.update({
+def make_harness_handlers(*, params=None, get_state_reader=None, toolbox=None) -> dict[str, Any]:
+  """Return a fresh dict of harness handlers (return-dict style, T-P0.1)."""
+  handlers: dict[str, Any] = {
     "goal_create": _h_goal_create,
     "goal_get": _h_goal_get,
     "goal_edit": _h_goal_edit,
@@ -839,7 +878,7 @@ def register_harness_handlers(handlers, *, params=None, get_state_reader=None, t
     "schedule_create": _h_schedule_create,
     "schedule_list": _h_schedule_list,
     "schedule_delete": _h_schedule_delete,
-  })
+  }
   # G6: register agent-level at/cron/every/list/cancel tools (isolated from
   # the Web/platform scheduler above). Each closure drives its own in-memory
   # scheduler instance; failures surface as stable SCHEDULE_INVALID codes.
@@ -848,3 +887,19 @@ def register_harness_handlers(handlers, *, params=None, get_state_reader=None, t
     register_agent_scheduler_tools(handlers)
   except Exception:
     pass
+  return handlers
+
+
+def register_harness_handlers(handlers, *, params=None, get_state_reader=None, toolbox=None) -> None:
+  """Deprecated in-place variant; use :func:`make_harness_handlers`.
+
+  Kept as a thin adapter so existing callers (e.g. ``agent_tools.make_handlers``)
+  keep working during the migration to the return-dict style.
+  """
+  handlers.update(
+    make_harness_handlers(
+      params=params,
+      get_state_reader=get_state_reader,
+      toolbox=toolbox,
+    )
+  )
