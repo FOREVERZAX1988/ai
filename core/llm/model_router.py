@@ -161,12 +161,13 @@ async def chat_completion_with_failover(
   tools: list[dict[str, Any]] | None = None,
   *,
   body: dict[str, Any] | None = None,
+  session_id: str = "",
 ) -> AsyncIterator[tuple[ChatChunk, AIConfig]]:
   """Stream completion; retry next config on error before any output."""
   last_error = ""
   for cfg in resolve_chat_config_chain(base, params, body=body):
     emitted = False
-    async for chunk in chat_completion(cfg, messages, tools=tools):
+    async for chunk in chat_completion(cfg, messages, tools=tools, session_id=session_id):
       if chunk.error:
         if not emitted:
           last_error = chunk.error
@@ -190,6 +191,7 @@ async def chat_completion_collect_with_failover(
   temperature: float | None = None,
   max_tokens: int | None = None,
   timeout_total: float = 120,
+  session_id: str = "",
 ) -> tuple[str, str, AIConfig | None, str | None]:
   """Collect full completion with failover. Returns (content, reasoning, active_cfg, error)."""
   from ai.core.llm.client import chat_completion_collect
@@ -203,6 +205,7 @@ async def chat_completion_collect_with_failover(
       temperature=temperature,
       max_tokens=max_tokens,
       timeout_total=timeout_total,
+      session_id=session_id,
     )
     if err:
       last_error = err

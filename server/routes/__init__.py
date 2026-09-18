@@ -1,22 +1,32 @@
-"""HTTP route registration for op助手."""
+"""HTTP route registration for op助手.
+
+Imports are deferred into register_routes so the server can start in local-dev
+mode even when openpilot/cereal dependencies are missing.
+"""
 
 from aiohttp import web
 
-from ai.server.handlers import api as h
-from ai.server.handlers import phase2 as phase2_handlers
-from ai.server.handlers import harness_handlers
-from ai.server.handlers import attachment_handlers
-from ai.server.handlers import lsp_handlers
-from ai.server.handlers import spill_handlers
-from ai.server.handlers import skill_handlers
-from ai.server.handlers import sessions_handlers
-from ai.server.handlers import config_schema_handlers
-from ai.server.handlers import scheduler_handlers
-from ai.server.handlers.profile_handlers import register_profile_routes
-from ai.server.routes.agents import register_agent_routes
-
 
 def register_routes(app: web.Application, *, json_response) -> None:
+  try:
+    from ai.server.handlers import api as h
+    from ai.server.handlers import phase2 as phase2_handlers
+    from ai.server.handlers import harness_handlers
+    from ai.server.handlers import attachment_handlers
+    from ai.server.handlers import lsp_handlers
+    from ai.server.handlers import spill_handlers
+    from ai.server.handlers import skill_handlers
+    from ai.server.handlers import skills as skills_lifecycle_handlers
+    from ai.server.handlers import sessions_handlers
+    from ai.server.handlers import config_schema_handlers
+    from ai.server.handlers import scheduler_handlers
+    from ai.server.handlers.profile_handlers import register_profile_routes
+    from ai.server.routes.agents import register_agent_routes
+  except Exception as e:
+    import warnings
+    warnings.warn(f"aid: production route handlers unavailable in local-dev mode: {e}")
+    return
+
   register_agent_routes(app, json_response=json_response)
   register_profile_routes(app, json_response=json_response)
 
@@ -51,15 +61,17 @@ def register_routes(app: web.Application, *, json_response) -> None:
   app.router.add_get("/api/ai/skills/registry", skill_handlers.api_skill_registry)
   app.router.add_post("/api/ai/skills/registry", skill_handlers.api_skill_registry)
   app.router.add_post("/api/ai/skills/invoke", skill_handlers.api_skill_registry)
+  app.router.add_post("/api/ai/skills/{id}/dispose", skills_lifecycle_handlers.api_skill_dispose)
+  app.router.add_get("/api/ai/skills/{id}/diagnose", skills_lifecycle_handlers.api_skill_diagnose)
+  app.router.add_post("/api/ai/skills/diagnose-all", skills_lifecycle_handlers.api_skill_diagnose_all)
+  app.router.add_post("/api/ai/skills/session/register", skills_lifecycle_handlers.api_skill_session_register)
   app.router.add_get("/api/ai/tools", h.api_tools_meta)
   app.router.add_get("/api/ai/memory", h.api_memory)
   app.router.add_post("/api/ai/memory", h.api_memory)
   app.router.add_get("/api/ai/scheduler", h.api_scheduler)
   app.router.add_post("/api/ai/scheduler", h.api_scheduler)
-  # G6 isolated agent scheduler (distinct from the Web scheduler above).
   app.router.add_get("/api/ai/agent-schedule", scheduler_handlers.api_agent_schedule)
   app.router.add_post("/api/ai/agent-schedule", scheduler_handlers.api_agent_schedule)
-  # G12 schema-driven config + startup diagnostics.
   app.router.add_get("/api/ai/config/schema", config_schema_handlers.api_get_config_schema)
   app.router.add_get("/api/ai/config/diagnose", config_schema_handlers.api_config_diagnose)
   app.router.add_patch("/api/ai/config", config_schema_handlers.api_patch_config)
@@ -74,10 +86,17 @@ def register_routes(app: web.Application, *, json_response) -> None:
   app.router.add_get("/api/ai/sessions/{session_id}/log", h.api_session_log)
   app.router.add_post("/api/ai/sessions/{session_id}/resume", sessions_handlers.api_session_resume)
   app.router.add_post("/api/ai/sessions/{session_id}/repair", sessions_handlers.api_session_repair)
-  from ai.server.handlers.bundle_handlers import api_bundle, api_profile_current
+  app.router.add_post("/api/ai/sessions/{session_id}/fork", sessions_handlers.api_session_fork)
+  app.router.add_post("/api/ai/sessions/{session_id}/pause", sessions_handlers.api_session_pause)
+  app.router.add_post("/api/ai/sessions/{session_id}/dispose", sessions_handlers.api_session_dispose)
+  from ai.server.handlers.bundle_handlers import api_bundle, api_bundle_detail, api_profile_current, api_profiles
   app.router.add_get("/api/ai/bundle", api_bundle)
   app.router.add_post("/api/ai/bundle", api_bundle)
+  app.router.add_get("/api/ai/bundle/{bundle_id}", api_bundle_detail)
+  app.router.add_delete("/api/ai/bundle/{bundle_id}", api_bundle_detail)
   app.router.add_get("/api/ai/profile/current", api_profile_current)
+  app.router.add_get("/api/ai/profiles", api_profiles)
+  app.router.add_post("/api/ai/profiles", api_profiles)
   app.router.add_get("/api/ai/dev-assets", h.api_dev_assets)
   app.router.add_get("/api/ai/dev-assets/{kind}/{name}", h.api_dev_assets)
   app.router.add_get("/api/ai/files/search", h.api_files_search)
@@ -140,6 +159,8 @@ def register_routes(app: web.Application, *, json_response) -> None:
   app.router.add_get("/api/ai/workflows/custom", harness_handlers.api_workflows_custom)
   app.router.add_put("/api/ai/workflows/custom", harness_handlers.api_workflows_custom)
   app.router.add_post("/api/ai/workflows/custom", harness_handlers.api_workflows_custom)
+  app.router.add_get("/api/ai/workflows/{workflow_id}/step", harness_handlers.api_workflow_step)
+  app.router.add_post("/api/ai/workflows/{workflow_id}/step", harness_handlers.api_workflow_step)
   app.router.add_get("/api/ai/goals", harness_handlers.api_goals)
   app.router.add_post("/api/ai/goals", harness_handlers.api_goals)
   app.router.add_get("/api/ai/plans", harness_handlers.api_plans)
@@ -155,12 +176,10 @@ def register_routes(app: web.Application, *, json_response) -> None:
   app.router.add_get("/api/ai/consumer/lexicon", consumer_handlers.api_consumer_lexicon)
   app.router.add_post("/api/ai/consumer/preview-params", consumer_handlers.api_consumer_preview_params)
 
-  # Spill long-context management
   app.router.add_get("/api/ai/spill", spill_handlers.api_spill)
   app.router.add_post("/api/ai/spill", spill_handlers.api_spill)
   app.router.add_get("/api/ai/spill/recall", spill_handlers.api_spill_recall)
 
-  # LSP integration
   app.router.add_get("/api/ai/lsp/servers", lsp_handlers.api_lsp_servers)
   app.router.add_post("/api/ai/lsp/servers", lsp_handlers.api_lsp_servers)
   app.router.add_delete("/api/ai/lsp/servers", lsp_handlers.api_lsp_servers_stop)

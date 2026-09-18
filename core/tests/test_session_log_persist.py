@@ -17,9 +17,11 @@ class SessionLogPersistTestCase(unittest.TestCase):
       log.close()
 
       lines = path.read_text(encoding="utf-8").strip().split("\n")
-      self.assertEqual(len(lines), 2)
-      self.assertIn("user/message", lines[0])
-      self.assertIn("assistant/message", lines[1])
+      # Fresh logs start with a formatVersion header line.
+      self.assertGreaterEqual(len(lines), 3)
+      self.assertIn("formatVersion", lines[0])
+      self.assertIn("user/message", lines[1])
+      self.assertIn("assistant/message", lines[2])
 
   def test_load_persisted_events(self):
     with tempfile.TemporaryDirectory() as tmp:

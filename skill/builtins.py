@@ -5,7 +5,7 @@ from __future__ import annotations
 import time
 from typing import Any
 
-from ai.skill.models import Skill, SkillParameter
+from ai.skill.models import Skill, SkillDependency, SkillParameter
 from ai.skill.registry import SkillRegistry
 
 
@@ -32,6 +32,10 @@ def register_builtins(registry: SkillRegistry) -> None:
       policy="auto",
       parameters=[SkillParameter(name="message", type="string", description="Message to echo")],
       handler=_echo,
+      scope="global",
+      version="1.0.0",
+      capabilities=["io"],
+      source="builtin:core",
     ),
     Skill(
       id="get_time",
@@ -40,6 +44,10 @@ def register_builtins(registry: SkillRegistry) -> None:
       policy="auto",
       parameters=[],
       handler=_get_time,
+      scope="global",
+      version="1.0.0",
+      capabilities=["time"],
+      source="builtin:core",
     ),
     Skill(
       id="workspace_summary",
@@ -48,6 +56,10 @@ def register_builtins(registry: SkillRegistry) -> None:
       policy="auto",
       parameters=[],
       handler=_workspace_summary,
+      scope="global",
+      version="1.0.0",
+      capabilities=["fs", "diagnostics"],
+      source="builtin:core",
     ),
   ]
   for skill in builtins:

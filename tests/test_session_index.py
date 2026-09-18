@@ -65,4 +65,3 @@ class SessionIndexTests(unittest.TestCase):
       res = search_sessions("it's")
       self.assertTrue(res.get("ok"))
       self.assertIsInstance(res.get("hits"), list)
-  unittest.main()

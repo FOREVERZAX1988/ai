@@ -266,6 +266,38 @@ class LspClient:
       return None
     return result if isinstance(result, dict) else None
 
+  async def diagnostic(self, uri: str, line: int | None = None, character: int | None = None) -> dict[str, Any] | None:
+    """Request textDocument/diagnostic (LSP 3.17 pull diagnostics).
+
+    Falls back to textDocument/documentSymbol if the server does not support
+    pull diagnostics.
+    """
+    try:
+      params: dict[str, Any] = {"textDocument": {"uri": uri}}
+      if line is not None and character is not None:
+        params["previousResultId"] = f"{uri}:{line}:{character}"
+      result = await self.request("textDocument/diagnostic", params)
+      if result is None:
+        return None
+      return result if isinstance(result, dict) else None
+    except LspError as exc:
+      # -32601 = MethodNotFound; fall back to documentSymbol as a best-effort.
+      if exc.code == -32601:
+        symbols = await self.document_symbol(uri)
+        return {"kind": "documentSymbol", "items": symbols}
+      raise
+
+  async def rename(self, uri: str, line: int, character: int, new_name: str) -> dict[str, Any] | None:
+    """Request textDocument/rename and return a WorkspaceEdit."""
+    result = await self.request("textDocument/rename", {
+      "textDocument": {"uri": uri},
+      "position": {"line": line, "character": character},
+      "newName": new_name,
+    })
+    if result is None:
+      return None
+    return result if isinstance(result, dict) else None
+
   async def shutdown_and_exit(self) -> None:
     """Send shutdown/exit and close the transport."""
     try:

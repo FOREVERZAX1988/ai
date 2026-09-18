@@ -3,25 +3,69 @@
 from __future__ import annotations
 
 import asyncio
+import warnings
+from typing import Any
 
 from aiohttp import web
 
-from openpilot.common.swaglog import cloudlog
+try:
+  from openpilot.common.swaglog import cloudlog
+  _OP_AVAILABLE = True
+except Exception as _op_err:
+  _OP_AVAILABLE = False
+  cloudlog = None  # type: ignore[misc,assignment]
+  warnings.warn(f"aid: openpilot unavailable, running in local-dev mode: {_op_err}")
 
-from ai.services.cabana.app import register_routes as register_cabana_routes
-from ai.core.llm.embedding import load_embedding_config
+try:
+  from ai.services.cabana.app import register_routes as register_cabana_routes
+except Exception:
+  register_cabana_routes = None  # type: ignore[misc,assignment]
+
+try:
+  from ai.core.llm.embedding import load_embedding_config
+except Exception:
+  load_embedding_config = None  # type: ignore[misc,assignment]
+
 from ai.server.deps import WEB_DIR, json_response, params, read_ai_config
 from ai.server.runtime import gps_auto_timezone_loop, scheduler_loop, status_watch_loop
 from ai.server.routes import register_routes as register_server_routes
-from ai.core.sync.hub import register_sync_routes
-from ai.lsp.index import SymbolIndex
-from ai.lsp.server_manager import LspServerManager
-from ai.spill.manager import SpillManager
-from ai.tools.rag_store import reindex_all
-from ai.tools.scheduler import ensure_default_scheduler_tasks
-from ai.infra.auth.web import ai_auth_middleware
 
-_PARAMS = params()
+try:
+  from ai.core.sync.hub import register_sync_routes
+except Exception:
+  register_sync_routes = None  # type: ignore[misc,assignment]
+
+try:
+  from ai.lsp.index import SymbolIndex
+  from ai.lsp.server_manager import LspServerManager
+except Exception:
+  SymbolIndex = None  # type: ignore[misc,assignment]
+  LspServerManager = None  # type: ignore[misc,assignment]
+
+try:
+  from ai.spill.manager import SpillManager
+except Exception:
+  SpillManager = None  # type: ignore[misc,assignment]
+
+try:
+  from ai.tools.rag_store import reindex_all
+except Exception:
+  reindex_all = None  # type: ignore[misc,assignment]
+
+try:
+  from ai.tools.scheduler import ensure_default_scheduler_tasks
+except Exception:
+  ensure_default_scheduler_tasks = None  # type: ignore[misc,assignment]
+
+try:
+  from ai.infra.auth.web import ai_auth_middleware
+except Exception:
+  ai_auth_middleware = None  # type: ignore[misc,assignment]
+
+try:
+  _PARAMS = params()
+except Exception:
+  _PARAMS = None
 
 
 async def _startup_rag_seed_and_reindex() -> None:
@@ -195,44 +239,53 @@ def create_app() -> web.Application:
       from ai.core.wspace.store import ensure_default_workspace_files
       ensure_default_workspace_files()
     except Exception as e:
-      cloudlog.warning(f"aid: workspace seed skipped: {e}")
+      if cloudlog is not None:
+        cloudlog.warning(f"aid: workspace seed skipped: {e}")
     try:
-      ensure_default_scheduler_tasks(_PARAMS)
-      application["memory_index_task"] = asyncio.create_task(_startup_memory_index())
-      application["session_index_task"] = asyncio.create_task(_startup_session_index())
+      if ensure_default_scheduler_tasks is not None and _PARAMS is not None:
+        ensure_default_scheduler_tasks(_PARAMS)
+        application["memory_index_task"] = asyncio.create_task(_startup_memory_index())
+        application["session_index_task"] = asyncio.create_task(_startup_session_index())
     except Exception as e:
-      cloudlog.warning(f"aid: default scheduler skipped: {e}")
-    application["rag_reindex_task"] = asyncio.create_task(_startup_rag_seed_and_reindex())
-    try:
-      from ai.skills.snapshot import warm_skills_snapshot
-      from ai.core.chat.jobs import ensure_stuck_watchdog
-      from ai.hooks.builtin import register_builtin_hooks
-      register_builtin_hooks()
-      loop = asyncio.get_running_loop()
-      n = await loop.run_in_executor(None, warm_skills_snapshot, _PARAMS)
-      cloudlog.info(f"aid: skills snapshot warmed entries={n}")
+      if cloudlog is not None:
+        cloudlog.warning(f"aid: default scheduler skipped: {e}")
+    if reindex_all is not None:
+      application["rag_reindex_task"] = asyncio.create_task(_startup_rag_seed_and_reindex())
       try:
-        from ai.tools.file_search import warm_file_index
-
-        file_n = await loop.run_in_executor(None, warm_file_index)
-        cloudlog.info(f"aid: composer file index warmed entries={file_n}")
-      except Exception as e:
-        cloudlog.warning(f"aid: composer file index warm skipped: {e}")
-      ensure_stuck_watchdog()
-    except Exception as e:
-      cloudlog.warning(f"aid: skills snapshot / stuck watchdog skipped: {e}")
-    try:
-      from ai.services.cabana.app import warm_dbc_catalog
-
-      async def _warm_dbc_catalog() -> None:
+        from ai.skills.snapshot import warm_skills_snapshot
+        from ai.core.chat.jobs import ensure_stuck_watchdog
+        from ai.hooks.builtin import register_builtin_hooks
+        register_builtin_hooks()
         loop = asyncio.get_running_loop()
-        n = await loop.run_in_executor(None, warm_dbc_catalog)
-        if n:
-          cloudlog.info(f"aid: dbc catalog warmed entries={n}")
+        n = await loop.run_in_executor(None, warm_skills_snapshot, _PARAMS)
+        if cloudlog is not None:
+          cloudlog.info(f"aid: skills snapshot warmed entries={n}")
+        try:
+          from ai.tools.file_search import warm_file_index
 
-      application["dbc_warm_task"] = asyncio.create_task(_warm_dbc_catalog())
-    except Exception as e:
-      cloudlog.warning(f"aid: dbc catalog warm skipped: {e}")
+          file_n = await loop.run_in_executor(None, warm_file_index)
+          if cloudlog is not None:
+            cloudlog.info(f"aid: composer file index warmed entries={file_n}")
+        except Exception as e:
+          if cloudlog is not None:
+            cloudlog.warning(f"aid: composer file index warm skipped: {e}")
+        ensure_stuck_watchdog()
+      except Exception as e:
+        if cloudlog is not None:
+          cloudlog.warning(f"aid: skills snapshot / stuck watchdog skipped: {e}")
+      try:
+        from ai.services.cabana.app import warm_dbc_catalog
+
+        async def _warm_dbc_catalog() -> None:
+          loop = asyncio.get_running_loop()
+          n = await loop.run_in_executor(None, warm_dbc_catalog)
+          if n and cloudlog is not None:
+            cloudlog.info(f"aid: dbc catalog warmed entries={n}")
+
+        application["dbc_warm_task"] = asyncio.create_task(_warm_dbc_catalog())
+      except Exception as e:
+        if cloudlog is not None:
+          cloudlog.warning(f"aid: dbc catalog warm skipped: {e}")
 
   async def _on_cleanup(application: web.Application) -> None:
     for key in ("scheduler_task", "status_watch_task", "gps_tz_task", "memory_index_task", "session_index_task", "rag_reindex_task", "dbc_warm_task"):
@@ -240,34 +293,66 @@ def create_app() -> web.Application:
       if task:
         task.cancel()
     try:
-      await application["lsp_manager"].stop_all()
+      lsp_manager = application.get("lsp_manager")
+      if lsp_manager is not None:
+        await lsp_manager.stop_all()
     except Exception as e:
-      cloudlog.warning(f"aid: lsp shutdown skipped: {e}")
+      if cloudlog is not None:
+        cloudlog.warning(f"aid: lsp shutdown skipped: {e}")
 
-  app["spill_manager"] = SpillManager()
-  app["lsp_manager"] = LspServerManager()
-  app["lsp_index"] = SymbolIndex()
+  app["spill_manager"] = SpillManager() if SpillManager is not None else None
+  app["lsp_manager"] = LspServerManager() if LspServerManager is not None else None
+  app["lsp_index"] = SymbolIndex() if SymbolIndex is not None else None
 
   app.on_startup.append(_on_startup)
   app.on_cleanup.append(_on_cleanup)
 
   register_server_routes(app, json_response=json_response)
+
+  # P0 harness fallback routes (work without openpilot/cereal).
+  try:
+    from ai.server.op_routes import setup_routes as setup_op_routes
+    setup_op_routes(app)
+  except Exception as e:
+    warnings.warn(f"aid: P0 harness routes skipped: {e}")
+
   app.router.add_get("/", index)
   app.router.add_static("/static/", path=WEB_DIR, name="static")
-  register_cabana_routes(app, WEB_DIR)
-  register_sync_routes(app)
-  from ai.server.terminal import register_terminal_routes
-  register_terminal_routes(app)
-  from ai.core.runtime.sidecar_hub import register_sidecar_routes
-  register_sidecar_routes(app)
+  # SPA fallback: any non-API path returns index.html so browser refresh
+  # or direct navigation to /app works without 404.
+  app.router.add_get("/{tail:.*}", index)
+  if register_cabana_routes is not None:
+    register_cabana_routes(app, WEB_DIR)
+  if register_sync_routes is not None:
+    register_sync_routes(app)
+  try:
+    from ai.server.terminal import register_terminal_routes
+    register_terminal_routes(app)
+  except Exception as e:
+    if cloudlog is not None:
+      cloudlog.warning(f"aid: terminal routes skipped: {e}")
+  try:
+    from ai.core.runtime.sidecar_hub import register_sidecar_routes
+    register_sidecar_routes(app)
+  except Exception as e:
+    if cloudlog is not None:
+      cloudlog.warning(f"aid: sidecar routes skipped: {e}")
   try:
     from ai.services.tsk.routes import register_tsk_routes
     register_tsk_routes(app)
   except Exception as e:
-    cloudlog.warning(f"aid: tsk routes skipped: {e}")
+    if cloudlog is not None:
+      cloudlog.warning(f"aid: tsk routes skipped: {e}")
   try:
     from ai.services.panda.routes import register_panda_routes
     register_panda_routes(app)
   except Exception as e:
-    cloudlog.warning(f"aid: panda routes skipped: {e}")
+    if cloudlog is not None:
+      cloudlog.warning(f"aid: panda routes skipped: {e}")
+  try:
+    from ai.services.eps.routes import register_eps_routes
+    register_eps_routes(app)
+  except Exception as e:
+    if cloudlog is not None:
+      cloudlog.warning(f"aid: eps routes skipped: {e}")
   return app

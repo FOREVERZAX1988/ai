@@ -69,6 +69,7 @@ let _suppressSessionPush = false;
 let _syncWsGotHello = false;
 let _gatewayHydrated = false;
 let _statusPollTimer = null;
+let hostEnvironment = {};
 const CHAT_MODE = 'unlimited';
 let pendingWorkflow = '';
 let pendingAgentId = '';

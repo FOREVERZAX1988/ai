@@ -18,6 +18,7 @@ web/static/vendor/office/_staging/
 cabana_cache
 data
 /workspace/
+.ai/
 
 # Panda firmware is built under openpilot/panda/board/obj — never vendor into ai/
 **/*.signed
@@ -29,3 +30,8 @@ tools/.scan2/
 tools/cache_0910/
 tools/*.out
 tools/*.jsonl
+# Vendored EPS patch repo build artifacts and caches
+vendor/eps_patch/payload/build/
+vendor/eps_patch/.docker/
+vendor/eps_patch/.venv/
+vendor/eps_patch/__pycache__/

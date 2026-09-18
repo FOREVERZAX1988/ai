@@ -172,10 +172,30 @@ class AgentLoop:
         if workflow_system_prompt(self.workflow_id):
           self.workflow_id = None
         else:
-          error = f"workflow '{self.workflow_id}' not found"
-          await self.emit_event({"type": "error", "error": error})
-          self.log.append(EventType.LIFECYCLE, {"kind": "workflow_error", "workflowId": self.workflow_id, "error": error})
-          return False
+          # P2 WorkflowEngine integration: if workflow_id matches a loaded
+          # WorkflowEngine definition, advance it once and continue the turn.
+          from ai.core.workflow import WorkflowEngine
+          from ai.tools.domains.platform.platform_extensions import _workflow_engine_definitions
+          definitions = _workflow_engine_definitions()
+          if self.workflow_id in definitions:
+            engine = WorkflowEngine()
+            # Light integration: run the definition once per turn boundary.
+            wf_result = await engine.run(definitions[self.workflow_id], {"session_id": self.session_id})
+            self.log.append(EventType.LIFECYCLE, {
+              "kind": "workflow_engine_advance",
+              "workflowId": self.workflow_id,
+              "ok": wf_result.ok,
+            })
+            if not wf_result.ok:
+              error = wf_result.message or "workflow engine advance failed"
+              await self.emit_event({"type": "error", "error": error})
+              self.log.append(EventType.LIFECYCLE, {"kind": "workflow_error", "workflowId": self.workflow_id, "error": error})
+              return False
+          else:
+            error = f"workflow '{self.workflow_id}' not found"
+            await self.emit_event({"type": "error", "error": error})
+            self.log.append(EventType.LIFECYCLE, {"kind": "workflow_error", "workflowId": self.workflow_id, "error": error})
+            return False
       else:
         workflow_result = advance_graph_workflow(self.workflow_id, "step")
         if not workflow_result.get("ok"):

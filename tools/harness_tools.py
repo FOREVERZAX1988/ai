@@ -449,6 +449,23 @@ def _normalize_location(item: Any) -> dict[str, Any]:
   return {"path": "", "line": 0, "character": 0, "label": str(item), "detail": "", "snippet": ""}
 
 
+def _normalize_diagnostic(item: Any, default_uri: str) -> dict[str, Any]:
+  """Normalize an LSP Diagnostic to a renderable result dict (1-based)."""
+  if not isinstance(item, dict):
+    return {"path": default_uri, "line": 0, "character": 0, "label": str(item), "detail": "", "snippet": ""}
+  rng = item.get("range") or {}
+  start = rng.get("start") or {}
+  line = int(start.get("line", 0)) + 1
+  char = int(start.get("character", 0)) + 1
+  severity = item.get("severity")
+  severity_label = {1: "error", 2: "warning", 3: "info", 4: "hint"}.get(severity, "")
+  message = str(item.get("message", ""))
+  code = item.get("code", "")
+  label = f"{severity_label or 'diagnostic'}: {message[:80]}"
+  detail = f"{message}\ncode: {code}"
+  return {"path": default_uri, "line": line, "character": char, "label": label, "detail": detail, "snippet": ""}
+
+
 def _hover_contents(item: dict[str, Any]) -> str:
   contents = item.get("contents")
   if isinstance(contents, str):
@@ -478,7 +495,7 @@ async def _h_lsp(a: dict[str, Any]) -> dict[str, Any]:
   char0 = max(0, character - 1)
   if not uri:
     return LspError("lsp requires uri", INVALID_RESPONSE).to_dict()
-  if action not in ("goToDefinition", "findReferences", "goToImplementation", "hover"):
+  if action not in ("goToDefinition", "findReferences", "goToImplementation", "hover", "diagnostics", "rename"):
     return LspError(f"unsupported lsp action: {action}", INVALID_RESPONSE).to_dict()
   try:
     from urllib.parse import unquote, urlparse
@@ -498,6 +515,7 @@ async def _h_lsp(a: dict[str, Any]) -> dict[str, Any]:
   client = manager.get_client(workspace_root)
   if client is None:
     return LspError(f"no LSP provider for workspace '{workspace_root}'", NO_PROVIDER, {"workspaceRoot": workspace_root}).to_dict()
+  new_name = str(a.get("newName") or a.get("new_name") or "").strip()
   try:
     if action == "goToDefinition":
       raw = await asyncio.wait_for(client.definition(uri, line0, char0), timeout=60.0)
@@ -514,6 +532,18 @@ async def _h_lsp(a: dict[str, Any]) -> dict[str, Any]:
       if not isinstance(raw, list):
         raise LspError("LSP implementation response must be an array", INVALID_RESPONSE)
       results = [_normalize_location(x) for x in raw]
+    elif action == "diagnostics":
+      raw = await asyncio.wait_for(client.diagnostic(uri, line0, char0), timeout=60.0)
+      if raw is not None and not isinstance(raw, dict):
+        raise LspError("LSP diagnostics response must be an object or null", INVALID_RESPONSE)
+      results = [_normalize_diagnostic(x, uri) for x in raw.get("items", [])] if raw else []
+    elif action == "rename":
+      if not new_name:
+        return LspError("rename requires newName", INVALID_RESPONSE).to_dict()
+      raw = await asyncio.wait_for(client.rename(uri, line0, char0, new_name), timeout=60.0)
+      if raw is not None and not isinstance(raw, dict):
+        raise LspError("LSP rename response must be a WorkspaceEdit or null", INVALID_RESPONSE)
+      return {"ok": True, "action": action, "edit": raw}
     else:
       raw = await asyncio.wait_for(client.hover(uri, line0, char0), timeout=60.0)
       if raw is not None and not isinstance(raw, dict):

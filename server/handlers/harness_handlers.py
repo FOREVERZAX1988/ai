@@ -134,6 +134,30 @@ async def api_workflows_custom(request: web.Request) -> web.Response:
   return json_response({"ok": ok, "results": results}, status=200 if ok else 400)
 
 
+async def api_workflow_step(request: web.Request) -> web.Response:
+  """POST /api/ai/workflows/{workflow_id}/step — advance or execute a graph workflow step."""
+  from ai.server.deps import json_response
+  from ai.tools.domains.platform.workflow_graph import run_graph_workflow_step, graph_workflow_requires_tools
+
+  workflow_id = request.match_info.get("workflow_id", "").strip()
+  if not workflow_id:
+    return json_response({"ok": False, "error": "workflow_id required"}, status=400)
+
+  if request.method == "GET":
+    return json_response(graph_workflow_requires_tools(workflow_id))
+
+  try:
+    body = await request.json()
+  except Exception:
+    body = {}
+  if not isinstance(body, dict):
+    body = {}
+  action = str(body.get("action") or "step").strip()
+  node_id = str(body.get("nodeId") or body.get("node_id") or "").strip() or None
+  inputs = body.get("inputs") if isinstance(body.get("inputs"), dict) else None
+  return json_response(await run_graph_workflow_step(workflow_id, action, node_id=node_id, inputs=inputs))
+
+
 async def api_transcript(request: web.Request) -> web.Response:
   from ai.server.deps import json_response
   session_id = str(

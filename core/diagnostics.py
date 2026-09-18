@@ -42,7 +42,14 @@ def run_checks(params: Any = None) -> list[dict[str, Any]]:
   for mod in ("ai.core.session.log", "ai.core.errors", "ai.config", "ai.core.agent.state"):
     checks.append(_check_import(mod, fatal=True))
   # Optional/hardware-gated modules degrade gracefully (non-fatal).
-  for mod in ("ai.core.llm.model_router", "ai.tools.harness_tools", "ai.mcp.host"):
+  for mod in (
+    "ai.core.llm.model_router",
+    "ai.tools.harness_tools",
+    "ai.tools.agent_tools",
+    "ai.mcp.host",
+    "ai.bundle.store",
+    "ai.tools.domains.platform.workflow_graph",
+  ):
     checks.append(_check_import(mod, fatal=False))
   if params is not None:
     try:

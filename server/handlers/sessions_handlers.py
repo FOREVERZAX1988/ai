@@ -168,3 +168,120 @@ async def api_session_resume(request: web.Request) -> web.Response:
     })
   except Exception as e:
     return _json_response({"ok": False, "error": str(e)}, status=500)
+
+
+async def api_session_fork(request: web.Request) -> web.Response:
+  """POST /api/ai/sessions/{id}/fork - branch a persisted transcript at a point.
+
+  Body:
+    - up_to_seq (int): fork up to this event sequence (inclusive by default).
+    - inclusive (bool): whether to include the event at up_to_seq.
+    - count (int): alternative to up_to_seq; take the first ``count`` events.
+
+  Returns the forked prefix as ``events`` (list of event dicts).
+  """
+  session_id = request.match_info.get("session_id", "").strip()
+  if not session_id:
+    return _json_response({"ok": False, "error": "session_id required"}, status=400)
+  log_path = _session_log_path(session_id)
+  if not log_path or not os.path.isfile(log_path):
+    return _json_response({"ok": False, "error": "no persisted log for session"}, status=404)
+  try:
+    body = await request.json()
+  except json.JSONDecodeError:
+    body = {}
+  if not isinstance(body, dict):
+    body = {}
+  try:
+    from ai.core.session.replay import events_to_dicts, fork_transcript, fork_transcript_by_index
+    count = body.get("count")
+    if count is not None:
+      try:
+        events = fork_transcript_by_index(log_path, int(count))
+      except Exception as e:
+        return _json_response({"ok": False, "error": f"fork by index failed: {e}"}, status=400)
+    else:
+      up_to_seq = body.get("up_to_seq") or body.get("upToSeq")
+      if up_to_seq is None:
+        return _json_response({"ok": False, "error": "up_to_seq or count required"}, status=400)
+      try:
+        inclusive = bool(body.get("inclusive", True))
+        events = fork_transcript(log_path, int(up_to_seq), inclusive=inclusive)
+      except Exception as e:
+        return _json_response({"ok": False, "error": f"fork failed: {e}"}, status=400)
+    return _json_response({
+      "ok": True,
+      "sessionId": session_id,
+      "count": len(events),
+      "events": events_to_dicts(events),
+    })
+  except Exception as e:
+    return _json_response({"ok": False, "error": str(e)}, status=500)
+
+
+def _session_manager_for_request(request: web.Request) -> Any:
+  """Return a SessionManager scoped to the request's workspace."""
+  try:
+    from ai.system.paths import workspace_path
+    from ai.core.session.manager import SessionManager
+    cwd = str(workspace_path("", mkdir=True))
+    return SessionManager(cwd)
+  except Exception as exc:
+    raise RuntimeError(f"session manager unavailable: {exc}") from exc
+
+
+def _ensure_manager_session(manager: Any, session_id: str) -> Any:
+  """Ensure SessionManager knows about a session.
+
+  If the session record does not exist in SessionManager storage but a
+  durable chat log exists at the chat log path, adopt it so pause/dispose
+  can operate on chat-created sessions.
+  """
+  record = manager.storage.load_session(session_id)
+  if record is not None:
+    return record
+  log_path = _session_log_path(session_id)
+  if log_path and os.path.isfile(log_path):
+    return manager.adopt_session(session_id)
+  return None
+
+
+async def api_session_pause(request: web.Request) -> web.Response:
+  """POST /api/ai/sessions/{id}/pause - pause session processing."""
+  session_id = request.match_info.get("session_id", "").strip()
+  if not session_id:
+    return _json_response({"ok": False, "error": "session_id required"}, status=400)
+  try:
+    manager = _session_manager_for_request(request)
+    _ensure_manager_session(manager, session_id)
+    record = manager.pause_session(session_id)
+    if record is None:
+      return _json_response({"ok": False, "error": "session not found"}, status=404)
+    return _json_response({
+      "ok": True,
+      "sessionId": session_id,
+      "state": "paused",
+      "record": record.to_dict(),
+    })
+  except Exception as e:
+    return _json_response({"ok": False, "error": str(e)}, status=500)
+
+
+async def api_session_dispose(request: web.Request) -> web.Response:
+  """POST /api/ai/sessions/{id}/dispose - dispose session resources."""
+  session_id = request.match_info.get("session_id", "").strip()
+  if not session_id:
+    return _json_response({"ok": False, "error": "session_id required"}, status=400)
+  try:
+    manager = _session_manager_for_request(request)
+    _ensure_manager_session(manager, session_id)
+    ok = manager.dispose_session(session_id)
+    if not ok:
+      return _json_response({"ok": False, "error": "session not found"}, status=404)
+    return _json_response({
+      "ok": True,
+      "sessionId": session_id,
+      "state": "disposed",
+    })
+  except Exception as e:
+    return _json_response({"ok": False, "error": str(e)}, status=500)
