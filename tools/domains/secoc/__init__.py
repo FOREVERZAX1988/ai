@@ -6,7 +6,6 @@ MODULES = (
   "ai.tools.domains.secoc.secoc_lookup",
   "ai.tools.domains.secoc.tsk_diagnose_tools",
   "ai.tools.domains.secoc.tsk_tools",
-  "ai.tools.domains.secoc.eps_patch_tools",
 )
 
 __all__ = ["MODULES"]

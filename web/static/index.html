@@ -13,7 +13,6 @@
   <link rel="stylesheet" href="/static/css/canvas-panel.css?v=20260723e">
   <link rel="stylesheet" href="/static/css/composer-context-meter.css?v=20260819b">
   <link rel="stylesheet" href="/static/css/workbuddy-panel.css?v=20260819e">
-  <link rel="stylesheet" href="/static/css/eps-panel.css?v=20260916a">
   <link rel="stylesheet" href="/static/css/cabana-panel.css?v=20260909a">
   <link rel="stylesheet" href="/static/css/harness-panel.css?v=20260904a">
   <link rel="stylesheet" href="/static/css/observability-panel.css?v=20260909a">
@@ -96,9 +95,6 @@
           <button type="button" id="secocBtn" class="btn icon header-tool-secondary" title="SecOC" aria-label="SecOC" data-i18n-title="tabSecoc">
             <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0 3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
           </button>
-          <button type="button" id="epsBtn" class="btn icon header-tool-secondary" data-i18n="epsBtnTitle" aria-label="EPS Flash">
-            <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M12 2a10 10 0 1 0 10 10h-2a8 8 0 1 1-16 0 8 8 0 0 1 8-8V2z"/><path d="M12 2v8l5-5"/></svg>
-          </button>
           <button type="button" id="officeBtn" class="btn icon header-tool-secondary" title="OP 办公室" aria-label="OP Office">
             <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
           </button>
@@ -124,10 +120,6 @@
               <button type="button" class="header-more-item" data-header-action="secoc" role="menuitem">
                 <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0 3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
                 <span data-i18n="tabSecoc">SecOC</span>
-              </button>
-              <button type="button" class="header-more-item" data-header-action="eps" role="menuitem">
-                <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M12 2a10 10 0 1 0 10 10h-2a8 8 0 1 1-16 0 8 8 0 0 1 8-8V2z"/><path d="M12 2v8l5-5"/></svg>
-                <span data-i18n="headerMoreEps">EPS 刷写</span>
               </button>
               <button type="button" class="header-more-item" data-header-action="office" role="menuitem">
                 <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
@@ -1329,204 +1321,6 @@
     </div>
   </div>
 
-  <!-- EPS modal -->
-  <div id="epsModal" class="modal eps-modal" hidden>
-    <div class="modal-backdrop" id="epsBackdrop"></div>
-    <div class="modal-content eps-modal-content">
-      <div class="modal-header eps-modal-header">
-        <div class="eps-modal-head-text">
-          <h2 id="epsModalTitle" data-i18n="epsModalTitle">EPS 刷写助手</h2>
-          <p class="settings-pane-desc" id="epsPaneDesc">仅 offroad · 当前支持 EPS 零件号 8965B4512000 · 刷写过程可能变砖</p>
-        </div>
-        <button type="button" id="epsCloseBtn" class="btn icon" aria-label="Close">
-          <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
-        </button>
-      </div>
-      <div class="modal-body eps-modal-body">
-        <div class="eps-warning-box" id="epsBrickWarning">
-          <strong>变砖警告：</strong>patch / restore 会擦写 EPS Flash。面板提供一键执行，但仍需双重确认并输入 YES；每次 writer checkpoint 后需完全断电重启 comma/EPS。
-        </div>
-
-        <div class="eps-openpilot-card" id="epsOpenpilotCard">
-          <div class="eps-openpilot-head">
-            <div class="eps-openpilot-title">openpilot 状态</div>
-            <div class="eps-openpilot-status" id="epsOpenpilotStatus">检查中…</div>
-          </div>
-          <div class="eps-openpilot-detail" id="epsOpenpilotDetail">刷写 EPS 前必须停止 openpilot 主流程，否则无法打开 Panda 硬件。</div>
-          <div class="eps-openpilot-actions">
-            <button type="button" class="btn small danger" id="epsStopOpenpilotBtn">停止 openpilot</button>
-          </div>
-          <label class="eps-confirm-checkbox" id="epsStopOpenpilotConfirmLabel">
-            <input type="checkbox" id="epsStopOpenpilotCheckbox">
-            <span>我已了解停止 openpilot 后无法开车，且 ai 服务会继续运行</span>
-          </label>
-        </div>
-
-        <div class="eps-hero-card eps-status-card">
-          <div class="eps-status-row">
-            <span class="eps-status-dot" id="epsStatusDot"></span>
-            <div class="eps-status-main">
-              <div class="eps-status-title" id="epsStatusTitle">未开始</div>
-              <div class="eps-status-detail" id="epsStatusDetail">请先运行 eps-telescope 探测判定车辆是否可刷</div>
-            </div>
-          </div>
-        </div>
-
-        <div class="eps-steps" id="epsSteps">
-          <div class="eps-step" data-step="telescope">
-            <span class="eps-step-dot" id="epsStepDotTelescope"></span>
-            <div class="eps-step-body">
-              <div class="eps-step-title">1. 探测车辆指纹（eps-telescope）</div>
-              <div class="eps-step-detail" id="epsStepDetailTelescope">读取 ECU 身份与 SecOC 层级</div>
-            </div>
-            <button type="button" class="btn small" id="epsTelescopeBtn">运行探测</button>
-          </div>
-          <div class="eps-step" data-step="classify">
-            <span class="eps-step-dot" id="epsStepDotClassify"></span>
-            <div class="eps-step-body">
-              <div class="eps-step-title">2. 分类判定</div>
-              <div class="eps-step-detail" id="epsStepDetailClassify">等待 telescope 结果</div>
-            </div>
-            <button type="button" class="btn small ghost" id="epsClassifyBtn">查看判定</button>
-          </div>
-          <div class="eps-step" data-step="probe">
-            <span class="eps-step-dot" id="epsStepDotProbe"></span>
-            <div class="eps-step-body">
-              <div class="eps-step-title">3. EPS 只读 Probe（自动备份原车扇区）</div>
-              <div class="eps-step-detail" id="epsStepDetailProbe">验证 patch 点前状态，成功后生成原车扇区备份</div>
-            </div>
-            <button type="button" class="btn small" id="epsProbeBtn" disabled>运行 Probe</button>
-          </div>
-          <div class="eps-step" data-step="writer">
-            <span class="eps-step-dot" id="epsStepDotWriter"></span>
-            <div class="eps-step-body">
-              <div class="eps-step-title">4. 一键刷写 / 恢复</div>
-              <div class="eps-step-detail" id="epsStepDetailWriter">自动输入 YES（在 AGNOS/Linux pty 环境下有效；PC/dev 环境下需手动确认 YES）<span class="eps-step-detail-tag">注意：Windows dev 环境下需手动点击确认</span></div>
-            </div>
-            <div class="eps-step-actions">
-              <button type="button" class="btn small danger" id="epsWriterBtn">一键刷写</button>
-              <button type="button" class="btn small ghost" id="epsRestoreBtn">一键恢复</button>
-            </div>
-          </div>
-          <div class="eps-step" data-step="snapshot">
-            <span class="eps-step-dot" id="epsStepDotSnapshot"></span>
-            <div class="eps-step-body">
-              <div class="eps-step-title">5. 刷写前快照（只读）</div>
-              <div class="eps-step-detail" id="epsStepDetailSnapshot">在刷写前重新读取当前 EPS 扇区并单独归档</div>
-            </div>
-            <button type="button" class="btn small ghost" id="epsSnapshotBtn">生成快照</button>
-          </div>
-        </div>
-
-        <div class="eps-continue-card hidden" id="epsContinueCard">
-          <div class="eps-continue-title">需要继续</div>
-          <div class="eps-continue-hint" id="epsContinueHint">writer 已保存 checkpoint 并退出；请完全断电重启 comma/EPS，然后点击“继续”。</div>
-          <button type="button" class="btn small" id="epsContinueBtn">继续刷写</button>
-        </div>
-
-        <div class="eps-options" id="epsOptions">
-          <label class="eps-option">
-            <span class="eps-option-label">Panda</span>
-            <select id="epsSerialSelect" class="eps-option-input">
-              <option value="">自动选择</option>
-            </select>
-          </label>
-          <label class="eps-option">
-            <span class="eps-option-label">探测深度</span>
-            <select id="epsDepthSelect" class="eps-option-input">
-              <option value="shellcode" selected>shellcode（完整）</option>
-              <option value="sa">sa（跳过深探）</option>
-              <option value="uds">uds（仅 UDS）</option>
-            </select>
-          </label>
-        </div>
-
-        <div class="eps-job-panel hidden" id="epsJobPanel">
-          <div class="eps-job-head">
-            <div class="eps-job-title" id="epsJobTitle"></div>
-            <button type="button" class="btn ghost small" id="epsCancelJobBtn">取消</button>
-          </div>
-          <div class="eps-job-progress">
-            <div class="eps-job-progress-bar" id="epsJobProgressBar"></div>
-          </div>
-          <div class="eps-job-log" id="epsJobLog"></div>
-        </div>
-
-        <div class="eps-command-card hidden" id="epsCommandCard">
-          <div class="eps-command-head">
-            <div class="eps-command-title" id="epsCommandTitle">手动执行命令</div>
-            <button type="button" class="btn ghost small" id="epsCopyCommandBtn">复制</button>
-          </div>
-          <pre class="eps-command-body" id="epsCommandBody"></pre>
-          <ol class="eps-command-steps" id="epsCommandSteps"></ol>
-          <div class="eps-command-warning" id="epsCommandWarning"></div>
-        </div>
-
-        <div class="eps-backup-card hidden" id="epsBackupCard">
-          <div class="eps-backup-head">
-            <div class="eps-backup-title">原车 EPS 备份（Probe 成功后生成）</div>
-            <div class="eps-backup-actions">
-              <a class="btn ghost small" id="epsBackupDownloadTarget" href="#" download>目标扇区</a>
-              <a class="btn ghost small" id="epsBackupDownloadCrc" href="#" download>CRC 扇区</a>
-              <a class="btn ghost small" id="epsBackupDownloadMeta" href="#" download>元数据</a>
-              <button type="button" class="btn primary small" id="epsBackupExportBtn">导出完整备份</button>
-            </div>
-          </div>
-          <div class="eps-backup-body" id="epsBackupBody"></div>
-        </div>
-
-        <div class="eps-backup-card" id="epsImportCard">
-          <div class="eps-backup-head">
-            <div class="eps-backup-title">导入外部备份</div>
-          </div>
-          <div class="eps-backup-body">
-            <p class="field-hint">刷砖后或换机恢复时，导入之前导出的完整备份包（.tar.gz），然后执行一键恢复。</p>
-            <div class="eps-import-actions">
-              <input type="file" id="epsBackupFileInput" accept=".tar.gz,.bin,.json" style="display:none" />
-              <button type="button" class="btn small" id="epsBackupImportBtn">选择备份包</button>
-              <span id="epsBackupImportName" class="eps-import-filename"></span>
-            </div>
-            <div id="epsBackupImportStatus" class="eps-import-status"></div>
-          </div>
-        </div>
-
-        <div class="eps-backup-card hidden" id="epsHistoryCard">
-          <div class="eps-backup-head">
-            <div class="eps-backup-title">备份历史</div>
-            <button type="button" class="btn ghost small" id="epsRefreshHistoryBtn">刷新</button>
-          </div>
-          <div class="eps-backup-body" id="epsHistoryBody"></div>
-        </div>
-
-        <div class="eps-backup-card hidden" id="epsAuditCard">
-          <div class="eps-backup-head">
-            <div class="eps-backup-title">EPS 操作审计</div>
-            <button type="button" class="btn ghost small" id="epsRefreshAuditBtn">刷新</button>
-          </div>
-          <div class="eps-backup-body" id="epsAuditBody"></div>
-        </div>
-      </div>
-    </div>
-
-    <div class="modal eps-confirm-modal hidden" id="epsConfirmModal">
-      <div class="modal-backdrop" id="epsConfirmBackdrop"></div>
-      <div class="modal-content eps-confirm-content">
-        <div class="modal-header eps-confirm-header">
-          <h3 id="epsConfirmTitle">确认</h3>
-        </div>
-        <div class="modal-body eps-confirm-body" id="epsConfirmBody"></div>
-        <label class="eps-confirm-checkbox">
-          <input type="checkbox" id="epsConfirmCheckbox">
-          <span>我已了解变砖风险，并确认车辆静止、台架稳定供电</span>
-        </label>
-        <label class="eps-confirm-input">
-          <span>在下方输入大写 YES 继续：</span>
-          <input type="text" id="epsConfirmInput" class="eps-option-input" placeholder="YES" autocomplete="off">
-        </label>
-        <div class="eps-confirm-actions">
-          <button type="button" class="btn ghost" id="epsConfirmCancelBtn">取消</button>
-          <button type="button" class="btn danger" id="epsConfirmOkBtn">确认</button>
-        </div>
       </div>
     </div>
   </div>
@@ -1849,7 +1643,6 @@
   <script src="/static/js/local-prefs.js?v=20260806b"></script>
   <script src="/static/js/quick-actions.js?v=20260715h"></script>
   <script src="/static/js/tsk-panel.js?v=20260804a"></script>
-  <script src="/static/js/eps-panel.js?v=20260916a"></script>
   <script src="/static/js/session-model-picker.js?v=20260807b"></script>
   <script src="/static/js/chat/model-tag.js?v=20260807b"></script>
   <script src="/static/js/app/globals.js?v=20260807b"></script>
