@@ -64,13 +64,24 @@ class TestShellRunner(unittest.IsolatedAsyncioTestCase):
     self.assertFalse(result.ok)
     self.assertEqual(result.error_kind, "timeout")
 
-  async def test_session_policy_containment_and_readonly(self) -> None:
+  async def test_session_policy_containment_and_default_open(self) -> None:
     service = SandboxPolicyService(workspace_root=self.tmp.name)
     policy = service.resolve(session_id="session-1", cwd="../outside")
     self.assertEqual(policy.session_id, "session-1")
     self.assertEqual(policy.containment_root, service.workspace_root)
-    self.assertEqual(policy.mode, "read-only")
+    # Default sandbox is now workspace-write (fully-open intent).
+    self.assertEqual(policy.mode, "workspace-write")
     result = await self.runner.run_shell("echo hi > created.txt", policy=policy)
+    self.assertTrue(result.ok)
+
+  async def test_explicit_readonly_blocks_mutation(self) -> None:
+    from ai.sandbox.runtime import ConfinedSessionPolicy
+    policy = ConfinedSessionPolicy(
+      session_id="ro",
+      mode="read-only",
+      containment_root=self.tmp.name,
+    )
+    result = await self.runner.run_shell("echo hi > created_ro.txt", policy=policy)
     self.assertFalse(result.ok)
     self.assertEqual(result.error_kind, "blocked")
 
