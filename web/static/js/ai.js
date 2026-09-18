@@ -69,6 +69,7 @@ let _suppressSessionPush = false;
 let _syncWsGotHello = false;
 let _gatewayHydrated = false;
 let _statusPollTimer = null;
+let hostEnvironment = {};
 const CHAT_MODE = 'unlimited';
 let pendingWorkflow = '';
 let pendingAgentId = '';
@@ -269,7 +270,6 @@ let pendingFileRefs = [];
 let editingUserMsgIdx = null;
 let cabanaOpen = false;
 let secocOpen = false;
-let epsOpen = false;
 let cabanaInited = false;
 const OPTIONAL_BASE_URL_PROVIDERS = new Set(['qwen', 'minimax', 'mimo', 'bigmodel']);
 
@@ -1156,7 +1156,6 @@ function syncBodyScrollLock() {
   const locked = Boolean(
     cabanaOpen ||
     secocOpen ||
-    epsOpen ||
     knowledgeOpen ||
     notificationsOpen ||
     (typeof OfficePanel !== 'undefined' && OfficePanel.isOpen()) ||
@@ -2105,22 +2104,6 @@ function closeSecocModal() {
   setOverlayVisible(els.secocModal, false);
   els.secocBtn?.classList.remove('active');
   if (typeof TskPanel !== 'undefined') TskPanel.stopPoll();
-  syncBodyScrollLock();
-}
-
-function openEpsModal() {
-  epsOpen = true;
-  setOverlayVisible(els.epsModal, true);
-  els.epsBtn?.classList.add('active');
-  if (typeof EpsPanel !== 'undefined') EpsPanel.startPoll();
-  syncBodyScrollLock();
-}
-
-function closeEpsModal() {
-  epsOpen = false;
-  setOverlayVisible(els.epsModal, false);
-  els.epsBtn?.classList.remove('active');
-  if (typeof EpsPanel !== 'undefined') EpsPanel.stopPoll();
   syncBodyScrollLock();
 }
 
@@ -7907,7 +7890,6 @@ function onOverlayKeydown(e) {
   if (notificationsOpen) { closeNotificationsPanel(); return; }
   if (cabanaOpen) { closeCabanaModal(); return; }
   if (secocOpen) { closeSecocModal(); return; }
-  if (epsOpen) { closeEpsModal(); return; }
   if (typeof TerminalPanel !== 'undefined' && TerminalPanel.isOpen()) { TerminalPanel.setOpen(false); syncBodyScrollLock(); return; }
   if (typeof OfficePanel !== 'undefined' && OfficePanel.isOpen()) { OfficePanel.hide(); syncBodyScrollLock(); return; }
   if (els.settingsSidebar?.classList.contains('open')) { closeSettings(); return; }
@@ -8181,10 +8163,6 @@ function bindHeaderMoreMenu() {
     secoc: () => {
       if (secocOpen) closeSecocModal();
       else openSecocModal();
-    },
-    eps: () => {
-      if (epsOpen) closeEpsModal();
-      else openEpsModal();
     },
     office: () => {
       if (typeof OfficePanel !== 'undefined') OfficePanel.toggle();
@@ -8610,13 +8588,6 @@ async function init() {
   });
   els.secocCloseBtn?.addEventListener('click', closeSecocModal);
   els.secocBackdrop?.addEventListener('click', closeSecocModal);
-
-  els.epsBtn?.addEventListener('click', () => {
-    if (epsOpen) closeEpsModal();
-    else openEpsModal();
-  });
-  els.epsCloseBtn?.addEventListener('click', closeEpsModal);
-  els.epsBackdrop?.addEventListener('click', closeEpsModal);
 
   Theme.init();
   window.addEventListener('themechange', updateThemeIcon);

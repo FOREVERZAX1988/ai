@@ -336,9 +336,9 @@ async def api_chat_jobs_create(request: web.Request) -> web.Response:
   cwd = "C:/Users/mouxan/AppData/Local/Temp/ai_op_job"
   prompt = _extract_prompt(_JOBS[job_id]["messages"])
   result = await _run_chat_local_dev(cwd, config, body, prompt or "help", session_id)
-  _JOBS[job_id]["status"] = "completed"
+  _JOBS[job_id]["status"] = "done"
   _JOBS[job_id]["result"] = result
-  return web.json_response({"ok": True, "job_id": job_id, "status": "completed", "data": result})
+  return web.json_response({"ok": True, "job_id": job_id, "jobId": job_id, "status": "done", "data": result})
 
 
 async def api_chat_jobs_get(request: web.Request) -> web.Response:
@@ -346,7 +346,7 @@ async def api_chat_jobs_get(request: web.Request) -> web.Response:
   since = int(request.query.get("since", "0") or "0")
   job = _JOBS.get(job_id, {"status": "not_found"})
   events: list[dict[str, Any]] = []
-  if job.get("status") == "completed":
+  if job.get("status") == "done":
     events.append({"type": "done", "data": job.get("result")})
   return web.json_response({"ok": True, "job_id": job_id, "status": job.get("status"), "events": events, "since": since})
 
