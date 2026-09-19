@@ -29,6 +29,11 @@ from ai.tools.domains.platform.workspace_enrich import (
   update_workspace_file as enrich_update_workspace,
   workspace_health,
 )
+from ai.tools.domains.platform.scheduler import (
+  cancel_scheduled_task,
+  list_scheduled_tasks,
+  schedule_task,
+)
 from ai.tools.toolsets import list_toolsets
 from ai.tools.domains.core.daily_memory import (
   append_daily_memory,
@@ -36,6 +41,7 @@ from ai.tools.domains.core.daily_memory import (
   read_daily_memory,
   read_recent_daily_memories,
 )
+from ai.common.memory_backend import append_unified_memory
 from ai.core.wspace.store import read_workspace_file, write_workspace_file
 
 PLATFORM_TOOL_META: dict[str, dict[str, Any]] = {
@@ -62,6 +68,10 @@ PLATFORM_TOOL_META: dict[str, dict[str, Any]] = {
   "append_daily_memory": {"label": "写入当日记忆", "group": "memory", "default_enabled": True, "driving": True},
   "read_daily_memory": {"label": "读取当日记忆", "group": "read", "default_enabled": True, "driving": True},
   "list_daily_memory": {"label": "列出每日记忆文件", "group": "read", "default_enabled": True, "driving": True},
+  "append_unified_memory": {"label": "统一写入记忆", "group": "memory", "default_enabled": True, "driving": True},
+  "schedule_task": {"label": "创建定时任务", "group": "config", "default_enabled": True, "driving": True},
+  "list_scheduled_tasks": {"label": "列出定时任务", "group": "read", "default_enabled": True, "driving": True},
+  "cancel_scheduled_task": {"label": "取消定时任务", "group": "config", "default_enabled": True, "driving": True},
   "export_platform_backup": {"label": "导出平台备份", "group": "config", "default_enabled": True, "driving": True},
   "restore_platform_backup": {"label": "恢复平台备份", "group": "config", "default_enabled": True, "driving": True},
   "analyze_execution_traces": {"label": "分析执行轨迹", "group": "read", "default_enabled": True, "driving": True},
@@ -97,6 +107,10 @@ PLATFORM_SCHEMAS: list[dict[str, Any]] = [
   {"type": "function", "function": {"name": "append_daily_memory", "description": "Append bullets to today's daily log (workspace/memory/YYYY-MM-DD.md). Use for session events per memory-protocol.", "parameters": {"type": "object", "properties": {"bullets": {"type": "array", "items": {"type": "string"}}, "title": {"type": "string"}}, "required": ["bullets"]}}},
   {"type": "function", "function": {"name": "read_daily_memory", "description": "Read daily memory markdown for a date (default today).", "parameters": {"type": "object", "properties": {"date": {"type": "string", "description": "YYYY-MM-DD"}}, "required": []}}},
   {"type": "function", "function": {"name": "list_daily_memory", "description": "List recent daily memory journal files.", "parameters": {"type": "object", "properties": {"days": {"type": "integer"}}, "required": []}}},
+  {"type": "function", "function": {"name": "append_unified_memory", "description": "Persist an observation to both short-term notes and long-term daily memory.", "parameters": {"type": "object", "properties": {"text": {"type": "string"}, "tags": {"type": "array", "items": {"type": "string"}}, "session_id": {"type": "string"}, "title": {"type": "string"}}, "required": ["text"]}}},
+  {"type": "function", "function": {"name": "schedule_task", "description": "Create or update a scheduled task. Trigger can be interval, on_offroad, on_ignition, on_wifi, daily_at, or rrule (with payload.rrule).", "parameters": {"type": "object", "properties": {"task_id": {"type": "string"}, "name": {"type": "string"}, "action": {"type": "string"}, "trigger": {"type": "string"}, "interval_minutes": {"type": "integer"}, "payload": {"type": "object"}, "enabled": {"type": "boolean"}}, "required": ["name", "action"]}}},
+  {"type": "function", "function": {"name": "list_scheduled_tasks", "description": "List scheduled tasks with next run and last result.", "parameters": {"type": "object", "properties": {}, "required": []}}},
+  {"type": "function", "function": {"name": "cancel_scheduled_task", "description": "Cancel a scheduled task by id.", "parameters": {"type": "object", "properties": {"task_id": {"type": "string"}}, "required": ["task_id"]}}},
   {"type": "function", "function": {"name": "export_platform_backup", "description": "Export memory, sessions, skills, MCP, workspace to a JSON backup file.", "parameters": {"type": "object", "properties": {"include_secrets": {"type": "boolean"}}, "required": []}}},
   {"type": "function", "function": {"name": "restore_platform_backup", "description": "Restore platform state from backup bundle (confirm required).", "parameters": {"type": "object", "properties": {"bundle": {"type": "object"}, "mode": {"type": "string", "enum": ["merge", "replace"]}, "sections": {"type": "array", "items": {"type": "string"}}, "confirm": {"type": "boolean"}}, "required": ["bundle"]}}},
   {"type": "function", "function": {"name": "analyze_execution_traces", "description": "Mine recent sessions for failures and corrections (Hermes-style trace collection).", "parameters": {"type": "object", "properties": {"limit": {"type": "integer"}}, "required": []}}},
@@ -287,6 +301,37 @@ def make_platform_handlers(
   def h_list_daily_memory(args: dict[str, Any]) -> dict[str, Any]:
     return {"ok": True, "files": list_daily_memory_files(days=int(args.get("days") or 14))}
 
+  def h_append_unified_memory(args: dict[str, Any]) -> dict[str, Any]:
+    text = str(args.get("text") or "").strip()
+    if not text:
+      return {"ok": False, "error": "text required"}
+    return append_unified_memory(
+      text,
+      params=p,
+      tags=args.get("tags") if isinstance(args.get("tags"), list) else [],
+      session_id=str(args.get("session_id") or ""),
+      title=str(args.get("title") or ""),
+    )
+
+  def h_schedule_task(args: dict[str, Any]) -> dict[str, Any]:
+    spec = {
+      "task_id": args.get("task_id") or args.get("id"),
+      "name": args.get("name"),
+      "action": args.get("action"),
+      "trigger": args.get("trigger", "interval"),
+      "interval_minutes": args.get("interval_minutes"),
+      "payload": args.get("payload") if isinstance(args.get("payload"), dict) else {},
+      "enabled": bool(args.get("enabled", True)),
+    }
+    spec = {k: v for k, v in spec.items() if v is not None}
+    return schedule_task(p, spec)
+
+  def h_list_scheduled_tasks(_a: dict[str, Any]) -> dict[str, Any]:
+    return list_scheduled_tasks(p)
+
+  def h_cancel_scheduled_task(args: dict[str, Any]) -> dict[str, Any]:
+    return cancel_scheduled_task(p, str(args.get("task_id") or ""))
+
   def h_export_backup(args: dict[str, Any]) -> dict[str, Any]:
     return export_platform_bundle(p, include_secrets=bool(args.get("include_secrets")))
 
@@ -402,6 +447,10 @@ def make_platform_handlers(
     "append_daily_memory": h_append_daily_memory,
     "read_daily_memory": h_read_daily_memory,
     "list_daily_memory": h_list_daily_memory,
+    "append_unified_memory": h_append_unified_memory,
+    "schedule_task": h_schedule_task,
+    "list_scheduled_tasks": h_list_scheduled_tasks,
+    "cancel_scheduled_task": h_cancel_scheduled_task,
     "export_platform_backup": h_export_backup,
     "restore_platform_backup": h_restore_backup,
     "analyze_execution_traces": h_analyze_traces,
