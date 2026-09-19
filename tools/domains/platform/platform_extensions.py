@@ -399,6 +399,7 @@ def make_platform_handlers(
     return list_tool_desc_overrides(p)
 
   async def h_run_workflow(args: dict[str, Any]) -> dict[str, Any]:
+    import asyncio
     from ai.core.workflow import WorkflowEngine
     definition = args.get("definition") or {}
     if not isinstance(definition, dict) or not definition.get("id"):
@@ -410,18 +411,22 @@ def make_platform_handlers(
     if stationary:
       return stationary
     engine = WorkflowEngine()
+    cancel_event = asyncio.Event()
     # T-P0.5: stable adapter — build the handler map once per run instead of
     # rebuilding make_handlers() on every TOOL step.
+    # T-P1.6: share the cancel_event so engine.cancel()/dispose() can abort
+    # slow tool calls cooperatively.
     try:
       from ai.core.workflow.tool_adapter import WorkflowToolAdapter
       from ai.tools.agent_tools import make_handlers
       adapter = WorkflowToolAdapter.from_factory(
         lambda: make_handlers(params=p, get_state_reader=_workflow_state_reader),
+        cancel_event=cancel_event,
       )
       engine.set_tool_runner(adapter.run)
     except Exception:
       engine.set_tool_runner(lambda name, a: _dispatch_workflow_tool(name, a, p))
-    result = await engine.run(definition, dict(args.get("inputs") or {}))
+    result = await engine.run(definition, dict(args.get("inputs") or {}), cancel_event=cancel_event)
     if result.ok:
       from ai.core.errors import ok_result
       return ok_result(output=result.output, workflow_error=result.error.value, logs=result.logs[-20:])
