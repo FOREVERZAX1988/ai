@@ -42,6 +42,7 @@ from ai.tools.domains.core.daily_memory import (
   read_recent_daily_memories,
 )
 from ai.common.memory_backend import append_unified_memory
+from ai.tools.domains.platform.audit_cover import wrap_with_audit
 from ai.core.wspace.store import read_workspace_file, write_workspace_file
 
 PLATFORM_TOOL_META: dict[str, dict[str, Any]] = {
@@ -461,6 +462,7 @@ def make_platform_handlers(
     "run_workflow": h_run_workflow,
     "list_tool_desc_overrides": h_list_tool_desc,
   }
+  return wrap_with_audit(handlers)
 
 
 def _workflow_engine_definitions() -> dict[str, dict[str, Any]]:
