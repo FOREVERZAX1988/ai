@@ -449,7 +449,8 @@ def make_handlers(
     state = get_state_reader().update(timeout=0)
     allowed, reason = is_action_allowed(action, state, admin=admin)
     if not allowed:
-      return {"ok": False, "error": reason}
+      from ai.core.errors import ERR_STATIONARY_REQUIRED, tool_error
+      return tool_error(reason or "stationary required", code=ERR_STATIONARY_REQUIRED)
     return None
 
   def _needs_confirm() -> bool:

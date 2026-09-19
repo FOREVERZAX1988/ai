@@ -422,7 +422,15 @@ def make_platform_handlers(
     except Exception:
       engine.set_tool_runner(lambda name, a: _dispatch_workflow_tool(name, a, p))
     result = await engine.run(definition, dict(args.get("inputs") or {}))
-    return {"ok": result.ok, "output": result.output, "error": result.message, "code": result.error.value}
+    if result.ok:
+      from ai.core.errors import ok_result
+      return ok_result(output=result.output, workflow_error=result.error.value, logs=result.logs[-20:])
+    from ai.core.errors import ERR_DEPENDENCY_UNAVAILABLE, tool_error
+    return tool_error(
+      result.message or "workflow failed",
+      code=ERR_DEPENDENCY_UNAVAILABLE,
+      details={"workflow_error": result.error.value, "logs": result.logs[-20:]},
+    )
 
   return {
     "sessions_list": h_sessions_list,
