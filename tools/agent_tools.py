@@ -203,7 +203,11 @@ def tool_meta_for_host() -> dict[str, dict[str, Any]]:
   return enrich_tool_meta_for_ui(filtered)
 
 
-_RESTARTABLE_SERVICES = frozenset({"aid", "ui", "manager", "selfdrive/ui"})
+# The ui process is launched as "openpilot.selfdrive.ui.ui" - dots, not a path. The
+# previous "selfdrive/ui" pattern matched no process at all, so restart_ui reported
+# success while doing nothing.
+UI_PROCESS_PATTERN = "selfdrive.ui.ui"
+_RESTARTABLE_SERVICES = frozenset({"aid", "ui", "manager", UI_PROCESS_PATTERN})
 
 from ai.tools.op_run import ROUTES_DIR as _ROUTES_DIR  # noqa: E402
 from ai.tools.cabana_route_tools import list_cabana_routes  # noqa: E402
@@ -1649,9 +1653,12 @@ def make_handlers(
     err = _stationary_check("restart_ui")
     if err:
       return err
-    proc = await asyncio.create_subprocess_exec("pkill", "-f", "selfdrive/ui")
-    await proc.wait()
-    return {"ok": True, "message": "UI restart signal sent"}
+    proc = await asyncio.create_subprocess_exec("pkill", "-f", UI_PROCESS_PATTERN)
+    rc = await proc.wait()
+    if rc != 0:
+      # pkill: 0 = matched, 1 = nothing matched - never claim success when nothing was killed
+      return {"ok": False, "error": f"No process matched '{UI_PROCESS_PATTERN}' (pkill rc={rc}); UI not restarted."}
+    return {"ok": True, "message": "UI restart signal sent (manager respawns it within a few seconds)"}
 
   handlers = {
     "get_vehicle_state": h_get_vehicle_state,
