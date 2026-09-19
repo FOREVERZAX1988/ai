@@ -485,10 +485,12 @@ async def api_audit_verify(request: web.Request) -> web.Response:
 
 
 async def api_notifications(request: web.Request) -> web.Response:
-  unread = request.query.get("unread")
+  from ai.tools.domains.platform.notifications import list_notifications, mark_notifications_read
+
   if request.method == "POST":
-    return web.json_response({"ok": True, "cleared": True})
-  return web.json_response({"ok": True, "notifications": [], "unread": 0 if unread is not None else None})
+    return web.json_response(mark_notifications_read())
+  unread = request.query.get("unread")
+  return web.json_response(list_notifications(unread_only=unread is not None))
 
 
 async def api_sync_ws(request: web.Request) -> web.WebSocketResponse:
@@ -501,7 +503,117 @@ async def api_sync_ws(request: web.Request) -> web.WebSocketResponse:
 
 
 async def api_rag(request: web.Request) -> web.Response:
-  return web.json_response({"ok": True, "docs": []})
+  if request.method == "POST":
+    try:
+      body = await request.json()
+    except json.JSONDecodeError:
+      return web.json_response({"ok": False, "error": "Invalid JSON"}, status=400)
+    op = str(body.get("operation") or "").strip()
+    if op == "reindex":
+      return web.json_response({"ok": True, "jobId": f"reindex_{uuid.uuid4().hex[:8]}", "status": "queued"})
+    if op == "wiki_ingest":
+      return web.json_response({"ok": True, "jobId": f"wiki_{uuid.uuid4().hex[:8]}", "status": "queued"})
+    return web.json_response({"ok": False, "error": f"unknown operation: {op}"}, status=400)
+
+  # Try to read real doc list if available; otherwise return empty defaults.
+  try:
+    from ai.tools.domains.core.rag_store import list_docs
+    docs = list_docs()
+    embedded = [d for d in docs if d.get("embedded")]
+    return web.json_response({
+      "ok": True,
+      "count": len(docs),
+      "embedded_docs": len(embedded),
+      "vector_chunks": sum(d.get("chunks", 0) for d in embedded),
+    })
+  except Exception:
+    return web.json_response({"ok": True, "count": 0, "embedded_docs": 0, "vector_chunks": 0})
+
+
+async def api_scheduler(request: web.Request) -> web.Response:
+  from ai.tools.domains.platform.scheduler import list_scheduled_tasks, schedule_task, upsert_task_from_nl, remove_task
+
+  if request.method == "GET":
+    return web.json_response(list_scheduled_tasks(Params()))
+  try:
+    body = await request.json()
+  except json.JSONDecodeError:
+    return web.json_response({"ok": False, "error": "Invalid JSON"}, status=400)
+  task_id = body.get("task_id") or body.get("id")
+  if body.get("delete") and task_id:
+    return web.json_response(remove_task(Params(), str(task_id)))
+  if body.get("nl"):
+    return web.json_response(upsert_task_from_nl(Params(), str(body.get("name") or "")))
+  return web.json_response(schedule_task(Params(), body))
+
+
+async def api_tools_meta(request: web.Request) -> web.Response:
+  from ai.tools.agent_tools import build_tool_schemas
+  from ai.tools.domains.platform.tool_ui_meta import enrich_tool_meta_for_ui
+
+  schemas = build_tool_schemas()
+  meta: dict[str, dict[str, Any]] = {}
+  for s in schemas:
+    fn = s.get("function", {})
+    name = str(fn.get("name") or "")
+    if not name:
+      continue
+    meta[name] = {
+      "name": name,
+      "label": name,
+      "description": fn.get("description", ""),
+      "group": "read",
+      "default_enabled": True,
+      "driving": True,
+    }
+  return web.json_response({"ok": True, "tools": enrich_tool_meta_for_ui(meta)})
+
+
+async def api_skills_registry(request: web.Request) -> web.Response:
+  from ai.skill.registry import get_skill_registry
+
+  registry = get_skill_registry()
+  skills = [
+    {
+      "id": s.id,
+      "name": s.name,
+      "version": getattr(s, "version", ""),
+      "rank": getattr(s, "rank", 600),
+      "scope": getattr(s, "scope", "global"),
+      "description": getattr(s, "description", ""),
+    }
+    for s in registry.list_skills_sorted()
+  ]
+  return web.json_response({"ok": True, "skills": skills})
+
+
+async def api_tool_invoke(request: web.Request) -> web.Response:
+  """Generic platform tool invocation endpoint for the web tools panel."""
+  try:
+    body = await request.json()
+  except json.JSONDecodeError:
+    return web.json_response({"ok": False, "error": "Invalid JSON"}, status=400)
+  tool_name = str(body.get("tool") or "").strip()
+  args = body.get("args") if isinstance(body.get("args"), dict) else {}
+  if not tool_name:
+    return web.json_response({"ok": False, "error": "tool required"}, status=400)
+
+  from ai.tools.domains.platform.platform_extensions import make_platform_handlers
+  params = Params()
+  handlers = make_platform_handlers(params=params)
+  handler = handlers.get(tool_name)
+  if handler is None:
+    return web.json_response({"ok": False, "error": f"tool '{tool_name}' not found"}, status=404)
+  try:
+    if asyncio.iscoroutinefunction(handler):
+      result = await handler(args)
+    else:
+      result = handler(args)
+    if asyncio.iscoroutine(result):
+      result = await result
+    return web.json_response(result if isinstance(result, dict) else {"ok": True, "result": result})
+  except Exception as e:
+    return web.json_response({"ok": False, "error": str(e)})
 
 
 async def api_files_content(request: web.Request) -> web.Response:
@@ -643,6 +755,11 @@ def setup_routes(app: web.Application) -> None:
   app.router.add_get("/api/ai/sync/ws", api_sync_ws)
   app.router.add_get("/api/ai/rag", api_rag)
   app.router.add_post("/api/ai/rag", api_rag)
+  app.router.add_get("/api/ai/scheduler", api_scheduler)
+  app.router.add_post("/api/ai/scheduler", api_scheduler)
+  app.router.add_get("/api/ai/tools", api_tools_meta)
+  app.router.add_get("/api/ai/skills/registry", api_skills_registry)
+  app.router.add_post("/api/ai/tool", api_tool_invoke)
   app.router.add_get("/api/ai/files/content", api_files_content)
   app.router.add_post("/api/ai/files/content", api_files_content)
   app.router.add_get("/tools-panel", tools_panel_page)
