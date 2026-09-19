@@ -33,6 +33,8 @@ FORK_INTEGRATION_PARAMS: dict[str, dict[str, str]] = {
 }
 
 LAUNCH_MARKER = "start_op_assistant"
+# Bump when START_OP_ASSISTANT_FN changes so installed launch scripts get re-patched.
+AID_BOOTSTRAP_MARKER = "aid-bootstrap-v2"
 
 START_OP_ASSISTANT_FN = r'''  start_op_assistant() {
     local root="$DIR"
@@ -42,17 +44,22 @@ START_OP_ASSISTANT_FN = r'''  start_op_assistant() {
     local aid_py=python3.12
     command -v "$aid_py" >/dev/null 2>&1 || aid_py=python3
     local venv_site="/usr/local/venv/lib/python3.12/site-packages"
-    local pydeps="/data/.pydeps"
+    local pydeps="$root/.pydeps"
     local py_path="$root"
     [ -d "$venv_site" ] && py_path="$py_path:$venv_site"
     [ -d "$pydeps" ] && py_path="$py_path:$pydeps"
+    # aid-bootstrap-v2
+    # Share aiohttp bootstrap with WebUI (.pydeps on read-only AGNOS rootfs).
+    # Same rule as start_webui: the probe must see $pydeps, and the network fallback is
+    # time-bounded, because this runs before ./manager.py (a bad network here delays the UI).
     if ! PYTHONPATH="$py_path" "$aid_py" -c "import aiohttp" 2>/dev/null; then
       if [ -d "$pydeps" ] || mkdir -p "$pydeps" 2>/dev/null; then
         if ! "$aid_py" -c "import pip" 2>/dev/null; then
-          curl -fsSL https://bootstrap.pypa.io/get-pip.py -o /tmp/get-pip.py 2>/dev/null && \
+          curl -fsSL --max-time 20 https://bootstrap.pypa.io/get-pip.py -o /tmp/get-pip.py 2>/dev/null && \
             "$aid_py" /tmp/get-pip.py --target="$pydeps" --no-warn-script-location >> /tmp/aid.log 2>&1 || true
         fi
-        PYTHONPATH="$py_path" "$aid_py" -m pip install --target="$pydeps" aiohttp >> /tmp/aid.log 2>&1 || true
+        PYTHONPATH="$py_path" "$aid_py" -m pip install --target="$pydeps" --timeout 5 --retries 0 \
+          --disable-pip-version-check aiohttp >> /tmp/aid.log 2>&1 || true
         py_path="$root"
         [ -d "$venv_site" ] && py_path="$py_path:$venv_site"
         py_path="$py_path:$pydeps"
@@ -212,7 +219,7 @@ def patch_params_keys_h(path: Path, params: dict[str, dict[str, str]], *, dry_ru
 def _upgrade_start_op_assistant(content: str) -> tuple[str, bool]:
   if LAUNCH_MARKER not in content:
     return content, False
-  if ".pydeps" in content:
+  if AID_BOOTSTRAP_MARKER in content:
     return content, False
   if '[ ! -f "$root/ai/aid.py" ]' not in content:
     return content, False
