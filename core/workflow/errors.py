@@ -41,23 +41,33 @@ def workflow_error_code_from_name(name: str) -> WorkflowErrorCode:
 
 
 class WorkflowError(Exception):
-  """Structured exception carrying a ``WorkflowErrorCode``."""
+  """Structured exception carrying a ``WorkflowErrorCode``.
+
+  ``fatal`` distinguishes errors that must abort the whole run (default True)
+  from errors a combinator may swallow/map to a value (e.g. an inner parallel
+  branch that is allowed to fail with ``None``). Mirrors the dsh workflow
+  ``WorkflowError.fatal`` semantics (D-P0.1).
+  """
 
   def __init__(
     self,
     message: str,
     code: WorkflowErrorCode = WorkflowErrorCode.INVALID_DEFINITION,
     details: dict[str, Any] | None = None,
+    *,
+    fatal: bool = True,
   ) -> None:
     super().__init__(message)
     self.message = message
     self.code = code
     self.details = dict(details or {})
+    self.fatal = bool(fatal)
 
   def to_dict(self) -> dict[str, Any]:
     return {
       "ok": False,
       "error": self.message,
       "code": self.code.value,
+      "fatal": self.fatal,
       "details": self.details,
     }
