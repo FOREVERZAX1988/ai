@@ -245,8 +245,13 @@ async def discover_mcp_tools(params: Params, server_id: str, session_id: str = "
   return await _mcp_discovery_request(params, server_id, "tools/list", "tools", session_id=session_id, sessionId=sessionId)
 
 
-async def discover_mcp_resources(params: Params, server_id: str, session_id: str = "", sessionId: str | None = None) -> dict[str, Any]:
-  return await _mcp_discovery_request(params, server_id, "resources/list", "resources", session_id=session_id, sessionId=sessionId)
+async def discover_mcp_resources(params: Params, server_id: str, session_id: str = "", sessionId: str | None = None, cursor: str = "") -> dict[str, Any]:
+  return await _mcp_discovery_request(params, server_id, "resources/list", "resources", session_id=session_id, sessionId=sessionId, cursor=cursor)
+
+
+async def discover_mcp_resource_templates(params: Params, server_id: str, session_id: str = "", sessionId: str | None = None) -> dict[str, Any]:
+  """List MCP resource templates (D-P1.2): ``resources/templates/list``."""
+  return await _mcp_discovery_request(params, server_id, "resources/templates/list", "resourceTemplates", session_id=session_id, sessionId=sessionId)
 
 
 async def discover_mcp_prompts(params: Params, server_id: str, session_id: str = "", sessionId: str | None = None) -> dict[str, Any]:
@@ -315,6 +320,7 @@ async def _mcp_discovery_request(
   result_key: str,
   session_id: str = "",
   sessionId: str | None = None,
+  cursor: str = "",
 ) -> dict[str, Any]:
   servers = _load_servers(params)
   server = next((s for s in servers if s.get("id") == server_id), None)
@@ -328,16 +334,21 @@ async def _mcp_discovery_request(
     env = {str(k): str(v) for k, v in (server.get("env") or {}).items()}
     args = list(map(str, server.get("args") or []))
     config = (cmd, tuple(args), tuple(sorted(env.items())))
+    # D-P1.2: cursor pagination passthrough.
+    req_params: dict[str, Any] = {}
+    if cursor:
+      req_params["cursor"] = cursor
     if sid:
       client = _client_for(server_id, sid, cmd, args, env)
       async with _session_lock(server_id, sid, config):
-        result = await client.request(method, {})
+        result = await client.request(method, req_params)
     else:
-      result = await _rpc_stdio(cmd, args, env, method, {})
+      result = await _rpc_stdio(cmd, args, env, method, req_params)
     items = result.get(result_key) if isinstance(result, dict) else result
+    next_cursor = result.get("nextCursor") if isinstance(result, dict) else None
     if method == "tools/list" and isinstance(items, list):
       server["tools"] = [t.get("name") for t in items if isinstance(t, dict) and t.get("name")]
       _save_servers(params, servers)
-    return {"ok": True, "serverId": server_id, "type": result_key, "items": items}
+    return {"ok": True, "serverId": server_id, "type": result_key, "items": items, "nextCursor": next_cursor}
   except Exception as e:
     return {"ok": False, "error": str(e), "serverId": server_id}
