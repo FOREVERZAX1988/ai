@@ -43,6 +43,7 @@ from ai.tools.domains.core.daily_memory import (
 )
 from ai.common.memory_backend import append_unified_memory
 from ai.tools.domains.platform.audit_cover import wrap_with_audit
+from ai.tools.domains.devops.github_actions_tools import trigger_github_workflow
 from ai.core.wspace.store import read_workspace_file, write_workspace_file
 
 PLATFORM_TOOL_META: dict[str, dict[str, Any]] = {
@@ -73,6 +74,8 @@ PLATFORM_TOOL_META: dict[str, dict[str, Any]] = {
   "schedule_task": {"label": "创建定时任务", "group": "config", "default_enabled": True, "driving": True},
   "list_scheduled_tasks": {"label": "列出定时任务", "group": "read", "default_enabled": True, "driving": True},
   "cancel_scheduled_task": {"label": "取消定时任务", "group": "config", "default_enabled": True, "driving": True},
+  "finish_session": {"label": "结束并总结会话", "group": "memory", "default_enabled": True, "driving": True},
+  "run_ci_workflow": {"label": "触发 CI 工作流", "group": "config", "default_enabled": True, "driving": True},
   "export_platform_backup": {"label": "导出平台备份", "group": "config", "default_enabled": True, "driving": True},
   "restore_platform_backup": {"label": "恢复平台备份", "group": "config", "default_enabled": True, "driving": True},
   "analyze_execution_traces": {"label": "分析执行轨迹", "group": "read", "default_enabled": True, "driving": True},
@@ -112,6 +115,8 @@ PLATFORM_SCHEMAS: list[dict[str, Any]] = [
   {"type": "function", "function": {"name": "schedule_task", "description": "Create or update a scheduled task. Trigger can be interval, on_offroad, on_ignition, on_wifi, daily_at, or rrule (with payload.rrule).", "parameters": {"type": "object", "properties": {"task_id": {"type": "string"}, "name": {"type": "string"}, "action": {"type": "string"}, "trigger": {"type": "string"}, "interval_minutes": {"type": "integer"}, "payload": {"type": "object"}, "enabled": {"type": "boolean"}}, "required": ["name", "action"]}}},
   {"type": "function", "function": {"name": "list_scheduled_tasks", "description": "List scheduled tasks with next run and last result.", "parameters": {"type": "object", "properties": {}, "required": []}}},
   {"type": "function", "function": {"name": "cancel_scheduled_task", "description": "Cancel a scheduled task by id.", "parameters": {"type": "object", "properties": {"task_id": {"type": "string"}}, "required": ["task_id"]}}},
+  {"type": "function", "function": {"name": "finish_session", "description": "Summarize a session and persist key takeaways to unified memory.", "parameters": {"type": "object", "properties": {"session_id": {"type": "string"}, "title": {"type": "string"}, "evolve": {"type": "boolean"}}, "required": ["session_id"]}}},
+  {"type": "function", "function": {"name": "run_ci_workflow", "description": "Trigger a GitHub Actions workflow dispatch. Set confirm=true to actually dispatch.", "parameters": {"type": "object", "properties": {"repo_url": {"type": "string"}, "workflow": {"type": "string"}, "ref": {"type": "string"}, "confirm": {"type": "boolean"}}, "required": ["workflow"]}}},
   {"type": "function", "function": {"name": "export_platform_backup", "description": "Export memory, sessions, skills, MCP, workspace to a JSON backup file.", "parameters": {"type": "object", "properties": {"include_secrets": {"type": "boolean"}}, "required": []}}},
   {"type": "function", "function": {"name": "restore_platform_backup", "description": "Restore platform state from backup bundle (confirm required).", "parameters": {"type": "object", "properties": {"bundle": {"type": "object"}, "mode": {"type": "string", "enum": ["merge", "replace"]}, "sections": {"type": "array", "items": {"type": "string"}}, "confirm": {"type": "boolean"}}, "required": ["bundle"]}}},
   {"type": "function", "function": {"name": "analyze_execution_traces", "description": "Mine recent sessions for failures and corrections (Hermes-style trace collection).", "parameters": {"type": "object", "properties": {"limit": {"type": "integer"}}, "required": []}}},
@@ -333,6 +338,43 @@ def make_platform_handlers(
   def h_cancel_scheduled_task(args: dict[str, Any]) -> dict[str, Any]:
     return cancel_scheduled_task(p, str(args.get("task_id") or ""))
 
+  def h_finish_session(args: dict[str, Any]) -> dict[str, Any]:
+    session_id = str(args.get("session_id") or "").strip()
+    if not session_id:
+      return {"ok": False, "error": "session_id required"}
+    history = get_session_history(p, session_id, limit=40)
+    if not history.get("ok"):
+      return history
+    messages = history.get("messages") or []
+    summary = " ".join(
+      [f"{m.get('role', '?')}:{str(m.get('content', ''))[:80]}" for m in messages[-6:]]
+    )
+    title = str(args.get("title") or f"session summary {session_id[:8]}").strip()
+    memory = append_unified_memory(
+      f"Session {session_id[:8]} summary: {summary}",
+      params=p,
+      tags=["session_summary", f"session:{session_id[:12]}"],
+      session_id=session_id,
+      title=title,
+    )
+    traces = analyze_execution_traces(p, limit=8) if args.get("evolve") else {"ok": True, "traces": []}
+    return {
+      "ok": True,
+      "sessionId": session_id,
+      "messages": len(messages),
+      "memory": memory,
+      "traces": traces.get("traces") or [],
+    }
+
+  def h_run_ci_workflow(args: dict[str, Any]) -> dict[str, Any]:
+    return trigger_github_workflow(
+      repo_url=str(args.get("repo_url") or ""),
+      workflow=str(args.get("workflow") or ""),
+      ref=str(args.get("ref") or "master-c3"),
+      confirm=bool(args.get("confirm")),
+      params=p,
+    )
+
   def h_export_backup(args: dict[str, Any]) -> dict[str, Any]:
     return export_platform_bundle(p, include_secrets=bool(args.get("include_secrets")))
 
@@ -465,6 +507,8 @@ def make_platform_handlers(
     "schedule_task": h_schedule_task,
     "list_scheduled_tasks": h_list_scheduled_tasks,
     "cancel_scheduled_task": h_cancel_scheduled_task,
+    "finish_session": h_finish_session,
+    "run_ci_workflow": h_run_ci_workflow,
     "export_platform_backup": h_export_backup,
     "restore_platform_backup": h_restore_backup,
     "analyze_execution_traces": h_analyze_traces,
