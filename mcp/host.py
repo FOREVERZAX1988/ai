@@ -291,6 +291,24 @@ async def discover_mcp_prompts(params: Params, server_id: str, session_id: str =
   return await _mcp_discovery_request(params, server_id, "prompts/list", "prompts", session_id=session_id, sessionId=sessionId)
 
 
+def get_mcp_tool_meta(params: Params, server_id: str, tool_name: str) -> dict[str, Any] | None:
+  """Return cached metadata for an MCP tool discovered via ``tools/list``."""
+  servers = _load_servers(params)
+  server = next((s for s in servers if s.get("id") == server_id), None)
+  if not server:
+    return None
+  meta = (server.get("tool_meta") or {}).get(tool_name)
+  if not isinstance(meta, dict):
+    return None
+  schema = meta.get("inputSchema") or meta.get("input_schema") or {}
+  return {
+    "name": tool_name,
+    "label": str(meta.get("title") or meta.get("description") or tool_name)[:60],
+    "description": str(meta.get("description") or ""),
+    "input_schema": schema,
+  }
+
+
 def _get_client(params: Params, server_id: str, session_id: str) -> MCPStdioClient | None:
   """Resolve or create a cached MCP stdio client for a server/session pair."""
   servers = _load_servers(params)
@@ -381,6 +399,7 @@ async def _mcp_discovery_request(
     next_cursor = result.get("nextCursor") if isinstance(result, dict) else None
     if method == "tools/list" and isinstance(items, list):
       server["tools"] = [t.get("name") for t in items if isinstance(t, dict) and t.get("name")]
+      server["tool_meta"] = {str(t.get("name")): t for t in items if isinstance(t, dict) and t.get("name")}
       _save_servers(params, servers)
     return {"ok": True, "serverId": server_id, "type": result_key, "items": items, "nextCursor": next_cursor}
   except Exception as e:

@@ -721,6 +721,13 @@ def register_mcp_handlers(handlers, params=None) -> None:
       _mcp_handlers[handler_name] = handler
       valid["function"]["name"] = handler_name
       _mcp_schemas.append(valid)
+      from ai.tools.runtime_meta import register_tool_meta
+      register_tool_meta(
+        handler_name,
+        label=valid["function"].get("description", name)[:40],
+        description=valid["function"].get("description", ""),
+        group="mcp",
+      )
   if "mcp_discover" not in added:
     handlers["mcp_discover"] = _h_mcp_discover
 
@@ -750,6 +757,13 @@ async def _h_mcp_discover(a: dict[str, Any]) -> dict[str, Any]:
       spec["function"]["name"] = key
       _mcp_schemas.append(spec)
       discovered.append(spec)
+      from ai.tools.runtime_meta import register_tool_meta
+      register_tool_meta(
+        key,
+        label=spec["function"].get("description", name)[:40],
+        description=spec["function"].get("description", ""),
+        group="mcp",
+      )
     return {**result, "tools": discovered}
   except Exception as exc:
     return _error(str(exc))
