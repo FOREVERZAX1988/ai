@@ -17,12 +17,31 @@ _clients: dict[tuple[str, str], "MCPStdioClient"] = {}
 
 
 class MCPStdioClient:
-  def __init__(self, command: str, args: list[str], env: dict[str, str]) -> None:
+  def __init__(
+    self,
+    command: str,
+    args: list[str],
+    env: dict[str, str],
+    *,
+    reconnect_max_attempts: int = 3,
+    reconnect_initial_delay_ms: float = 250,
+    reconnect_max_delay_ms: float = 2000,
+  ) -> None:
     self.command, self.args, self.env = command, args, env
     self.proc: Any = None
     self.lock = asyncio.Lock()
     self.request_id = 0
     self.initialized = False
+    # D-P0.2: supervised reconnect policy.
+    self.reconnect_max_attempts = max(1, int(reconnect_max_attempts))
+    self.reconnect_initial_delay_ms = float(reconnect_initial_delay_ms)
+    self.reconnect_max_delay_ms = float(reconnect_max_delay_ms)
+
+  def _reconnect_delay(self, attempt: int) -> float:
+    """Exponential backoff with cap (ms)."""
+    import math
+    base = self.reconnect_initial_delay_ms * (2 ** (attempt - 1))
+    return min(base, self.reconnect_max_delay_ms) / 1000.0
 
   async def start(self) -> None:
     if self.proc is None or self.proc.returncode is not None:
@@ -40,6 +59,20 @@ class MCPStdioClient:
       self.initialized = True
 
   async def request(self, method: str, params: dict[str, Any]) -> Any:
+    """Issue an MCP request with supervised reconnect + backoff (D-P0.2)."""
+    last_err: Exception | None = None
+    for attempt in range(1, self.reconnect_max_attempts + 1):
+      try:
+        return await self._request_once(method, params)
+      except Exception as exc:  # noqa: BLE001
+        last_err = exc
+        if attempt >= self.reconnect_max_attempts:
+          break
+        await self.close()
+        await asyncio.sleep(self._reconnect_delay(attempt))
+    raise RuntimeError(f"MCP request '{method}' failed after retries: {last_err}")
+
+  async def _request_once(self, method: str, params: dict[str, Any]) -> Any:
     async with self.lock:
       try:
         await self.start()
