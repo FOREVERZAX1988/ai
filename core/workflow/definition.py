@@ -174,10 +174,8 @@ class WorkflowDefinition:
     if not def_id:
       raise WorkflowError("workflow missing required 'id'", WorkflowErrorCode.INVALID_DEFINITION)
     steps_data = data.get("steps")
-    if steps_data is None:
-      steps_data = []
-    if not isinstance(steps_data, list):
-      raise WorkflowError("workflow 'steps' must be a list", WorkflowErrorCode.INVALID_DEFINITION)
+    if not isinstance(steps_data, list) or not steps_data:
+      raise WorkflowError("workflow must contain a non-empty 'steps' list", WorkflowErrorCode.INVALID_DEFINITION)
     steps = []
     for item in steps_data:
       try:
