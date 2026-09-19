@@ -364,7 +364,17 @@ def make_platform_handlers(
     if stationary:
       return stationary
     engine = WorkflowEngine()
-    engine.set_tool_runner(lambda name, a: _dispatch_workflow_tool(name, a, p))
+    # T-P0.5: stable adapter — build the handler map once per run instead of
+    # rebuilding make_handlers() on every TOOL step.
+    try:
+      from ai.core.workflow.tool_adapter import WorkflowToolAdapter
+      from ai.tools.agent_tools import make_handlers
+      adapter = WorkflowToolAdapter.from_factory(
+        lambda: make_handlers(params=p, get_state_reader=_workflow_state_reader),
+      )
+      engine.set_tool_runner(adapter.run)
+    except Exception:
+      engine.set_tool_runner(lambda name, a: _dispatch_workflow_tool(name, a, p))
     result = await engine.run(definition, dict(args.get("inputs") or {}))
     return {"ok": result.ok, "output": result.output, "error": result.message, "code": result.error.value}
 
@@ -426,10 +436,16 @@ def _workflow_engine_definitions() -> dict[str, dict[str, Any]]:
 async def _dispatch_workflow_tool(name: str, args: dict[str, Any], params: Params) -> dict[str, Any]:
   """Dispatch a tool call from within a WorkflowEngine TOOL step."""
   from ai.tools.agent_tools import make_handlers
-  handlers = make_handlers()
+  handlers = make_handlers(get_state_reader=_workflow_state_reader)
   handler = handlers.get(name)
   if handler is None:
     return {"ok": False, "error": f"tool '{name}' not found"}
   if asyncio.iscoroutinefunction(handler):
     return await handler(args)
   return handler(args)
+
+
+def _workflow_state_reader():
+  """Minimal state-reader shim for make_handlers inside workflow runs."""
+  from types import SimpleNamespace
+  return SimpleNamespace(update=lambda timeout=0: SimpleNamespace(is_driving=False))
