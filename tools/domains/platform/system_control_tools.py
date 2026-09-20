@@ -150,9 +150,12 @@ async def manager_control(
     try:
       with log_path.open("a", encoding="utf-8") as logf:
         logf.write(f"\n--- launch {time.strftime('%Y-%m-%d %H:%M:%S')} ---\n")
+        # cwd must be the manager's own dir: process_config.py gates several procs with
+        # relative paths (e.g. os.path.exists("../../sunnypilot/sunnylink/uploader.py")),
+        # so launching from openpilot_root silently drops sunnylink_uploader & friends.
         proc = await asyncio.create_subprocess_exec(
           "python", str(manager_py),
-          cwd=str(root),
+          cwd=str(manager_py.parent),
           env=env,
           stdout=logf,
           stderr=asyncio.subprocess.STDOUT,
