@@ -127,9 +127,9 @@ ai/ 子模块经过多年/多人迭代，已出现明显的**分层模糊、重�
 - `ai/mcp/host.py`
 
 **建议方案**
-- 引入**工具注册器接口** `ai/tools/registry.py`：
-  - 定义 `ToolRegistry` 类，提供 `register(name, schema, handler)`。
-  - `agent_tools.py` 在模块加载时创建全局 `ToolRegistry` 实例。
+- 引入**工具注册器接口** `ai/tools/tool_registry.py`（**注：原稿写作 `ai/tools/registry.py`，实际落点为 `tool_registry.py`；`registry.py` 保留为兼容 facade，勿改为类**）：
+  - 定义 `ToolRegistry` 类，提供 `register(name, handler, spec, capability)`。
+  - `agent_tools.py` 在模块加载时创建全局 `ToolRegistry` 实例（经 `registry_from_agent_tools()` 桥接）。
   - `harness_tools.py`、`skill/registry.py`、`mcp/host.py` 在初始化时向该实例注册，而不是互相 import。
 - 将工具 schema 构建延迟到首次调用时（lazy build），打破模块级循环。
 
@@ -220,7 +220,7 @@ ai/ 子模块经过多年/多人迭代，已出现明显的**分层模糊、重�
   - `ai/tools/vehicle/__init__.py` 提供 `register_vehicle_tools(registry)`。
   - `ai/tools/domains/platform/__init__.py` 提供 `register_platform_tools(registry)`。
   - `ai/tools/harness_tools.py` 提供 `register_harness_tools(registry)`。
-- `agent_tools.py` 简化为 orchestrator：
+- `agent_tools.py` 简化为 orchestrator（`ToolRegistry` 取自 `ai/tools/tool_registry.py`）：
   ```python
   registry = ToolRegistry()
   register_vehicle_tools(registry)
@@ -259,13 +259,16 @@ ai/ 子模块经过多年/多人迭代，已出现明显的**分层模糊、重�
 - `ai/mcp/host.py`
 
 **建议方案**
-- 引入 `ai/tools/registry.py` 作为统一注册表：
+- 引入 `ai/tools/tool_registry.py` 作为统一注册表（**落点说明见 2.1 节；`registry.py` 保留 facade**）：
   ```python
   class ToolRegistry:
-      def register(self, name: str, schema: dict, handler: Callable) -> None: ...
-      def get_handler(self, name: str) -> Callable: ...
-      def get_schema(self, name: str) -> dict: ...
+      def register(self, name: str, handler: Callable, spec: dict, capability: dict | None = None) -> None: ...
+      def get_handler(self, name: str) -> Callable | None: ...
+      def get_schema(self, name: str) -> dict | None: ...
       def list_tools(self) -> list[dict]: ...
+      def handlers(self) -> dict[str, Callable]: ...
+      def to_handlers_dict(self) -> dict[str, Callable]: ...
+      def filter_by_capability(self, *, group=None, driving=None, enabled_only=False, ...) -> list[str]: ...
   ```
 - 所有扩展通过 `register_tools(registry)` 函数注册。
 - `Agent` 内部 `ToolPipeline` 直接使用 `ToolRegistry`。

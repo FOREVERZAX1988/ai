@@ -70,7 +70,11 @@ ai/ 子模块已完成 P0-P2 增量能力建设，当前处于功能快速扩张
 
 | # | 问题 | 涉及文件 | 建议方案 | 风险 |
 |---|------|---------|---------|------|
-| A-P0.1 | 工具注册入口分散 | `ai/tools/agent_tools.py`, `harness_tools.py`, `platform_extensions.py`, `skill/registry.py`, `mcp/host.py` | 引入 `ai/tools/registry.py`，所有扩展通过 `register_tools(registry)` 注册 | 工具丢失风险，需全量回归 |
+| A-P0.1 | 工具注册入口分散 | `ai/tools/agent_tools.py`, `harness_tools.py`, `platform_extensions.py`, `skill/registry.py`, `mcp/host.py` | 引入 `ai/tools/tool_registry.py`，所有扩展通过 `register_tools(registry)` 注册（**实际落点见下方说明**） | 工具丢失风险，需全量回归 |
+
+> **A-P0.1 落点说明（已实现）**：`ToolRegistry` 类的实际落点为 **`ai/tools/tool_registry.py`**。
+> `ai/tools/registry.py` 保留为**兼容 facade**（`from ai.tools.registry import build_tool_schemas` 等模块级函数导入方式不变，勿改为类）。
+> 桥接函数 `registry_from_agent_tools()` 位于 `tool_registry.py`，将 `agent_tools.build_tool_schemas()` / `TOOL_META` / `make_handlers()` 汇总为一个 `ToolRegistry`；`tool_registry.py` 本身零 openpilot 依赖（纯标准库），可用 `ToolRegistry.from_parts()` 依赖注入。配套测试：`ai/tests/test_tool_registry.py`。
 | A-P0.2 | 双 Skill 系统 | `ai/skills/*.py`, `ai/skill/*.py` | 文件型 loader 只返回 `SkillManifest`，`ai/skill/registry.py` 成为唯一运行时注册表 | 需保持文件型 Skill 兼容 |
 | A-P0.3 | Session 持久化双轨 | `core/session/storage.py`, `core/session/log.py`, `core/session/repair.py` | `SessionLog` 作为 `SessionStorage` 的类型化包装，统一修复逻辑 | 格式迁移需双写过渡期 |
 | A-P0.4 | Agent/Chat handler 重复 | `core/agent/agent.py`, `core/chat/runner.py`, `server/op_routes.py`, `server/app_factory.py` | 新增 `ai/core/agent/factory.py`，统一本地/生产 Agent 构造 | 中间件差异需保留 |
