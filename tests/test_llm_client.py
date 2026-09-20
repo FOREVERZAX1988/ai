@@ -138,6 +138,39 @@ class TestLLMClientHeaders(unittest.TestCase):
     self.assertTrue(DEFAULT_USER_AGENT.startswith("op-assistant/"))
     self.assertNotEqual(DEFAULT_USER_AGENT, "op-assistant/0.0.0")
 
+  def test_opencode_auto_generates_session_when_empty(self):
+    from ai.core.llm.client import _stream_chat_completion, _ensure_opencode_session, OPENCODE_PROVIDERS
+
+    config = self._config(session_id="")  # no session provided
+    # reset per-provider cache to a clean state
+    _ensure_opencode_session._cache = {}
+
+    fake_resp = _FakeResponse(200)
+    fake_resp.content = _AsyncIterator([
+      b'data: {"choices":[{"delta":{"content":"hi"}}]}\n',
+      b'data: [DONE]\n',
+    ])
+    session, post_mock = _make_session_mock("post", fake_resp)
+
+    async def run():
+      with patch("aiohttp.ClientSession", return_value=session):
+        async for _ in _stream_chat_completion(
+          config, [{"role": "user", "content": "hello"}], None, None, None, thinking_mode="user", timeout_total=10
+        ):
+          pass
+
+    asyncio.run(run())
+    headers = post_mock.call_args.kwargs["headers"]
+    self.assertIn("x-opencode-session", headers)
+    self.assertTrue(headers["x-opencode-session"].startswith("op-session-"))
+
+  def test_ark_custom_provider_not_in_open_code_set(self):
+    from ai.core.llm.client import OPENCODE_PROVIDERS
+    # 火山方舟 ark-code-latest is a custom provider and must stay out of OPENCODE_PROVIDERS.
+    self.assertNotIn("custom", OPENCODE_PROVIDERS)
+    self.assertIn("opencode-zen", OPENCODE_PROVIDERS)
+    self.assertIn("opencode-go", OPENCODE_PROVIDERS)
+
   def test_chat_completion_updates_config_session_id(self):
     from ai.core.llm.client import AIConfig, chat_completion
 

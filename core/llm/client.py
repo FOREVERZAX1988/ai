@@ -7,6 +7,7 @@ Streams content, reasoning_content, tool_calls, and usage.
 
 import json
 import os
+import uuid
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, AsyncIterator, Literal
@@ -24,8 +25,34 @@ def _default_user_agent() -> str:
 
 DEFAULT_USER_AGENT = _default_user_agent()
 
+
 # Providers that require a stable x-opencode-session header per conversation.
 OPENCODE_PROVIDERS = frozenset({"opencode-zen", "opencode-go"})
+
+
+def _ensure_opencode_session(config) -> str:
+  """Return a stable x-opencode-session id for OpenCode-family providers.
+
+  Background callers (e.g. scheduler chat_notify, embedded tool calls) often
+  omit a per-conversation session id, which makes the OpenCode gateway return
+  400 'Request is missing x-opencode-session'. Instead of failing, generate a
+  deterministic id once (per account) and reuse it across attempts so the
+  gateway can still route efficiently. Non-OpenCode providers are untouched.
+  """
+  if config.provider not in OPENCODE_PROVIDERS:
+    return config.session_id
+  if config.session_id:
+    return config.session_id
+  # Generate (and cache) a stable per-provider session id.
+  if not getattr(_ensure_opencode_session, "_cache", None):
+    _ensure_opencode_session._cache = {}
+  sid = _ensure_opencode_session._cache.get(config.provider)
+  if not sid:
+    sid = f"op-session-{config.provider}-{uuid.uuid4().hex[:16]}"
+    _ensure_opencode_session._cache[config.provider] = sid
+  config.session_id = sid
+  return sid
+
 
 DEFAULT_ENDPOINTS = {
   "opencode-zen": "https://opencode.ai/zen/v1",
@@ -435,6 +462,7 @@ async def _stream_chat_completion(
   if config.provider == "openrouter":
     headers["HTTP-Referer"] = "https://openpilot.com/"
     headers["X-Title"] = "Openpilot AI Agent"
+  _ensure_opencode_session(config)
   if config.provider in OPENCODE_PROVIDERS and config.session_id:
     headers["x-opencode-session"] = config.session_id
   if config.user_agent:
@@ -629,6 +657,7 @@ async def list_models(config: AIConfig) -> dict[str, Any]:
 
   url = f"{config.endpoint}/models"
   headers = {"Authorization": f"Bearer {config.api_key}"}
+  _ensure_opencode_session(config)
   if config.provider in OPENCODE_PROVIDERS and config.session_id:
     headers["x-opencode-session"] = config.session_id
   if config.user_agent:
