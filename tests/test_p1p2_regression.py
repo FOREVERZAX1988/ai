@@ -8,7 +8,7 @@
 - T04 bundle/profile 与 workflow graph 存在性
 
 运行：
-    cd /e/sp && PYTHONPATH="E:\sp\ai" python -m pytest ai/tests/test_p1p2_regression.py -q
+    cd /e/sp && PYTHONPATH="E:/sp/ai" python -m pytest ai/tests/test_p1p2_regression.py -q
 """
 
 from __future__ import annotations
