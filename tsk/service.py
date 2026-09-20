@@ -26,7 +26,6 @@ from ai.tsk.lib.dump_dataflash import DUMP_TOTAL, dump as dump_dataflash, dump_p
 from ai.tsk.lib.env import is_agnos, setup as tsk_env_setup
 from ai.tsk.lib.extractor import NotAGNOSError, TSKExtractor
 from ai.tsk.lib.key_file_manager import KeyFileManager, format_key
-from ai.tsk.lib.matcher import run as run_matcher
 from ai.tsk.lib.panda_connect import tici_info
 
 OFFROAD_ALERT_PARAM = "Offroad_NoFirmware"
@@ -485,6 +484,11 @@ def run_match_and_install() -> dict[str, Any]:
   if not matcher_lock.acquire(blocking=False):
     return {"ok": False, "status": "running", "message": "密钥查找已在运行中。"}
   try:
+    # Imported here (not at module load) so that `from ai.tsk import service` —
+    # and the unrelated job_control helpers — never require the Crypto/matcher
+    # stack on hosts without pycryptodome.
+    from ai.tsk.lib.matcher import run as run_matcher
+
     result = run_matcher()
     if result["status"] == "found":
       KeyFileManager().install_key(result["key"])

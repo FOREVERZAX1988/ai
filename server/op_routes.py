@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 import time
 import uuid
 from collections.abc import Awaitable, Callable
@@ -499,47 +500,105 @@ async def api_fallback(request: web.Request) -> web.Response:
   return web.json_response({"ok": True, "mode": "local-dev", "path": path})
 
 
+_PATH_PARAM_RE = re.compile(r"\{([^{}:]+):[^{}]*\}")
+
+
+def _canonical(path: str) -> str:
+  """Normalize ``{name:regex}`` path params to aiohttp's canonical ``{name}``.
+
+  aiohttp stores ``/api/ai/{tail:.*}`` as canonical ``/api/ai/{tail}``, so a
+  naive string compare would miss an existing catch-all and re-register it.
+  """
+  return _PATH_PARAM_RE.sub(r"{\1}", path)
+
+
+def _route_signature(route: Any) -> tuple[str, str] | None:
+  """Return ``(METHOD, canonical_path)`` for a router entry, else ``None``.
+
+  System routes (aiohttp's built-in 404/405 handlers, static mounts) carry no
+  canonical resource path and are ignored.
+  """
+  method = getattr(route, "method", "") or ""
+  resource = getattr(route, "resource", None)
+  path = getattr(resource, "canonical", None)
+  if path is None:
+    return None
+  return method.upper(), path
+
+
+def _already_registered(app: web.Application, method: str, path: str) -> bool:
+  """True when an equivalent path+method route is already on ``app.router``.
+
+  aiohttp permits duplicate path+method registration and silently shadows the
+  earlier one (first registration wins). ``setup_routes`` is the *fallback*
+  layer, so it must not re-register endpoints the authoritative production
+  router already owns — doing so only creates dead, unreachable handlers.
+  """
+  want = (method.upper(), _canonical(path))
+  for route in app.router.routes():
+    if _route_signature(route) == want:
+      return True
+  return False
+
+
+def _bind(app: web.Application, method: str, path: str, handler: Any) -> None:
+  """Register ``handler`` for ``(method, path)`` unless it already exists."""
+  if _already_registered(app, method, path):
+    return
+  app.router.add_route(method, path, handler)
+
+
 def setup_routes(app: web.Application) -> None:
-  app.router.add_get("/api/ai/health", health)
-  app.router.add_get("/api/ai/config", api_config_get)
-  app.router.add_post("/api/ai/config", api_config_post)
-  app.router.add_get("/api/ai/config/diagnose", api_config_diagnose)
-  app.router.add_get("/api/ai/status", api_status)
-  app.router.add_get("/api/ai/bootstrap", api_bootstrap)
-  app.router.add_get("/api/ai/providers", api_providers)
-  app.router.add_post("/api/ai/chat", api_chat)
-  app.router.add_post("/api/ai/chat/completions", api_chat_completions)
-  app.router.add_get("/api/ai/chat/jobs", api_chat_jobs_list)
-  app.router.add_post("/api/ai/chat/jobs", api_chat_jobs_create)
-  app.router.add_get("/api/ai/chat/jobs/{job_id}", api_chat_jobs_get)
-  app.router.add_delete("/api/ai/chat/jobs/{job_id}", api_chat_jobs_get)
-  app.router.add_get("/api/ai/chat/jobs/{job_id}/stream", api_chat_jobs_stream)
-  app.router.add_post("/api/ai/write/confirm", api_write_confirm)
-  app.router.add_get("/api/ai/sessions", api_sessions)
-  app.router.add_post("/api/ai/sessions", api_sessions_create)
-  app.router.add_get("/api/ai/sessions/{session_id}/log", api_session_log)
-  app.router.add_post("/api/ai/session/resume", api_session_resume)
-  app.router.add_get("/api/ai/audit/verify", api_audit_verify)
-  app.router.add_get("/api/ai/notifications", api_notifications)
-  app.router.add_post("/api/ai/notifications", api_notifications)
-  app.router.add_get("/api/ai/sync/ws", api_sync_ws)
-  app.router.add_get("/api/ai/rag", api_rag)
-  app.router.add_post("/api/ai/rag", api_rag)
-  app.router.add_get("/api/ai/scheduler", api_scheduler)
-  app.router.add_post("/api/ai/scheduler", api_scheduler)
-  app.router.add_get("/api/ai/tools", api_tools_meta)
-  app.router.add_get("/api/ai/skills/registry", api_skills_registry)
-  app.router.add_post("/api/ai/tool", api_tool_invoke)
-  app.router.add_get("/api/ai/files/content", api_files_content)
-  app.router.add_post("/api/ai/files/content", api_files_content)
-  app.router.add_get("/tools-panel", tools_panel_page)
+  """Register the local-dev fallback routes.
+
+  Acts as a *fallback* layer: any endpoint already registered by the
+  authoritative production router (``ai.server.routes.register_routes``) is
+  skipped, so this module never shadows a real handler with a degraded one.
+  The non-overlapping endpoints below are the only entry points of the
+  standalone local-dev server (``ai/server/app.py`` calls only this function)
+  and must always be registered.
+  """
+  _bind(app, "GET", "/api/ai/health", health)
+  _bind(app, "GET", "/api/ai/config", api_config_get)
+  _bind(app, "POST", "/api/ai/config", api_config_post)
+  _bind(app, "GET", "/api/ai/config/diagnose", api_config_diagnose)
+  _bind(app, "GET", "/api/ai/status", api_status)
+  _bind(app, "GET", "/api/ai/bootstrap", api_bootstrap)
+  _bind(app, "GET", "/api/ai/providers", api_providers)
+  _bind(app, "POST", "/api/ai/chat", api_chat)
+  _bind(app, "POST", "/api/ai/chat/completions", api_chat_completions)
+  _bind(app, "GET", "/api/ai/chat/jobs", api_chat_jobs_list)
+  _bind(app, "POST", "/api/ai/chat/jobs", api_chat_jobs_create)
+  _bind(app, "GET", "/api/ai/chat/jobs/{job_id}", api_chat_jobs_get)
+  _bind(app, "DELETE", "/api/ai/chat/jobs/{job_id}", api_chat_jobs_get)
+  _bind(app, "GET", "/api/ai/chat/jobs/{job_id}/stream", api_chat_jobs_stream)
+  _bind(app, "POST", "/api/ai/write/confirm", api_write_confirm)
+  _bind(app, "GET", "/api/ai/sessions", api_sessions)
+  _bind(app, "POST", "/api/ai/sessions", api_sessions_create)
+  _bind(app, "GET", "/api/ai/sessions/{session_id}/log", api_session_log)
+  _bind(app, "POST", "/api/ai/session/resume", api_session_resume)
+  _bind(app, "GET", "/api/ai/audit/verify", api_audit_verify)
+  _bind(app, "GET", "/api/ai/notifications", api_notifications)
+  _bind(app, "POST", "/api/ai/notifications", api_notifications)
+  _bind(app, "GET", "/api/ai/sync/ws", api_sync_ws)
+  _bind(app, "GET", "/api/ai/rag", api_rag)
+  _bind(app, "POST", "/api/ai/rag", api_rag)
+  _bind(app, "GET", "/api/ai/scheduler", api_scheduler)
+  _bind(app, "POST", "/api/ai/scheduler", api_scheduler)
+  _bind(app, "GET", "/api/ai/tools", api_tools_meta)
+  _bind(app, "GET", "/api/ai/skills/registry", api_skills_registry)
+  _bind(app, "POST", "/api/ai/tool", api_tool_invoke)
+  _bind(app, "GET", "/api/ai/files/content", api_files_content)
+  _bind(app, "POST", "/api/ai/files/content", api_files_content)
+  _bind(app, "GET", "/tools-panel", tools_panel_page)
 
   # P2 skill lifecycle routes.
   from ai.server.handlers import skills as skills_lifecycle_handlers
-  app.router.add_post("/api/ai/skills/{id}/dispose", skills_lifecycle_handlers.api_skill_dispose)
-  app.router.add_get("/api/ai/skills/{id}/diagnose", skills_lifecycle_handlers.api_skill_diagnose)
-  app.router.add_post("/api/ai/skills/diagnose-all", skills_lifecycle_handlers.api_skill_diagnose_all)
-  app.router.add_post("/api/ai/skills/session/register", skills_lifecycle_handlers.api_skill_session_register)
+  _bind(app, "POST", "/api/ai/skills/{id}/dispose", skills_lifecycle_handlers.api_skill_dispose)
+  _bind(app, "GET", "/api/ai/skills/{id}/diagnose", skills_lifecycle_handlers.api_skill_diagnose)
+  _bind(app, "POST", "/api/ai/skills/diagnose-all", skills_lifecycle_handlers.api_skill_diagnose_all)
+  _bind(app, "POST", "/api/ai/skills/session/register", skills_lifecycle_handlers.api_skill_session_register)
 
-  # Catch-all fallback: must be last. Handles all unimplemented production endpoints.
-  app.router.add_route("*", "/api/ai/{tail:.*}", api_fallback)
+  # Catch-all fallback: must be last. Handles all unimplemented production
+  # endpoints so the local-dev UI can still render (intentionally lenient).
+  _bind(app, "*", "/api/ai/{tail:.*}", api_fallback)
