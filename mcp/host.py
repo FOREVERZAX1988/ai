@@ -70,7 +70,9 @@ class MCPStdioClient:
           break
         await self.close()
         await asyncio.sleep(self._reconnect_delay(attempt))
-    raise RuntimeError(f"MCP request '{method}' failed after retries: {last_err}")
+    # Preserve the underlying failure as the cause so callers can still see
+    # (e.g.) the original TimeoutError while the reconnect contract stays stable.
+    raise RuntimeError(f"MCP request '{method}' failed after retries: {last_err}") from last_err
 
   async def _request_once(self, method: str, params: dict[str, Any]) -> Any:
     async with self.lock:
