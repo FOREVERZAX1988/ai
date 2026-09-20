@@ -224,6 +224,32 @@ class ToolRegistryBridgeTests(unittest.TestCase):
     if "goal_create" in TOOL_META:
       self.assertEqual(reg.get_capability("goal_create"), TOOL_META["goal_create"])
 
+  def test_known_duplicate_schema_is_deduped(self):
+    """Regression: ``list_scheduled_tasks`` is legitimately declared in both
+    ``agent_tools`` and ``platform_extensions`` schemas, so
+    ``build_tool_schemas()`` emits it twice. The registry must dedupe by name
+    (single entry, still queryable with its schema + capability metadata)."""
+    try:
+      from ai.tools.agent_tools import TOOL_META, build_tool_schemas
+    except Exception as exc:  # pragma: no cover - env dependent
+      self.skipTest(f"agent_tools unavailable: {exc}")
+
+    raw_names = [
+      s["function"]["name"]
+      for s in build_tool_schemas()
+      if isinstance(s, dict) and isinstance(s.get("function"), dict)
+    ]
+    # The raw schema list contains the duplicate (documents the known input).
+    self.assertGreaterEqual(raw_names.count("list_scheduled_tasks"), 2)
+
+    reg = registry_from_agent_tools()
+    # The registry collapses it to exactly one entry.
+    self.assertEqual(reg.names().count("list_scheduled_tasks"), 1)
+    self.assertIn("list_scheduled_tasks", reg)
+    self.assertEqual(reg.get_schema("list_scheduled_tasks")["function"]["name"], "list_scheduled_tasks")
+    # And the capability meta is preserved from TOOL_META.
+    self.assertEqual(reg.get_capability("list_scheduled_tasks"), TOOL_META["list_scheduled_tasks"])
+
 
 if __name__ == "__main__":
   unittest.main()
