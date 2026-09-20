@@ -54,6 +54,18 @@ class WorkflowToolAdapter:
       return self._ctx.cancel_event
     return None
 
+  def _is_cancelled(self) -> bool:
+    """True if the run was cancelled via the flag or the shared cancel event.
+
+    ``RunContext`` exposes both ``cancelled`` (a boolean set by dispose) and
+    ``cancel_event``; ``RunContext.check_cancelled`` treats them identically, so
+    the adapter must too.
+    """
+    if self._ctx is not None and getattr(self._ctx, "cancelled", False):
+      return True
+    event = self._active_cancel_event()
+    return event is not None and event.is_set()
+
   def tool_names(self) -> list[str]:
     return sorted(self._handlers.keys())
 
@@ -71,7 +83,7 @@ class WorkflowToolAdapter:
       }
 
     cancel_event = self._active_cancel_event()
-    if cancel_event is not None and cancel_event.is_set():
+    if self._is_cancelled():
       return {
         "ok": False,
         "error": "cancelled before invocation",
@@ -105,7 +117,7 @@ class WorkflowToolAdapter:
           result = await coro
       else:
         result = handler(args)
-        if cancel_event is not None and cancel_event.is_set():
+        if self._is_cancelled():
           return {
             "ok": False,
             "error": "cancelled before completion",

@@ -276,9 +276,16 @@ class HarnessToolWiringTests(unittest.TestCase):
 
   def test_lsp_no_server_deterministic_error(self):
     import asyncio
+    from pathlib import Path
+
+    from ai.system.paths import workspace_path
     from ai.tools import harness_tools as ht
 
-    result = asyncio.run(ht._h_lsp({"action": "hover", "uri": "file:///x.py", "line": 1, "character": 1}))
+    # The uri must live inside the workspace root: an out-of-workspace uri is
+    # rejected earlier by the workspace containment guard (WORKSPACE_OUTSIDE),
+    # so we exercise the no-server branch with an in-workspace file.
+    uri = Path(workspace_path("", mkdir=True)).joinpath("x.py").as_uri()
+    result = asyncio.run(ht._h_lsp({"action": "hover", "uri": uri, "line": 1, "character": 1}))
     self.assertFalse(result.get("ok"))
     self.assertIn("no LSP server", result.get("error", ""))
 

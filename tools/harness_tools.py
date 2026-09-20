@@ -536,11 +536,14 @@ async def _h_lsp(a: dict[str, Any]) -> dict[str, Any]:
   if action not in ("goToDefinition", "findReferences", "goToImplementation", "hover", "diagnostics", "rename"):
     return LspError(f"unsupported lsp action: {action}", INVALID_RESPONSE).to_dict()
   try:
-    from urllib.parse import unquote, urlparse
+    from urllib.parse import urlparse
+    from urllib.request import url2pathname
     from pathlib import Path
     parsed = urlparse(uri)
     if parsed.scheme == "file":
-      file_path = Path(unquote(parsed.path)).resolve()
+      # url2pathname handles the Windows `file:///C:/...` form (which
+      # Path('/C:/...') would otherwise mis-resolve) and percent-decoding.
+      file_path = Path(url2pathname(parsed.path)).resolve()
       root_path = Path(workspace_root).resolve()
       try:
         file_path.relative_to(root_path)
@@ -552,7 +555,7 @@ async def _h_lsp(a: dict[str, Any]) -> dict[str, Any]:
   manager = get_lsp_manager()
   client = manager.get_client(workspace_root)
   if client is None:
-    return LspError(f"no LSP provider for workspace '{workspace_root}'", NO_PROVIDER, {"workspaceRoot": workspace_root}).to_dict()
+    return LspError(f"no LSP server for workspace '{workspace_root}'", NO_PROVIDER, {"workspaceRoot": workspace_root}).to_dict()
   new_name = str(a.get("newName") or a.get("new_name") or "").strip()
   try:
     if action == "goToDefinition":
