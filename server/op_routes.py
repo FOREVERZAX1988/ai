@@ -9,6 +9,7 @@ so the page can boot and chat in local-dev mode.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import time
 import uuid
@@ -17,6 +18,7 @@ from pathlib import Path
 from typing import Any
 
 from aiohttp import web
+from openpilot.common.params import Params
 
 from ai.audit.log import AuditLog
 from ai.core.agent.simple_loop import SimpleAgentLoop
@@ -31,18 +33,15 @@ from ai.tools.spill import SpillWaterfall
 from ai.tools.vehicle.params import VehicleParams
 from ai.tools.vehicle.schemas import build_vehicle_handlers, build_vehicle_tool_specs
 
-
-def _vehicle_params_factory(cwd: str) -> VehicleParams:
-  return VehicleParams(Path(cwd) / ".ai" / "vehicle")
-
-
-def _make_dispatcher(cwd: str, config: AIOPConfig) -> ToolDispatcher:
-  schemas = build_vehicle_tool_specs()
-  handlers = build_vehicle_handlers(_vehicle_params_factory)
-  sandbox = SandboxPolicyService(config)
-  audit = AuditLog.for_session(cwd)
-  hitl = HumanInLoop()
-  return ToolDispatcher(handlers, schemas, sandbox, audit, hitl)
+# Shared chat handling logic (A-P0.5): the local-dev runner + reusable
+# chat/completion handlers live in one module so this router only binds
+# endpoints. Per-router authentication stays at the binding/middleware layer.
+from ai.server.handlers.chat import (
+  api_chat_completions_local_dev,
+  api_chat_local_dev,
+  extract_prompt,
+  run_chat_local_dev,
+)
 
 
 def _cwd_from_request(request: web.Request) -> str:
@@ -55,187 +54,12 @@ def _cwd_from_request(request: web.Request) -> str:
   return str(body.get("cwd") or request.query.get("cwd") or str(Path.cwd()))
 
 
-def _make_offline_config() -> AIConfig:
-  """Offline mock config used by local-dev Agent runs."""
-  return AIConfig(provider="offline", model="offline-mock", api_key="offline")
-
-
-def _make_tool_pipeline(config: AIOPConfig) -> tuple[list[dict[str, Any]], dict[str, Any]]:
-  """Build schemas + handlers compatible with ai.core.agent.Agent.
-
-  Uses the same vehicle/harness/agent tool registration as production, but
-  bound to the standard StateReader. ToolPipeline will wrap sync/async handlers.
-  """
-  from ai.tools.agent_tools import build_tool_schemas, make_handlers
-
-  schemas = build_tool_schemas()
-
-  def _get_state_reader():
-    from ai.selfdrive.state import StateReader
-    return StateReader()
-
-  handlers = make_handlers(get_state_reader=_get_state_reader, params=Params())
-  return schemas, handlers
-
-
-def _make_agent(
-  cwd: str,
-  config: AIOPConfig,
-  body: dict[str, Any],
-  emit: Callable[[dict[str, Any]], Awaitable[None]],
-  session_id: str,
-  get_state_reader: Callable[[], Any],
-) -> "Agent":
-  """Construct a production Agent instance with AgentLoop enabled by default.
-
-  Tool schemas come from ``ai.tools.agent_tools.build_tool_schemas()`` and
-  handlers are built via ``ai.tools.agent_tools.make_handlers(...)``.  This
-  helper centralizes the construction seam exercised by T02 regression tests.
-  """
-  from ai.core.agent.agent import Agent
-
-  # Force AgentLoop default for local-dev harness.
-  body = {**body, "ai_use_agent_loop": True}
-
-  def _get_tool_handlers() -> dict[str, Any]:
-    _schemas, handlers = _make_tool_pipeline(config)
-    return handlers
-
-  agent_id = str(body.get("agent_id") or body.get("agentId") or "local-dev").strip() or "local-dev"
-  ai_config = _make_offline_config()
-  tool_schemas, _ = _make_tool_pipeline(config)
-
-  return Agent(
-    session_id=session_id,
-    agent_id=agent_id,
-    params=Params(),
-    config=ai_config,
-    body=body,
-    emit=emit,
-    get_state_reader=get_state_reader,
-    get_tool_handlers=_get_tool_handlers,
-    tools=tool_schemas,
-    max_tool_rounds=int(body.get("max_tool_rounds") or config.conversation.ai_max_turns or 16),
-    tool_timeout=float(body.get("tool_timeout") or config.conversation.ai_tool_timeout or 60.0),
-    stream_timeout=float(body.get("stream_timeout") or config.conversation.ai_stream_timeout or 120.0),
-    ai_use_agent_loop=True,
-  )
-
-
-async def _run_with_agent(
-  cwd: str,
-  config: AIOPConfig,
-  body: dict[str, Any],
-  prompt: str,
-  session_id: str,
-) -> dict[str, Any]:
-  """Run one chat turn through the production Agent (AgentLoop by default).
-
-  Falls back to SimpleAgentLoop if Agent construction/execution fails so the
-  local-dev server stays usable even when production dependencies are missing.
-  """
-  from ai.core.agent.registry import agent_registry
-
-  if prompt and not body.get("messages"):
-    body["messages"] = [{"role": "user", "content": prompt}]
-
-  events: list[dict[str, Any]] = []
-
-  async def _emit(event: dict[str, Any]) -> None:
-    events.append(event)
-
-  def _get_state_reader():
-    from ai.selfdrive.state import StateReader
-    return StateReader()
-
-  agent = _make_agent(cwd, config, body, _emit, session_id, _get_state_reader)
-  job_id = str(body.get("_job_id") or body.get("jobId") or "").strip()
-
-  async def _cancel() -> bool:
-    try:
-      agent.cancel()
-      return True
-    except Exception:
-      return False
-
-  entry = agent_registry.resume(
-    session_id,
-    agent.agent_id,
-    job_id=job_id,
-    meta={"mode": str(body.get("mode") or body.get("chatMode") or "local-dev")},
-    cancel_fn=_cancel,
-  )
-  try:
-    result = await agent.run()
-    return {"ok": True, "agent": result, "events": events}
-  finally:
-    status = "done"
-    if getattr(agent, "state", None) is not None and agent.state.is_cancelled():
-      status = "cancelled"
-    elif entry is not None:
-      agent_registry.mark_done(session_id, status)
-
-
-async def _run_simple_loop(
-  cwd: str,
-  config: AIOPConfig,
-  body: dict[str, Any],
-  prompt: str,
-  session_id: str,
-) -> dict[str, Any]:
-  """Original P0 fallback loop (preserved for resilience)."""
-  sessions = SessionManager(cwd)
-  session = sessions.get_or_create(session_id, cwd=cwd)
-  dispatcher = _make_dispatcher(cwd, config)
-  spill = SpillWaterfall(cwd)
-  provider = OfflineProvider()
-  loop = SimpleAgentLoop(session, sessions.storage, dispatcher, provider, config, spill=spill)
-  result = await loop.run(prompt)
-  return {"ok": True, "fallback": "simple_loop", "result": result}
-
-
-def _extract_prompt(messages: list[dict[str, Any]]) -> str:
-  """Extract the latest user text prompt from an OpenAI-style messages list."""
-  for m in reversed(messages):
-    if m.get("role") == "user":
-      content = m.get("content")
-      if isinstance(content, str):
-        return content
-      if isinstance(content, list):
-        return " ".join(p.get("text", "") for p in content if p.get("type") == "text")
-  return ""
-
-
-async def _run_chat_local_dev(
-  cwd: str,
-  config: AIOPConfig,
-  body: dict[str, Any],
-  prompt: str,
-  session_id: str,
-) -> dict[str, Any]:
-  """Try production Agent first, fallback to SimpleAgentLoop on failure."""
-  try:
-    return await _run_with_agent(cwd, config, body, prompt, session_id)
-  except Exception as e:
-    # Log and fallback so local-dev never hard-fails when Agent deps are unavailable.
-    import logging
-    logging.getLogger("ai.op_routes").warning(f"Agent run failed, falling back to SimpleAgentLoop: {e}")
-    return await _run_simple_loop(cwd, config, body, prompt, session_id)
-
-
-async def _extract_reply(result: Any) -> str:
-  """Extract assistant text from an Agent or fallback result."""
-  if not isinstance(result, dict):
-    return str(result)
-  if result.get("fallback"):
-    fb_result = result.get("result") or {}
-    if isinstance(fb_result, dict):
-      return str(fb_result.get("reply", "") or fb_result.get("answer", "") or fb_result.get("content", ""))
-    return str(fb_result)
-  agent_result = result.get("agent") or {}
-  if isinstance(agent_result, dict):
-    return str(agent_result.get("reply", "") or agent_result.get("answer", "") or agent_result.get("content", ""))
-  return ""
+# The local-dev Agent construction + chat runner now live in
+# ai.server.handlers.chat (A-P0.5). Keep the historical private names as thin
+# aliases so existing references (jobs handler, tests) keep working without
+# duplicating the logic here.
+_extract_prompt = extract_prompt
+_run_chat_local_dev = run_chat_local_dev
 
 
 async def health(_request: web.Request) -> web.Response:
@@ -372,65 +196,11 @@ async def api_write_confirm(request: web.Request) -> web.Response:
   return web.json_response({"ok": True, "confirmed": True})
 
 
-async def api_chat(request: web.Request) -> web.Response:
-  body = await request.json()
-  config = request.app.get("config") or AIOPConfig()
-  if body.get("sandbox_mode"):
-    config.conversation.ai_sandbox_mode = str(body.get("sandbox_mode"))
-  cwd = str(body.get("cwd") or str(Path.cwd()))
-  prompt = str(body.get("prompt") or "")
-  session_id = str(body.get("session_id") or "")
-
-  result = await _run_chat_local_dev(cwd, config, body, prompt, session_id)
-  return web.json_response(result)
-
-
-async def api_chat_completions(request: web.Request) -> web.Response:
-  """OpenAI-compatible chat completions endpoint used by the web UI."""
-  body = await request.json()
-  messages = body.get("messages", [])
-  prompt = _extract_prompt(messages)
-  session_id = str(body.get("session_id") or body.get("sessionId") or "")
-  stream = bool(body.get("stream", False))
-
-  config = request.app.get("config") or AIOPConfig()
-  if body.get("sandbox_mode"):
-    config.conversation.ai_sandbox_mode = str(body.get("sandbox_mode"))
-  cwd = str(body.get("cwd") or str(Path.cwd()))
-
-  result = await _run_chat_local_dev(cwd, config, body, prompt, session_id)
-
-  text = await _extract_reply(result)
-  completion_id = f"chatcmpl-{uuid.uuid4().hex}"
-  response = {
-    "id": completion_id,
-    "object": "chat.completion",
-    "created": int(time.time()),
-    "model": body.get("model", "offline-mock"),
-    "choices": [
-      {
-        "index": 0,
-        "message": {"role": "assistant", "content": text},
-        "finish_reason": "stop",
-      }
-    ],
-    "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
-  }
-  if stream:
-    # Minimal SSE stream.
-    async def _sse():
-      chunk = {
-        "id": completion_id,
-        "object": "chat.completion.chunk",
-        "created": response["created"],
-        "model": response["model"],
-        "choices": [{"index": 0, "delta": {"role": "assistant", "content": text}, "finish_reason": None}],
-      }
-      yield b"data: " + json.dumps(chunk, ensure_ascii=False).encode("utf-8") + b"\n\n"
-      done = {"id": completion_id, "object": "chat.completion.chunk", "created": response["created"], "model": response["model"], "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}]}
-      yield b"data: " + json.dumps(done, ensure_ascii=False).encode("utf-8") + b"\n\ndata: [DONE]\n\n"
-    return web.Response(body=_sse(), content_type="text/event-stream", headers={"Cache-Control": "no-cache"})
-  return web.json_response(response)
+# Chat endpoints now delegate to the shared handlers in ai.server.handlers.chat
+# (A-P0.5). Keeping the module-level names preserves the existing binding in
+# setup_routes while removing the duplicated handler bodies.
+api_chat = api_chat_local_dev
+api_chat_completions = api_chat_completions_local_dev
 
 
 async def api_session_resume(request: web.Request) -> web.Response:

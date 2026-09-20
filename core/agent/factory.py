@@ -101,8 +101,10 @@ class AgentFactory:
     agent_id: str = "",
     emit: EmitFn | None = None,
     get_state_reader: Callable[..., Any] | None = None,
+    get_tool_handlers: Callable[[], dict[str, Any]] | None = None,
     tools: list[dict[str, Any]] | None = None,
     session_log_path: str | None = "auto",
+    config: Any | None = None,
     **overrides: Any,
   ) -> Agent:
     """Create an :class:`Agent` wired with this factory's defaults.
@@ -113,13 +115,18 @@ class AgentFactory:
       agent_id: Optional stable agent id; defaults to a derived id.
       emit: Event emitter; defaults to the factory no-op emitter.
       get_state_reader: State-reader callable; defaults to a Params reader.
+      get_tool_handlers: Explicit lazy handler factory; defaults to the
+          factory-managed :meth:`tool_handlers_factory`.
       tools: Explicit tool schema list; defaults to ``build_tool_schemas()``.
       session_log_path: Persist path; ``"auto"`` derives a path, ``None`` disables.
+      config: Pre-resolved ``AIConfig``; when given it is used verbatim and
+          :meth:`resolve_config` is skipped (lets callers keep a bespoke
+          config such as the local-dev offline mock).
       **overrides: Any additional Agent kwargs (e.g. max_tool_rounds).
     """
     agent_id = agent_id or body.get("agent_id") or "default-agent"
     sid = session_id
-    config = self.resolve_config(body)
+    config = config if config is not None else self.resolve_config(body)
 
     if emit is None:
       emit = self.default_emit()
@@ -158,7 +165,7 @@ class AgentFactory:
       body=body,
       emit=emit,
       get_state_reader=_state_reader,
-      get_tool_handlers=self.tool_handlers_factory(),
+      get_tool_handlers=get_tool_handlers or self.tool_handlers_factory(),
       tools=tools,
       session_log_path=log_path,
       **overrides,
