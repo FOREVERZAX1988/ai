@@ -108,6 +108,8 @@ async def embed_texts(
   if config.provider == "openrouter":
     headers["HTTP-Referer"] = "https://github.com/commaai/openpilot"
     headers["X-Title"] = "op-assistant-rag"
+  from ai.core.llm.client import _ensure_opencode_session
+  _ensure_opencode_session(config)
   if config.provider in OPENCODE_PROVIDERS and config.session_id:
     headers["x-opencode-session"] = config.session_id
   if config.user_agent:
