@@ -715,6 +715,30 @@ async def test_connection(config: AIConfig) -> dict[str, Any]:
   }
 
 
+
+def _classify_probe_error(error: str | None) -> str:
+  """把探测错误归类为用户可读的『错误类型』。
+
+  返回类型之一：
+    ok        - 无错误
+    rate      - 限流/配额/欠费类（HTTP 429/402/403 quota，或文案含 限流/配额/balance/insufficient/quota）
+    auth      - 密钥/授权类（HTTP 401/403，或文案含 密钥/授权/unauthorized/invalid key）
+    stream    - 流式兼容 / SSE 分块类（TransferEncodingError / Response payload is not completed）
+    config    - 网络/端点/其他配置问题
+  """
+  if not error:
+    return "ok"
+  low = error.lower()
+  if "429" in error or "402" in error or "/plan quota" in low      or "quota" in low or "rate limit" in low or "限流" in low or "配额" in low      or "insufficient" in low or "balance" in low or "欠费" in low:
+    return "rate"
+  if "401" in error or "403" in error or "unauthorized" in low      or "invalid api key" in low or "密钥无效" in low or "未授权" in low:
+    return "auth"
+  if "transferencodingerror" in low or "response payload is not completed" in low \
+     or "sse" in low or "chunk" in low or "分块" in low or "流式" in low:
+    return "stream"
+  return "config"
+
+
 async def probe_stream_support(config: AIConfig) -> dict[str, Any]:
   """用最小请求分别以 stream=True / stream=False 探测端点，返回可用性与推荐值。
 
@@ -734,9 +758,11 @@ async def probe_stream_support(config: AIConfig) -> dict[str, Any]:
         probe_cfg, messages, max_tokens=8, timeout_total=30,
       )
       latency_ms = int((time.monotonic() - t0) * 1000)
-      results[label] = {"ok": not error, "latencyMs": latency_ms, "error": error}
+      results[label] = {"ok": not error, "latencyMs": latency_ms, "error": error,
+                        "kind": _classify_probe_error(error)}
     except Exception as e:  # noqa: BLE001
-      results[label] = {"ok": False, "latencyMs": None, "error": str(e)}
+      results[label] = {"ok": False, "latencyMs": None, "error": str(e),
+                        "kind": _classify_probe_error(str(e))}
 
   s = results.get("stream", {})
   ns = results.get("nonStream", {})
