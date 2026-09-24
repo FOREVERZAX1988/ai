@@ -34,10 +34,27 @@ import struct
 import time
 from pathlib import Path
 
-from Crypto.Cipher import AES
-
 from ai.tsk.lib.dump_dataflash import DUMP_START, DUMP_TOTAL, dump_path
 from ai.tsk.lib.env import CAN_ORACLE_PATH
+
+# AES is only needed for the actual key search. Importing it lazily keeps this
+# module (and therefore `ai.tsk.service` and the unrelated job_control paths)
+# importable on hosts without pycryptodome. The AES-CMAC primitives below are
+# unchanged; only the import timing and the failure message differ.
+try:
+  from Crypto.Cipher import AES
+  _AES_IMPORT_ERROR: Exception | None = None
+except Exception as _exc:  # pragma: no cover - depends on the environment
+  AES = None  # type: ignore[assignment]
+  _AES_IMPORT_ERROR = _exc
+
+
+def _require_aes():
+  """Return the AES module, or raise a clear error when pycryptodome is absent."""
+  if AES is None:
+    raise RuntimeError("pycryptodome (Crypto) is required for AES-CMAC matching") from _AES_IMPORT_ERROR
+  return AES
+
 
 # Acceptance: a window must authenticate at least MATCH_FLOOR oracle samples
 # (sync + protected), of which at least MIN_SYNC_MATCHES are sync. MATCH_FLOOR is
@@ -76,7 +93,8 @@ def _xor(a: bytes, b: bytes) -> bytes:
 
 
 def _cmac_subkeys(key: bytes):
-  L = AES.new(key, AES.MODE_ECB).encrypt(b"\x00" * 16)
+  aes = _require_aes()
+  L = aes.new(key, aes.MODE_ECB).encrypt(b"\x00" * 16)
   K1 = bytearray(_left_shift_one(L))
   if L[0] & 0x80:
     K1[15] ^= 0x87
@@ -87,6 +105,7 @@ def _cmac_subkeys(key: bytes):
 
 
 def _aes_cmac(key: bytes, msg: bytes, subkeys=None) -> bytes:
+  aes = _require_aes()
   K1, K2 = subkeys or _cmac_subkeys(key)
   n = max(1, (len(msg) + 15) // 16)
   complete = len(msg) > 0 and len(msg) % 16 == 0
@@ -96,7 +115,7 @@ def _aes_cmac(key: bytes, msg: bytes, subkeys=None) -> bytes:
     chunk = (msg[(n - 1) * 16:] + b"\x80").ljust(16, b"\x00")
     last = _xor(chunk, K2)
   X = b"\x00" * 16
-  cipher = AES.new(key, AES.MODE_ECB)
+  cipher = aes.new(key, aes.MODE_ECB)
   for i in range(n - 1):
     X = cipher.encrypt(_xor(X, msg[i * 16:(i + 1) * 16]))
   return cipher.encrypt(_xor(X, last))

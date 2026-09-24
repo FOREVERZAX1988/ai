@@ -6,7 +6,6 @@ import json
 import os
 import tempfile
 import threading
-import time
 from pathlib import Path
 from typing import Any
 
@@ -14,19 +13,11 @@ from ai.common.op_params import import_openpilot_params
 from ai.common.params import ITEMS
 from ai.system.paths import is_comma_device, openpilot_root
 
-# 2026-08-27: 大字段拆独立文件——config.json 全量写 5MB（web_sessions/rag_documents）
-# 造成写放大风暴（29 分钟写 6.4GB），系统 IO 拥塞 → restore/put 卡死、aid 无响应。
-# 大字段独立文件只在值变化时写；主 config.json 只写小字段（~200KB）。
-_LARGE_KEYS = frozenset({"ai_web_sessions", "ai_rag_documents"})
-_MIN_SAVE_INTERVAL = 1.0  # 最小写盘间隔（秒），防写放大风暴
-
 _EXTRA_DEFAULTS: dict[str, dict[str, str]] = {
   "ai_usage_log": {"param_type": "STRING", "default": ""},
   "ai_embedding_usage_log": {"param_type": "STRING", "default": ""},
   "ai_param_watchlist": {"param_type": "STRING", "default": ""},
   "ai_param_watchlist_baseline": {"param_type": "STRING", "default": ""},
-  "ai_stream": {"param_type": "STRING", "default": "1"},
-  "ai_max_tokens": {"param_type": "STRING", "default": "16384"},  # 2026-08-29: 输出上限默认 16384（原默认 4096 导致长回复/多工具调用被截断）
 }
 
 _LEGACY_GITHUB_PAT_PARAM = "GithubActionsPat"
@@ -71,14 +62,11 @@ class AiConfigStore:
     self._path = path or ai_config_path()
     self._schema = _build_schema()
     self._data: dict[str, str] | None = None
-    # 2026-08-27: 必须 RLock——put/remove 在锁内调 _ensure_loaded（_data 为 None 时
-    # 内部再次加锁），普通 Lock 不可重入 → 进程首个操作是 put 时死锁
-    # （复现：重装后首次导入 opbak → restore 第一个 put 永久挂起 → 前端报错）
+    # Reentrant: put()/remove() hold this lock while calling _ensure_loaded(),
+    # which acquires the same lock. A plain Lock would deadlock on the first
+    # write before any read (i.e. put() with self._data still None).
     self._lock = threading.RLock()
     self._migrated = False
-    self._save_timer: threading.Timer | None = None
-    self._save_thread: threading.Thread | None = None
-    self._save_pending = False
 
   @property
   def path(self) -> Path:
@@ -93,9 +81,6 @@ class AiConfigStore:
   def _param_type(self, key: str) -> str:
     return (self._schema.get(key) or {}).get("param_type", "STRING")
 
-  def _large_path(self, key: str) -> Path:
-    return self._path.parent / f"config.large.{key}.json"
-
   def _load_disk(self) -> dict[str, str]:
     if not self._path.is_file():
       return {}
@@ -104,21 +89,9 @@ class AiConfigStore:
       data = json.loads(raw)
       if not isinstance(data, dict):
         return {}
-      out = {str(k): "" if v is None else str(v) for k, v in data.items() if is_ai_param(str(k))}
+      return {str(k): "" if v is None else str(v) for k, v in data.items() if is_ai_param(str(k))}
     except (OSError, json.JSONDecodeError, TypeError, ValueError):
-      out = {}
-    # 合并大字段独立文件（旧 config.json 里的大字段仍在 data 中，会被后续写盘拆分迁移）
-    for key in _LARGE_KEYS:
-      path = self._large_path(key)
-      if not path.is_file():
-        continue
-      try:
-        val = json.loads(path.read_text(encoding="utf-8"))
-        if isinstance(val, str):
-          out[key] = val
-      except (OSError, json.JSONDecodeError, TypeError, ValueError):
-        continue
-    return out
+      return {}
 
   def _cleanup_stale_temp_files(self) -> None:
     parent = self._path.parent
@@ -130,19 +103,23 @@ class AiConfigStore:
       except OSError:
         pass
 
-  def _atomic_write(self, path: Path, payload: str) -> None:
-    fd, tmp = tempfile.mkstemp(prefix=".ai_config_", dir=str(path.parent))
+  def _save_disk(self, data: dict[str, str]) -> None:
+    self._path.parent.mkdir(parents=True, exist_ok=True)
+    self._cleanup_stale_temp_files()
+    payload = json.dumps(data, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
+    fd, tmp = tempfile.mkstemp(prefix=".ai_config_", dir=str(self._path.parent))
     try:
       with os.fdopen(fd, "w", encoding="utf-8") as f:
         f.write(payload)
         f.flush()
-      os.replace(tmp, path)
+        os.fsync(f.fileno())
+      os.replace(tmp, self._path)
       try:
-        os.chmod(path, 0o600)
+        os.chmod(self._path, 0o600)
       except OSError:
         pass
       try:
-        os.chmod(path.parent, 0o700)
+        os.chmod(self._path.parent, 0o700)
       except OSError:
         pass
     finally:
@@ -151,23 +128,6 @@ class AiConfigStore:
           os.unlink(tmp)
         except OSError:
           pass
-
-  def _save_disk(self, data: dict[str, str]) -> None:
-    self._path.parent.mkdir(parents=True, exist_ok=True)
-    self._cleanup_stale_temp_files()
-    main = {k: v for k, v in data.items() if k not in _LARGE_KEYS}
-    large = {k: v for k, v in data.items() if k in _LARGE_KEYS}
-    payload = json.dumps(main, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
-    self._atomic_write(self._path, payload)
-    # 大字段独立文件：仅值变化时写（避免每次全量写 3MB+）
-    for key, value in large.items():
-      path = self._large_path(key)
-      try:
-        old = json.loads(path.read_text(encoding="utf-8")) if path.is_file() else None
-      except Exception:
-        old = None
-      if old != value:
-        self._atomic_write(path, json.dumps(value, ensure_ascii=False))
 
   def _migrate_from_params_dir(self, data: dict[str, str]) -> None:
     params_dir = Path("/data/params/d")
@@ -266,53 +226,8 @@ class AiConfigStore:
       self._data = data
       return data
 
-  def _schedule_save(self) -> None:
-    """2026-08-27: 合并线程 + 节流异步写盘——事件循环零阻塞、防写放大。
-
-    写盘线程循环：put 标记 pending 后合并处理；最小写盘间隔 1s 节流；
-    写盘期间的新 put 只标 pending，写完继续处理（不会每次 put 都写）。
-    内存读取始终最新，重启最多丢最近 1s 的配置写入。
-    """
-    with self._lock:
-      self._save_pending = True
-      if self._save_thread is not None and self._save_thread.is_alive():
-        return
-      self._save_thread = threading.Thread(target=self._save_loop, daemon=True)
-      self._save_thread.start()
-
-  def _save_loop(self) -> None:
-    last_save = 0.0
-    try:
-      while True:
-        with self._lock:
-          pending = self._save_pending
-          self._save_pending = False
-          data = dict(self._data or {})
-        if not pending:
-          with self._lock:
-            self._save_thread = None
-          return
-        now = time.monotonic()
-        wait = _MIN_SAVE_INTERVAL - (now - last_save)
-        if wait > 0:
-          time.sleep(wait)
-        try:
-          if data:
-            self._save_disk(data)
-          last_save = time.monotonic()
-        except Exception:
-          pass
-    finally:
-      with self._lock:
-        if self._save_thread is not None:
-          self._save_thread = None
-
   def reload(self) -> None:
     with self._lock:
-      if self._save_timer is not None:
-        self._save_timer.cancel()
-        self._save_timer = None
-      self._save_pending = False
       self._data = None
       self._migrated = False
 
@@ -353,7 +268,7 @@ class AiConfigStore:
       data = dict(self._ensure_loaded())
       data[key] = text
       self._data = data
-    self._schedule_save()
+      self._save_disk(data)
 
   def put_bool(self, key: str, value: bool) -> None:
     self.put(key, value)
@@ -366,7 +281,7 @@ class AiConfigStore:
       if key in data:
         del data[key]
       self._data = data
-    self._schedule_save()
+      self._save_disk(data)
 
   def all_keys(self) -> list[str]:
     data = self._ensure_loaded()

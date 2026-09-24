@@ -46,6 +46,8 @@
         <li data-panel="skills">技能市场</li>
         <li data-panel="mcp">MCP 配置</li>
         <li data-panel="scheduler">定时任务</li>
+        <li data-panel="sessions">会话总结</li>
+        <li data-panel="ci">CI 工作流</li>
         <li data-panel="notifications">通知中心</li>
         <li data-panel="update">版本更新</li>
       </ul>
@@ -104,6 +106,30 @@
           </div>
           <div id="taskList">加载中...</div>
           <button onclick="loadTasks()">刷新</button>
+        </div>
+      </section>
+
+      <section class="panel hidden" id="panel-sessions">
+        <h1>会话总结</h1>
+        <div class="card">
+          <div class="row">
+            <input type="text" id="finishSessionId" placeholder="输入 session_id">
+            <input type="text" id="finishSessionTitle" placeholder="标题（可选）">
+            <button class="primary" onclick="finishSession()">总结并归档</button>
+          </div>
+          <div id="finishSessionResult"></div>
+        </div>
+      </section>
+
+      <section class="panel hidden" id="panel-ci">
+        <h1>CI 工作流</h1>
+        <div class="card">
+          <div class="row">
+            <input type="text" id="ciWorkflow" placeholder="workflow 文件名，例如 build.yaml">
+            <input type="text" id="ciRef" placeholder="分支，默认 master-c3" value="master-c3">
+            <button class="primary" onclick="runCiWorkflow()">触发</button>
+          </div>
+          <div id="ciResult"></div>
         </div>
       </section>
 
@@ -194,9 +220,29 @@
     async function createTask() {
       const text = document.getElementById('nlTask').value;
       if (!text) return alert('请输入任务描述');
-      const data = await apiPost('/scheduler', { name: text, nl: true });
+      const data = await apiPost('/scheduler', { name: text, action: 'chat_notify', trigger: 'daily_at', nl: true });
       alert(data.ok ? '已创建' : `失败: ${data.error || 'unknown'}`);
       loadTasks();
+    }
+    async function deleteTask(id) {
+      const data = await apiPost('/scheduler', { task_id: id, delete: true });
+      loadTasks();
+    }
+
+    async function finishSession() {
+      const session_id = document.getElementById('finishSessionId').value.trim();
+      if (!session_id) return alert('请输入 session_id');
+      const title = document.getElementById('finishSessionTitle').value.trim();
+      const data = await apiPost('/chat/tool', { tool: 'finish_session', args: { session_id, title } });
+      document.getElementById('finishSessionResult').innerHTML = '<pre style="white-space:pre-wrap">' + JSON.stringify(data, null, 2) + '</pre>';
+    }
+
+    async function runCiWorkflow() {
+      const workflow = document.getElementById('ciWorkflow').value.trim();
+      if (!workflow) return alert('请输入 workflow');
+      const ref = document.getElementById('ciRef').value.trim() || 'master-c3';
+      const data = await apiPost('/chat/tool', { tool: 'run_ci_workflow', args: { workflow, ref } });
+      document.getElementById('ciResult').innerHTML = '<pre style="white-space:pre-wrap">' + JSON.stringify(data, null, 2) + '</pre>';
     }
 
     async function loadNotifications() {
