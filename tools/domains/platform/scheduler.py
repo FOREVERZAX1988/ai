@@ -18,6 +18,7 @@ def _default_params():
   return Params()
 
 from ai.common.storage import read_param, write_param
+from ai.tools.domains.platform.scheduler_rrule import RRuleParser, RRuleScheduler
 
 TASKS_KEY = "ai_scheduled_tasks"
 STATE_KEY = "ai_scheduler_state"
@@ -30,7 +31,7 @@ VALID_ACTIONS = frozenset({
   "check_runner_health_offroad", "check_device_health_offroad", "check_github_ci_failed",
   "ota_preflight_offroad", "sync_timezone_wifi", "chat_notify",
 })
-VALID_TRIGGERS = frozenset({"interval", "on_offroad", "on_ignition", "on_wifi", "daily_at"})
+VALID_TRIGGERS = frozenset({"interval", "on_offroad", "on_ignition", "on_wifi", "daily_at", "rrule"})
 
 
 def _load_tasks(params: Params) -> list[dict[str, Any]]:
@@ -147,11 +148,20 @@ def upsert_task(
     minute = int((payload or {}).get("minute", 0))
     if hour < 0 or hour > 23 or minute < 0 or minute > 59:
       return {"ok": False, "error": "daily_at requires hour 0-23 and minute 0-59 in payload"}
+  if trigger == "rrule":
+    rrule_text = str((payload or {}).get("rrule", ""))
+    if not rrule_text or "FREQ=" not in rrule_text.upper():
+      return {"ok": False, "error": "rrule trigger requires payload.rrule with FREQ="}
+    try:
+      RRuleParser.parse(rrule_text)
+    except Exception as exc:
+      return {"ok": False, "error": f"invalid rrule: {exc}"}
   if action not in VALID_ACTIONS:
     return {"ok": False, "error": f"Unknown action '{action}'"}
   tasks = _load_tasks(params)
   tid = task_id or f"t_{uuid.uuid4().hex[:10]}"
   now = int(time.time())
+  next_run = _compute_next_run(trigger, payload or {}, now)
   entry = {
     "id": tid,
     "name": name or action,
@@ -163,6 +173,7 @@ def upsert_task(
     "last_run": 0,
     "last_result": "",
     "created_at": now,
+    "next_run": next_run,
   }
   replaced = False
   for i, t in enumerate(tasks):
@@ -170,6 +181,7 @@ def upsert_task(
       entry["created_at"] = t.get("created_at", now)
       entry["last_run"] = t.get("last_run", 0)
       entry["last_result"] = t.get("last_result", "")
+      entry["next_run"] = _compute_next_run(trigger, payload or {}, int(t.get("last_run", 0)) or now)
       tasks[i] = entry
       replaced = True
       break
@@ -179,11 +191,61 @@ def upsert_task(
   return {"ok": True, "task": entry}
 
 
+def _compute_next_run(trigger: str, payload: dict[str, Any], after: int) -> int:
+  if trigger == "rrule":
+    try:
+      spec = RRuleParser.parse(str(payload.get("rrule", "")))
+      return int(RRuleScheduler(spec).next_occurrence(after))
+    except Exception:
+      return after + 86400
+  if trigger == "daily_at":
+    import datetime
+    hour = int(payload.get("hour", 8))
+    minute = int(payload.get("minute", 0))
+    dt = datetime.datetime.fromtimestamp(after)
+    target = datetime.datetime(dt.year, dt.month, dt.day, hour, minute)
+    if target.timestamp() <= after:
+      target += datetime.timedelta(days=1)
+    return int(target.timestamp())
+  return 0
+
+
 def remove_task(params: Params, task_id: str) -> dict[str, Any]:
   tasks = _load_tasks(params)
   new_tasks = [t for t in tasks if t.get("id") != task_id]
   _save_tasks(params, new_tasks)
   return {"ok": True, "removed": len(tasks) - len(new_tasks)}
+
+
+# Unified scheduler API (T-P1.1) — wraps legacy triggers + RRULE in one surface.
+def schedule_task(params: Params, spec: dict[str, Any]) -> dict[str, Any]:
+  """Create or update a scheduled task from a generic spec.
+
+  ``trigger`` may be any legacy trigger or ``rrule`` (with payload.rrule).
+  """
+  trigger = str(spec.get("trigger") or "interval")
+  if trigger == "rrule":
+    payload = dict(spec.get("payload") or {})
+    payload.setdefault("rrule", spec.get("rrule"))
+    spec["payload"] = payload
+  return upsert_task(
+    params,
+    task_id=spec.get("task_id") or spec.get("id"),
+    name=str(spec.get("name") or spec.get("action") or "scheduled task"),
+    action=str(spec.get("action") or "chat_notify"),
+    interval_minutes=int(spec.get("interval_minutes") or spec.get("interval", 60)),
+    enabled=bool(spec.get("enabled", True)),
+    payload=spec.get("payload") or {},
+    trigger=trigger,
+  )
+
+
+def list_scheduled_tasks(params: Params | None = None) -> dict[str, Any]:
+  return list_tasks(params)
+
+
+def cancel_scheduled_task(params: Params, task_id: str) -> dict[str, Any]:
+  return remove_task(params, task_id)
 
 
 def _should_run_daily_at(task: dict[str, Any], now: int) -> bool:
@@ -294,6 +356,8 @@ async def run_due_tasks(
       should_run = (not bool(prev.get("wifi"))) and wifi
     elif trigger == "daily_at":
       should_run = _should_run_daily_at(task, now)
+    elif trigger == "rrule":
+      should_run = int(task.get("next_run") or 0) <= now
 
     if not should_run:
       continue
@@ -308,11 +372,15 @@ async def run_due_tasks(
       msg = await execute_action(action, task.get("payload") or {})
       task["last_run"] = now
       task["last_result"] = msg[:500]
+      if trigger == "rrule":
+        task["next_run"] = _compute_next_run(trigger, task.get("payload") or {}, now)
       results.append({"id": task.get("id"), "action": action, "trigger": trigger, "result": msg[:200]})
       changed = True
     except Exception as e:
       task["last_run"] = now
       task["last_result"] = f"error: {e}"
+      if trigger == "rrule":
+        task["next_run"] = _compute_next_run(trigger, task.get("payload") or {}, now)
       changed = True
 
   _save_state(params, {"driving": driving, "ignition": ignition, "wifi": wifi, "at": now})

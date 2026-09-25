@@ -17,12 +17,31 @@ _clients: dict[tuple[str, str], "MCPStdioClient"] = {}
 
 
 class MCPStdioClient:
-  def __init__(self, command: str, args: list[str], env: dict[str, str]) -> None:
+  def __init__(
+    self,
+    command: str,
+    args: list[str],
+    env: dict[str, str],
+    *,
+    reconnect_max_attempts: int = 3,
+    reconnect_initial_delay_ms: float = 250,
+    reconnect_max_delay_ms: float = 2000,
+  ) -> None:
     self.command, self.args, self.env = command, args, env
     self.proc: Any = None
     self.lock = asyncio.Lock()
     self.request_id = 0
     self.initialized = False
+    # D-P0.2: supervised reconnect policy.
+    self.reconnect_max_attempts = max(1, int(reconnect_max_attempts))
+    self.reconnect_initial_delay_ms = float(reconnect_initial_delay_ms)
+    self.reconnect_max_delay_ms = float(reconnect_max_delay_ms)
+
+  def _reconnect_delay(self, attempt: int) -> float:
+    """Exponential backoff with cap (ms)."""
+    import math
+    base = self.reconnect_initial_delay_ms * (2 ** (attempt - 1))
+    return min(base, self.reconnect_max_delay_ms) / 1000.0
 
   async def start(self) -> None:
     if self.proc is None or self.proc.returncode is not None:
@@ -40,6 +59,22 @@ class MCPStdioClient:
       self.initialized = True
 
   async def request(self, method: str, params: dict[str, Any]) -> Any:
+    """Issue an MCP request with supervised reconnect + backoff (D-P0.2)."""
+    last_err: Exception | None = None
+    for attempt in range(1, self.reconnect_max_attempts + 1):
+      try:
+        return await self._request_once(method, params)
+      except Exception as exc:  # noqa: BLE001
+        last_err = exc
+        if attempt >= self.reconnect_max_attempts:
+          break
+        await self.close()
+        await asyncio.sleep(self._reconnect_delay(attempt))
+    # Preserve the underlying failure as the cause so callers can still see
+    # (e.g.) the original TimeoutError while the reconnect contract stays stable.
+    raise RuntimeError(f"MCP request '{method}' failed after retries: {last_err}") from last_err
+
+  async def _request_once(self, method: str, params: dict[str, Any]) -> Any:
     async with self.lock:
       try:
         await self.start()
@@ -245,12 +280,35 @@ async def discover_mcp_tools(params: Params, server_id: str, session_id: str = "
   return await _mcp_discovery_request(params, server_id, "tools/list", "tools", session_id=session_id, sessionId=sessionId)
 
 
-async def discover_mcp_resources(params: Params, server_id: str, session_id: str = "", sessionId: str | None = None) -> dict[str, Any]:
-  return await _mcp_discovery_request(params, server_id, "resources/list", "resources", session_id=session_id, sessionId=sessionId)
+async def discover_mcp_resources(params: Params, server_id: str, session_id: str = "", sessionId: str | None = None, cursor: str = "") -> dict[str, Any]:
+  return await _mcp_discovery_request(params, server_id, "resources/list", "resources", session_id=session_id, sessionId=sessionId, cursor=cursor)
+
+
+async def discover_mcp_resource_templates(params: Params, server_id: str, session_id: str = "", sessionId: str | None = None) -> dict[str, Any]:
+  """List MCP resource templates (D-P1.2): ``resources/templates/list``."""
+  return await _mcp_discovery_request(params, server_id, "resources/templates/list", "resourceTemplates", session_id=session_id, sessionId=sessionId)
 
 
 async def discover_mcp_prompts(params: Params, server_id: str, session_id: str = "", sessionId: str | None = None) -> dict[str, Any]:
   return await _mcp_discovery_request(params, server_id, "prompts/list", "prompts", session_id=session_id, sessionId=sessionId)
+
+
+def get_mcp_tool_meta(params: Params, server_id: str, tool_name: str) -> dict[str, Any] | None:
+  """Return cached metadata for an MCP tool discovered via ``tools/list``."""
+  servers = _load_servers(params)
+  server = next((s for s in servers if s.get("id") == server_id), None)
+  if not server:
+    return None
+  meta = (server.get("tool_meta") or {}).get(tool_name)
+  if not isinstance(meta, dict):
+    return None
+  schema = meta.get("inputSchema") or meta.get("input_schema") or {}
+  return {
+    "name": tool_name,
+    "label": str(meta.get("title") or meta.get("description") or tool_name)[:60],
+    "description": str(meta.get("description") or ""),
+    "input_schema": schema,
+  }
 
 
 def _get_client(params: Params, server_id: str, session_id: str) -> MCPStdioClient | None:
@@ -315,6 +373,7 @@ async def _mcp_discovery_request(
   result_key: str,
   session_id: str = "",
   sessionId: str | None = None,
+  cursor: str = "",
 ) -> dict[str, Any]:
   servers = _load_servers(params)
   server = next((s for s in servers if s.get("id") == server_id), None)
@@ -328,16 +387,22 @@ async def _mcp_discovery_request(
     env = {str(k): str(v) for k, v in (server.get("env") or {}).items()}
     args = list(map(str, server.get("args") or []))
     config = (cmd, tuple(args), tuple(sorted(env.items())))
+    # D-P1.2: cursor pagination passthrough.
+    req_params: dict[str, Any] = {}
+    if cursor:
+      req_params["cursor"] = cursor
     if sid:
       client = _client_for(server_id, sid, cmd, args, env)
       async with _session_lock(server_id, sid, config):
-        result = await client.request(method, {})
+        result = await client.request(method, req_params)
     else:
-      result = await _rpc_stdio(cmd, args, env, method, {})
+      result = await _rpc_stdio(cmd, args, env, method, req_params)
     items = result.get(result_key) if isinstance(result, dict) else result
+    next_cursor = result.get("nextCursor") if isinstance(result, dict) else None
     if method == "tools/list" and isinstance(items, list):
       server["tools"] = [t.get("name") for t in items if isinstance(t, dict) and t.get("name")]
+      server["tool_meta"] = {str(t.get("name")): t for t in items if isinstance(t, dict) and t.get("name")}
       _save_servers(params, servers)
-    return {"ok": True, "serverId": server_id, "type": result_key, "items": items}
+    return {"ok": True, "serverId": server_id, "type": result_key, "items": items, "nextCursor": next_cursor}
   except Exception as e:
     return {"ok": False, "error": str(e), "serverId": server_id}
