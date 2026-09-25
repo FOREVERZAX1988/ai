@@ -183,6 +183,16 @@ from ai.tools.extensions import EXTENSION_TOOL_META  # noqa: E402
 
 TOOL_META.update(EXTENSION_TOOL_META)
 
+# T-P0.3: merge harness tool metadata so toolset/permission/Web-panel logic can
+# reason about goal_*/plan_*/todo_*/subagent_*/lsp/run_python_code/etc from the
+# stable constant. Deliberately imported after the big literal to avoid any
+# forward-reference ordering surprises.
+try:
+  from ai.tools.harness_tools import HARNESS_TOOL_META  # noqa: E402
+  TOOL_META.update(HARNESS_TOOL_META)
+except Exception:
+  pass
+
 READ_ONLY_TOOLS = frozenset(
   n for n, m in TOOL_META.items() if m.get("group") == "read"
 )
@@ -439,7 +449,8 @@ def make_handlers(
     state = get_state_reader().update(timeout=0)
     allowed, reason = is_action_allowed(action, state, admin=admin)
     if not allowed:
-      return {"ok": False, "error": reason}
+      from ai.core.errors import ERR_STATIONARY_REQUIRED, tool_error
+      return tool_error(reason or "stationary required", code=ERR_STATIONARY_REQUIRED)
     return None
 
   def _needs_confirm() -> bool:
@@ -1800,8 +1811,8 @@ def make_handlers(
     )
   )
   _register_skill_handlers(handlers)
-  from ai.tools.harness_tools import register_harness_handlers, register_mcp_handlers
-  register_harness_handlers(handlers, params=p, get_state_reader=get_state_reader)
+  from ai.tools.harness_tools import make_harness_handlers, register_mcp_handlers
+  handlers.update(make_harness_handlers(params=p, get_state_reader=get_state_reader))
   register_mcp_handlers(handlers, params=p)
   return handlers
 

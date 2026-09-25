@@ -62,7 +62,10 @@ class AiConfigStore:
     self._path = path or ai_config_path()
     self._schema = _build_schema()
     self._data: dict[str, str] | None = None
-    self._lock = threading.Lock()
+    # Reentrant: put()/remove() hold this lock while calling _ensure_loaded(),
+    # which acquires the same lock. A plain Lock would deadlock on the first
+    # write before any read (i.e. put() with self._data still None).
+    self._lock = threading.RLock()
     self._migrated = False
 
   @property

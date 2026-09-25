@@ -231,29 +231,57 @@ def _ensure_embedding_routes(hub: dict[str, Any], params: Params | None) -> None
           em.append(emb_model)
 
 
+def _persist_migrated_hub(params: Params, hub: dict[str, Any]) -> None:
+  """Persist a hub derived from the legacy config on first load (best effort).
+
+  Without this, the legacy → v2 hub migration was recomputed on every call and
+  never surfaced to the model-hub UI. Persisted only when the legacy config is
+  actually configured (has an API key) so an empty config does not materialise a
+  ghost account.
+  """
+  try:
+    amap = _account_map(hub)
+    primary = hub.get("primary") if isinstance(hub.get("primary"), dict) else None
+    acc = amap.get(str(primary.get("accountId") or "")) if primary else None
+    if acc and str(acc.get("apiKey") or "").strip():
+      write_param(params, HUB_PARAM, json.dumps(hub, ensure_ascii=False))
+  except Exception:
+    pass
+
+
 def load_model_hub(params: Params | None = None) -> dict[str, Any]:
   params = params or Params()
   raw = read_param(params, HUB_PARAM)
   if not raw:
-    return _hub_from_legacy(params)
+    hub = _hub_from_legacy(params)
+    _persist_migrated_hub(params, hub)
+    return hub
   try:
     if isinstance(raw, bytes):
       raw = raw.decode("utf-8", errors="replace")
     data = json.loads(raw)
   except Exception:
-    return _hub_from_legacy(params)
+    hub = _hub_from_legacy(params)
+    _persist_migrated_hub(params, hub)
+    return hub
   if not isinstance(data, dict):
-    return _hub_from_legacy(params)
+    hub = _hub_from_legacy(params)
+    _persist_migrated_hub(params, hub)
+    return hub
   accounts_in = data.get("accounts")
   if not isinstance(accounts_in, list) or not accounts_in:
-    return _hub_from_legacy(params)
+    hub = _hub_from_legacy(params)
+    _persist_migrated_hub(params, hub)
+    return hub
   accounts = []
   for item in accounts_in:
     acc = _sanitize_account(item)
     if acc:
       accounts.append(acc)
   if not accounts:
-    return _hub_from_legacy(params)
+    hub = _hub_from_legacy(params)
+    _persist_migrated_hub(params, hub)
+    return hub
   primary_in = data.get("primary") if isinstance(data.get("primary"), dict) else None
   primary = _sanitize_route(primary_in) if primary_in else None
   fallbacks = []
@@ -423,7 +451,9 @@ def resolve_fallback_configs(params: Params | None = None, base: AIConfig | None
   hub = load_model_hub(params)
   amap = _account_map(hub)
   out: list[AIConfig] = []
-  seen: set[tuple[str, str]] = {(base.provider, base.model)}
+  # Dedup key includes the thinking flag: the same provider+model is a valid
+  # distinct chain entry when routed with a different thinking mode.
+  seen: set[tuple[str, str, bool]] = {(base.provider, base.model, bool(base.thinking_enabled))}
   for item in hub.get("fallbacks") or []:
     if not isinstance(item, dict):
       continue
@@ -434,15 +464,15 @@ def resolve_fallback_configs(params: Params | None = None, base: AIConfig | None
       continue
     if acc.get("enabled") is False:
       continue
-    key = (str(acc.get("provider")), model)
-    if key in seen:
-      continue
-    seen.add(key)
     cfg = route_to_config(acc, item, base=base)
     if not cfg.api_key:
       continue
     if cfg.provider == "custom" and not cfg.base_url:
       continue
+    key = (str(cfg.provider), cfg.model, bool(cfg.thinking_enabled))
+    if key in seen:
+      continue
+    seen.add(key)
     out.append(cfg)
   if out:
     return out
@@ -504,7 +534,10 @@ def resolve_chat_chain_with_route(
   cfg = resolve_config_from_chat_route(params, chat_route, base=base)
   if not cfg:
     return chain
-  rest = [c for c in chain if (c.provider, c.model) != (cfg.provider, cfg.model)]
+  # The routed model becomes this request's primary; the configured fallbacks
+  # still apply (minus a duplicate of the routed config). The previously
+  # resolved primary is replaced rather than kept as a redundant fallback.
+  rest = [c for c in chain[1:] if (c.provider, c.model) != (cfg.provider, cfg.model)]
   return [cfg, *rest]
 
 

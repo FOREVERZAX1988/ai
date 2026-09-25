@@ -172,8 +172,20 @@ class AgentState:
     self.inbox = AgentInbox()
     self.phase = AgentPhase()
     self._status_listeners: list[StatusCallback] = []
-    self._activity_done: asyncio.Future[None] = asyncio.get_event_loop().create_future()
-    self._activity_done.set_result(None)
+    # Lazily created: AgentState must be constructible without a running event
+    # loop (e.g. unit tests / synchronous wiring). The first access materialises
+    # a completed future so `when_idle()` returns immediately until
+    # `begin_activity()` replaces it.
+    self._activity_done: asyncio.Future[None] | None = None
+
+  def _activity_future(self) -> asyncio.Future[None]:
+    """Return the current activity future, creating a completed one on demand."""
+    fut = self._activity_done
+    if fut is None:
+      fut = asyncio.get_event_loop().create_future()
+      fut.set_result(None)
+      self._activity_done = fut
+    return fut
 
   def on_status(self, cb: StatusCallback) -> Callable[[], None]:
     self._status_listeners.append(cb)
@@ -252,7 +264,7 @@ class AgentState:
 
   async def when_idle(self) -> None:
     while True:
-      activity = self._activity_done
+      activity = self._activity_future()
       await activity
       if activity is self._activity_done:
         return
@@ -279,8 +291,9 @@ class AgentState:
     self._activity_done = asyncio.get_event_loop().create_future()
 
   def end_activity(self) -> None:
-    if not self._activity_done.done():
-      self._activity_done.set_result(None)
+    fut = self._activity_done
+    if fut is not None and not fut.done():
+      fut.set_result(None)
 
 
 class ChatCancelled(Exception):

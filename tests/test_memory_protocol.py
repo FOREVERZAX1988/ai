@@ -70,7 +70,9 @@ class TestMemoryProtocol(unittest.TestCase):
   def test_apply_payload(self):
     with tempfile.TemporaryDirectory() as tmp:
       root = Path(tmp)
-      with mock.patch("ai.tools.daily_memory.workspace_dir", return_value=root):
+      # Patch the canonical module that apply_memory_payload → append_daily_memory
+      # actually resolves its workspace dir from (the shim only re-exports names).
+      with mock.patch("ai.tools.domains.core.daily_memory.workspace_dir", return_value=root):
         with mock.patch("ai.core.wspace.store.workspace_dir", return_value=root):
           out = apply_memory_payload(None, {
             "skip": False,
