@@ -5492,9 +5492,16 @@ async function runProbeStream() {
     const r = data.results || {};
     const s = r.stream || {};
     const ns = r.nonStream || {};
+    const kindLabel = (k, x) => {
+      if (k === 'rate') return '限流/配额';
+      if (k === 'auth') return '密钥/授权';
+      if (k === 'stream') return '流式兼容';
+      if (k === 'config') return '网络/配置';
+      return '其他';
+    };
     const fmt = (x) => x.ok
       ? `✓ ${x.latencyMs ?? '?'}ms`
-      : `✗ ${String(x.error || '失败').slice(0, 100)}`;
+      : `✗ [${kindLabel(x.kind, x)}] ${String(x.error || '失败').slice(0, 90)}`;
     const recMap = { stream: '开启', nonStream: '关闭' };
     // 探测实际使用模型中心主路由模型；从 savedConfig 还原展示，避免歧义
     const hub = savedConfig?.modelHub && typeof savedConfig.modelHub === 'object' ? savedConfig.modelHub : {};
@@ -5509,6 +5516,8 @@ async function runProbeStream() {
       `非流式: ${fmt(ns)}`,
       `推荐：${recMap[data.recommendation] || '无法判断'} — ${data.reason || ''}`,
     ];
+    const rateHit = Object.values(r).some((x) => x && x.kind === 'rate');
+    if (rateHit) lines.push('⚠ 检测到限流/配额类错误（如 429/配额不足），通常不是配置问题，而是服务商额度/流控导致的，可稍后重试或检查账户额度。');
     if (out) out.textContent = lines.join(' ｜ ');
     if (data.recommendation === 'nonStream' || data.recommendation === 'stream') {
       const target = data.recommendation === 'stream';
