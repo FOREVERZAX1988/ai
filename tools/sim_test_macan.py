@@ -72,8 +72,8 @@ def main() -> int:
 
     results = [
         # (unittest target, 描述)
-        ("openpilot.selfdrive.car.tests.test_car_interfaces.TestCarInterfaces.test_car_interfaces_193_PORSCHE_MACAN_MK1",
-         "Macan 车型接口 + fingerprint（第193个平台，含 PORSCHE_MACAN_MK1）"),
+        ("openpilot.selfdrive.car.tests.test_car_interfaces.TestCarInterfaces.test_car_interfaces_224_PORSCHE_MACAN_MK1",
+         "Macan 车型接口 + fingerprint（第224个平台，含 PORSCHE_MACAN_MK1）"),
         ("openpilot.selfdrive.car.tests.test_cruise_speed",
          "巡航速度逻辑（VCruiseHelper：SET初始化/RESUME/边沿激活/踩油门）"),
         ("openpilot.sunnypilot.selfdrive.car.tests.test_cruise_mode",

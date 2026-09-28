@@ -30,6 +30,8 @@ BUILTINS = set(dir(builtins))
 KNOWN_ISSUES = {
     ("modem.py", "Serial"):
         "上游隐藏缺陷：query_imei_at_port 用 Serial() 但无 import 且设备无 pyserial——该函数从未被调用（IMEI 走其他路径），加 import 反而会挂",
+    ("carrot_man.py", "__file__"):
+        "误报：__file__ 是 Python 内置模块属性，carrot_man 在函数内引用它定位脚本路径，运行期恒有定义",
 }
 
 OPTIONAL_MODULES = {

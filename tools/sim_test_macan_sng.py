@@ -29,6 +29,7 @@ def make_car_params():
   CP.brand = "volkswagen"
   CP.carFingerprint = "PORSCHE_MACAN_MK1"
   CP.pcmCruise = True
+  CP.openpilotLongitudinalControl = True  # 2026-09-07 安全门控要求 OP 纵向开启才启用
   return CP
 
 
