@@ -7,6 +7,7 @@ Streams content, reasoning_content, tool_calls, and usage.
 
 import json
 import os
+import uuid
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, AsyncIterator, Literal
@@ -23,6 +24,19 @@ def _default_user_agent() -> str:
 
 
 DEFAULT_USER_AGENT = _default_user_agent()
+
+# OpenCode Go requires a stable ``x-opencode-session`` per conversation so the
+# router can pin routing + prompt caching. Auxiliary/one-shot calls (heartbeat,
+# scheduled tasks, evolution reflect, connection probes, failover retries) do
+# not thread a conversation id, and simply omitting the header makes OpenCode Go
+# reject the request with HTTP 400 MissingSessionID. Fall back to a process
+# stable id instead of dropping the header.
+_FALLBACK_SESSION_ID = f"op-assistant-{uuid.uuid4().hex[:16]}"
+
+
+def opencode_session_id(session_id: str = "") -> str:
+  """Value for the x-opencode-session header: conversation id or a stable fallback."""
+  return session_id or _FALLBACK_SESSION_ID
 
 # Providers that require a stable x-opencode-session header per conversation.
 OPENCODE_PROVIDERS = frozenset({"opencode-zen", "opencode-go"})
@@ -435,8 +449,8 @@ async def _stream_chat_completion(
   if config.provider == "openrouter":
     headers["HTTP-Referer"] = "https://openpilot.com/"
     headers["X-Title"] = "Openpilot AI Agent"
-  if config.provider in OPENCODE_PROVIDERS and config.session_id:
-    headers["x-opencode-session"] = config.session_id
+  if config.provider in OPENCODE_PROVIDERS:
+    headers["x-opencode-session"] = opencode_session_id(config.session_id)
   if config.user_agent:
     headers["User-Agent"] = config.user_agent
 
@@ -629,8 +643,8 @@ async def list_models(config: AIConfig) -> dict[str, Any]:
 
   url = f"{config.endpoint}/models"
   headers = {"Authorization": f"Bearer {config.api_key}"}
-  if config.provider in OPENCODE_PROVIDERS and config.session_id:
-    headers["x-opencode-session"] = config.session_id
+  if config.provider in OPENCODE_PROVIDERS:
+    headers["x-opencode-session"] = opencode_session_id(config.session_id)
   if config.user_agent:
     headers["User-Agent"] = config.user_agent
   timeout = aiohttp.ClientTimeout(total=30, connect=10)

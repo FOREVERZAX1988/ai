@@ -11,7 +11,7 @@ from typing import Any
 
 import aiohttp
 
-from ai.core.llm.client import DEFAULT_ENDPOINTS, OPENCODE_PROVIDERS, _param_to_str
+from ai.core.llm.client import DEFAULT_ENDPOINTS, OPENCODE_PROVIDERS, _param_to_str, opencode_session_id
 
 try:
   from ai.common.params import AI_OPTIONAL_BASE_URL_PROVIDERS
@@ -108,8 +108,8 @@ async def embed_texts(
   if config.provider == "openrouter":
     headers["HTTP-Referer"] = "https://github.com/commaai/openpilot"
     headers["X-Title"] = "op-assistant-rag"
-  if config.provider in OPENCODE_PROVIDERS and config.session_id:
-    headers["x-opencode-session"] = config.session_id
+  if config.provider in OPENCODE_PROVIDERS:
+    headers["x-opencode-session"] = opencode_session_id(config.session_id)
   if config.user_agent:
     headers["User-Agent"] = config.user_agent
   else:

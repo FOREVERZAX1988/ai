@@ -93,6 +93,32 @@ class TestLLMClientHeaders(unittest.TestCase):
     self.assertEqual(headers["x-opencode-session"], "sess_123")
     self.assertTrue(headers["User-Agent"].startswith("op-assistant/"))
 
+  def test_opencode_go_injects_fallback_session_when_missing(self):
+    """OpenCode Go rejects requests without x-opencode-session (HTTP 400
+    MissingSessionID). Auxiliary call paths thread no conversation id, so a
+    stable fallback must still be sent."""
+    from ai.core.llm.client import _stream_chat_completion
+
+    config = self._config(session_id="")
+
+    fake_resp = _FakeResponse(200)
+    fake_resp.content = _AsyncIterator([
+      b'data: {"choices":[{"delta":{"content":"hi"}}]}\n',
+    ])
+    session, post_mock = _make_session_mock("post", fake_resp)
+
+    async def run():
+      with patch("aiohttp.ClientSession", return_value=session):
+        async for _ in _stream_chat_completion(
+          config, [{"role": "user", "content": "hello"}], None, None, None, thinking_mode="user", timeout_total=10
+        ):
+          pass
+
+    asyncio.run(run())
+    headers = post_mock.call_args.kwargs["headers"]
+    self.assertTrue(headers["x-opencode-session"])  # non-empty fallback
+    self.assertNotEqual(headers["x-opencode-session"], "sess_123")
+
   def test_non_opencode_does_not_inject_session(self):
     from ai.core.llm.client import _stream_chat_completion
 
