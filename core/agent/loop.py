@@ -73,6 +73,7 @@ class AgentLoop:
     stream_timeout: float = 120.0,
     workflow_id: str | None = None,
     compaction: Any = None,
+    tools_provider: Callable[[], list[dict[str, Any]] | None] | None = None,
   ) -> None:
     self.session_id = session_id
     self.agent_id = agent_id
@@ -85,6 +86,8 @@ class AgentLoop:
     self.stream_timeout = stream_timeout
     self.workflow_id = workflow_id
     self.compaction = compaction
+    # Re-resolved per turn so deferred-loaded tools reach the model immediately.
+    self.tools_provider = tools_provider
     self.state = AgentState(agent_id, session_id)
     self.log = SessionLog(session_id)
     self._driver_task: asyncio.Task[Any] | None = None
@@ -283,6 +286,13 @@ class AgentLoop:
       request["system"] = header.system
     if header.tools:
       request["tools"] = header.tools
+    if self.tools_provider is not None:
+      try:
+        fresh_tools = self.tools_provider()
+        if fresh_tools:
+          request["tools"] = fresh_tools
+      except Exception:
+        pass
 
     pending_tool_calls: dict[int, dict[str, Any]] = {}
     assistant_content = ""

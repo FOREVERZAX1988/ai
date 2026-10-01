@@ -96,6 +96,7 @@ class Agent:
       )
     except Exception:
       pass
+    self._register_meta_tools()
     self._total_usage: dict[str, Any] | None = None
     self._chat_messages: list[dict[str, Any]] = []
     self._resolved_model: str | None = None
@@ -580,6 +581,29 @@ class Agent:
         "content": _truncate_tool_content(result_json),
       })
 
+  def _register_meta_tools(self) -> None:
+    """Bind search_tools / load_tool into the pipeline.
+
+    The AgentLoop path (default: ai_use_agent_loop=True) executes every tool
+    through ``self.pipeline`` and never reaches ``_run_tool_calls``'s special
+    branch, so the meta tools must be registered as primitives here or the
+    model gets \"Tool 'load_tool' not implemented\" (UNKNOWN_TOOL) and every
+    non-core tool stays locked behind deferred loading.
+    """
+    try:
+      from ai.tools.deferred_loading import handle_load_tool, handle_search_tools
+    except Exception:
+      return
+    sid, jid = self.session_id, self.job_id
+    self.pipeline.register_primitive(
+      "search_tools",
+      lambda args: handle_search_tools(dict(args or {}), session_id=sid, job_id=jid),
+    )
+    self.pipeline.register_primitive(
+      "load_tool",
+      lambda args: handle_load_tool(dict(args or {}), session_id=sid, job_id=jid),
+    )
+
   async def _execute_special_tool(
     self,
     name: str,
@@ -721,6 +745,7 @@ class Agent:
         tool_timeout=self.tool_timeout,
         stream_timeout=self.stream_timeout,
         workflow_id=str(self.body.get("workflow_id") or self.body.get("workflowId") or self.body.get("workflow") or "").strip() or None,
+        tools_provider=self._active_tools,
       )
       # Pre-step compaction seam (G3): token-metered budget from params.
       try:
