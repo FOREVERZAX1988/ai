@@ -271,7 +271,52 @@ GIT_CONFIG_GLOBAL=/data/.gitcred/gitconfig GIT_TERMINAL_PROMPT=0 git push --no-v
 
 批二 master-c3：ai 推 FOREVERZAX1988/ai:master-c3（mouxangithub/ai 403），.gitmodules 的 ai 改指 FOREVERZAX1988/ai + branch=master-c3 并 sync，然后 push-fz.sh openpilot master-c3:master-c3 → 实测 openpilot 39e1ff086、ai 59e1a7cef、webui 381be3395 全部命中。注意 FZ/ai:main=2d0ac95 已分叉（比 48fa21e 多 27 个提交），别 force 推 main，用同名新分支。
 
+批三 重推 sp-macanlong-1001（子模块也同名）—— 3 个新碰壁点：
+5) 「改完了」却推不上：git status 里的 " M ai" 只是 gitlink 脏，**子模块内部的未提交改动根本不参与 push** → push 前 git -C <submodule> status --short 必须干净，先提交子模块再 bump gitlink 再推主仓。
+6) 子模块分支名与主仓不一致会导致 clone/--remote 拉不全 → 子模块**同名推** HEAD:refs/heads/<branch>，同时把子模块原有的 master-c3 也**快进**到同一 SHA，两条线不打架。
+7) 分支已存在（批一建的）→ 直接快进 push，**不要 --force**（会丢别人的提交）。主仓 HEAD 是远端 SHA 的后代即可。
+
+顺序固定为：提交子模块 → 推子模块同名分支 → 主仓 bump gitlink 提交 → 主仓推同名分支 → 逐个 ls-remote 逐字核验。子模块要提交进 push 的东西（如代码修复）必须先进 commit，否则远端分支看着完整、clone 出来缺代码。
+
 详见 ai/docs/GIT_PUSH_FOREVERZAX1988.md；另见 ai/docs/GIT_LFS.md、ai/docs/PUBLISH.md；技能 git-lfs-fork。""",
+  },
+  {
+    "id": "builtin_ui_freeze_webui_polling",
+    "title": "UI 卡住/图标点不动：webui 状态轮询阻塞事件循环",
+    "tags": ["ui", "webui", "freeze", "agnos", "cpu", "heat", "faq", "troubleshooting"],
+    "refresh": True,
+    "text": """现象：webui 能打开但**点任何图标都没反应**，设备同时发热。**不是 ui 进程、也不是 msgq。**
+
+真因：webui 状态 hub 的 _device_loop() 每 ~2.5s 调一次**未缓存**的 verify_agnos_update() —— 它对非活动槽每个 full_check 分区重做 sha256（约 70MB 块 IO / ~400ms），同时 HARDWARE.booted() 每秒 spawn ~10 个 sudo。这 400ms **同步阻塞在 HTTP 请求处理里** → 事件循环堵死 → 图标点不动 + 疯狂读盘发热。
+
+实测（修前→修后）：/api/opui/agnos、/api/opui/home 单次 0.41-0.49s → 0.006-0.018s（约 30×）；webuid CPU 12.6% → ~0%。
+
+修法：webui/server/bridge/agnos_api.py 给 verify_agnos_update() 结论加 TTL 缓存（_VERIFY_TTL_SEC=60，cache key = manifest + manifest mtime + job state 文件 mtime，install 进度一变立即失效）。提交 webui 381be33。
+
+第二大坑：**补丁提交了 ≠ 跑起来了**。第一次修完还是点不动，因为运行中的 webuid 是开机启的、早于补丁。→ 改完 webui/manager 侧代码必须重启对应进程（restart_service / keep_alive 拉起）。核对 `ps -eo lstart,pid,args | grep webuid` 与 `git -C webui log -1 --format=%cd`。
+
+别混淆："Driving State unavailable: No module named msgq-ipc_pyx" 是另一个历史问题（msgq Python 绑定没编译），只影响状态显示，**不会**让图标点不动；用它当解释前先复现一次。
+
+文档 ai/docs/UI_FREEZE_WEBUI_BLOCKING.md""",
+  },
+  {
+    "id": "builtin_device_log_path",
+    "title": "取不到设备日志（dp_dev_last_log / swaglog.*）",
+    "tags": ["log", "swaglog", "tools", "faq", "troubleshooting", "aid"],
+    "refresh": True,
+    "text": """现象：grep_log / read_manager_log 直接失败，报 Tool execution failed: b'dp_dev_last_log'，于是「拿不到最新日志」。
+
+两个叠加 bug：
+1) ai/tools/domains/core/diagnostics_tools.py::_read_device_log() 里 params.get("dp_dev_last_log") —— openpilot 的 Params.get() 先 check_key()，某些 build 上 dp_dev_last_log **不是合法 key** → 抛 openpilot.common.params.UnknownKeyName: b'dp_dev_last_log'（参数是 bytes，所以报错带 b''）。未捕获 → 异常穿透整个工具，**永远走不到 /data/log 兜底**。对照：read_params 容忍未知 key 返回 null，所以会出现「read_params 显示 null 但 grep_log 直接崩」。
+   修：把 params.get 包 try/except，读不到继续往下走。
+2) ai/system/paths.py::dev_log_path() 车机分支硬编码 /data/log/latest.log，而该文件在 AGNOS 上**不存在**；真实日志是滚动的 NDJSON /data/log/swaglog.0000000157。
+   修：取 /data/log 下 mtime 最新的 swaglog.*，完全没有才回退 latest.log。
+
+验证：python3 -c "import sys;sys.path.insert(0,'/data/openpilot');from ai.system.paths import dev_log_path;print(dev_log_path())" → /data/log/swaglog.0000000157；随后 read_manager_log 返回 source=/data/log/swaglog.0000000157，grep_log 不再报错。
+
+经验：工具报错信息本身就是根因线索（traceback 直接指到 diagnostics_tools.py:48）；**工具坏了先修工具，别用历史结论冒充新证据**。
+
+文档 ai/docs/DEVICE_LOG_PATH.md""",
   },
   {
     "id": "builtin_headless_webui",

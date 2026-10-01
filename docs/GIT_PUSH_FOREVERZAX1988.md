@@ -195,3 +195,61 @@ git ls-remote https://github.com/FOREVERZAX1988/webui.git     refs/heads/master-
 
 - 上批（`sp-macanlong-1001`）见本文上半部分
 - `ai/docs/GIT_LFS.md` — LFS 拉取 / 不推送的总策略
+
+---
+
+# 第三批：重推 sp-macanlong-1001（含 ai 子模块**同名**分支，2026-10-01）
+
+背景：批一建过 `sp-macanlong-1001`，但只到 `9193f1e2c`。之后 `master-c3` 上又落了 3 个提交
+（`c45e6e246 / 39e1ff086 / 54f5956cc`，ai 子模块指针 + 知识库），而且 **ai 子模块里还有未提交的
+工具修复**（`system/paths.py`、`tools/domains/core/diagnostics_tools.py`）。所以这一批的实质是
+"先提交、再重推、子模块也同名"。
+
+## 顺序（照抄）
+
+```sh
+# 1) 先提交**子模块内部**的改动 —— 不提交的东西永远不会被 push 带上去
+cd /data/openpilot/ai && git status --short          # 必须为空才算干净
+git add -A && git commit -m "fix(tools): ..."
+
+# 2) 子模块推同名分支（远端没有 → 新建，不会覆盖别人的线）
+/data/.gitcred/push-fz.sh ai HEAD:refs/heads/sp-macanlong-1001
+
+# 3) 主仓 bump gitlink + 提交
+cd /data/openpilot && git add ai && git commit -m "chore(ai): bump the ai submodule ..."
+
+# 4) 主仓推同名分支（批一已建过 → 这是**快进**，不要 --force）
+/data/.gitcred/push-fz.sh openpilot HEAD:refs/heads/sp-macanlong-1001
+
+# 5) 逐字核验
+for r in openpilot ai webui; do
+  echo "== $r"; git -C /data/openpilot${r/ai/\ai} rev-parse HEAD
+  GIT_CONFIG_GLOBAL=/data/.gitcred/gitconfig GIT_TERMINAL_PROMPT=0 \
+    git ls-remote "https://github.com/FOREVERZAX1988/$r.git" refs/heads/sp-macanlong-1001
+done
+```
+
+## 本批新增的 3 个碰壁点
+
+| 现象 | 根因 | 对策 |
+|------|------|------|
+| "改完了"却推不上去 / 远端还是旧 SHA | `git status` 里的 ` M ai` **只是 gitlink 脏**；子模块**内部**的未提交改动根本不参与 `git push` | push 前 `git -C <submodule> status --short` 必须干净；先提交子模块，再 bump gitlink |
+| 子模块分支名和主仓不一致 → 别人 clone 这条线时子模块拉不全 / `--remote` 拉到旧内容 | `.gitmodules` 里 `ai` 的 `branch = master-c3`，而这次推的是 `sp-macanlong-1001` 分支 | **同名推**（`HEAD:refs/heads/sp-macanlong-1001`）之外，再把子模块的 `master-c3` 也**快进**到同一个 SHA，让两条线不打架 |
+| 分支已存在（批一建的） | `sp-macanlong-1001` 不是新分支 | 直接 push（本地 HEAD 是远端 SHA 的后代 → 快进）；**不要** `--force`，否则会丢掉批一之后别人可能推的东西 |
+
+> 验证口径不变：**远端 SHA 必须逐字等于本地 HEAD**。只看到 `Everything up-to-date` 或
+> `* [new branch]` 都不算成功 —— 尤其要注意"推了主仓但没推子模块"这种看着成功的假成功。
+
+## 实测对照（第三批）
+
+| 仓 | 分支 | 远端 SHA | 本地 SHA | 结果 |
+|----|------|----------|----------|------|
+| `FOREVERZAX1988/openpilot` | `sp-macanlong-1001` | （见下方运行记录） | | |
+| `FOREVERZAX1988/ai` | `sp-macanlong-1001` | | | |
+| `FOREVERZAX1988/webui` | `sp-macanlong-1001` | `381be3395` | `381be3395` | ✅ 本来就对，无需重推 |
+
+## 相关文档
+
+- 上两批见本文上半部分
+- `ai/docs/GIT_LFS.md` — LFS 拉取 / 不推送的总策略
+- `ai/docs/UI_FREEZE_WEBUI_BLOCKING.md`、`ai/docs/DEVICE_LOG_PATH.md` — 本批 ai 子模块里带的两条修复知识
