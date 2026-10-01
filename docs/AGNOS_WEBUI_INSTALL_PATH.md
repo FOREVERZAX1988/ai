@@ -93,3 +93,55 @@ spec = importlib.util.spec_from_file_location("agnos_api", "/data/openpilot/webu
 m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
 print(m._openpilot_dir(), m._agnos_py(), os.path.isfile(m._agnos_py()))
 ```
+
+## 第二个坑（就是上表第二行）：`not_required` 现在有提示了（webui `040a1b1`）
+
+上表第二行写"前端若没提示就'看起来没反应'"—— 这一格 2026-10-01 补上了。实测它确实在骗人：
+
+```
+$ curl -s -X POST http://127.0.0.1:5080/api/opui/agnos/install
+{"ok": false, "error": "not_required"}
+
+$ curl -s http://127.0.0.1:5080/api/opui/agnos
+{"ok": true, "available": true, "current_version": "19.8-carrot-bt2",
+ "target_version": "19.8-carrot-bt2", "update_required": false, ...}
+```
+
+`/VERSION == AGNOS_VERSION` → `update_required=false` → **服务端根本没有可装的东西**。
+但前端把事情做成了：先乐观弹一个整屏遮罩，拿到 `ok:false` 后把裸错误码 `not_required`
+贴到 "Update failed" 上。裸码 + 整屏失败页 = 和"按钮坏了"完全无法区分（这个现象被报过两次）。
+
+**修法**：把"不是失败"的码当信息处理 —— 关掉自己刚打开的那层遮罩，改成一句人话的 toast。
+
+`web/static/js/system_wait_overlay.js`：
+
+| 码 | 含义 | 现在的表现 |
+|---|---|---|
+| `not_required` | 已是最新版本 | toast「无需更新 — 本机已是最新 AGNOS 版本，无需安装。」 |
+| `not_agnos` | 设备不支持 | toast「无法进行 AGNOS 更新 — 本设备不支持 AGNOS 更新。」 |
+| `not_ready` | 尚未就绪 | toast「更新尚未就绪 — AGNOS 更新尚未准备好安装，请稍后重试。」 |
+
+其余错误码仍走原来的失败遮罩。文案是 WebUI 专用键，放 `i18n.js` 的 `LOCAL_FALLBACKS`（en / zh-CHS / zh-CHT）。
+`home.js` 在 `runAgnosUpdateFlow()` 返回后本来就会 `refreshHomeScreen()`，所以卡片也会跟着刷新掉。
+
+### 附带的坑：改了 JS 还必须让**浏览器**重新加载
+
+`system_wait_overlay.js` 原来是**不带版本号**引入的，浏览器按 URL 缓存 —— 磁盘上改了 ≠ 设备上生效，
+和"补丁提交了 ≠ 进程重启了"（见 `UI_FREEZE_WEBUI_BLOCKING.md`）是同一类错。所以要么不修，
+要么同一提交里把缓存键抬掉：
+
+| 位置 | 改动 |
+|---|---|
+| `web/static/js/app.js`、`home.js`、`panels.js` | `system_wait_overlay.js` → `?v=2`；**三处必须一起改且一致**，否则浏览器会实例化两份模块，`active` / `abortCtrl` 状态分裂 |
+| 全部 23 处 `from "./i18n.js?v=3"` | → `?v=4` |
+| `web/static/index.html` | `app.js?v=134` → `?v=135` |
+
+## 发布与分支对齐（2026-10-01 收尾）
+
+| 仓 | 提交 | FZ:`master-c3` | 校验 |
+|---|---|---|---|
+| `FOREVERZAX1988/webui` | `040a1b1` fix(agnos): say so when there is nothing to install | `381be33..040a1b1`（快进，无 `--force`，`--no-verify`） | 远端 SHA == 本地 HEAD ✅ |
+
+之前推的是**新分支** `sp-macanlong-1001`，而 `.gitmodules` 里写的是 `branch = master-c3` ——
+`FZ/webui:master-c3` 当时停在 `381be33`，于是"按 `.gitmodules` clone"和"按推的分支 clone"会拿到不同代码。
+这一步把 `FZ/webui:master-c3` 快进到 `040a1b1`（顺带带上 `a020322`），两条线对齐。
