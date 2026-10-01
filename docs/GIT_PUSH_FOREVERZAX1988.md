@@ -267,3 +267,18 @@ git push --no-verify https://github.com/FOREVERZAX1988/openpilot.git HEAD:refs/h
 - 上两批见本文上半部分
 - `ai/docs/GIT_LFS.md` — LFS 拉取 / 不推送的总策略
 - `ai/docs/UI_FREEZE_WEBUI_BLOCKING.md`、`ai/docs/DEVICE_LOG_PATH.md` — 本批 ai 子模块里带的两条修复知识
+
+## 第四批：同一次会话里的后续提交（2026-10-01）
+
+批三推完之后，同一个会话又落了两批修复（cereal 导入布局 → 状态读恢复、
+配置原子写并发 → 建会话 500、chat_status schema → WS 丢帧）与对应文档，
+再按**完全相同的顺序**推了一次（子模块 → 主仓，都是快进，`--no-verify`）：
+
+| 仓 | 分支 | 推前 | 推后 |
+|----|------|------|------|
+| `FOREVERZAX1988/ai` | `sp-macanlong-1001` / `master-c3` | `3502223` | `e8eae71b6` |
+| `FOREVERZAX1988/openpilot` | `sp-macanlong-1001` / `master-c3` | `193e22b7d` | `e6b887d97` |
+| `FOREVERZAX1988/webui` | `sp-macanlong-1001` | `381be3395` | 未变（无需重推）|
+
+> **注意**：所以批三表里那些 SHA 是**当时**的中间值，不是"最终值"。
+> 想知道当前线上是什么，永远以 `git ls-remote` 现场查为准，别抄文档里的历史 SHA。
