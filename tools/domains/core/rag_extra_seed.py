@@ -13,7 +13,7 @@ from openpilot.common.params import Params
 from ai.tools.domains.core.rag_store import upsert_document_sync
 from ai.system.paths import rag_seed_version_path
 
-SEED_VERSION = 9
+SEED_VERSION = 10
 
 
 def _version_path() -> Path:

@@ -245,6 +245,32 @@ manager 离路且电压>9V、非计量网络时 systemctl 启停；github_runner
 文档 ai/docs/GIT_LFS.md；技能 git-lfs-fork。""",
   },
   {
+    "id": "builtin_push_foreverzax1988",
+    "title": "推送到 FOREVERZAX1988：--no-verify 绕开 LFS",
+    "tags": ["git", "push", "lfs", "no-verify", "foreverzax1988", "submodule", "faq"],
+    "refresh": True,
+    "text": """把 master-c3 当前状态推到 FOREVERZAX1988/<repo> 的新分支（如 sp-macanlong-1001），不向 LFS 上传。
+
+一句话：用 --no-verify 绕开 pre-push 钩子（LFS 上传就在钩子里），显式给全 URL + 带凭据的 gitconfig：
+
+GIT_CONFIG_GLOBAL=/data/.gitcred/gitconfig GIT_TERMINAL_PROMPT=0 git push --no-verify https://github.com/FOREVERZAX1988/<repo>.git <local-ref>:<new-branch>
+
+三个碰壁点：
+1) LFS 上传失败 / Unprocessable entity —— .lfsconfig 指向上游 GitLab sunnypilot-new-lfs，你没有自己的 LFS 仓；git-lfs 的 pre-push 钩子会尝试上传 → --no-verify（等价 GIT_LFS_SKIP_PUSH=1）。lfs.allowincompletepush 不是解药。
+2) could not read Username / 挂住等输入 —— fz remote 没配在 .git/config（只有 origin=mouxangithub，refs/remotes/fz/* 只是残留）→ 推全 URL，GIT_CONFIG_GLOBAL 指向 credential store，GIT_TERMINAL_PROMPT=0 快速失败别挂死。
+3) 子模块 detached HEAD；推到 master-c3 会覆盖别人的线 —— FOREVERZAX1988 上 panda/opendbc/webui 已有分叉的 master-c3（macan-long 线）→ 显式 refspec HEAD:refs/heads/<new-branch>，用新分支名，别碰 master-c3。
+
+现成脚本 /data/.gitcred/push-fz.sh <repo> <local-ref>:<remote-branch>（内部 set -e + 上面两个 env + git push --no-verify 全 URL）。凭据：/data/.gitcred/gitconfig（credential.helper=store --file=/data/.gitcred/credentials）+ credentials。
+
+本次实例 sp-macanlong-1001：主仓 push-fz.sh openpilot master-c3:sp-macanlong-1001；opendbc_repo 与 webui 用 push-fz.sh <repo> HEAD:refs/heads/sp-macanlong-1001。
+要推：openpilot、opendbc_repo(6580582c)、webui(381be339)。
+不要推：panda（gitlink 4643ee2c 已在 mouxangithub/panda:master-c3；FOREVERZAX1988/panda:master-c3=7d703710 是另一条 macan-long 线，会覆盖）、ai（48fa21ea 在 mouxangithub/ai）、msgq/rednose/teleoprtc/tinygrad（上游第三方）。
+
+推完必须 git ls-remote 核对远端 SHA 逐字等于本地 HEAD（openpilot git rev-parse HEAD；opendbc/webui git -C <dir> rev-parse HEAD）。实测 2026-10-01：openpilot 9193f1e2c、opendbc 6580582cc、webui 381be3395 全部命中。
+
+详见 ai/docs/GIT_PUSH_FOREVERZAX1988.md；另见 ai/docs/GIT_LFS.md、ai/docs/PUBLISH.md；技能 git-lfs-fork。""",
+  },
+  {
     "id": "builtin_headless_webui",
     "title": "无屏模式与 WebUI 操作",
     "tags": ["headless", "webui", "c3", "agnos", "wifi", "faq"],
