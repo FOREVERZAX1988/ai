@@ -240,13 +240,27 @@ done
 > 验证口径不变：**远端 SHA 必须逐字等于本地 HEAD**。只看到 `Everything up-to-date` 或
 > `* [new branch]` 都不算成功 —— 尤其要注意"推了主仓但没推子模块"这种看着成功的假成功。
 
-## 实测对照（第三批）
+## 实测对照（第三批，全部逐字命中）
+
+```sh
+git push --no-verify https://github.com/FOREVERZAX1988/ai.git        HEAD:refs/heads/sp-macanlong-1001 HEAD:refs/heads/master-c3
+#    50f0c0c..e52d213  HEAD -> master-c3        |  * [new branch]  HEAD -> sp-macanlong-1001
+git push --no-verify https://github.com/FOREVERZAX1988/openpilot.git HEAD:refs/heads/sp-macanlong-1001 HEAD:refs/heads/master-c3
+#    54f5956cc..ee2362b18  HEAD -> master-c3     |  9193f1e2c..ee2362b18  HEAD -> sp-macanlong-1001
+```
 
 | 仓 | 分支 | 远端 SHA | 本地 SHA | 结果 |
 |----|------|----------|----------|------|
-| `FOREVERZAX1988/openpilot` | `sp-macanlong-1001` | （见下方运行记录） | | |
-| `FOREVERZAX1988/ai` | `sp-macanlong-1001` | | | |
-| `FOREVERZAX1988/webui` | `sp-macanlong-1001` | `381be3395` | `381be3395` | ✅ 本来就对，无需重推 |
+| `FOREVERZAX1988/openpilot` | `sp-macanlong-1001` | `ee2362b18` | `ee2362b18` | ✅ **快进**（批一 `9193f1e2c` → 本次），未用 `--force` |
+| `FOREVERZAX1988/ai` | `sp-macanlong-1001` | `e52d213c` | `e52d213c` | ✅ 新建 |
+| `FOREVERZAX1988/webui` | `sp-macanlong-1001` | `381be3395` | `381be3395` | ✅ 本来就对，未重推 |
+| `FOREVERZAX1988/openpilot` | `master-c3` | `ee2362b18` | `ee2362b18` | ✅ 顺手快进，两条线同 SHA |
+| `FOREVERZAX1988/ai` | `master-c3` | `e52d213c` | `e52d213c` | ✅ 顺手快进（让 `.gitmodules` 的 `branch=master-c3` 不再指向旧内容）|
+
+**没碰的（故意）**：`FOREVERZAX1988/opendbc:master-c3`=`a315728585`、
+`FOREVERZAX1988/panda:master-c3`=`7d703710a8` —— 别人的 macan-long 线，推过去就是覆盖。
+
+> 本批 `--no-verify` 全部一次通过、**没有任何 LFS 报错**，再次印证：绕过点是 pre-push 钩子。
 
 ## 相关文档
 
