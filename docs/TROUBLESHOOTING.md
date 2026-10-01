@@ -5,6 +5,8 @@
 | 现象 | 处理 |
 |------|------|
 | 网页打不开 | 确认 `python3 -m ai.aid`；检查 5090 端口 |
+| 建会话 500 / `.ai_config_xxx` ENOENT | 见 [AI_SESSION_AND_WS_ERRORS.md](AI_SESSION_AND_WS_ERRORS.md) |
+| 前端收不到任务状态（WS 校验 failed） | 见 [AI_SESSION_AND_WS_ERRORS.md](AI_SESSION_AND_WS_ERRORS.md) |
 | `op status` 连不上 | 设置 `OP_AGENT_URL`；确认 aid 监听 0.0.0.0 |
 | API 报错 | 设置页测试连接；检查 Key 与模型名 |
 
@@ -12,6 +14,7 @@
 
 | 现象 | 处理 |
 |------|------|
+| 车况全是 0 / `reader_unavailable: true` | 先看 `cereal` 布局，见 [CEREAL_IMPORT_LAYOUT.md](CEREAL_IMPORT_LAYOUT.md)（不是车熄火）|
 | 无法 Engage | `op doctor` 或 Web「开不起来排查」 |
 | 改参后变差 | 「撤销上次调参」；调参护照恢复快照 |
 | 行驶中不能改参 | 正常安全限制；停车后再确认写入 |

@@ -319,6 +319,43 @@ GIT_CONFIG_GLOBAL=/data/.gitcred/gitconfig GIT_TERMINAL_PROMPT=0 git push --no-v
 文档 ai/docs/DEVICE_LOG_PATH.md""",
   },
   {
+    "id": "builtin_cereal_import_layout",
+    "title": "车况全是 0 / reader_unavailable：cereal 的导入方式不一样",
+    "tags": ["cereal", "state", "vehicle_state", "faq", "troubleshooting", "aid", "monorepo"],
+    "refresh": True,
+    "text": """现象：get_vehicle_state 返回 reader_unavailable: true，v_ego/ignition/car_fingerprint 全空，日志只有一行 "aid: cereal.messaging not available (state reader disabled)"。**这不是车熄火，也不是重启 aid 能好。**
+
+根因：上游 openpilot 把 cereal 放在仓库根，代码都写 `from cereal import messaging`；本 fork 是 monorepo，openpilot 代码树在下一层 openpilot/，它自己的代码用包名限定写法 `import openpilot.cereal.messaging`（见 openpilot/system/manager/manager.py）。设备 PYTHONPATH=/data/openpilot:venv:/data/.pydeps **不含** /data/openpilot/openpilot，所以顶层 cereal 不存在 → ModuleNotFoundError → try/except 静默降级成 messaging=None → StateReader 永远禁用。
+
+验证：ls -d /data/openpilot/cereal 不存在；find /data/openpilot -maxdepth 2 -name 'cereal*' 只有 openpilot/cereal。
+
+修法：ai/common/cereal_compat.py 的 import_cereal(submodule) 先试 openpilot.cereal 再回退 cereal；全仓 7 处 from cereal import X 改为 X = import_cereal("X")（state、cabana/deps、cabana/car_params、live_tools、system_info_tools、diagnostics_tools、scripts/split_cabana_app）。
+
+验证：python3 -c "from ai.selfdrive.state import StateReader; r=StateReader(); print(r._healthy, r._services)" → True + 8 个服务。之后 reader_unavailable: false（停车时数值仍可能全 0，别把停车误判成读不到）。
+
+注意区分：msgq-ipc_pyx 未编译是另一个历史问题（现已好），判断看日志原文。
+
+文档 ai/docs/CEREAL_IMPORT_LAYOUT.md""",
+  },
+  {
+    "id": "builtin_ai_session_ws_errors",
+    "title": "建会话 500 与 WS 丢帧：原子写清尾 + chat_status schema",
+    "tags": ["session", "ws", "schema", "config", "faq", "troubleshooting", "aid"],
+    "refresh": True,
+    "text": """两个静默 bug：
+
+1) POST /api/ai/sessions 500，报 "[Errno 2] No such file or directory: '/data/ai/.ai_config_xxx' -> '/data/ai/config.json'"。
+   根因：ai/common/config_store.py::_save_disk 先按前缀无条件清尾（glob('.ai_config_*').unlink()），把别的线程刚 mkstemp 的临时文件删了，随后 os.replace 抛 ENOENT。
+   修法：清尾只删 mtime 早于 60s 的（_STALE_TEMP_SEC），并给 os.replace 加一次重试（兼容未重启的旧进程）。
+
+2) 前端收不到任务状态，日志一行 "ws schema validation: chat_status.error: expected string"。
+   根因：protocol.py 把 error/resolvedModel 声明为 string、assistant 为 object，只有 type/jobId/sessionId/status 必填；而 notify_chat_status 直接发 job.get("error") = None → 校验失败 → hub **丢掉整帧**。
+   坑中坑：校验器一次只报一个错，修好 error 后立刻冒出 resolvedModel。
+   修法：抽出 chat_status_frame()，optional 字段为 None 就**不发**该键（而不是发 null），字符串字段非 str 时 str()，status 缺失兜底 queued。回归测试 ai/tests/test_chat_status_frame.py 对多种 job 形状跑 validate_ws_message。
+
+文档 ai/docs/AI_SESSION_AND_WS_ERRORS.md""",
+  },
+  {
     "id": "builtin_headless_webui",
     "title": "无屏模式与 WebUI 操作",
     "tags": ["headless", "webui", "c3", "agnos", "wifi", "faq"],
