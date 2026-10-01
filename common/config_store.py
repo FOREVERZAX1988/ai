@@ -6,6 +6,7 @@ import json
 import os
 import tempfile
 import threading
+import time
 from pathlib import Path
 from typing import Any
 
@@ -93,12 +94,22 @@ class AiConfigStore:
     except (OSError, json.JSONDecodeError, TypeError, ValueError):
       return {}
 
+  # Only sweep temp files an *older* run abandoned. An unconditional prefix sweep raced
+  # with concurrent writers: thread A created its mkstemp(".ai_config_*") file, thread B
+  # swept the prefix and unlinked it, and A's os.replace() then died with
+  # "[Errno 2] No such file or directory: '/data/ai/.ai_config_xxx' -> '/data/ai/config.json'",
+  # surfacing as 500s on POST /api/ai/sessions (and as doc-sync errors).
+  _STALE_TEMP_SEC = 60.0
+
   def _cleanup_stale_temp_files(self) -> None:
     parent = self._path.parent
     if not parent.is_dir():
       return
+    cutoff = time.time() - self._STALE_TEMP_SEC
     for path in parent.glob(".ai_config_*"):
       try:
+        if path.stat().st_mtime > cutoff:
+          continue  # recent: could be an in-flight write by another writer
         path.unlink()
       except OSError:
         pass
@@ -107,27 +118,37 @@ class AiConfigStore:
     self._path.parent.mkdir(parents=True, exist_ok=True)
     self._cleanup_stale_temp_files()
     payload = json.dumps(data, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
-    fd, tmp = tempfile.mkstemp(prefix=".ai_config_", dir=str(self._path.parent))
-    try:
-      with os.fdopen(fd, "w", encoding="utf-8") as f:
-        f.write(payload)
-        f.flush()
-        os.fsync(f.fileno())
-      os.replace(tmp, self._path)
+    # Retry once: a writer still running the old prefix-sweeping cleanup (e.g. a daemon
+    # that has not been restarted yet) can delete our temp file between mkstemp and
+    # replace, which is exactly the ENOENT this guards against.
+    last_error: OSError | None = None
+    for _ in range(2):
+      fd, tmp = tempfile.mkstemp(prefix=".ai_config_", dir=str(self._path.parent))
       try:
-        os.chmod(self._path, 0o600)
-      except OSError:
-        pass
-      try:
-        os.chmod(self._path.parent, 0o700)
-      except OSError:
-        pass
-    finally:
-      if os.path.exists(tmp):
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+          f.write(payload)
+          f.flush()
+          os.fsync(f.fileno())
+        os.replace(tmp, self._path)
         try:
-          os.unlink(tmp)
+          os.chmod(self._path, 0o600)
         except OSError:
           pass
+        try:
+          os.chmod(self._path.parent, 0o700)
+        except OSError:
+          pass
+        return
+      except OSError as exc:
+        last_error = exc
+      finally:
+        if os.path.exists(tmp):
+          try:
+            os.unlink(tmp)
+          except OSError:
+            pass
+    assert last_error is not None
+    raise last_error
 
   def _migrate_from_params_dir(self, data: dict[str, str]) -> None:
     params_dir = Path("/data/params/d")
