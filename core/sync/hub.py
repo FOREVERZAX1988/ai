@@ -156,18 +156,39 @@ async def notify_chat_event(
   })
 
 
-async def notify_chat_status(job_id: str, session_id: str, job: dict[str, Any]) -> None:
-  await HUB.broadcast({
+def chat_status_frame(job_id: str, session_id: str, job: dict[str, Any]) -> dict[str, Any]:
+  """Build a chat_status frame that satisfies the ws schema in protocol.py.
+
+  The schema types error/resolvedModel as strings and assistant as an object, and only
+  requires type/jobId/sessionId/status. A job that has no error stores None there, so the
+  literal payload used to fail validation ("ws schema validation: chat_status.error:
+  expected string"), the hub dropped the whole frame, and the frontend never learned that
+  a job had finished. Omit optional keys that have nothing to send instead of sending a
+  null the schema rejects.
+  """
+  frame: dict[str, Any] = {
     "type": "chat_status",
     "jobId": job_id,
     "sessionId": session_id,
-    "status": job.get("status"),
-    "assistant": job.get("assistant"),
-    "error": job.get("error"),
-    "resolvedModel": job.get("resolvedModel"),
-    "nextSince": job.get("eventSeq"),
+    "status": job.get("status") or "queued",
     "runId": job_id,
-  })
+  }
+  assistant = job.get("assistant")
+  if assistant is not None:
+    frame["assistant"] = assistant
+  error = job.get("error")
+  if error is not None:
+    frame["error"] = error if isinstance(error, str) else str(error)
+  model = job.get("resolvedModel")
+  if model is not None:
+    frame["resolvedModel"] = model if isinstance(model, str) else str(model)
+  if job.get("eventSeq") is not None:
+    frame["nextSince"] = job["eventSeq"]
+  return frame
+
+
+async def notify_chat_status(job_id: str, session_id: str, job: dict[str, Any]) -> None:
+  await HUB.broadcast(chat_status_frame(job_id, session_id, job))
 
 
 async def broadcast_office() -> None:
