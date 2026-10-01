@@ -44,16 +44,27 @@ def _is_tune_key(key: str) -> bool:
 
 
 def _read_device_log(params: Params, *, lines: int = 80) -> tuple[str, str]:
-  """Return (text, source). Tries dp_dev_last_log then /data/log/latest.log."""
-  raw = params.get("dp_dev_last_log")
-  text = raw.decode(errors="replace") if isinstance(raw, bytes) else str(raw or "")
+  """Return (text, source). Tries dp_dev_last_log then the newest device log file.
+
+  NOTE: ``dp_dev_last_log`` is not a registered openpilot param key on every
+  build. ``Params.get`` raises ``UnknownKeyName`` for unknown keys, which used to
+  take down the whole tool ("Tool execution failed: b'dp_dev_last_log'") before
+  ever reaching the /data/log fallback. Swallow it and fall through.
+  """
+  text = ""
+  try:
+    raw = params.get("dp_dev_last_log")
+    text = raw.decode(errors="replace") if isinstance(raw, bytes) else str(raw or "")
+  except Exception:
+    text = ""
   if text.strip():
     return text, "dp_dev_last_log"
   from ai.system.shell import run_command_sync
+  from ai.system.paths import dev_log_path
   tail = run_command_sync("tail_params_log")
   shell_text = (tail.get("stdout") or "").strip()
   if shell_text:
-    return shell_text, "/data/log/latest.log"
+    return shell_text, dev_log_path()
   err_tail = run_command_sync("grep_log_errors")
   err_text = (err_tail.get("stdout") or "").strip()
   if err_text and err_text != "(no matches)":

@@ -150,10 +150,16 @@ def routes_dir() -> str:
 def dev_log_path() -> str:
   """
   设备运行日志（manager/swaglog 汇总）路径。
-  - 车机：/data/log/latest.log
+  - 车机：/data/log 下最新的 swaglog.*（AGNOS 上是 NDJSON 滚动日志）。多数车机
+    上并不存在 /data/log/latest.log，仅当没有任何 swaglog.* 时才回退到它。
   - PC：openpilot swaglog 目录中最新的 swaglog.* 文件；没有则回退 ~/.comma/log/latest.log
   """
   if is_comma_device():
+    log_dir = Path("/data/log")
+    if log_dir.is_dir():
+      logs = sorted(log_dir.glob("swaglog.*"), key=lambda p: p.stat().st_mtime, reverse=True)
+      if logs:
+        return str(logs[0])
     return "/data/log/latest.log"
   try:
     from openpilot.common.hardware.hw import Paths
