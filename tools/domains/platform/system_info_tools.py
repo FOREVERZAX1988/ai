@@ -50,7 +50,8 @@ def get_build_info() -> dict[str, Any]:
         continue
       if key == "CarParams":
         try:
-          from cereal import car
+          from ai.common.cereal_compat import import_cereal
+          car = import_cereal("car")
           with car.CarParams.from_bytes(raw) as cp:
             info["car_params"] = {
               "carFingerprint": cp.carFingerprint,

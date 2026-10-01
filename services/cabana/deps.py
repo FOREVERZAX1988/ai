@@ -30,7 +30,8 @@ from openpilot.common.params import Params
 from openpilot.common.swaglog import cloudlog
 
 try:
-  from cereal import messaging
+  from ai.common.cereal_compat import import_cereal
+  messaging = import_cereal("messaging")
 except ImportError:
   messaging = None  # type: ignore
 

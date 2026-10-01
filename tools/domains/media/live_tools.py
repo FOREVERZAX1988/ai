@@ -20,7 +20,8 @@ def live_cereal_summary(
 
   try:
     from openpilot.tools.lib.live_logreader import live_logreader
-    from cereal.services import SERVICE_LIST
+    from ai.common.cereal_compat import import_cereal
+    SERVICE_LIST = import_cereal("services").SERVICE_LIST
   except Exception as e:
     return {"ok": False, "error": str(e)}
 
@@ -74,7 +75,8 @@ def live_can_capture(
   max_unique_ids = max(10, min(int(max_unique_ids), 500))
 
   try:
-    from cereal import messaging
+    from ai.common.cereal_compat import import_cereal
+    messaging = import_cereal("messaging")
   except Exception as e:
     return {"ok": False, "error": f"cereal messaging unavailable: {e}"}
 

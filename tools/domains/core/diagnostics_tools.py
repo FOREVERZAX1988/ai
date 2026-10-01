@@ -207,7 +207,8 @@ def _secoc_hints_from_params(params: Params) -> dict[str, Any]:
       raw = params.get(key)
       if not raw:
         continue
-      from cereal import car
+      from ai.common.cereal_compat import import_cereal
+      car = import_cereal("car")
       with car.CarParams.from_bytes(raw) as cp:
         if getattr(cp, "secOcRequired", False):
           hints["secOcRequired"] = True

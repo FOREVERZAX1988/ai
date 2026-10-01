@@ -17,7 +17,8 @@ _CAR_PARAM_KEYS = (
 
 def _car_params_from_bytes(raw: bytes) -> dict[str, Any] | None:
   try:
-    from cereal import car
+    from ai.common.cereal_compat import import_cereal
+    car = import_cereal("car")
     with car.CarParams.from_bytes(raw) as cp:
       return {
         "brand": cp.brand,
