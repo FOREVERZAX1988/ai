@@ -63,3 +63,8 @@ EOF
 
 > 顺带：`lmh-dcvs-00/01 = 75°C` 是高通 LMH 的**门限配置值**，不是实测温度；
 > 真正要看 `cpu silver/gold`、`gpu`、`msm-therm` 那几个。
+
+## 3) `ai.aid` 反复全量重写 `/data/ai/config.json`（5 MB，~2.2 s 一次）
+
+见 `AI_CONFIG_WRITE_AMPLIFICATION.md`：实测 **2035 KiB/s** 持续写、`aid` **33% 单核**（峰值 110%）。
+量它只要是看 `write_bytes` 增速 + `config.json` 的 mtime 变化率。

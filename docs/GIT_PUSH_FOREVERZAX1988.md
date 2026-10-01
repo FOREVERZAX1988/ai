@@ -282,3 +282,31 @@ git push --no-verify https://github.com/FOREVERZAX1988/openpilot.git HEAD:refs/h
 
 > **注意**：所以批三表里那些 SHA 是**当时**的中间值，不是"最终值"。
 > 想知道当前线上是什么，永远以 `git ls-remote` 现场查为准，别抄文档里的历史 SHA。
+
+## 坑：不带 `--no-verify` 的 push 会留下**挂死几小时的孤儿进程**
+
+2026-10-01 实测：06:24:21 起的 `git push --progress https://…/FOREVERZAX1988/openpilot.git master-c3:master-c3`
+**没有** `--no-verify`，于是 pre-push 钩子照跑，整条链挂死 **1 小时 49 分**：
+
+```
+git push → git-remote-https → .git/hooks/pre-push
+  → git lfs pre-push → git-lfs pre-push
+  → ssh -oControlMaster=yes … git@gitlab.com git-lfs-transfer /sunnypilot/public/sunnypilot-new-lfs.git upload
+```
+
+而**推送其实早就成功了** —— `git ls-remote` 显示远端 `master-c3` / `sp-macanlong-1001`
+都已是期望的 SHA。挂着的只是 LFS 上传的孤儿进程（在后台白烧 CPU/IO）。
+
+### 教训（三条）
+
+1. **一律带 `--no-verify`**（或 `GIT_LFS_SKIP_PUSH=1`）；本仓 `.lfsconfig` 指向上游 GitLab，你没有上传仓。
+2. **判断"推没推上去"要用远端事实，不要用进程还在不在**：
+   ```sh
+   git ls-remote --heads https://…/FOREVERZAX1988/openpilot.git master-c3 sp-macanlong-1001
+   ```
+   进程还在 ≠ 没推完；进程没了 ≠ 推成功。
+3. **清理孤儿**（先确认远端已有该 SHA，再杀）：
+   ```sh
+   ps -eo pid,lstart,args | grep -E "git push|git-lfs|git-lfs-transfer"
+   kill <push-pid> <lfs-pids> <ssh-pid>
+   ```
