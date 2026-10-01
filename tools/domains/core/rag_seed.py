@@ -258,15 +258,18 @@ GIT_CONFIG_GLOBAL=/data/.gitcred/gitconfig GIT_TERMINAL_PROMPT=0 git push --no-v
 三个碰壁点：
 1) LFS 上传失败 / Unprocessable entity —— .lfsconfig 指向上游 GitLab sunnypilot-new-lfs，你没有自己的 LFS 仓；git-lfs 的 pre-push 钩子会尝试上传 → --no-verify（等价 GIT_LFS_SKIP_PUSH=1）。lfs.allowincompletepush 不是解药。
 2) could not read Username / 挂住等输入 —— fz remote 没配在 .git/config（只有 origin=mouxangithub，refs/remotes/fz/* 只是残留）→ 推全 URL，GIT_CONFIG_GLOBAL 指向 credential store，GIT_TERMINAL_PROMPT=0 快速失败别挂死。
-3) 子模块 detached HEAD；推到 master-c3 会覆盖别人的线 —— FOREVERZAX1988 上 panda/opendbc/webui 已有分叉的 master-c3（macan-long 线）→ 显式 refspec HEAD:refs/heads/<new-branch>，用新分支名，别碰 master-c3。
+3) 子模块 detached HEAD；**子模块**的同名 master-c3 会覆盖别人的线 —— FOREVERZAX1988 上 panda/opendbc/webui 已有分叉的 master-c3（macan-long 线）→ 显式 refspec HEAD:refs/heads/<branch>，子模块用 .gitmodules 指定的仓/分支；主仓自己的 master-c3 远端不存在，可安全创建。
+4) 推 mouxangithub 报 403 「Permission to mouxangithub/ai.git denied to FOREVERZAX1988」—— /data/.gitcred 的 token 是 FOREVERZAX1988 账号的，对 mouxangithub/* 没有写权限（跟"权限已打开"无关）→ 子模块推到 FOREVERZAX1988/<repo>，并**同步改 .gitmodules**（url + branch），再 git submodule sync，否则新分支 clone 时子模块拉不全。
 
 现成脚本 /data/.gitcred/push-fz.sh <repo> <local-ref>:<remote-branch>（内部 set -e + 上面两个 env + git push --no-verify 全 URL）。凭据：/data/.gitcred/gitconfig（credential.helper=store --file=/data/.gitcred/credentials）+ credentials。
 
 本次实例 sp-macanlong-1001：主仓 push-fz.sh openpilot master-c3:sp-macanlong-1001；opendbc_repo 与 webui 用 push-fz.sh <repo> HEAD:refs/heads/sp-macanlong-1001。
 要推：openpilot、opendbc_repo(6580582c)、webui(381be339)。
-不要推：panda（gitlink 4643ee2c 已在 mouxangithub/panda:master-c3；FOREVERZAX1988/panda:master-c3=7d703710 是另一条 macan-long 线，会覆盖）、ai（48fa21ea 在 mouxangithub/ai）、msgq/rednose/teleoprtc/tinygrad（上游第三方）。
+不要推：panda（4643ee2c 已在 mouxangithub/panda:master-c3；FOREVERZAX1988/panda:master-c3=7d703710 是另一条 macan-long 线，会覆盖）、FOREVERZAX1988/opendbc:master-c3（a315728，同理；本地 6580582c 已在 mouxangithub/opendbc:tn-c3）、msgq/rednose/teleoprtc/tinygrad（上游第三方）。判断法则：子模块 .gitmodules 的 url 指哪个仓，那个仓就是它的家；只有当那个仓里根本没有该 gitlink SHA 时才另找地方推。
 
-推完必须 git ls-remote 核对远端 SHA 逐字等于本地 HEAD（openpilot git rev-parse HEAD；opendbc/webui git -C <dir> rev-parse HEAD）。实测 2026-10-01：openpilot 9193f1e2c、opendbc 6580582cc、webui 381be3395 全部命中。
+推完必须 git ls-remote 核对远端 SHA 逐字等于本地 HEAD（openpilot git rev-parse HEAD；opendbc/webui git -C <dir> rev-parse HEAD）。实测 2026-10-01 批一 sp-macanlong-1001：openpilot 9193f1e2c、opendbc 6580582cc、webui 381be3395 全部命中。
+
+批二 master-c3：ai 推 FOREVERZAX1988/ai:master-c3（mouxangithub/ai 403），.gitmodules 的 ai 改指 FOREVERZAX1988/ai + branch=master-c3 并 sync，然后 push-fz.sh openpilot master-c3:master-c3 → 实测 openpilot 39e1ff086、ai 59e1a7cef、webui 381be3395 全部命中。注意 FZ/ai:main=2d0ac95 已分叉（比 48fa21e 多 27 个提交），别 force 推 main，用同名新分支。
 
 详见 ai/docs/GIT_PUSH_FOREVERZAX1988.md；另见 ai/docs/GIT_LFS.md、ai/docs/PUBLISH.md；技能 git-lfs-fork。""",
   },

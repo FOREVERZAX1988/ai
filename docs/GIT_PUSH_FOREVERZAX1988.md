@@ -91,3 +91,107 @@ done
 - `ai/docs/GIT_LFS.md` — LFS 拉取 / 不推送的总策略
 - `ai/docs/PUBLISH.md` — 多仓发布（PR/MR）
 - 技能 `git-lfs-fork`
+
+---
+
+# 第二批：推到同名分支 master-c3（2026-10-01）
+
+上一批用的是新名字 `sp-macanlong-1001`。这一批按用户要求推到**同名分支 `master-c3`**，
+并解决 ai 子模块的归属问题。新增 3 个碰壁点：
+
+## 碰壁点 1：token 属于 FOREVERZAX1988，推 mouxangithub 必然 403
+
+```
+remote: Permission to mouxangithub/ai.git denied to FOREVERZAX1988.
+fatal: unable to access 'https://github.com/mouxangithub/ai.git/': The requested URL returned error: 403
+```
+
+`/data/.gitcred/credentials` 里的 token 是 **FOREVERZAX1988** 账号的。
+所以 ai 子模块**不能**推到 `mouxangithub/ai`（不管"权限打没打开"，那是账号层面的写权限）。
+→ 改推 `FOREVERZAX1988/ai`。**先跑一次 `git ls-remote` 探所有权，别等 push 报 403 才发现。**
+
+## 碰壁点 2：FZ/ai 的 main 已分叉，不要硬推 main
+
+- `FOREVERZAX1988/ai:main` = `2d0ac95` — 提交信息 `Merge branch 'mouxangithub:main' into main`，比 `48fa21e` 多 **27** 个提交
+- 本地 ai = `59e1a7c` = `48fa21e` + 1
+- 两侧都以 `48fa21e` 为基点 → **非快进**，`--force` 会抹掉别人 27 个提交
+
+对策：推**同名新分支**（远端不存在 → 天然不覆盖）：
+
+```sh
+cd /data/openpilot/ai
+GIT_CONFIG_GLOBAL=/data/.gitcred/gitconfig GIT_TERMINAL_PROMPT=0 \
+  git push --no-verify https://github.com/FOREVERZAX1988/ai.git main:refs/heads/master-c3
+# 已存在的分支：先 git ls-remote 确认远端 SHA，再决定是否复用
+```
+
+## 碰壁点 3：.gitmodules 不同步改，新分支 clone 时子模块会断
+
+`webui` 上一批已指到 `FOREVERZAX1988/webui`，但 `ai` 还指着 `mouxangithub/ai`。
+于是 `clone FZ/openpilot:master-c3` + `git submodule update` 会在 ai 上失败（那个 SHA 在 mouxangithub/ai 里不存在）。
+**推完子模块必须把 .gitmodules 一起指过去**，否则分支看起来完整、实际拉不全。
+
+```diff
+ [submodule "ai"]
+ 	path = ai
+-	url = https://github.com/mouxangithub/ai.git
++	url = https://github.com/FOREVERZAX1988/ai.git
++	branch = master-c3
+```
+
+改完执行 `git submodule sync ai`，让本机 `.git/config` 也跟上（否则本机仍在用旧 URL）。
+
+## 本次实例：master-c3
+
+```sh
+# 1) ai 子模块 → 你自己的 ai 仓库（同名新分支）
+cd /data/openpilot/ai
+GIT_CONFIG_GLOBAL=/data/.gitcred/gitconfig GIT_TERMINAL_PROMPT=0 \
+  git push --no-verify https://github.com/FOREVERZAX1988/ai.git main:refs/heads/master-c3
+
+# 2) 改 .gitmodules 指向 + sync + 提交
+#    chore(submodules): point the ai submodule at FOREVERZAX1988/ai branch master-c3
+
+# 3) 主仓
+/data/.gitcred/push-fz.sh openpilot master-c3:master-c3
+```
+
+实测对照（远端 SHA **逐字**等于本地）：
+
+| 仓 | 远端分支 | 远端 SHA | 本地 SHA | 结果 |
+|----|----------|----------|----------|------|
+| `FOREVERZAX1988/openpilot` | `master-c3` | `39e1ff086` | `39e1ff086`（HEAD） | ✅ |
+| `FOREVERZAX1988/ai` | `master-c3` | `59e1a7cef` | `59e1a7cef` | ✅ |
+| `FOREVERZAX1988/webui` | `master-c3` | `381be3395` | `381be3395` | ✅（已存在，无需重推） |
+| `mouxangithub/opendbc` | `tn-c3` | `6580582cc` | `6580582cc` | ✅（.gitmodules 就指它） |
+| `mouxangithub/panda` | `master-c3` | `4643ee2c6` | `4643ee2c6` | ✅（.gitmodules 就指它） |
+
+### 这两个绝对不要往 FZ 的同名分支推（会覆盖别人的 macan-long 线）
+
+| 仓 | 远端 master-c3 | 本地 | 原因 |
+|----|----------------|------|------|
+| `FOREVERZAX1988/opendbc` | `a315728` | `6580582c` | 不是一条线；本地 SHA 已在 `mouxangithub/opendbc:tn-c3` |
+| `FOREVERZAX1988/panda` | `7d703710` | `4643ee2c` | 同上；本地 SHA 已在 `mouxangithub/panda:master-c3` |
+
+> 判断法则：**子模块的 .gitmodules url 指哪个仓，就把那个仓当作它的家。**
+> 只有在"这个仓里根本没有那个 gitlink SHA"时才需要另找地方推。
+
+## 验证清单（每次推完都跑）
+
+```sh
+export GIT_CONFIG_GLOBAL=/data/.gitcred/gitconfig GIT_TERMINAL_PROMPT=0
+git rev-parse HEAD                      # 主仓
+git -C ai rev-parse HEAD                # ai
+git -C webui rev-parse HEAD             # webui
+# 逐个比对
+git ls-remote https://github.com/FOREVERZAX1988/openpilot.git refs/heads/master-c3
+git ls-remote https://github.com/FOREVERZAX1988/ai.git        refs/heads/master-c3
+git ls-remote https://github.com/FOREVERZAX1988/webui.git     refs/heads/master-c3
+```
+
+**远端 SHA 必须逐字等于本地 HEAD**；只看到 `* [new branch]` 不算成功。
+
+## 相关文档
+
+- 上批（`sp-macanlong-1001`）见本文上半部分
+- `ai/docs/GIT_LFS.md` — LFS 拉取 / 不推送的总策略
