@@ -106,8 +106,8 @@ TRANSLATIONS = [
 
   ("Macan Verz Bridge:",
    "Macan Verz 桥：开启后，桥接逻辑按百分比斜坡平滑减速请求（步进 = 1.25% × |verz|）——"
-   "缓和 OP 发起的急减速，消除喘息/脉冲。关闭时 verz 请求原样直通（单帧到位，无斜坡）。"
-   "出于安全，深度刹车（≤ -1.5）与原厂刹车请求无论开关都直通。"),
+   "缓和 OP 发起的急减速，消除喘息/脉冲。关闭时 verz 请求原样直通（一步到位，无斜坡）。"
+   "出于安全，深度刹车（<= -1.5）与原厂刹车请求无论开关都直通。"),
 
   ("ON: openpilot style wins",
    "开：以 openpilot 为准——点火后发送 DIST ± 脉冲，让原厂 ACC 跟随你记忆的档位"
@@ -178,6 +178,31 @@ def drop_orphan_entry(path: Path, needle: str, dry_run: bool) -> int:
   if not dry_run:
     path.write_text("\n".join(lines), encoding="utf-8")
   return 1
+FONT_PATH = BASEDIR / "openpilot/selfdrive/assets/fonts/OpFont-Regular.otf"
+
+
+def check_glyph_coverage(pairs) -> None:
+  """简中 UI 走 OpFont-Regular.otf；字体没这个字形就会渲染成方块，提交前必须拦下。
+
+  踩过的坑：≤(U+2264) 与 帧(U+5E27) 都不在 OpFont 里（raylib 启动日志会打
+  "Requested codepoints glyphs found: [951/959]"），译文里用了就会显示豆腐块。
+  """
+  try:
+    from fontTools.ttLib import TTFont
+  except ImportError:
+    print("glyph check skipped: no fontTools")
+    return
+  if not FONT_PATH.exists():
+    print(f"glyph check skipped: {FONT_PATH} missing")
+    return
+  cmap = TTFont(str(FONT_PATH), fontNumber=0).getBestCmap()
+  bad = [(ch, zh) for _, zh in pairs for ch in zh if ord(ch) not in cmap]
+  for ch, zh in bad:
+    print(f"  MISSING GLYPH U+{ord(ch):04X} {ch!r} in {zh[:60]!r}")
+  assert not bad, f"{len(bad)} 个字形缺失，换字后重试"
+  print(f"glyph coverage OK ({FONT_PATH.name}, {len(cmap)} glyphs)")
+
+
 def main():
   ap = argparse.ArgumentParser()
   ap.add_argument("--dry-run", action="store_true")
@@ -204,6 +229,8 @@ def main():
 
   # 专有名词：只补模板/英文，简中保持原文（回退英文）
   extra = [resolve(source_ids, k) for k in POT_EN_ONLY]
+
+  check_glyph_coverage(resolved)
 
   chs_rows = [(m, s, ref_line(refs[m])) for m, s in resolved]
   pot_rows = [(m, "", ref_line(refs[m])) for m, _ in resolved + [(x, "") for x in extra] if m not in have_pot]
