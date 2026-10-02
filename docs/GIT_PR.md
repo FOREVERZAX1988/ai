@@ -6,15 +6,27 @@
 
 ## 前置条件
 
-1. **Git 凭据**：设备或 PC 上 `git push` 能成功（SSH key 或 credential helper）。
+1. **Git 凭据**：已在 **op助手 内配置好**（SSH key / credential helper）。**推送一律用 op助手 工具，不要手动 shell `git push`**，也不需要再向用户索要 token。
 2. **GitHub PAT**（`ai_github_actions_pat`）：与 Runner registration token **不同**，需 classic/fine-grained PAT，权限至少：
    - `repo`（含 pull requests 读写）
    - 若还要管 CI：`actions:read`（已有 workflow 工具）
 3. 配置：`set_github_actions_pat(token=..., confirm=true)`（写入 `config.json`）
 
+## 推送约定（强制）
+
+- **统一用 op助手 推送**：`git_push` / `git_publish_pull_request` / `publish_changes`。
+- **绕开 LFS**：`GIT_LFS_SKIP_PUSH=1`（工具已自动设置）。
+- **带 `--no-verify`**：跳过 pre-push hook。
+
+等价手动命令：`GIT_LFS_SKIP_PUSH=1 git push --no-verify origin <branch>`
+
+> ⚠️ **本机实测**：该命令与 `git_push` 都会因**无 SSH key**（全局 `pushInsteadOf` 把 HTTPS
+> 改写成 SSH）报 `git@github.com: Permission denied (publickey)`。PAT-helper 的可用命令见
+> [GIT_LFS.md](./GIT_LFS.md) 的「实测补记」。
+
 ## Git LFS（fork 推送）
 
-本 fork **从 GitLab 拉 LFS、不向 LFS 上传**。`git_push` / `git_publish_pull_request` 自动设置 `GIT_LFS_SKIP_PUSH=1`。
+本 fork **从 GitLab 拉 LFS、不向 LFS 上传**。`git_push` / `git_publish_pull_request` 自动设置 `GIT_LFS_SKIP_PUSH=1` 并走 `--no-verify`。
 
 详见 [GIT_LFS.md](./GIT_LFS.md)；技能 `git-lfs-fork`。推送前建议：`git lfs push --dry-run origin HEAD`（应为 0 对象）。
 
