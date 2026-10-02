@@ -63,6 +63,60 @@ def run_boot_smoke() -> bool:
     return r.returncode == 0
 
 
+MACAN_INTERFACE_SUFFIX = "_PORSCHE_MACAN_MK1"
+
+
+def _probe(code: str, cwd: str) -> str:
+    """在 openpilot 环境里跑一小段探针代码，返回 stdout（失败返回空串）"""
+    env = dict(os.environ)
+    env.setdefault("PYTHONPATH", cwd)
+    r = subprocess.run([sys.executable, "-c", code], cwd=cwd,
+                       capture_output=True, text=True, env=env)
+    return (r.stdout or "").strip()
+
+
+def detect_macan_interface_test() -> str | None:
+    """动态解析 Macan 车型接口测试方法名。
+
+    上游每并入一个车型，sorted(PLATFORMS) 的序号就整体漂移（193 → 225 …），
+    硬编码 `..._193_PORSCHE_MACAN_MK1` 会变成 AttributeError: has no attribute，
+    让**最重要的 Macan 接口测试静默不跑**（表现为 ERROR 而非真正的逻辑回归）。
+    这里从 TestCarInterfaces 上实际生成的方法名反查，杜绝再次漂移。
+    """
+    code = (
+        "from openpilot.selfdrive.car.tests.test_car_interfaces import TestCarInterfaces as T\n"
+        "m = sorted(n for n in dir(T) if n.startswith('test_car_interfaces_') "
+        f"and n.endswith('{MACAN_INTERFACE_SUFFIX}'))\n"
+        "print('openpilot.selfdrive.car.tests.test_car_interfaces.TestCarInterfaces.' + m[0] if m else '')"
+    )
+    return _probe(code, OPENPILOT_ROOT) or None
+
+
+def skip_reason(target: str) -> str | None:
+    """已知的「非 Macan / 环境错位」类失败，记录为 SKIP 而不是伪装成回归。
+
+    test_custom_cruise 是 Toyota 专属用例，依赖 opendbc(toyota) 的 SP 虚拟巡航按钮 API
+    (get_virtual_cruise_button / VIRTUAL_CRUISE_BUTTONS)。本仓 opendbc 子模块 pin 在
+    align/master-c3-0929 (b5ee1ecb7)，该 API 的引入 commit 6e9536c64 已被 revert
+    (0e65ba76e) → 模块导入即 ImportError。属 opendbc pin 与 SP 代码树的版本错位，
+    与 Macan 纵向/横向逻辑无关（详见 ai/docs/SUBMODULE_PIN_SKEW.md）。
+    """
+    if not target.endswith("test_custom_cruise"):
+        return None
+    code = (
+        "try:\n"
+        "    from opendbc.car.toyota.carstate import get_virtual_cruise_button\n"
+        "    print('OK')\n"
+        "except Exception as e:\n"
+        "    print('MISSING:' + type(e).__name__)"
+    )
+    cwd = os.path.join(OPENPILOT_ROOT, "opendbc_repo")
+    out = _probe(code, cwd)
+    if out == "OK":
+        return None
+    return f"opendbc pin 缺 SP 虚拟巡航按钮 API（{out or 'probe failed'}），Toyota 专属、与 Macan 无关"
+
+
 def main() -> int:
     # 平台检测（允许在 PC 上通过 OPENPILOT_ROOT 覆盖）
     root = os.environ.get("OPENPILOT_ROOT", OPENPILOT_ROOT)
@@ -70,10 +124,16 @@ def main() -> int:
         print(f"❌ 找不到 openpilot 源码根: {root}")
         return 2
 
+    macan_target = detect_macan_interface_test()
+    if not macan_target:
+        print(f"❌ 找不到 Macan 接口测试（*{MACAN_INTERFACE_SUFFIX}）——平台列表或接口测试结构已变，请检查 "
+              f"openpilot/selfdrive/car/tests/test_car_interfaces.py")
+        return 2
+
     results = [
         # (unittest target, 描述)
-        ("openpilot.selfdrive.car.tests.test_car_interfaces.TestCarInterfaces.test_car_interfaces_193_PORSCHE_MACAN_MK1",
-         "Macan 车型接口 + fingerprint（第193个平台，含 PORSCHE_MACAN_MK1）"),
+        (macan_target,
+         f"Macan 车型接口 + fingerprint（动态解析：{macan_target.split('.')[-1]}）"),
         ("openpilot.selfdrive.car.tests.test_cruise_speed",
          "巡航速度逻辑（VCruiseHelper：SET初始化/RESUME/边沿激活/踩油门）"),
         ("openpilot.sunnypilot.selfdrive.car.tests.test_cruise_mode",
@@ -88,7 +148,14 @@ def main() -> int:
 
     ok = run_boot_smoke()
 
+    skipped = []
     for target, desc in results:
+        reason = skip_reason(target)
+        if reason:
+            print(f"\n{'='*60}\n▶ {desc}\n   target: {target}\n{'='*60}")
+            print(f"   ⏭️ SKIP（已知环境/版本错位）：{reason}")
+            skipped.append((target, reason))
+            continue
         try:
             cwd = os.path.join(root, "opendbc_repo") if target.startswith("opendbc.") else root
             passed = run_unittest(target, desc, cwd=cwd)
@@ -98,6 +165,10 @@ def main() -> int:
         ok = ok and passed
 
     print("\n" + "=" * 60)
+    if skipped:
+        print(f"⏭️ {len(skipped)} 组已知错位用例被 SKIP（不计为失败）：")
+        for target, reason in skipped:
+            print(f"   - {target}: {reason}")
     if ok:
         print("🎉 全部仿真回归测试通过（Macan 驾驶逻辑无回归）")
         return 0

@@ -26,6 +26,13 @@ import sys
 OPENPILOT_ROOT = "/data/openpilot"
 BUILTINS = set(dir(builtins))
 
+# 模块级隐式全局：解释器在模块命名空间里预置，不会出现在源码的赋值语句中。
+# 缺失会把 `os.path.dirname(__file__)` 这类合法用法误报成"未定义名称"（假红）。
+MODULE_DUNDERS = {
+    "__file__", "__name__", "__doc__", "__package__",
+    "__spec__", "__loader__", "__builtins__", "__cached__", "__debug__",
+}
+
 # 已知上游缺陷（非本次改动引入，未触达路径；标注 WARN 不算失败）
 KNOWN_ISSUES = {
     ("modem.py", "Serial"):
@@ -220,8 +227,8 @@ def ast_check(path: str) -> list[str]:
     for node in ast.walk(tree):
         if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             continue
-        # 作用域 = 模块级 + 自身 + 所有祖先函数（闭包链）
-        scope = set(module_names)
+        # 作用域 = 模块级 + 模块隐式全局 + 自身 + 所有祖先函数（闭包链）
+        scope = set(module_names) | MODULE_DUNDERS
         cur = node
         while cur is not None:
             scope |= _function_locals(cur)

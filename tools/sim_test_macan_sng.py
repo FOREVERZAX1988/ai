@@ -29,6 +29,10 @@ def make_car_params():
   CP.brand = "volkswagen"
   CP.carFingerprint = "PORSCHE_MACAN_MK1"
   CP.pcmCruise = True
+  # 2026-09-07 起 stop_and_go 增加门控：仅开环纵向（openpilotLongitudinalControl）时
+  # SnG 才启用（纯原厂 ACC 下 OP 不介入原厂起步）。此处必须同步，否则 enabled 恒为
+  # False、全部"应代发 RESUME"用例假红（got 0）。
+  CP.openpilotLongitudinalControl = True
   return CP
 
 

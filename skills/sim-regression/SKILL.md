@@ -27,8 +27,19 @@ cd /data/openpilot && python3 ai/tools/sim_test_macan.py
 ## 单测排查
 
 - 设备无 pytest（venv 只读）→ 用 `python3 -m unittest <target> -v`
-- Macan 专属测试名：`test_car_interfaces_193_PORSCHE_MACAN_MK1`（平台列表索引 193）
+- Macan 专属测试名：动态解析（当前 `test_car_interfaces_225_PORSCHE_MACAN_MK1`，序号随上游车型增减漂移，勿硬编码）
 - PC 全量：`pytest selfdrive/car/tests/test_car_interfaces.py -k volkswagen`
+
+## 自动化程度说明（2026-10-02 修复）
+
+- **Macan 接口测试名不再硬编码**：`sim_test_macan.py` 原先写死
+  `test_car_interfaces_193_PORSCHE_MACAN_MK1`，上游并入新车型后平台序号漂移到 **225**，
+  该用例变成 `AttributeError: has no attribute` —— 即"最重要的 Macan 接口测试静默不跑"（假红）。
+  现改为从 `TestCarInterfaces` 实际生成的方法名动态反查（`detect_macan_interface_test()`），
+  找不到则直接退出码 2 报错，不再伪装成通过。
+- **SKIP 语义**：`skip_reason()` 只对"已知环境/版本错位"用例（当前仅 `test_custom_cruise`，
+  opendbc pin 缺 SP 虚拟巡航按钮 API）打 SKIP 并列出理由，**不计为失败**；
+  真回归仍会让退出码非 0。详见 `ai/docs/SUBMODULE_PIN_SKEW.md`。
 
 ## 已知适配差异（测试需跟随代码）
 
@@ -42,6 +53,10 @@ cd /data/openpilot && python3 ai/tools/sim_test_macan.py
 3. 推送前确认：`sim_test_macan.py` 工具本身改过也要重跑自测
 
 ## 相关文档
+
+- `ai/tools/sim_test_macan_sng.py` —— SnG（RESUME 代发）专项 50 用例。
+  构造 `CarParams` 时**必须**带 `openpilotLongitudinalControl=True`（2026-09-07 起的门控），
+  否则 `enabled` 恒为 False、所有"应代发"用例假红（got 0）。
 
 - `ai/docs/PUBLISH.md` — 推送流程
 - `MEMORY.md` 「Macan 按键映射」— altButton2 设计意图
