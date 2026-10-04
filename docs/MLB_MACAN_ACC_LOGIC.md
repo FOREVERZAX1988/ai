@@ -222,6 +222,10 @@ VorB 0→1                 ← 制动预充（准备液压制动）
 ### 15.2 显示源选择（2026-08-25迟滞版，carcontroller.py:441-470）
 - `radar_valid = 0<idx<1021`；雷达有效→透传原厂（use_radar）；雷达无效→视觉补位（vis_raw）；两源都无→hold 2s
 - 迟滞：视觉源中差异>30%切回雷达，<20%才回视觉（防边界抖动，0058实测28.2%帧大差异）
+> ⚠️ **2026-10-04 变更（2.A，仅 Macan）**：Macan 改为 **显示源 = 控制源** —— 只用 radard 融合
+> `leadOne`（`CS.op_lead_dRel`，即 planner 同一对象）反算 `Abstandsindex/Relevantes_Objekt`；
+> 不再透传原厂 idx、无迟滞、无 2s hold。上面两条**仅对其余 MLB 车型（如 AUDI_Q5_MK1）成立**。
+> 详见 `MLB_MACAN_DISPLAY_SOURCE_2A_1004.md`（含 10775 帧回放前后对比）。
 
 ### 15.3 max_step限速器（显示平滑，非bug）
 - `max_step = max(4, |vRel|×16×(ACC_HUD_STEP/ACC_CONTROL_STEP))`，每帧最大变化
