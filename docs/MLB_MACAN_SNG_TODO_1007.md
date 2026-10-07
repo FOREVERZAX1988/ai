@@ -84,8 +84,9 @@
 - ⏸③【Parked §4 P3】"想多挪一点"时不要发 RESUME/SET，改为**跟随原厂自己的 loes=1**（原厂决定前挪时才跟），
   或干脆不主动请求（KB `MLB_MACAN_ACC_LOGIC.md` §13.2 A 层 loes 跟随思路）。
   OP 当前无"松 EPB/ESP 保持让车怠速滑行"的独立通道，需先确认可行性再议。
-- ✅④【部分落地】起步距离门与 A2 共用同一份"新鲜度"判定，禁止冻结 idx 参与（`radar_ok = idx*0.0424>5`
-  在 idx=188 冻结时给出 7.97 m，是本次误起步能通过门的原因之一）。
+- ✅④【已落地 + 同源收敛(2026-10-09)】起步距离门与 A2 共用同一份"新鲜度"判定，禁止冻结 idx 参与；
+  且 idx→米 已同源到 `macan_calib` B1 表（原 `idx*0.0424` 丢 +0.332 截距：idx=188 给 7.97 m，
+  与融合 10.09 m 不一致，是本次误起步能通过门的原因之一，已修）。
 
 ### T5【中】bus128(OP TX) 的 ACC_02 丰富度
 - 提高 OP 自身 ACC_02 发送率到 ≥25 Hz（`ACC_HUD_STEP` 6→4，MQB 就是 4）；
@@ -114,11 +115,13 @@
   确认有跟踪目标）优先；原厂无目标时用视觉 `vLead` 补位。>1 km/h 且**连续 ≥1 s**（100 帧 @100 Hz）
   才放行。前车静止（红灯跟停/seg9 事故场景）一律不代发。
 * **闸门2（判定车距）**：`d_used > max(3 m, MacanStartStopDistance)`，其中
-  `d_used = min(视觉, 新鲜 idx×0.0424)`——两侧都有值时 min>门 ⟺ 两侧都过门（= 用户要求的
+  `d_used = min(视觉, 新鲜 idx 经 B1 换算)`（B1: t=0.008969*idx+0.332, d=t*max(v,5)，与融合同源）
+  ——两侧都有值时 min>门 ⟺ 两侧都过门（= 用户要求的
   「视觉和 idx 都要过门」）；只有一侧有目标时由该侧兜底（静止车队原厂雷达无目标 → 视觉；
   视觉漏检 → 雷达）。
 * **idx 冻结豁免**：低速域（`vEgo < 2 m/s`）内 idx 静默 ≥0.5 s（50 帧）→ 判冻结，不得参与距离门
-  （实测冻结只发生在 ≤2.19 m/s）。**这就是 seg9 那次误起步的根因拦截点**（idx 冻结 188 = 7.97 m）。
+  （实测冻结只发生在 ≤2.19 m/s）。**这就是 seg9 那次误起步的根因拦截点**（idx 冻结 188：旧 0.0424 给 7.97 m，
+  现同源 B1 给 10.09 m）。
 * **视觉源必须是 modelV2 原始前车**，不能用 `CS.op_lead_dRel`（radard 融合值，被冻结 idx 钉在
   10.09 m）。链路：`controlsd_ext` 取 `modelV2.leadsV3[0]`（`x[0]−1.52`、`v[0]`、`prob≥0.5`）
   → `CC_SP.params[visLeadDist/visLeadVLead]` → `carcontroller.set_vision_lead()` → 闸门。
@@ -143,14 +146,16 @@
 * `ai/tools/sim_test_macan_sng.py`：**60 通过 / 0 失败**（原 51 项 + 新增场景组 2h 共 9 项闸门回归：
   seg9 前车静止 0 次代发、前车在动 <1 s 不代发 / ≥1 s 代发、视觉 3.69 m 被门拦、idx 冻结被排除、
   雷达兜底、无目标 0 次代发）。
-* `python3 -m unittest opendbc.car.volkswagen.tests.test_macan_mlb`：**37 OK**。
+* `python3 -m unittest opendbc.car.volkswagen.tests.test_macan_mlb`：**40 OK**（含新增同源回归 3 例）。
+* `python3 ai/tools/sim_test_macan_sng.py`：**60 通过 / 0 失败**（边界值已按 B1 更新）。
 * `ai/tools/test_macan_sng_params.py`：**8 通过 / 0 失败**。
 
 ### 3.4 尚未做（下一步）
 * ~~融合侧 closer-only~~ **已完成并推送**（openpilot `af48eb247a` / opendbc `2585bce68`）。
-* **idx→米 仍未同源（4 处）**：B1 表在 `radard.py` / `radar_interface.py` / `carcontroller.py` 各存一份（同系数、
-  靠注释约束），而 SnG 门用的是另一套 `stop_and_go._IDX_TO_M = 0.0424`（忽略 +0.332 截距）——idx=188 时
-  B1 给 10.09 m、SnG 给 7.97 m，差 2.1 m。**本轮 seg9「看起来有效」正来源于此**（§4 P4）。
+* ✅ **idx→米 已同源（4 处 → 1）**（2026-10-09）：新增唯一标定源
+  `opendbc/sunnypilot/car/volkswagen/macan_calib.py`（B1 表 + `max(v,5)`）；`radard.py`（A2）/ `radar_interface.py`（A3）/
+  `carcontroller.py`（仪表）/ `stop_and_go.py`（SnG 门）全部改用它。修前 SnG 门 `_IDX_TO_M=0.0424`（丢 +0.332 截距）
+  idx=188 给 7.97 m、融合给 10.09 m，差 2.1 m —— 已消除（回归：`TestMacanRadarCalibSameSource`）。
 * 闸门③（停车过远蠕行）与 SnG 门阀的实车验证（下一次 offroad 路试）。
 
 ## 4. Parked（2026-10-09 用户明确「先放着 / 暂不做」，路试后再议）
@@ -169,8 +174,9 @@
 - 需先实车确认 `Anhalten=1` 时能否纯 accel 蠕行（OP 现无独立通道），未做。
 
 ### P4 idx→米「多源同源」+ 文档同步（2026-10-09 新记录）
-- 换算共 4 处：B1 表 ×3（radard / radar_interface / carcontroller，同系数不同文件）+ SnG 门 `0.0424`（不同公式）。
-  建议收敛为单一函数（B1 表 + `max(v_ego, 5.0)`），SnG 门直接调用。
+- ✅ 已做（2026-10-09）：4 处收敛为单一函数 `macan_calib.idx_to_drel`（B1 表 + `max(v_ego, 5.0)`），SnG 门直接调用。
+  注：SnG 门换算口径变化会移动其距离边界（如静止时 idx=70：旧 2.97 m → 新 4.80 m），语义上更贴合
+  「与融合/仪表同一数字」；snG sim 边界值已同步更新。
 - 融合层目前**没有**冻结豁免（只有 SnG 门有）：冻结值若比视觉更近（|Δ| ≤ max(25%·d_vis, 2.0 m)）仍会被采纳
   → 若要「完全视觉主导 + 雷达只可改近」，这是唯一残留缺口。
 - 文档待同步（仍按旧语义「原厂主导 / A1 速度加权 / MACAN_A2_REL_TH」描述融合）：

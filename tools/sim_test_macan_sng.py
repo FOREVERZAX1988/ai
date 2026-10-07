@@ -308,7 +308,8 @@ def run():
   # 2.11 v3新增：起步需原厂雷达ab>0（前车被雷达捕捉），视觉不代发起步
   # 2026-10-07：取消 0=Off 语义；默认 6 米，范围 3~10 米（均为前保险杠→前车距离）
   print("\n【场景组2f】起步安全距离（MacanStartStopDistance 米：3~10，默认 6；Off 已取消）")
-  # 默认 6 米：ab=0 无视觉 → 不代发（0m < 6m）；ab=300 → 代发（300*0.0424=12.7m > 6m）
+  # 默认 6 米：ab=0 无视觉 → 不代发（0m < 6m）；ab=300 → 代发
+  # （同源 B1：t=0.008969*300+0.332=3.02s → d=t*max(v,5)=15.1m > 6m）
   ctrl_d6 = make_ctrl(CP_SP=CP_SP)
   prime(ctrl_d6, ccs, stock_lead_distance=300, vis_dist=13.0)   # 闸门1 预热：前车在动需连续 ≥1s
   check("默认6米：enabled=True", ctrl_d6.enabled is True)
@@ -322,20 +323,21 @@ def run():
   for f in range(2010, 2015):
     sends = sng(ctrl_d6, ccs, make_cc(enabled=True, accel=0.5),
                                        make_cs(standstill=True, stock_lead_distance=300), f)
-  check("6米：ab=300(12.7m>6m) → 代发", len(sends) == 1, f"got {len(sends)}")
-  # 3 米：ab=70(2.97m<3m) 不代发；ab=80(3.4m>3m) 代发
+  check("6米：ab=300(15.1m>6m) → 代发", len(sends) == 1, f"got {len(sends)}")
+  # 3 米（同源 B1：d=t*max(v,5)，静止 v→等效 5 → d=0.044845*idx+1.66）：
+  #   ab=25(2.78m<3m) 不代发；ab=40(3.45m>3m) 代发
   ctrl_d3 = make_ctrl(CP_SP=CP_SP, params_dict={"MacanStartStop": True, "MacanStartStopDistance": "3"})
   prime(ctrl_d3, ccs, stock_lead_distance=300, vis_dist=13.0)   # 闸门1 预热：前车在动需连续 ≥1s
   sends = []
   for f in range(2020, 2025):
     sends = sng(ctrl_d3, ccs, make_cc(enabled=True, accel=0.5),
-                                       make_cs(standstill=True, stock_lead_distance=70), f)
-  check("3米：ab=70(2.97m<3m) → 不代发", len(sends) == 0, f"got {len(sends)}")
+                                       make_cs(standstill=True, stock_lead_distance=25), f)
+  check("3米：ab=25(2.78m<3m) → 不代发", len(sends) == 0, f"got {len(sends)}")
   sends = []
   for f in range(2030, 2035):
     sends = sng(ctrl_d3, ccs, make_cc(enabled=True, accel=0.5),
-                                       make_cs(standstill=True, stock_lead_distance=80), f)
-  check("3米：ab=80(3.4m>3m) → 代发", len(sends) == 1, f"got {len(sends)}")
+                                       make_cs(standstill=True, stock_lead_distance=40), f)
+  check("3米：ab=40(3.45m>3m) → 代发", len(sends) == 1, f"got {len(sends)}")
   # 2026-10-07：0=Off 已取消 —— 0/非法读数一律回退默认 6 米（不再有"纯意图起步"路径）
   ctrl_d0 = make_ctrl(CP_SP=CP_SP, params_dict={"MacanStartStop": True, "MacanStartStopDistance": "0"})
   prime(ctrl_d0, ccs, stock_lead_distance=300, vis_dist=13.0)   # 闸门1 预热：前车在动需连续 ≥1s
@@ -368,7 +370,7 @@ def run():
   check("v4：原厂st=3(ACC active停车保持) → 代发RESUME", len(sends) == 1, f"got {len(sends)}")
 
   # 2.14 v6新增（2026-10-07）：SnG 起步闸门回归 —— route 00000091 seg9 误起步场景
-  # 实测触发链：原厂 idx 冻结在 188（×0.0424=7.97 m，"看起来有效"）+ 本车蠕行靠近前车
+  # 实测触发链：原厂 idx 冻结在 188（同源 B1=10.09 m，"看起来有效"）+ 本车蠕行靠近前车
   # （视觉 6.09→3.69 m）+ 前车静止 → 旧实现仍代发 LS_01 RESUME（T=673.5）→ 12 ms 后原厂
   # loes=1/anh 1→0 放行 → 误起步 → T=683.5 st=6 退出纵向。
   print("\n【场景组2h】SnG 起步闸门回归（seg9 误起步 / idx 冻结 / 前车静止）")
@@ -409,7 +411,7 @@ def run():
                              vis_dist=3.69, vis_vlead=1.4), f))
   check("闸门2：视觉 3.69 m < 6 m 门 → 0 次代发", total == 0, f"got {total}")
 
-  # 2h-E 冻结 idx 不参与距离门：视觉 12 m + idx 冻结 188（7.97 m）→ 靠视觉过门 → 代发
+  # 2h-E 冻结 idx 不参与距离门：视觉 12 m + idx 冻结 188（B1 10.09 m）→ 靠视觉过门 → 代发
   ctrl_s9d = make_ctrl(CP_SP=CP_SP)
   prime(ctrl_s9d, ccs, stock_lead_distance=188, stock_lead_speed_kph=5.0, vis_dist=12.0, vis_vlead=1.4)
   total = 0
