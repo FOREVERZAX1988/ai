@@ -3,6 +3,11 @@
 - parse_segment(): 解析 rlog -> 逐帧数组, 带 npz 缓存(避免重复解析)
 - 距离映射: t_old(153点表) / t_new(0909线性公式)
 - closure(): 运动学闭合 Δd = ∫(v_lead_can - v_ego)dt (纯CAN, 与视觉/公式无关 = 独立真值)
+⚠️ 键语义（2026-10-09 修正）：FIELDS 中 "v_vis" = 前车速度 leadsV3[0].v[0]，
+   "d_vis" = 前车距离 leadsV3[0].x[0]（原始相机系，未减 RADAR_TO_CAMERA 1.52 m）。
+   原厂 ACC_02/04/01 只取 src=2（bus2 原厂帧）；src=128 是 OP 代发回环（实测 91 段占比 14.3%，
+   idx 最大差 684）。v_wheel(0x103) 不作 src 过滤（bus0/bus1 均原厂）。
+   schema=1 的旧 npz 缓存里这两键与内容互换，已由 CACHE_SCHEMA 自动失效。
 用法:
   import sys; sys.path.insert(0,'/data/openpilot/ai/tools')
   from macan_route_lib_0910 import parse_segment, t_old, t_new
@@ -16,6 +21,8 @@ from openpilot.tools.lib.logreader import LogReader   # noqa: E402
 
 REALDATA = "/data/media/0/realdata"
 CACHE = "/data/openpilot/ai/tools/cache_0910"
+# npz 缓存 schema 版本：1 = 旧（v_vis/d_vis 两键与内容互换），2 = 修正后
+CACHE_SCHEMA = 2
 _TAB = json.load(open("/data/openpilot/ai/tools/abstands_t_table.json"))
 _IDX_TAB = np.array(_TAB["idx"] if isinstance(_TAB, dict) else json.load(open("/data/openpilot/ai/tools/abstands_idx_table.json")))
 try:
@@ -55,7 +62,9 @@ def parse_segment(seg, use_cache=True):
     cf = f"{CACHE}/{seg}.npz"
     if use_cache and os.path.exists(cf):
         z = np.load(cf)
-        return {k: z[k] for k in z.files}
+        if "_schema" in z.files and int(z["_schema"][0]) == CACHE_SCHEMA:
+            return {k: z[k] for k in z.files if k != "_schema"}
+        # 旧 schema（键错位）缓存一律丢弃重建，不静默沿用
     if not os.path.exists(rl(seg)):
         return None
     rows = []
@@ -72,15 +81,15 @@ def parse_segment(seg, use_cache=True):
                     s = (((d[2] | (d[3] << 8)) & 0xFFF) + (((d[3] >> 4) | (d[4] << 4)) & 0xFFF)
                          + ((d[5] | (d[6] << 8)) & 0xFFF) + (((d[6] >> 4) | (d[7] << 4)) & 0xFFF)) * 0.1
                     cur["v_wheel"] = s / 4.0 / 3.6
-                elif c.address == 780 and len(d) >= 8:          # ACC_02
+                elif c.address == 780 and len(d) >= 8 and c.src == 2:   # ACC_02（仅原厂 bus2，排除 OP 代发 src=128）
                     cur["idx"] = float((d[3] | (d[4] << 8)) & 0x3FF)
                     cur["zl_set"] = float((d[4] >> 5) & 0x07)   # ACC_Gesetzte_Zeitluecke 37|3
                     cur["obj_rel"] = float((d[5] >> 6) & 0x03)  # ACC_Relevantes_Objekt 46|2
                     cur["v_cruise"] = ((d[1] | (d[2] << 8)) >> 4 & 0x3FF) * 0.32  # Wunschgeschw 12|10
-                elif c.address == 804 and len(d) >= 8:          # ACC_04
+                elif c.address == 804 and len(d) >= 8 and c.src == 2:   # ACC_04（同上，仅原厂）
                     v = ((d[5] | (d[6] << 8)) & 0x3FF) * 0.32   # Geschw_Zielfahrzeug 40|10 km/h
                     cur["v_lead"] = np.nan if v >= 320 else v / 3.6
-                elif c.address == 265 and len(d) >= 8:          # ACC_01
+                elif c.address == 265 and len(d) >= 8 and c.src == 2:   # ACC_01（同上，仅原厂）
                     cur["vbz"] = ((d[3] | (d[4] << 8)) >> 3 & 0x7FF) * 0.005 - 7.22  # Sollbeschl
         elif w == "modelV2":
             ld = m.modelV2.leadsV3
@@ -90,13 +99,15 @@ def parse_segment(seg, use_cache=True):
                 vv = float(ld[0].v[0])
         elif w == "carState":
             cs = m.carState
+            # 注意顺序必须与 FIELDS 一致：v_vis(前车速度) 在前、d_vis(前车距离 x[0]) 在后
             rows.append((m.logMonoTime / 1e9, cur["idx"], cur["v_wheel"], cur["v_lead"],
-                         vd, vv, vp, cur["zl_set"], cur["obj_rel"], cur["v_cruise"],
+                         vv, vd, vp, cur["zl_set"], cur["obj_rel"], cur["v_cruise"],
                          float(cs.aEgo), float(cs.gasPressed), float(cs.brakePressed), cur["vbz"]))
     a = np.array(rows, dtype=np.float64)
     out = {k: a[:, i] for i, k in enumerate(FIELDS)}
     if use_cache:
-        np.savez_compressed(cf, **out)
+        os.makedirs(CACHE, exist_ok=True)
+        np.savez_compressed(cf, **out, _schema=np.array([CACHE_SCHEMA]))
     return out
 
 
