@@ -7,6 +7,7 @@
    "d_vis" = 前车距离 leadsV3[0].x[0]（原始相机系，未减 RADAR_TO_CAMERA 1.52 m）。
    原厂 ACC_02/04/01 只取 src=2（bus2 原厂帧）；src=128 是 OP 代发回环（实测 91 段占比 14.3%，
    idx 最大差 684）。v_wheel(0x103) 不作 src 过滤（bus0/bus1 均原厂）。
+   schema=3 追加 carState.vEgo（标定实验用真值速度，避免 0x103 轮速差）。
    schema=1 的旧 npz 缓存里这两键与内容互换，已由 CACHE_SCHEMA 自动失效。
 用法:
   import sys; sys.path.insert(0,'/data/openpilot/ai/tools')
@@ -22,7 +23,7 @@ from openpilot.tools.lib.logreader import LogReader   # noqa: E402
 REALDATA = "/data/media/0/realdata"
 CACHE = "/data/openpilot/ai/tools/cache_0910"
 # npz 缓存 schema 版本：1 = 旧（v_vis/d_vis 两键与内容互换），2 = 修正后
-CACHE_SCHEMA = 2
+CACHE_SCHEMA = 3
 _TAB = json.load(open("/data/openpilot/ai/tools/abstands_t_table.json"))
 _IDX_TAB = np.array(_TAB["idx"] if isinstance(_TAB, dict) else json.load(open("/data/openpilot/ai/tools/abstands_idx_table.json")))
 try:
@@ -30,7 +31,7 @@ try:
 except Exception:
     _T_TAB = np.array(json.load(open("/data/openpilot/ai/tools/abstands_t_table.json")))
 
-FIELDS = ["t", "idx", "v_wheel", "v_lead", "v_vis", "d_vis", "p_vis", "zl_set", "obj_rel", "v_cruise", "a_ego", "gas", "brake", "vbz"]
+FIELDS = ["t", "idx", "v_wheel", "v_lead", "v_vis", "d_vis", "p_vis", "zl_set", "obj_rel", "v_cruise", "a_ego", "gas", "brake", "vbz", "v_ego"]
 
 
 def rl(seg):
@@ -102,7 +103,8 @@ def parse_segment(seg, use_cache=True):
             # 注意顺序必须与 FIELDS 一致：v_vis(前车速度) 在前、d_vis(前车距离 x[0]) 在后
             rows.append((m.logMonoTime / 1e9, cur["idx"], cur["v_wheel"], cur["v_lead"],
                          vv, vd, vp, cur["zl_set"], cur["obj_rel"], cur["v_cruise"],
-                         float(cs.aEgo), float(cs.gasPressed), float(cs.brakePressed), cur["vbz"]))
+                         float(cs.aEgo), float(cs.gasPressed), float(cs.brakePressed), cur["vbz"],
+                         float(cs.vEgo)))
     a = np.array(rows, dtype=np.float64)
     out = {k: a[:, i] for i, k in enumerate(FIELDS)}
     if use_cache:
