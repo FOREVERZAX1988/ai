@@ -35,3 +35,11 @@ vendor/eps_patch/payload/build/
 vendor/eps_patch/.docker/
 vendor/eps_patch/.venv/
 vendor/eps_patch/__pycache__/
+
+# Macan 路试探针落盘产物（缓存 / trace 转储 / 中间数据）——不入库
+tools/cache_*/
+/tmp/
+tools/_*.txt
+tools/*.npz
+tools/*.pkl
+tmp_park_dump.txt
