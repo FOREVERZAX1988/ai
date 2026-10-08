@@ -98,6 +98,11 @@ CHS = {
   "Tap a cell to cycle actions, then Save.": "点按单元格循环切换动作，然后保存。",
   "Generic keyboard / HID": "通用键盘 / HID",
   "Yiser-J6": "Yiser-J6",
+  # the Wi-Fi link (zoompilot wifi-lossless)
+  "Join the device's hotspot and open Jetlink there.": "请接入手机热点，并在手机上打开 Jetlink。",
+  "Run big models over a connected device running Jetlink. USB and iOS turn off ADB.":
+    "在已连接的外接算力上运行大模型。USB 与 iOS 模式会关闭 ADB。",
+  "check Wi-Fi or app": "请检查 Wi-Fi 或手机 App",
 }
 CHS.pop("Testimg...", None)
 
@@ -185,6 +190,11 @@ CHT = {
   "Tap a cell to cycle actions, then Save.": "點按儲存格循環切換動作，然後儲存。",
   "Generic keyboard / HID": "通用鍵盤 / HID",
   "Yiser-J6": "Yiser-J6",
+  # the Wi-Fi link (zoompilot wifi-lossless)
+  "Join the device's hotspot and open Jetlink there.": "請接入手機熱點，並在手機上開啟 Jetlink。",
+  "Run big models over a connected device running Jetlink. USB and iOS turn off ADB.":
+    "在已連接的外接算力上執行大模型。USB 與 iOS 模式會關閉 ADB。",
+  "check Wi-Fi or app": "請檢查 Wi-Fi 或手機 App",
 }
 
 # CHT-only extras: the traditional file has never been fully populated.
