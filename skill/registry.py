@@ -46,7 +46,39 @@ class SkillRegistry:
     self.base_dir.mkdir(parents=True, exist_ok=True)
     self._lock = threading.RLock()
     self._skills: dict[str, Skill] = {}
+    self._revision: int = 0
+    self._change_listeners: list[Callable[[str], None]] = []
     self._load_manifest()
+
+  def on_change(self, listener: Callable[[str], None]) -> Callable[[], None]:
+    """Subscribe to ``skills/change``-style notifications (D-P0.3).
+
+    Called with the event name (e.g. ``"skill/register"`` / ``"skill/remove"``)
+    whenever the registry mutates. Returns an unsubscribe callable.
+    """
+    with self._lock:
+      self._change_listeners.append(listener)
+    return lambda: self._notify_remove_listener(listener)
+
+  def _notify_remove_listener(self, listener: Callable[[str], None]) -> None:
+    with self._lock:
+      if listener in self._change_listeners:
+        self._change_listeners.remove(listener)
+
+  def _notify_change(self, event: str) -> None:
+    self._revision += 1
+    with self._lock:
+      listeners = list(self._change_listeners)
+    for listener in listeners:
+      try:
+        listener(event)
+      except Exception:
+        pass
+
+  @property
+  def revision(self) -> int:
+    """Monotonic revision counter; consumers use it to invalidate caches."""
+    return self._revision
 
   @property
   def _manifest_path(self) -> Path:
@@ -82,6 +114,7 @@ class SkillRegistry:
     with self._lock:
       self._skills[skill.id] = skill
       self._save_manifest()
+    self._notify_change("skill/register")
     return skill
 
   def register_from_dict(
@@ -97,6 +130,8 @@ class SkillRegistry:
       removed = self._skills.pop(skill_id, None) is not None
       if removed:
         self._save_manifest()
+    if removed:
+      self._notify_change("skill/remove")
     return removed
 
   def get(self, skill_id: str) -> Skill:
@@ -109,6 +144,14 @@ class SkillRegistry:
   def list_skills(self) -> list[Skill]:
     with self._lock:
       return list(self._skills.values())
+
+  def list_skills_sorted(self) -> list[Skill]:
+    """Skills ordered by rank asc (lower rank = higher priority), then id.
+
+    Mirrors the dsh ``compareIndexedCandidates`` ordering (D-P0.3) so toolsets
+    and the Web panel can present skills deterministically.
+    """
+    return sorted(self.list_skills(), key=lambda s: (int(getattr(s, "rank", 600)), s.id))
 
   def _validate_args(self, skill: Skill, args: dict[str, Any]) -> dict[str, Any]:
     out: dict[str, Any] = {}
@@ -128,11 +171,22 @@ class SkillRegistry:
     args: dict[str, Any],
     request_id: str | None = None,
     auto_confirm: bool = False,
+    *,
+    caller: str = "model",
   ) -> SkillInvocation:
     """Policy-aware invocation. Returns pending for confirm skills unless auto_confirm."""
     skill = self.get(skill_id)
     if skill.policy == "disabled":
       raise SkillError(f"skill {skill_id} is disabled", "SKILL_DISABLED")
+
+    # D-P1.3: enforce explicit model/user invocation policy. Legacy skills
+    # deserialize with the permissive default for backwards compatibility.
+    invocation_policy = getattr(skill, "invocation_policy", None)
+    if invocation_policy is not None:
+      if caller == "model" and not invocation_policy.model_invocable:
+        raise SkillError(f"skill {skill_id} is not model-invocable", "SKILL_REQUIRES_CONFIRMATION")
+      if caller == "user" and not invocation_policy.user_invocable:
+        raise SkillError(f"skill {skill_id} is not user-invocable", "SKILL_REQUIRES_CONFIRMATION")
 
     validated = self._validate_args(skill, args)
     invocation = SkillInvocation(

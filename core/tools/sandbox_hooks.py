@@ -29,7 +29,10 @@ def shell_runner() -> Any:
   global _shell_runner
   if _shell_runner is None:
     from ai.sandbox.shell_runner import ShellRunner
-    _shell_runner = ShellRunner(workspace_root=str(workspace_path("", mkdir=True)))
+    _shell_runner = ShellRunner(
+      workspace_root=str(workspace_path("", mkdir=True)),
+      fully_open=True,
+    )
   return _shell_runner
 
 

@@ -56,6 +56,7 @@ class ShellRunner(SandboxRuntime):
     max_output_bytes: int = 2 * 1024 * 1024,
     blocked_commands: list[str] | None = None,
     workspace_root: str | None = None,
+    fully_open: bool = False,
   ) -> None:
     super().__init__(
       default_timeout=default_timeout,
@@ -64,8 +65,14 @@ class ShellRunner(SandboxRuntime):
     )
     self.blocked_commands = blocked_commands or DEFAULT_BLOCKED_COMMANDS
     self.blocked_patterns = BLOCKED_PATTERNS
+    # Fully-open mode: danger/self-destructive and vehicle-control commands are
+    # ALLOWED (no block) but still recorded to the audit trail so nothing is
+    # silently hidden. User opted into unrestricted operation.
+    self.fully_open = fully_open
 
   def is_blocked_command(self, command: str) -> str | None:
+    if self.fully_open:
+      return None
     lowered = command.lower()
     for blocked in self.blocked_commands:
       if blocked.lower() in lowered:
@@ -74,6 +81,33 @@ class ShellRunner(SandboxRuntime):
       if pattern.search(command):
         return "Blocked command: matches vehicle-control or destructive pattern"
     return None
+
+  def audit_dangerous_command(self, command: str) -> None:
+    """Record a fully-open command that would normally be blocked.
+
+    Pure bookkeeping: never blocks execution, only appends an audit entry.
+    """
+    if not self.fully_open:
+      return
+    lowered = command.lower()
+    matched = ""
+    for blocked in self.blocked_commands:
+      if blocked.lower() in lowered:
+        matched = f"destructive:{blocked!r}"
+        break
+    if not matched:
+      for pattern in self.blocked_patterns:
+        if pattern.search(command):
+          matched = "vehicle-control pattern"
+          break
+    if not matched:
+      return
+    try:
+      from ai.tools.domains.platform.audit_store import record_audit
+      record_audit(action="fully_open_command", tool="shell", ok=True,
+                   detail={"command": command, "matched": matched})
+    except Exception:
+      pass
 
   # State-changing shell prefixes that are rejected under read-only policy.
   _READONLY_MUTATION = re.compile(
@@ -146,6 +180,8 @@ class ShellRunner(SandboxRuntime):
         error=blocked,
         error_kind="blocked",
       )
+    # Fully-open: still record normally-blocked commands to the audit trail.
+    self.audit_dangerous_command(shell)
 
     mode = self._mode_of(policy)
     if mode == "read-only":

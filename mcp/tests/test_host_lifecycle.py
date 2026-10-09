@@ -65,7 +65,11 @@ class LifecycleTests(unittest.TestCase):
     p=Proc(); p.stdout.readline=AsyncMock(side_effect=asyncio.TimeoutError())
     with patch('ai.mcp.host.asyncio.create_subprocess_exec', new=AsyncMock(return_value=p)):
       async def run():
-        with self.assertRaises(asyncio.TimeoutError): await host._client_for('s','x','cmd',[],{}).request('tools/list',{})
+        # D-P0.2: request() retries then surfaces a RuntimeError whose cause is
+        # the underlying timeout; the client is still cleaned up (proc is None).
+        with self.assertRaises(RuntimeError) as ctx:
+          await host._client_for('s','x','cmd',[],{}).request('tools/list',{})
+        self.assertIsInstance(ctx.exception.__cause__, asyncio.TimeoutError)
         self.assertIsNone(host._clients[('s','x')].proc)
       asyncio.run(run())
     class P:

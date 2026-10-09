@@ -32,13 +32,13 @@ class WorkflowEventsTests(unittest.IsolatedAsyncioTestCase):
       events.append(event.to_dict())
 
     engine.register_event_sink(sink)
-    result = await engine.run({"id": "test", "name": "Test Workflow"}, {"x": 1})
+    result = await engine.run({"id": "test", "name": "Test Workflow", "steps": [{"id": "s1", "kind": "log", "inputs": {"message": "hello"}}]}, {"x": 1})
 
     self.assertTrue(result.ok)
     self.assertEqual(result.error, WorkflowErrorCode.INVALID_DEFINITION)
-    self.assertEqual(len(events), 2)
+    self.assertGreaterEqual(len(events), 2)
     self.assertEqual(events[0]["type"], "workflow/start")
-    self.assertEqual(events[1]["type"], "workflow/end")
+    self.assertEqual(events[-1]["type"], "workflow/end")
 
   async def test_engine_dispose_prevents_run(self):
     engine = WorkflowEngine()
@@ -49,7 +49,7 @@ class WorkflowEventsTests(unittest.IsolatedAsyncioTestCase):
     engine.register_event_sink(sink)
 
     async def run_and_dispose():
-      task = asyncio.create_task(engine.run({"id": "test", "name": "Test"}))
+      task = asyncio.create_task(engine.run({"id": "test", "name": "Test", "steps": [{"id": "s1", "kind": "log", "inputs": {"message": "hello"}}]}))
       await asyncio.sleep(0)
       return await task
 

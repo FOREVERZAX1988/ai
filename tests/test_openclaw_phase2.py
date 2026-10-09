@@ -31,6 +31,20 @@ class SyncProtocolTests(unittest.TestCase):
 
 
 class ModelRouterTests(unittest.TestCase):
+  def setUp(self):
+    # The model hub is backed by a process-global config store; isolate it so
+    # this test does not read a hub leaked from an earlier test.
+    import tempfile
+    from pathlib import Path
+
+    from ai.common.config_store import reset_config_store_for_tests
+
+    self._tmp = tempfile.TemporaryDirectory()
+    reset_config_store_for_tests(Path(self._tmp.name) / "config.json")
+
+  def tearDown(self):
+    self._tmp.cleanup()
+
   def test_fallback_chain_empty(self):
     from ai.core.llm.client import AIConfig
     from ai.core.llm.model_router import resolve_chat_config_chain
@@ -79,11 +93,16 @@ class DeviceTrustTests(unittest.TestCase):
 
 class CanvasStoreTests(unittest.TestCase):
   def test_capture_report(self):
+    import uuid
+
     from ai.canvas.store import maybe_capture_tool_artifact, list_artifacts
 
-    art = maybe_capture_tool_artifact("s1", "tune_report", {"report": {"score": 1}})
+    # Canvas artifacts persist to a per-session jsonl file; use a unique session
+    # id so repeated runs do not accumulate against a shared "s1" file.
+    sid = f"test-{uuid.uuid4().hex}"
+    art = maybe_capture_tool_artifact(sid, "tune_report", {"report": {"score": 1}})
     self.assertIsNotNone(art)
-    items = list_artifacts("s1")
+    items = list_artifacts(sid)
     self.assertEqual(len(items), 1)
 
 

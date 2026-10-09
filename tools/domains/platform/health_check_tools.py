@@ -181,6 +181,11 @@ def run_health_check(*, scope: str = "engage", get_state_reader=None) -> dict[st
   else:
     headline = "健康检查通过，未发现常见阻塞项"
 
+  # T-P1.3: attach executable remediation actions so WorkflowEngine / agents can
+  # chain a fix without a second reasoning pass. Each executable carries the
+  # tool name, args and a human reason, gated by ``confirm``.
+  executables = _collect_executables(checks)
+
   return {
     "ok": True,
     "scope": scope,
@@ -193,7 +198,51 @@ def run_health_check(*, scope: str = "engage", get_state_reader=None) -> dict[st
       "vEgo": vehicle.get("vEgo"),
       "brand": vehicle.get("brand") or vehicle.get("carBrand"),
     },
+    # T-P0.4 standard contract: {ok, data, message}
+    "data": {
+      "scope": scope,
+      "overall": ov,
+      "summary": headline,
+      "checks": checks,
+      "actions": executables,
+      "vehicle_snapshot": {
+        "enabled": vehicle.get("enabled"),
+        "started": vehicle.get("started"),
+        "vEgo": vehicle.get("vEgo"),
+        "brand": vehicle.get("brand") or vehicle.get("carBrand"),
+      },
+    },
   }
+
+
+_ACTION_TO_EXEC: dict[str, dict[str, Any]] = {
+  "启用 secoc-toyota 技能": {"tool": "secoc_extract_key", "args": {}, "reason": "丰田/雷克萨斯车型需 SecOC 密钥"},
+  "检查 USB / pandad / c3-dos-panda 技能": {"tool": "panda_status", "args": {}, "reason": "Panda 未检测到，先排查 USB/驱动"},
+  "查看 onroad 事件与告警": {"tool": "read_onroad_events", "args": {"limit": 20}, "reason": "车辆行驶未接合，查看阻塞告警"},
+  "检查指纹 / 车型平台 / SecOC": {"tool": "get_car_platform_bundle", "args": {}, "reason": "CarParams 缺失，需识别车型"},
+  "TSK 提取或手动安装密钥": {"tool": "secoc_extract_key", "args": {}, "reason": "未配置 SecOCKey"},
+}
+
+
+def _collect_executables(checks: list[dict[str, Any]]) -> list[dict[str, Any]]:
+  """Derive a de-duplicated list of executable remediation actions (T-P1.3)."""
+  out: list[dict[str, Any]] = []
+  seen: set[str] = set()
+  for c in checks:
+    if c.get("status") not in ("fail", "warn"):
+      continue
+    action = (c.get("action") or "").strip()
+    if not action:
+      continue
+    mapped = _ACTION_TO_EXEC.get(action)
+    if mapped is None:
+      continue
+    tool = mapped["tool"]
+    if tool in seen:
+      continue
+    seen.add(tool)
+    out.append({**mapped, "confirm": c["status"] == "fail", "source": c.get("name")})
+  return out
 
 
 def guide_ota_update(*, confirm: bool = False) -> dict[str, Any]:

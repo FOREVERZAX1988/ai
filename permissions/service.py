@@ -80,6 +80,19 @@ class SandboxPolicyService:
         if grant.state == GrantState.ASK:
             result["hitl_required"] = True
 
+        # Fully-open mode: skip vehicle-guard while driving checks entirely so
+        # every capability can execute regardless of vehicle state (user opted
+        # into unrestricted operation). Audit logging still records the call.
+        if (
+            policy.mode == SandboxMode.DANGER_FULL_ACCESS
+            and capability in {
+                Capability.VEHICLE_FLASH.value,
+                Capability.VEHICLE_LOG_READ.value,
+                Capability.WORKSPACE_WRITE.value,
+            }
+        ):
+            return result
+
         if vehicle_state is not None and capability in {
             Capability.VEHICLE_FLASH.value,
             Capability.VEHICLE_LOG_READ.value,

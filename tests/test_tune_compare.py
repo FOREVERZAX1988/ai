@@ -24,8 +24,10 @@ class TestTuneCompareApi(unittest.TestCase):
       "metrics": {},
     }
     fake_ab = {"ok": True, "tune_highlights": [], "tune_recommendations": []}
-    with patch("ai.tools.route_scoring_tools.score_route_tune", return_value=fake_score):
-      with patch("ai.tools.route_scoring_tools.compare_tune_ab", return_value=fake_ab):
+    # Patch the canonical module the shim re-exports from: score_tune_session
+    # resolves score_route_tune/compare_tune_ab from its own module globals.
+    with patch("ai.tools.domains.tune.route_scoring_tools.score_route_tune", return_value=fake_score):
+      with patch("ai.tools.domains.tune.route_scoring_tools.compare_tune_ab", return_value=fake_ab):
         out = score_tune_session("a", "b")
     self.assertTrue(out.get("ok"))
     self.assertIn("score_delta", out)

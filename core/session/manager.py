@@ -112,6 +112,12 @@ class SessionManager:
     previous = self._state(session_id)
     if previous == SessionLifecycleState.DISPOSED:
       return record, []
+    # D-P0.5: refuse to reuse a session that belongs to a different context
+    # (subagent origin / parent lineage / non-default preset / cwd mismatch).
+    from ai.core.session.adopt import check_adoptable
+    adopt = check_adoptable(record.header, session_id=session_id, cwd=self.cwd)
+    if not adopt.ok:
+      return record, []
     log = self._get_or_create_log(record)
     # Reload from disk in case storage.append_event wrote events outside this log.
     log.reset()

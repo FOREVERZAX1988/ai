@@ -81,11 +81,16 @@ class TestPandaConnect(unittest.TestCase):
     self.assertEqual(probe["panda_backend"], "panda")
 
   def test_stop_pandad_uses_module_pattern(self):
-    with mock.patch.object(pc, "pandad_module", return_value="selfdrive.pandad.pandad"):
+    # stop_pandad kills the resolved module pattern plus legacy variants
+    # (unified panda/pandad stack), each via a `pkill -9 -f <pattern>` call.
+    with mock.patch.object(pc, "_pandad_module", return_value="selfdrive.pandad.pandad"):
       with mock.patch.object(pc.subprocess, "run") as run:
         pc.stop_pandad()
-        run.assert_called_once()
-        self.assertEqual(run.call_args.args[0], ["pkill", "-9", "-f", "selfdrive.pandad.pandad"])
+    commands = [c.args[0] for c in run.call_args_list]
+    self.assertTrue(commands)
+    for cmd in commands:
+      self.assertEqual(cmd[:3], ["pkill", "-9", "-f"])
+    self.assertIn(["pkill", "-9", "-f", "selfdrive.pandad.pandad"], commands)
 
 
 if __name__ == "__main__":

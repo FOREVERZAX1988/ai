@@ -1,7 +1,8 @@
-"""Session FTS index tests (skip without openpilot runtime)."""
+"""Session FTS index tests (skip without a real openpilot runtime)."""
 
 from __future__ import annotations
 
+import importlib.util
 import sys
 import unittest
 from pathlib import Path
@@ -13,12 +14,37 @@ OP_ROOT = ROOT / "openpilot"
 if OP_ROOT.is_dir() and str(OP_ROOT) not in sys.path:
   sys.path.insert(0, str(OP_ROOT))
 
+# Real openpilot runtime prerequisites, probed explicitly. Checking these keeps
+# the skip decision independent of ambient ``sys.path`` mutations and of the
+# openpilot mocks that sibling test modules (``ai/tests/bootstrap_pc.py``)
+# install into ``sys.modules``. Probing ``openpilot`` alone is not enough: the
+# ``OP_ROOT`` injection above makes ``importlib.util.find_spec("openpilot")``
+# succeed even when the underlying runtime (zmq) is absent. Probing the real
+# runtime dependency makes this module behave identically in isolation and
+# inside the full suite.
+_OPENPILOT_RUNTIME_DEPS = ("zmq", "openpilot.common.params")
+
+
+def _missing_runtime_deps() -> list[str]:
+  missing: list[str] = []
+  for name in _OPENPILOT_RUNTIME_DEPS:
+    try:
+      if importlib.util.find_spec(name) is None:
+        missing.append(name)
+    except (ImportError, ValueError):
+      # ValueError: ``name`` is mocked in sys.modules without a __spec__.
+      missing.append(name)
+  return missing
+
 
 def _require_openpilot():
+  missing = _missing_runtime_deps()
+  if missing:
+    raise unittest.SkipTest("openpilot runtime not available: missing " + ", ".join(missing))
   try:
     from openpilot.common.params import Params  # noqa: F401
-  except ModuleNotFoundError as e:
-    raise unittest.SkipTest(f"openpilot runtime not available: {e}") from e
+  except Exception as e:
+    raise unittest.SkipTest(f"openpilot runtime not usable: {e}") from e
 
 
 class SessionIndexTests(unittest.TestCase):

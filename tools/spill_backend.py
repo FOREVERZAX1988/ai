@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import base64
 import json
+import os
 import urllib.error
 import urllib.request
 from abc import ABC, abstractmethod
@@ -64,8 +65,9 @@ class SpillBackend(ABC):
 class LocalSpillBackend(SpillBackend):
   """Default backend: store spilled results under workspace_path('tool_results')."""
 
-  def __init__(self, base_dir: str | Path | None = None) -> None:
+  def __init__(self, base_dir: str | Path | None = None, *, harden: bool = True) -> None:
     self.base_dir = Path(base_dir) if base_dir else workspace_path("tool_results")
+    self.harden = harden
 
   def _safe_session(self, session_id: str) -> str:
     return (session_id or "global").replace("/", "_").replace("\\", "_")[:64]
@@ -73,6 +75,12 @@ class LocalSpillBackend(SpillBackend):
   def _results_dir(self, session_id: str) -> Path:
     path = self.base_dir / self._safe_session(session_id)
     path.mkdir(parents=True, exist_ok=True)
+    if self.harden:
+      # D-P0.4: private-by-default directory.
+      try:
+        os.chmod(path, 0o700)
+      except OSError:
+        pass
     return path
 
   def _path(self, ref_id: str, session_id: str, tool_name: str, ext: str) -> Path:
@@ -89,7 +97,20 @@ class LocalSpillBackend(SpillBackend):
   ) -> dict[str, Any]:
     path = self._path(ref_id, session_id, tool_name, ext)
     try:
-      path.write_bytes(data)
+      if self.harden:
+        # D-P0.4: reject symlink redirection + owner-only 0600 write. Detect
+        # the final leaf symlink BEFORE resolving so an attacker cannot redirect
+        # the write through a symlinked filename.
+        if path.is_symlink() or (path.exists() and path.resolve().is_symlink()):
+          return {"ok": False, "error": "refuse spill write through symlink"}
+        resolved = path.resolve()
+        fd = os.open(resolved, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        try:
+          os.write(fd, data)
+        finally:
+          os.close(fd)
+      else:
+        path.write_bytes(data)
       return {"ok": True, "locator": str(path), "ref": f"toolresult://{ref_id}"}
     except OSError as e:
       return {"ok": False, "error": str(e)}

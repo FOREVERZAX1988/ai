@@ -208,6 +208,33 @@ TOOL_DESCRIPTIONS: dict[str, str] = {
   "konik_reset_dongle_id": "清除旧 DongleId，向 Konik 重新注册",
   "konik_register_device": "调用 registration.py 向 Konik API 注册设备",
   "konik_connect_pipeline": "一条龙：密钥 → 清 DongleId → 注册 → 配对链接",
+  "goal_create": "创建目标",
+  "goal_get": "读取目标",
+  "goal_edit": "编辑目标",
+  "goal_pause": "暂停目标",
+  "goal_resume": "恢复目标",
+  "goal_complete": "完成目标",
+  "goal_block": "阻塞目标",
+  "plan_generate": "生成计划",
+  "plan_update": "更新计划",
+  "plan_activate": "激活计划",
+  "plan_step_status": "步骤状态",
+  "plan_complete": "完成计划",
+  "todo_write": "写入待办",
+  "todo_clear": "清理待办",
+  "todo_get": "读取待办",
+  "subagent_start": "启动子代理",
+  "subagent_start_many": "批量启动子代理",
+  "subagent_query": "查询子代理",
+  "subagent_cancel": "取消子代理",
+  "subagent_report": "子代理汇报",
+  "lsp": "LSP 查询",
+  "run_python_code": "运行 Python",
+  "workflow_advance": "推进工作流",
+  "schedule_create": "创建定时任务",
+  "schedule_list": "定时任务列表",
+  "schedule_delete": "删除定时任务",
+  "mcp_discover": "发现 MCP 工具",
 }
 
 # 更友好的显示名（覆盖 TOOL_META 里过于技术化的 label）
@@ -265,9 +292,14 @@ TOOL_LABEL_OVERRIDES: dict[str, str] = {
 
 
 def enrich_tool_meta_for_ui(meta: dict[str, dict[str, Any]]) -> dict[str, dict[str, Any]]:
+  from ai.tools.runtime_meta import get_tool_meta
   out: dict[str, dict[str, Any]] = {}
   for name, m in meta.items():
     entry = dict(m)
+    runtime = get_tool_meta(name)
+    if runtime:
+      entry.setdefault("label", runtime.get("label", ""))
+      entry.setdefault("description", runtime.get("description", ""))
     if name in TOOL_LABEL_OVERRIDES:
       entry["label"] = TOOL_LABEL_OVERRIDES[name]
     entry["description"] = TOOL_DESCRIPTIONS.get(name, entry.get("description", ""))

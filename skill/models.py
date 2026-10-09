@@ -8,6 +8,33 @@ from typing import Any, Callable, Literal
 SkillId = str
 SkillPolicy = Literal["auto", "confirm", "disabled"]
 SkillScope = Literal["global", "session", "project"]
+
+
+@dataclass(frozen=True)
+class SkillInvocationPolicy:
+  """Explicit caller policy (D-P1.3)."""
+
+  model_invocable: bool = True
+  user_invocable: bool = True
+
+  def to_dict(self) -> dict[str, bool]:
+    return {
+      "modelInvocable": self.model_invocable,
+      "userInvocable": self.user_invocable,
+    }
+
+  @staticmethod
+  def from_value(value: Any) -> "SkillInvocationPolicy":
+    if isinstance(value, SkillInvocationPolicy):
+      return value
+    if isinstance(value, dict):
+      return SkillInvocationPolicy(
+        model_invocable=bool(value.get("modelInvocable", value.get("model_invocable", True))),
+        user_invocable=bool(value.get("userInvocable", value.get("user_invocable", True))),
+      )
+    return SkillInvocationPolicy() 
+
+
 SkillInvocationStatus = Literal["pending", "allowed", "denied", "running", "success", "error"]
 SkillErrorCode = Literal[
   "SKILL_NOT_FOUND",
@@ -92,6 +119,10 @@ class Skill:
   capabilities: list[str] = field(default_factory=list)
   dependencies: list[SkillDependency] = field(default_factory=list)
   source: str = ""
+  # D-P0.3 rank for scope merge priority; lower rank = higher priority.
+  rank: int = 600
+  # D-P1.3 explicit caller policy.
+  invocation_policy: SkillInvocationPolicy = field(default_factory=SkillInvocationPolicy)
 
   def to_dict(self) -> dict[str, Any]:
     return {
@@ -106,6 +137,8 @@ class Skill:
       "capabilities": list(self.capabilities),
       "dependencies": [d.to_dict() for d in self.dependencies],
       "source": self.source,
+      "rank": self.rank,
+      "invocationPolicy": self.invocation_policy.to_dict(),
     }
 
   @staticmethod
@@ -131,6 +164,10 @@ class Skill:
       capabilities=list(data.get("capabilities") or []),
       dependencies=deps,
       source=str(data.get("source", "")),
+      rank=int(data.get("rank", data.get("metadata", {}).get("rank", 600))),
+      invocation_policy=SkillInvocationPolicy.from_value(
+        data.get("invocationPolicy", data.get("invocation_policy"))
+      ),
     )
 
   @property

@@ -334,6 +334,8 @@ class WorkflowEngine:
     self,
     definition: dict[str, Any] | WorkflowDefinition,
     inputs: dict[str, Any] | None = None,
+    *,
+    cancel_event: asyncio.Event | None = None,
   ) -> WorkflowResult:
     """Run a workflow definition to completion.
 
@@ -364,7 +366,7 @@ class WorkflowEngine:
         message=f"invalid definition: {exc}",
       )
 
-    ctx = RunContext.create(run_id, inputs)
+    ctx = RunContext(run_id=run_id, inputs=inputs, cancel_event=cancel_event or asyncio.Event())
     self._runs[run_id] = ctx
     factory = WorkflowEventFactory(run_id)
 

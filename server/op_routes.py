@@ -9,7 +9,9 @@ so the page can boot and chat in local-dev mode.
 
 from __future__ import annotations
 
+import asyncio
 import json
+import re
 import time
 import uuid
 from collections.abc import Awaitable, Callable
@@ -17,6 +19,7 @@ from pathlib import Path
 from typing import Any
 
 from aiohttp import web
+from openpilot.common.params import Params
 
 from ai.audit.log import AuditLog
 from ai.core.agent.simple_loop import SimpleAgentLoop
@@ -31,18 +34,15 @@ from ai.tools.spill import SpillWaterfall
 from ai.tools.vehicle.params import VehicleParams
 from ai.tools.vehicle.schemas import build_vehicle_handlers, build_vehicle_tool_specs
 
-
-def _vehicle_params_factory(cwd: str) -> VehicleParams:
-  return VehicleParams(Path(cwd) / ".ai" / "vehicle")
-
-
-def _make_dispatcher(cwd: str, config: AIOPConfig) -> ToolDispatcher:
-  schemas = build_vehicle_tool_specs()
-  handlers = build_vehicle_handlers(_vehicle_params_factory)
-  sandbox = SandboxPolicyService(config)
-  audit = AuditLog.for_session(cwd)
-  hitl = HumanInLoop()
-  return ToolDispatcher(handlers, schemas, sandbox, audit, hitl)
+# Shared chat handling logic (A-P0.5): the local-dev runner + reusable
+# chat/completion handlers live in one module so this router only binds
+# endpoints. Per-router authentication stays at the binding/middleware layer.
+from ai.server.handlers.chat import (
+  api_chat_completions_local_dev,
+  api_chat_local_dev,
+  extract_prompt,
+  run_chat_local_dev,
+)
 
 
 def _cwd_from_request(request: web.Request) -> str:
@@ -55,187 +55,12 @@ def _cwd_from_request(request: web.Request) -> str:
   return str(body.get("cwd") or request.query.get("cwd") or str(Path.cwd()))
 
 
-def _make_offline_config() -> AIConfig:
-  """Offline mock config used by local-dev Agent runs."""
-  return AIConfig(provider="offline", model="offline-mock", api_key="offline")
-
-
-def _make_tool_pipeline(config: AIOPConfig) -> tuple[list[dict[str, Any]], dict[str, Any]]:
-  """Build schemas + handlers compatible with ai.core.agent.Agent.
-
-  Uses the same vehicle/harness/agent tool registration as production, but
-  bound to the standard StateReader. ToolPipeline will wrap sync/async handlers.
-  """
-  from ai.tools.agent_tools import build_tool_schemas, make_handlers
-
-  schemas = build_tool_schemas()
-
-  def _get_state_reader():
-    from ai.selfdrive.state import StateReader
-    return StateReader()
-
-  handlers = make_handlers(get_state_reader=_get_state_reader, params=Params())
-  return schemas, handlers
-
-
-def _make_agent(
-  cwd: str,
-  config: AIOPConfig,
-  body: dict[str, Any],
-  emit: Callable[[dict[str, Any]], Awaitable[None]],
-  session_id: str,
-  get_state_reader: Callable[[], Any],
-) -> "Agent":
-  """Construct a production Agent instance with AgentLoop enabled by default.
-
-  Tool schemas come from ``ai.tools.agent_tools.build_tool_schemas()`` and
-  handlers are built via ``ai.tools.agent_tools.make_handlers(...)``.  This
-  helper centralizes the construction seam exercised by T02 regression tests.
-  """
-  from ai.core.agent.agent import Agent
-
-  # Force AgentLoop default for local-dev harness.
-  body = {**body, "ai_use_agent_loop": True}
-
-  def _get_tool_handlers() -> dict[str, Any]:
-    _schemas, handlers = _make_tool_pipeline(config)
-    return handlers
-
-  agent_id = str(body.get("agent_id") or body.get("agentId") or "local-dev").strip() or "local-dev"
-  ai_config = _make_offline_config()
-  tool_schemas, _ = _make_tool_pipeline(config)
-
-  return Agent(
-    session_id=session_id,
-    agent_id=agent_id,
-    params=Params(),
-    config=ai_config,
-    body=body,
-    emit=emit,
-    get_state_reader=get_state_reader,
-    get_tool_handlers=_get_tool_handlers,
-    tools=tool_schemas,
-    max_tool_rounds=int(body.get("max_tool_rounds") or config.conversation.ai_max_turns or 16),
-    tool_timeout=float(body.get("tool_timeout") or config.conversation.ai_tool_timeout or 60.0),
-    stream_timeout=float(body.get("stream_timeout") or config.conversation.ai_stream_timeout or 120.0),
-    ai_use_agent_loop=True,
-  )
-
-
-async def _run_with_agent(
-  cwd: str,
-  config: AIOPConfig,
-  body: dict[str, Any],
-  prompt: str,
-  session_id: str,
-) -> dict[str, Any]:
-  """Run one chat turn through the production Agent (AgentLoop by default).
-
-  Falls back to SimpleAgentLoop if Agent construction/execution fails so the
-  local-dev server stays usable even when production dependencies are missing.
-  """
-  from ai.core.agent.registry import agent_registry
-
-  if prompt and not body.get("messages"):
-    body["messages"] = [{"role": "user", "content": prompt}]
-
-  events: list[dict[str, Any]] = []
-
-  async def _emit(event: dict[str, Any]) -> None:
-    events.append(event)
-
-  def _get_state_reader():
-    from ai.selfdrive.state import StateReader
-    return StateReader()
-
-  agent = _make_agent(cwd, config, body, _emit, session_id, _get_state_reader)
-  job_id = str(body.get("_job_id") or body.get("jobId") or "").strip()
-
-  async def _cancel() -> bool:
-    try:
-      agent.cancel()
-      return True
-    except Exception:
-      return False
-
-  entry = agent_registry.resume(
-    session_id,
-    agent.agent_id,
-    job_id=job_id,
-    meta={"mode": str(body.get("mode") or body.get("chatMode") or "local-dev")},
-    cancel_fn=_cancel,
-  )
-  try:
-    result = await agent.run()
-    return {"ok": True, "agent": result, "events": events}
-  finally:
-    status = "done"
-    if getattr(agent, "state", None) is not None and agent.state.is_cancelled():
-      status = "cancelled"
-    elif entry is not None:
-      agent_registry.mark_done(session_id, status)
-
-
-async def _run_simple_loop(
-  cwd: str,
-  config: AIOPConfig,
-  body: dict[str, Any],
-  prompt: str,
-  session_id: str,
-) -> dict[str, Any]:
-  """Original P0 fallback loop (preserved for resilience)."""
-  sessions = SessionManager(cwd)
-  session = sessions.get_or_create(session_id, cwd=cwd)
-  dispatcher = _make_dispatcher(cwd, config)
-  spill = SpillWaterfall(cwd)
-  provider = OfflineProvider()
-  loop = SimpleAgentLoop(session, sessions.storage, dispatcher, provider, config, spill=spill)
-  result = await loop.run(prompt)
-  return {"ok": True, "fallback": "simple_loop", "result": result}
-
-
-def _extract_prompt(messages: list[dict[str, Any]]) -> str:
-  """Extract the latest user text prompt from an OpenAI-style messages list."""
-  for m in reversed(messages):
-    if m.get("role") == "user":
-      content = m.get("content")
-      if isinstance(content, str):
-        return content
-      if isinstance(content, list):
-        return " ".join(p.get("text", "") for p in content if p.get("type") == "text")
-  return ""
-
-
-async def _run_chat_local_dev(
-  cwd: str,
-  config: AIOPConfig,
-  body: dict[str, Any],
-  prompt: str,
-  session_id: str,
-) -> dict[str, Any]:
-  """Try production Agent first, fallback to SimpleAgentLoop on failure."""
-  try:
-    return await _run_with_agent(cwd, config, body, prompt, session_id)
-  except Exception as e:
-    # Log and fallback so local-dev never hard-fails when Agent deps are unavailable.
-    import logging
-    logging.getLogger("ai.op_routes").warning(f"Agent run failed, falling back to SimpleAgentLoop: {e}")
-    return await _run_simple_loop(cwd, config, body, prompt, session_id)
-
-
-async def _extract_reply(result: Any) -> str:
-  """Extract assistant text from an Agent or fallback result."""
-  if not isinstance(result, dict):
-    return str(result)
-  if result.get("fallback"):
-    fb_result = result.get("result") or {}
-    if isinstance(fb_result, dict):
-      return str(fb_result.get("reply", "") or fb_result.get("answer", "") or fb_result.get("content", ""))
-    return str(fb_result)
-  agent_result = result.get("agent") or {}
-  if isinstance(agent_result, dict):
-    return str(agent_result.get("reply", "") or agent_result.get("answer", "") or agent_result.get("content", ""))
-  return ""
+# The local-dev Agent construction + chat runner now live in
+# ai.server.handlers.chat (A-P0.5). Keep the historical private names as thin
+# aliases so existing references (jobs handler, tests) keep working without
+# duplicating the logic here.
+_extract_prompt = extract_prompt
+_run_chat_local_dev = run_chat_local_dev
 
 
 async def health(_request: web.Request) -> web.Response:
@@ -372,65 +197,11 @@ async def api_write_confirm(request: web.Request) -> web.Response:
   return web.json_response({"ok": True, "confirmed": True})
 
 
-async def api_chat(request: web.Request) -> web.Response:
-  body = await request.json()
-  config = request.app.get("config") or AIOPConfig()
-  if body.get("sandbox_mode"):
-    config.conversation.ai_sandbox_mode = str(body.get("sandbox_mode"))
-  cwd = str(body.get("cwd") or str(Path.cwd()))
-  prompt = str(body.get("prompt") or "")
-  session_id = str(body.get("session_id") or "")
-
-  result = await _run_chat_local_dev(cwd, config, body, prompt, session_id)
-  return web.json_response(result)
-
-
-async def api_chat_completions(request: web.Request) -> web.Response:
-  """OpenAI-compatible chat completions endpoint used by the web UI."""
-  body = await request.json()
-  messages = body.get("messages", [])
-  prompt = _extract_prompt(messages)
-  session_id = str(body.get("session_id") or body.get("sessionId") or "")
-  stream = bool(body.get("stream", False))
-
-  config = request.app.get("config") or AIOPConfig()
-  if body.get("sandbox_mode"):
-    config.conversation.ai_sandbox_mode = str(body.get("sandbox_mode"))
-  cwd = str(body.get("cwd") or str(Path.cwd()))
-
-  result = await _run_chat_local_dev(cwd, config, body, prompt, session_id)
-
-  text = await _extract_reply(result)
-  completion_id = f"chatcmpl-{uuid.uuid4().hex}"
-  response = {
-    "id": completion_id,
-    "object": "chat.completion",
-    "created": int(time.time()),
-    "model": body.get("model", "offline-mock"),
-    "choices": [
-      {
-        "index": 0,
-        "message": {"role": "assistant", "content": text},
-        "finish_reason": "stop",
-      }
-    ],
-    "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
-  }
-  if stream:
-    # Minimal SSE stream.
-    async def _sse():
-      chunk = {
-        "id": completion_id,
-        "object": "chat.completion.chunk",
-        "created": response["created"],
-        "model": response["model"],
-        "choices": [{"index": 0, "delta": {"role": "assistant", "content": text}, "finish_reason": None}],
-      }
-      yield b"data: " + json.dumps(chunk, ensure_ascii=False).encode("utf-8") + b"\n\n"
-      done = {"id": completion_id, "object": "chat.completion.chunk", "created": response["created"], "model": response["model"], "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}]}
-      yield b"data: " + json.dumps(done, ensure_ascii=False).encode("utf-8") + b"\n\ndata: [DONE]\n\n"
-    return web.Response(body=_sse(), content_type="text/event-stream", headers={"Cache-Control": "no-cache"})
-  return web.json_response(response)
+# Chat endpoints now delegate to the shared handlers in ai.server.handlers.chat
+# (A-P0.5). Keeping the module-level names preserves the existing binding in
+# setup_routes while removing the duplicated handler bodies.
+api_chat = api_chat_local_dev
+api_chat_completions = api_chat_completions_local_dev
 
 
 async def api_session_resume(request: web.Request) -> web.Response:
@@ -485,10 +256,12 @@ async def api_audit_verify(request: web.Request) -> web.Response:
 
 
 async def api_notifications(request: web.Request) -> web.Response:
-  unread = request.query.get("unread")
+  from ai.tools.domains.platform.notifications import list_notifications, mark_notifications_read
+
   if request.method == "POST":
-    return web.json_response({"ok": True, "cleared": True})
-  return web.json_response({"ok": True, "notifications": [], "unread": 0 if unread is not None else None})
+    return web.json_response(mark_notifications_read())
+  unread = request.query.get("unread")
+  return web.json_response(list_notifications(unread_only=unread is not None))
 
 
 async def api_sync_ws(request: web.Request) -> web.WebSocketResponse:
@@ -501,7 +274,117 @@ async def api_sync_ws(request: web.Request) -> web.WebSocketResponse:
 
 
 async def api_rag(request: web.Request) -> web.Response:
-  return web.json_response({"ok": True, "docs": []})
+  if request.method == "POST":
+    try:
+      body = await request.json()
+    except json.JSONDecodeError:
+      return web.json_response({"ok": False, "error": "Invalid JSON"}, status=400)
+    op = str(body.get("operation") or "").strip()
+    if op == "reindex":
+      return web.json_response({"ok": True, "jobId": f"reindex_{uuid.uuid4().hex[:8]}", "status": "queued"})
+    if op == "wiki_ingest":
+      return web.json_response({"ok": True, "jobId": f"wiki_{uuid.uuid4().hex[:8]}", "status": "queued"})
+    return web.json_response({"ok": False, "error": f"unknown operation: {op}"}, status=400)
+
+  # Try to read real doc list if available; otherwise return empty defaults.
+  try:
+    from ai.tools.domains.core.rag_store import list_docs
+    docs = list_docs()
+    embedded = [d for d in docs if d.get("embedded")]
+    return web.json_response({
+      "ok": True,
+      "count": len(docs),
+      "embedded_docs": len(embedded),
+      "vector_chunks": sum(d.get("chunks", 0) for d in embedded),
+    })
+  except Exception:
+    return web.json_response({"ok": True, "count": 0, "embedded_docs": 0, "vector_chunks": 0})
+
+
+async def api_scheduler(request: web.Request) -> web.Response:
+  from ai.tools.domains.platform.scheduler import list_scheduled_tasks, schedule_task, upsert_task_from_nl, remove_task
+
+  if request.method == "GET":
+    return web.json_response(list_scheduled_tasks(Params()))
+  try:
+    body = await request.json()
+  except json.JSONDecodeError:
+    return web.json_response({"ok": False, "error": "Invalid JSON"}, status=400)
+  task_id = body.get("task_id") or body.get("id")
+  if body.get("delete") and task_id:
+    return web.json_response(remove_task(Params(), str(task_id)))
+  if body.get("nl"):
+    return web.json_response(upsert_task_from_nl(Params(), str(body.get("name") or "")))
+  return web.json_response(schedule_task(Params(), body))
+
+
+async def api_tools_meta(request: web.Request) -> web.Response:
+  from ai.tools.agent_tools import build_tool_schemas
+  from ai.tools.domains.platform.tool_ui_meta import enrich_tool_meta_for_ui
+
+  schemas = build_tool_schemas()
+  meta: dict[str, dict[str, Any]] = {}
+  for s in schemas:
+    fn = s.get("function", {})
+    name = str(fn.get("name") or "")
+    if not name:
+      continue
+    meta[name] = {
+      "name": name,
+      "label": name,
+      "description": fn.get("description", ""),
+      "group": "read",
+      "default_enabled": True,
+      "driving": True,
+    }
+  return web.json_response({"ok": True, "tools": enrich_tool_meta_for_ui(meta)})
+
+
+async def api_skills_registry(request: web.Request) -> web.Response:
+  from ai.skill.registry import get_skill_registry
+
+  registry = get_skill_registry()
+  skills = [
+    {
+      "id": s.id,
+      "name": s.name,
+      "version": getattr(s, "version", ""),
+      "rank": getattr(s, "rank", 600),
+      "scope": getattr(s, "scope", "global"),
+      "description": getattr(s, "description", ""),
+    }
+    for s in registry.list_skills_sorted()
+  ]
+  return web.json_response({"ok": True, "skills": skills})
+
+
+async def api_tool_invoke(request: web.Request) -> web.Response:
+  """Generic platform tool invocation endpoint for the web tools panel."""
+  try:
+    body = await request.json()
+  except json.JSONDecodeError:
+    return web.json_response({"ok": False, "error": "Invalid JSON"}, status=400)
+  tool_name = str(body.get("tool") or "").strip()
+  args = body.get("args") if isinstance(body.get("args"), dict) else {}
+  if not tool_name:
+    return web.json_response({"ok": False, "error": "tool required"}, status=400)
+
+  from ai.tools.domains.platform.platform_extensions import make_platform_handlers
+  params = Params()
+  handlers = make_platform_handlers(params=params)
+  handler = handlers.get(tool_name)
+  if handler is None:
+    return web.json_response({"ok": False, "error": f"tool '{tool_name}' not found"}, status=404)
+  try:
+    if asyncio.iscoroutinefunction(handler):
+      result = await handler(args)
+    else:
+      result = handler(args)
+    if asyncio.iscoroutine(result):
+      result = await result
+    return web.json_response(result if isinstance(result, dict) else {"ok": True, "result": result})
+  except Exception as e:
+    return web.json_response({"ok": False, "error": str(e)})
 
 
 async def api_files_content(request: web.Request) -> web.Response:
@@ -617,42 +500,105 @@ async def api_fallback(request: web.Request) -> web.Response:
   return web.json_response({"ok": True, "mode": "local-dev", "path": path})
 
 
+_PATH_PARAM_RE = re.compile(r"\{([^{}:]+):[^{}]*\}")
+
+
+def _canonical(path: str) -> str:
+  """Normalize ``{name:regex}`` path params to aiohttp's canonical ``{name}``.
+
+  aiohttp stores ``/api/ai/{tail:.*}`` as canonical ``/api/ai/{tail}``, so a
+  naive string compare would miss an existing catch-all and re-register it.
+  """
+  return _PATH_PARAM_RE.sub(r"{\1}", path)
+
+
+def _route_signature(route: Any) -> tuple[str, str] | None:
+  """Return ``(METHOD, canonical_path)`` for a router entry, else ``None``.
+
+  System routes (aiohttp's built-in 404/405 handlers, static mounts) carry no
+  canonical resource path and are ignored.
+  """
+  method = getattr(route, "method", "") or ""
+  resource = getattr(route, "resource", None)
+  path = getattr(resource, "canonical", None)
+  if path is None:
+    return None
+  return method.upper(), path
+
+
+def _already_registered(app: web.Application, method: str, path: str) -> bool:
+  """True when an equivalent path+method route is already on ``app.router``.
+
+  aiohttp permits duplicate path+method registration and silently shadows the
+  earlier one (first registration wins). ``setup_routes`` is the *fallback*
+  layer, so it must not re-register endpoints the authoritative production
+  router already owns — doing so only creates dead, unreachable handlers.
+  """
+  want = (method.upper(), _canonical(path))
+  for route in app.router.routes():
+    if _route_signature(route) == want:
+      return True
+  return False
+
+
+def _bind(app: web.Application, method: str, path: str, handler: Any) -> None:
+  """Register ``handler`` for ``(method, path)`` unless it already exists."""
+  if _already_registered(app, method, path):
+    return
+  app.router.add_route(method, path, handler)
+
+
 def setup_routes(app: web.Application) -> None:
-  app.router.add_get("/api/ai/health", health)
-  app.router.add_get("/api/ai/config", api_config_get)
-  app.router.add_post("/api/ai/config", api_config_post)
-  app.router.add_get("/api/ai/config/diagnose", api_config_diagnose)
-  app.router.add_get("/api/ai/status", api_status)
-  app.router.add_get("/api/ai/bootstrap", api_bootstrap)
-  app.router.add_get("/api/ai/providers", api_providers)
-  app.router.add_post("/api/ai/chat", api_chat)
-  app.router.add_post("/api/ai/chat/completions", api_chat_completions)
-  app.router.add_get("/api/ai/chat/jobs", api_chat_jobs_list)
-  app.router.add_post("/api/ai/chat/jobs", api_chat_jobs_create)
-  app.router.add_get("/api/ai/chat/jobs/{job_id}", api_chat_jobs_get)
-  app.router.add_delete("/api/ai/chat/jobs/{job_id}", api_chat_jobs_get)
-  app.router.add_get("/api/ai/chat/jobs/{job_id}/stream", api_chat_jobs_stream)
-  app.router.add_post("/api/ai/write/confirm", api_write_confirm)
-  app.router.add_get("/api/ai/sessions", api_sessions)
-  app.router.add_post("/api/ai/sessions", api_sessions_create)
-  app.router.add_get("/api/ai/sessions/{session_id}/log", api_session_log)
-  app.router.add_post("/api/ai/session/resume", api_session_resume)
-  app.router.add_get("/api/ai/audit/verify", api_audit_verify)
-  app.router.add_get("/api/ai/notifications", api_notifications)
-  app.router.add_post("/api/ai/notifications", api_notifications)
-  app.router.add_get("/api/ai/sync/ws", api_sync_ws)
-  app.router.add_get("/api/ai/rag", api_rag)
-  app.router.add_post("/api/ai/rag", api_rag)
-  app.router.add_get("/api/ai/files/content", api_files_content)
-  app.router.add_post("/api/ai/files/content", api_files_content)
-  app.router.add_get("/tools-panel", tools_panel_page)
+  """Register the local-dev fallback routes.
+
+  Acts as a *fallback* layer: any endpoint already registered by the
+  authoritative production router (``ai.server.routes.register_routes``) is
+  skipped, so this module never shadows a real handler with a degraded one.
+  The non-overlapping endpoints below are the only entry points of the
+  standalone local-dev server (``ai/server/app.py`` calls only this function)
+  and must always be registered.
+  """
+  _bind(app, "GET", "/api/ai/health", health)
+  _bind(app, "GET", "/api/ai/config", api_config_get)
+  _bind(app, "POST", "/api/ai/config", api_config_post)
+  _bind(app, "GET", "/api/ai/config/diagnose", api_config_diagnose)
+  _bind(app, "GET", "/api/ai/status", api_status)
+  _bind(app, "GET", "/api/ai/bootstrap", api_bootstrap)
+  _bind(app, "GET", "/api/ai/providers", api_providers)
+  _bind(app, "POST", "/api/ai/chat", api_chat)
+  _bind(app, "POST", "/api/ai/chat/completions", api_chat_completions)
+  _bind(app, "GET", "/api/ai/chat/jobs", api_chat_jobs_list)
+  _bind(app, "POST", "/api/ai/chat/jobs", api_chat_jobs_create)
+  _bind(app, "GET", "/api/ai/chat/jobs/{job_id}", api_chat_jobs_get)
+  _bind(app, "DELETE", "/api/ai/chat/jobs/{job_id}", api_chat_jobs_get)
+  _bind(app, "GET", "/api/ai/chat/jobs/{job_id}/stream", api_chat_jobs_stream)
+  _bind(app, "POST", "/api/ai/write/confirm", api_write_confirm)
+  _bind(app, "GET", "/api/ai/sessions", api_sessions)
+  _bind(app, "POST", "/api/ai/sessions", api_sessions_create)
+  _bind(app, "GET", "/api/ai/sessions/{session_id}/log", api_session_log)
+  _bind(app, "POST", "/api/ai/session/resume", api_session_resume)
+  _bind(app, "GET", "/api/ai/audit/verify", api_audit_verify)
+  _bind(app, "GET", "/api/ai/notifications", api_notifications)
+  _bind(app, "POST", "/api/ai/notifications", api_notifications)
+  _bind(app, "GET", "/api/ai/sync/ws", api_sync_ws)
+  _bind(app, "GET", "/api/ai/rag", api_rag)
+  _bind(app, "POST", "/api/ai/rag", api_rag)
+  _bind(app, "GET", "/api/ai/scheduler", api_scheduler)
+  _bind(app, "POST", "/api/ai/scheduler", api_scheduler)
+  _bind(app, "GET", "/api/ai/tools", api_tools_meta)
+  _bind(app, "GET", "/api/ai/skills/registry", api_skills_registry)
+  _bind(app, "POST", "/api/ai/tool", api_tool_invoke)
+  _bind(app, "GET", "/api/ai/files/content", api_files_content)
+  _bind(app, "POST", "/api/ai/files/content", api_files_content)
+  _bind(app, "GET", "/tools-panel", tools_panel_page)
 
   # P2 skill lifecycle routes.
   from ai.server.handlers import skills as skills_lifecycle_handlers
-  app.router.add_post("/api/ai/skills/{id}/dispose", skills_lifecycle_handlers.api_skill_dispose)
-  app.router.add_get("/api/ai/skills/{id}/diagnose", skills_lifecycle_handlers.api_skill_diagnose)
-  app.router.add_post("/api/ai/skills/diagnose-all", skills_lifecycle_handlers.api_skill_diagnose_all)
-  app.router.add_post("/api/ai/skills/session/register", skills_lifecycle_handlers.api_skill_session_register)
+  _bind(app, "POST", "/api/ai/skills/{id}/dispose", skills_lifecycle_handlers.api_skill_dispose)
+  _bind(app, "GET", "/api/ai/skills/{id}/diagnose", skills_lifecycle_handlers.api_skill_diagnose)
+  _bind(app, "POST", "/api/ai/skills/diagnose-all", skills_lifecycle_handlers.api_skill_diagnose_all)
+  _bind(app, "POST", "/api/ai/skills/session/register", skills_lifecycle_handlers.api_skill_session_register)
 
-  # Catch-all fallback: must be last. Handles all unimplemented production endpoints.
-  app.router.add_route("*", "/api/ai/{tail:.*}", api_fallback)
+  # Catch-all fallback: must be last. Handles all unimplemented production
+  # endpoints so the local-dev UI can still render (intentionally lenient).
+  _bind(app, "*", "/api/ai/{tail:.*}", api_fallback)

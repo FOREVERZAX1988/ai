@@ -68,7 +68,7 @@ class SandboxPolicyService:
   the workspace root so a session cannot escape its own directory.
   """
 
-  DEFAULT_MODE: ConfinedSandboxMode = "read-only"
+  DEFAULT_MODE: ConfinedSandboxMode = "workspace-write"
   MODE_PARAM: str = "ai_sandbox_default_mode"
 
   def __init__(self, *, workspace_root: str | None = None) -> None:
