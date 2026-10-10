@@ -41,6 +41,17 @@ def _active_bundle_summary(params: Params) -> dict[str, Any] | None:
   return {"ref": raw.get("ref"), "display_name": raw.get("displayName"), "raw": True}
 
 
+def _available_bundles(params: Params):
+  """The active source's bundles.
+
+  ModelFetcher has no get_available_bundles(); every caller used to raise and swallow it.
+  """
+  from openpilot.sunnypilot.models.fetcher import ModelFetcher
+  from openpilot.selfdrive.modeld.helpers import chestnut_present
+  fetcher = ModelFetcher(params)
+  return fetcher.get_bundles_for_source(ModelFetcher.active_source(chestnut_present()))
+
+
 def list_model_bundles(params: Params | None = None, *, refresh: bool = False) -> dict[str, Any]:
   """List available driving model bundles from ModelManager cache."""
   params = params or Params()
@@ -48,9 +59,7 @@ def list_model_bundles(params: Params | None = None, *, refresh: bool = False) -
     params.put("ModelManager_LastSyncTime", 0)
 
   try:
-    from openpilot.sunnypilot.models.fetcher import ModelFetcher
-
-    bundles = ModelFetcher(params).get_available_bundles()
+    bundles = _available_bundles(params)
     items = [_bundle_summary(b) for b in bundles]
     folders: dict[str, list[str]] = {}
     for b in bundles:
@@ -86,15 +95,17 @@ def list_model_bundles(params: Params | None = None, *, refresh: bool = False) -
 
 
 def get_model_manager_status(params: Params | None = None) -> dict[str, Any]:
-  """Active bundle, download index, cache sync, and progress params."""
+  """Active bundle, queued download ref, cache sync, and progress params."""
   params = params or Params()
-  download_index = params.get("ModelManager_DownloadIndex")
+  download_ref = params.get("ModelManager_DownloadRef")
+  if isinstance(download_ref, bytes):
+    download_ref = download_ref.decode(errors="replace")
 
   out: dict[str, Any] = {
     "ok": True,
     "active": _active_bundle_summary(params),
-    "download_index": download_index,
-    "downloading": download_index is not None,
+    "download_ref": download_ref,
+    "downloading": bool(download_ref),
     "last_sync_ns": params.get("ModelManager_LastSyncTime"),
     "cache_present": bool(params.get("ModelManager_ModelsCache")),
     "clear_cache_pending": bool(params.get_bool("ModelManager_ClearCache")),
@@ -103,12 +114,10 @@ def get_model_manager_status(params: Params | None = None) -> dict[str, Any]:
   }
 
   try:
-    from openpilot.sunnypilot.models.fetcher import ModelFetcher
-
-    bundles = ModelFetcher(params).get_available_bundles()
-    if download_index is not None:
+    bundles = _available_bundles(params)
+    if download_ref:
       for b in bundles:
-        if int(getattr(b, "index", -1)) == int(download_index):
+        if getattr(b, "ref", None) == download_ref:
           out["selected_bundle"] = _bundle_summary(b)
           break
   except Exception:
@@ -129,37 +138,34 @@ def preview_model_bundle_change(params: Params, ref: str) -> dict[str, Any]:
     }
 
   try:
-    from openpilot.sunnypilot.models.fetcher import ModelFetcher
-
-    bundles = ModelFetcher(params).get_available_bundles()
+    bundles = _available_bundles(params)
     match = next((b for b in bundles if getattr(b, "ref", None) == ref or getattr(b, "internalName", None) == ref), None)
     if match is None:
       return {"ok": False, "error": f"unknown model ref: {ref}"}
-    return diff_params(params, {"ModelManager_DownloadIndex": int(match.index)})
+    return diff_params(params, {"ModelManager_DownloadRef": getattr(match, "ref", ref)})
   except Exception as e:
     return {"ok": False, "error": str(e)}
 
 
 def select_model_bundle(params: Params, ref: str) -> dict[str, Any]:
-  """Select NN model bundle by ref (Default = stock). Sets ModelManager_DownloadIndex."""
+  """Select NN model bundle by ref (Default = stock). Queues ModelManager_DownloadRef."""
   ref = str(ref or "").strip()
   if ref in ("", "Default", "default", "stock"):
-    had = bool(params.get("ModelManager_ActiveBundle"))
+    had = bool(params.get("ModelManager_ActiveBundle") or params.get("ModelManager_ActiveBundleChestnut"))
     params.remove("ModelManager_ActiveBundle")
-    params.remove("ModelManager_DownloadIndex")
+    params.remove("ModelManager_ActiveBundleChestnut")
+    params.remove("ModelManager_DownloadRef")
     return {"ok": True, "mode": "default", "cleared_active": had}
 
   try:
-    from openpilot.sunnypilot.models.fetcher import ModelFetcher
-
-    bundles = ModelFetcher(params).get_available_bundles()
+    bundles = _available_bundles(params)
     match = next(
       (b for b in bundles if getattr(b, "ref", None) == ref or getattr(b, "internalName", None) == ref),
       None,
     )
     if match is None:
       return {"ok": False, "error": f"unknown model ref: {ref}"}
-    params.put("ModelManager_DownloadIndex", int(match.index))
+    params.put("ModelManager_DownloadRef", getattr(match, "ref", ref))
     return {
       "ok": True,
       "ref": getattr(match, "ref", ref),
@@ -178,8 +184,8 @@ def refresh_model_list(params: Params) -> dict[str, Any]:
 
 
 def cancel_model_download(params: Params) -> dict[str, Any]:
-  had = params.get("ModelManager_DownloadIndex") is not None
-  params.remove("ModelManager_DownloadIndex")
+  had = params.get("ModelManager_DownloadRef") is not None
+  params.remove("ModelManager_DownloadRef")
   return {"ok": True, "cancelled": had}
 
 
