@@ -63,6 +63,34 @@ def run_boot_smoke() -> bool:
     return r.returncode == 0
 
 
+def run_preflight() -> bool:
+    """上车前一致性预检：参数链（.so 构建新鲜度 / 键表 ABI / 键登记）+ 模型链
+    （modeld 产物 / 关键模块 import）+ 运行时链（进程/新崩溃）。
+
+    补的是「逻辑仿真天然看不见」的一类回归：今天（2026-10-10）上车报
+    sunnypilot Unavailable 的两个根因（libparams_c.so 过期 → UnknownKeyName；
+    tinygrad pin 与模型 pkl 不匹配 → modeld 反序列化崩）都不在源码语义里，
+    纯 carcontroller/carstate 用例无论如何都测不出来。
+    """
+    print(f"\n{'='*60}\n▶ 上车前一致性预检（参数链 / 模型链 / 运行时链）\n{'='*60}")
+    script = os.path.join(OPENPILOT_ROOT, "ai", "tools", "sim_preflight.py")
+    cmd = [sys.executable, script, "--runtime"]
+    try:
+        r = subprocess.run(cmd, cwd=OPENPILOT_ROOT, timeout=600, capture_output=True, text=True)
+    except subprocess.TimeoutExpired:
+        print("  ⏱️ 预检超时，视为失败")
+        return False
+    out = (r.stdout or "") + (r.stderr or "")
+    for line in out.splitlines():
+        if any(k in line for k in ("[PASS]", "[WARN]", "[FAIL]", "[SKIP]", "结果：", "🎉", "❌")):
+            print("  ", line)
+    if r.returncode != 0:
+        print("  ❌ 预检失败（详见 sim_preflight.py 输出）")
+    else:
+        print("  ✅ 预检通过")
+    return r.returncode == 0
+
+
 MACAN_INTERFACE_SUFFIX = "_PORSCHE_MACAN_MK1"
 
 
@@ -146,7 +174,9 @@ def main() -> int:
          "Macan 纵向帧级回归（ACC_05 帧输出断言：停车保持/踩油门/SnG/减速/加速/撤力）"),
     ]
 
-    ok = run_boot_smoke()
+    ok_boot = run_boot_smoke()
+    ok_preflight = run_preflight()
+    ok = ok_boot and ok_preflight
 
     skipped = []
     for target, desc in results:
