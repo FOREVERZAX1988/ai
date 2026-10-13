@@ -43,3 +43,6 @@ tools/_*.txt
 tools/*.npz
 tools/*.pkl
 tmp_park_dump.txt
+
+# 设备本地状态备份（校准快照等）——绝不入库/不推送（2026-10-13）
+/backups/
