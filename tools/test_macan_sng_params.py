@@ -67,7 +67,12 @@ def params_of(cc):
 
 
 def run():
-  me = types.SimpleNamespace(get_lead_data=lambda *a, **k: None)
+  # NOTE(2026-10-11): controlsd_ext.state_control_ext 末尾新增
+  #   CC_SP.zoompilot.laneChangeSmoothing.jerkFactor = self.lane_change_smoothing.jerk_factor
+  # 生产侧 ControlsExt.__init__ 会设 self.lane_change_smoothing；此 mock 需同步补桩，
+  # 否则 SimpleNamespace 缺属性 → AttributeError（属脚手架陈旧，非生产回归）。
+  me = types.SimpleNamespace(get_lead_data=lambda *a, **k: None,
+                             lane_change_smoothing=types.SimpleNamespace(jerk_factor=0.0))
   print("=" * 70)
   print("Macan SnG 视觉源通道（CC_SP.params / visLeadDist）冒烟测试")
   print("=" * 70)
