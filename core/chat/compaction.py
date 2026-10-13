@@ -16,10 +16,50 @@ from ai.common.context_config import (
   should_compact_by_tokens,
 )
 from ai.tools.memory_store import append_note
+from ai.common.storage import read_param, write_param
 
 # Legacy constants (tests / docs); prefer context_config helpers.
 COMPACT_AFTER_USER_TURNS = 24
 _KEEP_RECENT_USER_TURNS = 8
+
+
+# Per-session high-water mark: the user-turn count already folded into a
+# summary. Without it, `_needs_compaction` stays True on every request once the
+# turn threshold is crossed (clients resend the full transcript), so the same
+# head was re-summarized every single turn -> note spam -> the model re-reads
+# and re-answers stale conclusions.
+_HWM_KEY = "ai_compaction_hwm"
+_HWM_MAX_SESSIONS = 50
+
+
+def _load_compaction_hwm() -> dict[str, int]:
+  try:
+    raw = read_param(None, _HWM_KEY, "")
+    if isinstance(raw, bytes):
+      raw = raw.decode("utf-8", "replace")
+    data = json.loads(raw) if raw else {}
+  except Exception:
+    data = {}
+  out: dict[str, int] = {}
+  if isinstance(data, dict):
+    for k, v in data.items():
+      try:
+        out[str(k)] = int(v)
+      except (TypeError, ValueError):
+        continue
+  return out
+
+
+def _save_compaction_hwm(marks: dict[str, int]) -> None:
+  try:
+    trimmed = dict(list(marks.items())[-_HWM_MAX_SESSIONS:])
+    write_param(None, _HWM_KEY, json.dumps(trimmed, ensure_ascii=False))
+  except Exception:
+    pass
+
+
+def _new_turns_since(turns: int, since: int) -> int:
+  return max(0, turns - max(0, since))
 
 
 def _count_user_turns(messages: list[dict[str, Any]]) -> int:
@@ -78,6 +118,14 @@ async def maybe_compact_messages(
   if not _needs_compaction(messages, model=model, force=force):
     return messages
 
+  sess_key = session_id or "_default"
+  turns = _count_user_turns(messages)
+  hwm = _load_compaction_hwm()
+  if not force and _new_turns_since(turns, hwm.get(sess_key, 0)) < keep_recent_turns():
+    # Already folded this window into a summary — wait for a fresh batch of
+    # turns instead of re-summarizing (and re-appending a note) every request.
+    return messages
+
   old_msgs, keep_msgs = _split_for_compaction(messages)
   if not old_msgs and not force:
     return messages
@@ -119,6 +167,8 @@ async def maybe_compact_messages(
   if session_id:
     tags.append(f"session:{session_id[:12]}")
   append_note(params, f"[会话摘要]\n{content.strip()}", tags=tags)
+  hwm[sess_key] = turns
+  _save_compaction_hwm(hwm)
   try:
     from ai.tools.daily_memory import append_daily_memory
     bullets = [ln.strip("- ").strip() for ln in content.strip().splitlines() if ln.strip()][:8]

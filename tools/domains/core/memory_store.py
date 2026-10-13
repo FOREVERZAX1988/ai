@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import time
 from typing import Any
 
@@ -136,11 +137,28 @@ def format_memory_prompt(params: Params, *, max_notes: int = 5) -> str:
   if prof_lines:
     parts.append("## Vehicle profile\n" + "\n".join(prof_lines))
   if notes:
-    lines = []
-    for n in notes[:max_notes]:
+    # Collapse near-duplicate notes and keep at most the single latest
+    # compaction summary. Repeated "[会话摘要]" paraphrases otherwise dominate
+    # the newest-first window, crowding out stable facts/preferences and
+    # nudging the model to re-answer already-settled questions.
+    lines: list[str] = []
+    seen_norm: set[str] = set()
+    kept_compaction = False
+    for n in notes:
       text = (n.get("text") or "").strip()
-      if text:
-        lines.append(f"- {text}")
+      if not text:
+        continue
+      if text.startswith("[会话摘要]"):
+        if kept_compaction:
+          continue
+        kept_compaction = True
+      norm = re.sub(r"\s+", "", text)[:400]
+      if norm and norm in seen_norm:
+        continue
+      seen_norm.add(norm)
+      lines.append(f"- {text}")
+      if len(lines) >= max_notes:
+        break
     if lines:
       parts.append("## Recent memory notes\n" + "\n".join(lines))
   if not parts:
