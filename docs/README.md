@@ -52,6 +52,7 @@
 | [WEBUI_QA.md](WEBUI_QA.md) | **WebUI** 上车验收与 op助手工具 |
 | [HEADLESS_WEBUI.md](HEADLESS_WEBUI.md) | **无屏模式**与 WebUI 全功能/API |
 | [JETLINK_WIFI_HANDSHAKE_ACCEPTANCE_1011.md](JETLINK_WIFI_HANDSHAKE_ACCEPTANCE_1011.md) | **JetLink Wi-Fi 握手**上车验收（2026-10-11） |
+| [PREVIEW_ONROAD_SHIM.md](PREVIEW_ONROAD_SHIM.md) | **行驶预览里的 jetlink**：三道闸、只读 shim、离路消费者审计 |
 | [../dev/README.md](../dev/README.md) | PC 预览与测试 |
 
 ## GitHub
