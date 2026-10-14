@@ -95,3 +95,49 @@ curl -s "https://docs.qualcomm.com/bundle/publicresource/80-63442-10/topics/QNN_
 ---
 
 *整理：2026-10-14｜证据：maven-metadata.xml（2.51.0 / 20261006）、qnn-runtime 2.42.0+2.51.0 aar 列表、`libQnnHtpV81Skel.so`/`libQnnHtp.so` 字符串、QAIRT 文档 80-63442-10 markdown 源、设备侧 `npu:` 日志（用户贴回）*
+
+## 7. 落地（2026-10-15）：这一代的 Stub 进了 fork 的 APK
+
+用户把 QAIRT **2.51.40.260930** 整包（7 GB）放到 `/data/media/`，`find … -iname '*V85*'` 确认
+里面确实有 V85 这一代（同一目录还有 `libQnnHtpV85.so`（14.5 MB，PD 版）与
+`libQnnHtpV85CalculatorStub.so` 等，未取 —— 取的是 build 文件按名引用的那一对）：
+
+| 文件 | SDK 内路径 | `file` | 字节 | SHA-256 |
+|------|-----------|--------|------|---------|
+| `libQnnHtpV85Stub.so` | `lib/aarch64-android/` | ARM aarch64，已 stripped | 875,568 | `8c3636f34ff763d872623172e192b64983e0578d124e5b73f064c28e372f3874` |
+| `libQnnHtpV85Skel.so` | `lib/hexagon-v85/unsigned/` | QUALCOMM DSP6，32-bit | 14,058,420 | `b06247fa38ffad5b8c55a83ff7d4b5500a69282944c0942253fb57b38eaf6b40` |
+
+按 §6.1 的最小集（只这两个文件，14 MB）：
+
+- jetlink fork（`cn`，commit `204f17c`）新增
+  `android/app/src/main/jniLibs/arm64-v8a/libQnnHtpV85{Stub,Skel}.so`。AGP 默认 jniLibs 源集
+  ⇒ 进 APK 的 `lib/arm64-v8a/`；`useLegacyPackaging = true`（本来就有）把它们解到
+  `nativeLibraryDir`，`libQnnHtp.so` 按名 dlopen Stub，CDSP 从同一目录（`ADSP_LIBRARY_PATH`）取 Skel。
+- `android/app/build.gradle.kts` 加守卫：这对文件要么 0 个（上游 / 只有 Maven 的 checkout 照常构建，
+  仍止于 V81），要么 2 个；只放一半直接构建失败 —— QNN 对"半套"是静默拒绝（§5）。
+- 文档侧：`docs/qnn-htp-stubs.md` 末节改为「The V85 pair this fork carries」（含上表哈希与
+  §8 的版本坑），`android/README.md` 的对应段同步。
+- **只推自有 fork**：`FOREVERZAX1988/jetlink` 的 `cn`（`13a2e39..204f17c`），
+  上游 `mouxangithub/jetlink` 不带这对二进制（Qualcomm AI Stack License 只能在 app 内分发）。
+
+复验（验收标准）：装新 APK 后 `npu:` 段应打出
+`the HTP architectures this build carries: … V79 V81 V85`，且 NPU build 能拿到节点
+（不再 0.6 s 空手而归、整模型落 CPU）。
+
+## 8. 还没排除的坑：Stub / Skel / HTP 后端库必须同一 build
+
+这对是 **2.51.40**，而 APK 里 `libQnnHtp.so` / `libQnnHtpPrepare.so` 来自
+`onnxruntime-android-qnn` **1.29.0** 依赖的 `qnn-runtime` **2.42.0**
+（已从 Maven POM 核实：`<artifactId>qnn-runtime</artifactId><version>2.42.0</version>`）。
+QNN 要 Stub / Skel / HTP 库同一 build。若装上仍拿不到节点，下一步不是"再找文件"，
+而是把同一个 QAIRT build 的 `libQnnHtp.so`（4.2 MB）、`libQnnHtpPrepare.so`（88 MB）、
+`libQnnSystem.so`（4.1 MB）一起放进 jniLibs 让三件套同版本（代价是 APK 再大 ~96 MB）。
+到那一步时，`npu:` 与 onnxruntime 的 QNN 报错行会写明是哪一侧版本对不上。
+
+> 磁盘：`/data` 已 99%（剩 ~0.5 GB）。QAIRT 整包 7 GB 已删，只留这对文件于
+> `/data/media/qnn-v85/`；若真要试 §8 的三件套，得重新取 SDK（同一个包名/URL）。
+
+---
+
+*追加：2026-10-15｜证据：QAIRT 2.51.40.260930 目录清单与 `file`/`sha256sum`、
+Maven `onnxruntime-android-qnn-1.29.0.pom`、jetlink `204f17c`。*
