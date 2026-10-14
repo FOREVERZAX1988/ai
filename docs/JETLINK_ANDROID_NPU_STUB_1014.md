@@ -142,15 +142,20 @@ QNN 要 Stub / Skel / HTP 库同一 build。若装上仍拿不到节点，下一
 *追加：2026-10-15｜证据：QAIRT 2.51.40.260930 目录清单与 `file`/`sha256sum`、
 Maven `onnxruntime-android-qnn-1.29.0.pom`、jetlink `204f17c`。*
 
-## 9. 卡点：这条推送没有 CI（GitHub Actions 对本仓被禁用）
+## 9. 卡点：这条推送没有 CI（jetlink 仓的 Actions 被禁用）
 
 - 推 `cn`（`204f17c`）后**没有产生任何 CI run**：`/actions/runs` 最新仍是 `13a2e397`（16:24Z）。
-- `POST …/actions/workflows/ci.yml/dispatches` → `422 {"message":"Actions has been disabled for
-  this repository."}`；同一错误在 `release.yml` 上也复现。
-- 不是 YAML/触发条件问题：`on.push.branches: ["**"]` 正常，另推一条新分支
-  `probe-actions-1015`（同一 commit，已删）同样**零 run**。
-- 账号侧也停在同一时段：openpilot 最新 run `2026-10-14T06:16Z`、ai `2026-08-19`、opendbc `2026-07-30`。
-  而 `GET …/actions/permissions` 仍返回 `enabled: true`（设置项看着是开的）⇒ 偏向平台侧禁用/额度限制。
-- 后果：**`cn-204f17c` 没有 APK 产物**；能装的最新 APK 仍是 `cn-13a2e39`（**不含 V85 对 ⇒ NPU 仍会失败**）。
-- 用户侧待查：GitHub → **Settings → Billing**（Actions 分钟 / spending limit）与
-  repo **Settings → Actions → General**；恢复后重推 `cn`（或手动 dispatch）即出 APK。
+- `POST …/jetlink/actions/workflows/ci.yml/dispatches`（该 workflow 确有 `on.workflow_dispatch`）
+  → `422 {"message":"Actions has been disabled for this repository."}`，连测两次一致。
+- 不是 YAML/触发条件问题：`on.push.branches: ["**"]` 正常；另推一条新分支
+  `probe-actions-1015`（同一 commit）同样**零 run**（探针分支已删）。
+- **对照实验（关键）**：同一 token 对 `FOREVERZAX1988/openpilot` 的
+  `cereal_validation.yaml` dispatch → **HTTP 204**，run `2026-10-14T23:18:16Z` 起来并 success
+  ⇒ 账号、额度、token 都没问题，**只有 jetlink 这个仓被禁用**。
+  而 `GET …/jetlink/actions/permissions` 仍返回 `enabled: true` / `allowed_actions: all`
+  （设置项与实际状态不一致 ⇒ 需要用户在 GitHub 侧看 banner/邮件确认原因）。
+- 后果：**`cn-204f17c` 没有 APK 产物**；能装的最新 APK 仍是 `cn-13a2e39`（**不含 V85 对 ⇒ NPU 仍会失败**），
+  本机也留着它的副本 `/data/jetlink-artifacts/cn-c240179-apk/app-release.apk`（`cn-c240179`）。
+- 用户侧待查：`https://github.com/FOREVERZAX1988/jetlink/actions`（黄色 banner 常有 Enable 按钮）、
+  `settings/actions`（Actions permissions）、GitHub 邮件通知、`settings/billing`。恢复后重推 `cn`
+  （或手动 dispatch `ci.yml`）即出 APK；届时应看到 `npu: the HTP architectures this build carries: … V85`。
