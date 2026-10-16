@@ -166,9 +166,18 @@ $ PYTHONDONTWRITEBYTECODE=1 python3 -m pytest tests -q -p no:cacheprovider
 ## 6. 还没验的（要编译 / 要真车）
 
 - D 的 Kotlin 与 C 里那行 Swift 日志**本机没有编译器**（这台 comma 上没有 swift / kotlinc / jdk），
-  只能由 CI 验：`ci.yml` 的 `swift test --package-path JetlinkKit` 与
-  `./gradlew --no-daemon :app:testDebugUnitTest :app:assembleRelease`
-  （本轮两个提交**尚未推 fork**，所以 CI 还没跑过它们）。
+  由 CI 验：`ci.yml` 的 `swift test --package-path JetlinkKit` 与
+  `./gradlew --no-daemon :app:testDebugUnitTest :app:assembleRelease`。
+  已推到 fork（`FOREVERZAX1988/jetlink` `cn`，**不是**上游），第一轮的结果：
+  - `2063229` → **Android app FAILED**：`WifiLinkTest.aMediumNobodyNamedGetsNone`
+    抓到 D 自己的一个错（`""` 不是 null、也不以 `usb` 开头 ⇒ 凭一个没人给的名字持了锁；
+    锁按猜持就是电按猜花）。同时 Kotlin 编译器报了 `WIFI_MODE_FULL_HIGH_PERF` 在 API 37 已废弃
+    （正是我们主用的 LOW_LATENCY 把它顶掉的），两条都在 `79dd730` 修掉。
+  - `79dd730` → **CI 全绿**（17 个 job：Android app 78 个单测 + assembleRelease、
+    Swift build and tests、swift-format、Python lint/tests、installer、cn prerelease）。
+  - 顺带：`60ed27b`（上一轮那个提交）的 macOS 测试挂过一次，是
+    status page 那套（PageFeedTests / PageAuthTests / PageServerTests）在 runner 上的抖动，
+    本轮同 job 通过 ⇒ 与本 fork 的改动无关。
 - C 在本机跑过：`tests/openpilot/test_model_state.py` 55 个用例 OK，全量 pytest 与 pristine 树逐条一致；
   真车复验清单见 §3。
 - 结构性慢于 20 Hz 的 host（例如 60 ms/帧的手机）：流水线下 in-flight 会累积，最终由 client 的
