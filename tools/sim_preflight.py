@@ -274,8 +274,21 @@ def check_model_artifacts() -> str | None:
     record(SKIP, "B1 driving pkl 齐备", f"{src}：无 pkl（未下模型时属正常）")
   else:
     try:
-      from openpilot.common.file_chunker import get_existing_chunks
-      parts = get_existing_chunks(pkl)
+      # upstream dropped get_existing_chunks from file_chunker; the loader is
+      # open_file_chunked(manifest) -> ChunkStream, so mirror that here: a manifest whose
+      # chunk files are all present must chain into one readable stream.
+      from openpilot.common.file_chunker import get_chunk_name, get_manifest_path
+      manifest = get_manifest_path(pkl)
+      if os.path.isfile(pkl):
+        parts = [pkl]
+      elif os.path.isfile(manifest):
+        num_chunks = int(open(manifest).read().strip())
+        parts = [get_chunk_name(pkl, i, num_chunks) for i in range(num_chunks)]
+        missing = [p for p in parts if not os.path.isfile(p)]
+        if missing:
+          raise FileNotFoundError(f"缺分片 {missing}")
+      else:
+        raise FileNotFoundError(f"既无 {pkl} 也无 {manifest}")
       total = sum(os.path.getsize(p) for p in parts)
       record(PASS, "B1 driving pkl 齐备", f"{pkl}（{len(parts)} 分片, {total / 1e6:.0f}MB, 来源 {src}）")
     except Exception as e:
