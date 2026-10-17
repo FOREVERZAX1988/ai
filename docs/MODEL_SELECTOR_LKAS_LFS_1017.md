@@ -166,3 +166,61 @@ merge commit），而后者的 `examples/openpilot/` 里**没有 `compile_warp.p
   两个非致命遗留：① `ai/services/eps/` 目录不存在但 `server/app_factory.py:353` 仍 import，
   每次启动打一行 `aid: eps routes skipped`；② RAG 728 篇里只有工具写入的少数做了向量化
   （批量 seed 走 `upsert_document_sync` 不 embed），关键词回退仍能检索到。
+
+## 9. 追加（2026-10-17 19:20 +08）：断联再定位 + 腾空间 + LFS 复核
+
+**9.1 「答到一半断联」的新定位（与前两轮修复互补）**
+
+- 本会话事件日志 `/data/openpilot/ai_session_logs/s_mtwie4bf_266lhu.jsonl` 已达 **167 MB**，
+  含 1243 条 `request/header`、621 个 turn、31870 次 `tool/call`。
+- 对该日志做**顶层**事件统计（`grep -a '^{"type": "…"'`）：
+  `tool/call 31870 / tool/result 31830 / step/start 21822 / assistant/message 21761 /
+  user/message 15296 / request/header 1243 / turn/start 621 / turn/end 577`，
+  **没有任何** `stuck_cancelled / run_timeout_warn / run_timeout / resumed` 顶层事件。
+  → 第二轮改的 watchdog 并没有在杀回合；之前统计到的 run_timeout 计数是把**工具结果里嵌套的
+  字符串**当成了事件（误判来源）。
+- 所以剩下的两个真实诱因：
+  1. **超长会话**：167 MB 事件日志 + 数百轮上下文，每轮都要重放，provider 流式响应更容易在中途
+     被超时/重连掐断，webui 表现就是「答一半就没了」；
+  2. **aid 与 comma 同 cgroup**（`launch_chffrplus.sh keep_alive aid ai/aid.py 5090`）：
+     任何 `systemctl restart comma` 都会连助手一起杀掉——这也是「我刚重启完就断开」的直接解释。
+- 处置建议（未擅自改）：关键结论先落盘→再重启；换新会话（新 session id）替代在 167 MB 日志上续写；
+  中期把 aid 移出 comma.service cgroup（systemd unit 或 `systemd-run --scope`），彻底解耦重启。
+
+**9.2 腾空间（为点火抓 route 做准备）**
+
+- 删除 `/data/jetlink-artifacts/0.8.7-1016-3-vendormatched`(319M) 与
+  `/data/jetlink-artifacts/0.8.7-1016-3-pairdiag`(320M)，保留 `0.8.7-1016-5` 及 cn-* 最新产物。
+- `/data`：3.7 G → **4.3 G 空闲（85%）**；`/data/media/0/realdata` 存在、loggerd deleter/uploader
+  在跑。点火 15 s 短测的落盘条件已满足。
+
+**9.3 LFS 复核（第二遍，按 object 逐个比对）**
+
+```
+git lfs ls-files -s | awk '$2=="-"'      # 未下载的 6 个（'-'）
+6a7adb302d - openpilot/common/hardware/comma/updater                      (25 MB)
+76cc0a9bc3 - openpilot/selfdrive/modeld/models/big_driving_tinygrad.pkl   (777 MB)
+ebac006f5e/d8eab79e53 - sunnypilot/modeld_v2/models/big_driving_warp_13xx/19xx (0.87 MB)
+c48c9150af/59564a7d21 - sunnypilot/modeld_v2/models/driving_warp_13xx/19xx    (0.84 MB)
+```
+这 6 个都是 `.lfsconfig` 里 `fetchexclude` 有意排除的大模型/大二进制（`big_driving_tinygrad.pkl`
+本地就是 134 B 指针，`git lfs pull --include <path> --exclude ""` 可单独拉，777 MB，4.3 G 空间够）。
+启动 logo 用的是 `openpilot/selfdrive/assets/images/spinner_comma.png`（15.7 KB 真 PNG，非指针）；
+`sunnypilot/selfdrive/assets/logo.png` 的 LFS oid 与上游 test 相同。
+**结论不变：逗号 vs ZoomPilot 的 Z 是品牌素材取向差异，不是 LFS 没拉齐。**
+
+**9.4 模型槽位修复的在树核实**
+
+- `selfdrive/ui/sunnypilot/layouts/settings/models.py`：`small_model_item`(L83)、`big_model_item`(L90)、
+  `items` 注册(L160)、`_resolve_selected_bundle`(L461)、按 source 绑定(L556)。
+- `selfdrive/ui/sunnypilot/mici/layouts/models.py`：`_select_hardware`(L158)、`_get_grouped_bundles`(L119)、
+  文件夹按 source 取(L169/L205)、`big_model_note` 引入(L16)。
+- 提交 `219e83ae5f fix(models ui): 补回 small/big 两个模型槽位入口`；当前父仓 HEAD `16bc6829f4`，工作区干净，
+  UI 已于 19:02 重启 → 修复对在跑 UI 生效。
+
+**9.5 panda 现状复核（顺带）**
+
+- `panda/board/obj/panda.bin.signed` / `panda_h7.bin.signed` 时间戳 2026-10-10 07:34，固件版本串
+  `DEV-d84b110f-DEBUG`，与 panda HEAD `d84b110fc`（2026-10-01「加强适配c3」）一致 → 不是旧固件残留。
+- 当前 `pandaStates`: `ignitionLine/Can=false`、`faultStatus=none`、`heartbeatLost=false`、`voltage=4730`、
+  `safetyModel=noOutput`（台架未接 harness 的正常值）。
