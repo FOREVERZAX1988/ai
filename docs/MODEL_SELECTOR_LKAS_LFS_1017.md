@@ -147,3 +147,22 @@ merge commit），而后者的 `examples/openpilot/` 里**没有 `compile_warp.p
 - 拉某个被排除的 LFS 对象：`git lfs pull --include <path> --exclude ""`
 - panda 版本自查：`PYTHONPATH=/data/openpilot/panda/python python3 -c "from panda import Panda;
   print(Panda().get_version())"`，对照 `panda/board/obj/gitversion.h`
+
+## 8. 追加（2026-10-17 19:15 +08）：推送已核实 + 又修掉一个静默工具故障
+
+- 推送核实（`git ls-remote`）：openpilot `sp-macantest-1017` = `27a1e804fc`、ai `sp-macanlong-test` = `6533fe79`，
+  与工作区一致，无未推提交。栈已于 19:02 重启并跑新代码（`params.py` 私有副本
+  `/data/.cache/params_lib/libparams_c-1792222119-1912144.so` 已生成，dlopen 修复生效中）。
+- **新发现并修复**：`append_unified_memory()` 的 `DailyMemoryBackend` 把 `title=title or None`
+  传给 `append_daily_memory()`，后者 `label = title.strip()` → `AttributeError('NoneType' object
+  has no attribute 'strip')`。异常被 per-backend try/except 吞掉，工具仍返回 `{"ok": true,
+  "backends": [...]}`，只是 `results.dailymemory.ok=false` —— 所以**长期日记一直是空的，而工具看起来是好的**。
+  原有单测用 mock 替换了 `append_daily_memory`（mock 容忍 None），因此没抓到。
+  修复：`memory_backend.py` 传 `title or ""`；`daily_memory.py` 再兜一层 `(title or "").strip()`；
+  新增 2 个走真实实现的回归用例 → `ai/tests/test_memory_backend.py` 6 passed（原 4）。
+  提交 ai `6533fe79`、父仓指针 `27a1e804fc`，均已推送。
+  注意：该修复对在跑进程要再 `systemctl restart comma` 才生效（aid 与 comma 同 cgroup，重启会掐断当前会话）。
+- 巡检结论：aid 存活（pid 17651，`python3.12 -m ai.aid`，:5090 返回 200）、24 个工具本轮全部可用。
+  两个非致命遗留：① `ai/services/eps/` 目录不存在但 `server/app_factory.py:353` 仍 import，
+  每次启动打一行 `aid: eps routes skipped`；② RAG 728 篇里只有工具写入的少数做了向量化
+  （批量 seed 走 `upsert_document_sync` 不 embed），关键词回退仍能检索到。
