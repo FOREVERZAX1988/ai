@@ -16,10 +16,20 @@ from ai.agents.orchestrator import run_chat_with_agents
 
 _MAX_JOBS = 20
 _JOB_TTL_SEC = 3600
-_STUCK_WARN_SEC = 120
-_STUCK_CANCEL_SEC = 240  # 2026-08-29: 警告后仍卡 idle≥240s → 自动取消(防挂到TTL 3600s)
-_RUN_WARN_SEC = 300      # 2026-09-01: 运行时长警告——循环输出持续产生事件、idle≈0，idle监控抓不住
-_RUN_MAX_SEC = 600       # 运行超时强制取消（通知前端可继续生成）
+# 2026-10-17 断联修复（第二次）：之前"回答到一半就断"的直接原因是这个看门狗把真活当成卡死。
+#  - 一次工具调用（例如跑 3 分钟的测试）期间、以及模型长时间思考（首个 delta 之前）都不会产生
+#    事件，idle 从 0 直接涨到分钟级；旧阈值 120s warn / 240s cancel 会在正常回合里开火。
+#  - 旧的 _RUN_MAX_SEC=600 是墙钟硬杀：只要一个回合（含十几次工具调用）超过 10 分钟就整段取消，
+#    与"是否卡死"无关。
+# 所以：idle 阈值放宽到 5 min warn / 15 min cancel；运行时长改成"预算制"，每完成一次工具调用
+# 额外续 5 分钟（上限 90 分钟），只有"很久没事件且没有工具产出"才判死。真正的复读循环仍由
+# _content_looping 在回合结束时识别。
+_STUCK_WARN_SEC = 300
+_STUCK_CANCEL_SEC = 900
+_RUN_WARN_SEC = 600
+_RUN_MAX_SEC = 1800
+_RUN_EXTEND_PER_TOOL_SEC = 300
+_RUN_MAX_CAP_SEC = 5400
 _MAX_EVENTS_PER_JOB = 500
 _watchdog_task: asyncio.Task | None = None
 
@@ -135,6 +145,7 @@ async def start_chat_job(
     "resolvedModel": None,
     "runId": job_id,
     "lastEventAt": now,
+    "toolCallsCompleted": 0,
     "queueMode": str(body.get("queueMode") or body.get("queue_mode") or ""),
   }
   _cancel_flags[job_id] = False
@@ -158,6 +169,9 @@ async def start_chat_job(
         j["events"] = j["events"][-_MAX_EVENTS_PER_JOB:]
       j["updatedAt"] = int(time.time())
       j["lastEventAt"] = int(time.time())
+      if event.get("type") in ("tool_result", "tool_error"):
+        # 2026-10-17: 一次完成的工具调用=真实进展，给看门狗续预算（见 run_budget_sec）
+        j["toolCallsCompleted"] = int(j.get("toolCallsCompleted") or 0) + 1
       _apply_event_to_assistant(j["assistant"], event)
     try:
       from ai.core.sync.hub import notify_chat_event
@@ -311,6 +325,7 @@ def get_job(job_id: str, since: int = 0) -> dict[str, Any] | None:
     "nextSince": job["eventSeq"],
     "runId": job_id,
     "lastEventAt": job.get("lastEventAt"),
+    "toolCallsCompleted": job.get("toolCallsCompleted"),
   }
 
 
@@ -336,6 +351,19 @@ async def cancel_jobs_for_session(session_id: str) -> int:
     if await cancel_job(jid):
       cancelled += 1
   return cancelled
+
+
+def run_budget_sec(job: dict[str, Any] | None) -> int:
+  """Wall-clock budget for one job, extended by every tool the job actually completed.
+
+  A turn that keeps returning tool results is making progress no matter how long it takes
+  (test suites, builds, model downloads all live in single tool calls). Only a job that
+  burns time without completing anything stays inside the base budget.
+  """
+  if not job:
+    return _RUN_MAX_SEC
+  done = int(job.get("toolCallsCompleted") or 0)
+  return min(_RUN_MAX_CAP_SEC, _RUN_MAX_SEC + _RUN_EXTEND_PER_TOOL_SEC * done)
 
 
 def mark_tool_inflight(job_id: str, delta: int) -> None:
@@ -378,20 +406,51 @@ def _scan_stuck_jobs() -> list[dict[str, Any]]:
   return stuck
 
 
+def _scan_over_budget_jobs() -> list[dict[str, Any]]:
+  """Running jobs that burned their wall-clock budget.
+
+  Idle-gated scanning cannot see a job that keeps emitting events (the streamed-loop case), so
+  the run-time guard needs its own pass. Tools still in flight are productive by definition and
+  are left alone.
+  """
+  now = int(time.time())
+  over: list[dict[str, Any]] = []
+  for jid, j in _jobs.items():
+    if j.get("status") != "running":
+      continue
+    if int(j.get("inflightTools") or 0) > 0:
+      continue
+    last = int(j.get("lastEventAt") or j.get("updatedAt") or 0)
+    run_sec = now - int(j.get("createdAt") or last or now)
+    if run_sec >= run_budget_sec(j):
+      over.append({
+        "jobId": jid,
+        "sessionId": j.get("sessionId") or "",
+        "runSec": run_sec,
+      })
+  return over
+
+
 async def stuck_job_watchdog_loop() -> None:
   from openpilot.common.swaglog import cloudlog
   warned: set[str] = set()
+  run_warned: set[str] = set()
   cancelled: set[str] = set()
   while True:
     await asyncio.sleep(30)
     now = int(time.time())
-    for item in _scan_stuck_jobs():
+    stuck_items = _scan_stuck_jobs()
+    seen = {i["jobId"] for i in stuck_items}
+    # 2026-10-17: 事件不断的复读循环 idle≈0，永远不进 stuck 扫描——单独补一趟"超预算"扫描。
+    items = stuck_items + [i for i in _scan_over_budget_jobs() if i["jobId"] not in seen]
+    for item in items:
       try:
         jid = item["jobId"]
-        idle = item["idleSec"]
+        idle = int(item.get("idleSec") or 0)
         j = _jobs.get(jid)
         if j and j.get("status") != "running":
           warned.discard(jid)
+          run_warned.discard(jid)
           cancelled.discard(jid)
           continue
         if jid not in warned:
@@ -407,17 +466,20 @@ async def stuck_job_watchdog_loop() -> None:
         # 2026-09-01 运行时长兜底：持续输出型循环（复读/变体重复）事件不断、idle≈0——
         # 用 createdAt（创建时间，循环期间不更新）判定总运行时长，超限强制取消
         run_sec = now - int(j.get("createdAt") or j.get("updatedAt") or now)
-        if jid not in warned and run_sec >= _RUN_WARN_SEC:
-          warned.add(jid)
-          cloudlog.warning(f"aid: long-running chat job {jid} session={item['sessionId']} run={run_sec}s (loop?)")
+        budget = run_budget_sec(j)
+        if jid not in run_warned and run_sec >= _RUN_WARN_SEC:
+          run_warned.add(jid)
+          cloudlog.warning(f"aid: long-running chat job {jid} session={item['sessionId']} run={run_sec}s budget={budget}s (loop?)")
           try:
             from ai.core.sync.hub import notify_lifecycle
             await notify_lifecycle(jid, item["sessionId"], "run_timeout_warn", {**item, "runSec": run_sec})
           except Exception:
             pass
-        if jid not in cancelled and run_sec >= _RUN_MAX_SEC:
+        # 2026-10-17: 预算制——只有"跑了很久且没有任何工具产出"才判死；有产出的回合按
+        # 每完成一次工具调用 +5 min 续期（run_budget_sec），长任务不会被腰斩。
+        if jid not in cancelled and run_sec >= budget:
           cancelled.add(jid)
-          cloudlog.warning(f"aid: auto-cancelling long-running job {jid} session={item['sessionId']} run={run_sec}s")
+          cloudlog.warning(f"aid: auto-cancelling long-running job {jid} session={item['sessionId']} run={run_sec}s budget={budget}s")
           try:
             await cancel_job(jid)
             from ai.core.sync.hub import notify_lifecycle

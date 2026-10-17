@@ -92,7 +92,10 @@ PROTOCOL_SCHEMA: dict[str, Any] = {
       "required": ["type", "phase", "runId"],
       "properties": {
         "type": {"const": "lifecycle"},
-        "phase": {"enum": ["start", "end", "stuck"]},
+        # 2026-10-17: jobs.py 还会发这些 phase（看门狗警告/自动取消），旧 enum 只有
+        # start/end/stuck，于是每次自动取消都刷一条 "ws schema validation: lifecycle.phase:
+        # invalid enum value" 且前端收不到终止原因（表现为"答到一半就没了"）。
+        "phase": {"enum": ["start", "end", "stuck", "stuck_cancelled", "run_timeout_warn", "run_timeout", "resumed"]},
         "runId": {"type": "string"},
         "sessionId": {"type": "string"},
         "jobId": {"type": "string"},

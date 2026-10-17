@@ -123,14 +123,28 @@ class AgentPhase:
       return AgentStatus.MAINTENANCE
     return AgentStatus.IDLE
 
+  @staticmethod
+  def _new_abort_future() -> asyncio.Future:
+    """A future on the loop that will actually drive this agent.
+
+    2026-10-17: asyncio.get_event_loop() raises on 3.12 once any earlier asyncio.run() has
+    closed the implicit loop (it happened in the test suite, and it can happen on the device
+    when the driver is started from a worker thread) — that exception surfaced as a turn that
+    died while switching phase. Prefer the running loop, fall back to a fresh one.
+    """
+    try:
+      return asyncio.get_running_loop().create_future()
+    except RuntimeError:
+      return asyncio.get_event_loop_policy().new_event_loop().create_future()
+
   def enter_running(self) -> _RunningPhase:
     self.kind = "running"
-    self._running = _RunningPhase(abort=asyncio.get_event_loop().create_future(), turn=self.last_turn, step=0)
+    self._running = _RunningPhase(abort=self._new_abort_future(), turn=self.last_turn, step=0)
     return self._running
 
   def enter_maintenance(self) -> _MaintenancePhase:
     self.kind = "maintenance"
-    self._maintenance = _MaintenancePhase(abort=asyncio.get_event_loop().create_future(), last_turn=self.last_turn)
+    self._maintenance = _MaintenancePhase(abort=self._new_abort_future(), last_turn=self.last_turn)
     return self._maintenance
 
   def enter_idle(self, last_turn: int) -> None:
