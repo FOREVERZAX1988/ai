@@ -338,11 +338,34 @@ async def cancel_jobs_for_session(session_id: str) -> int:
   return cancelled
 
 
+def mark_tool_inflight(job_id: str, delta: int) -> None:
+  """Track how many tool bodies are currently executing for a job.
+
+  While a tool runs, the job emits no chat events (tool_call ... tool_result), so
+  `lastEventAt` stops advancing even though real work is happening. Without this
+  counter a legitimate multi-minute `run_shell_command` looks identical to a hung
+  job and the stuck watchdog would cancel the answer mid-flight.
+  """
+  if not job_id or not delta:
+    return
+  j = _jobs.get(job_id)
+  if not j:
+    return
+  j["inflightTools"] = max(0, int(j.get("inflightTools") or 0) + delta)
+  j["lastEventAt"] = int(time.time())
+
+
 def _scan_stuck_jobs() -> list[dict[str, Any]]:
   now = int(time.time())
   stuck: list[dict[str, Any]] = []
   for jid, j in _jobs.items():
     if j.get("status") != "running":
+      continue
+    if int(j.get("inflightTools") or 0) > 0:
+      # A tool is actually executing (possibly a multi-minute test run). That is
+      # forward progress, not a stall: the tool call itself emits no events until
+      # it returns, so idle grows while work is genuinely happening. The pipeline
+      # already bounds each tool with its own timeout.
       continue
     last = int(j.get("lastEventAt") or j.get("updatedAt") or 0)
     if now - last >= _STUCK_WARN_SEC:
@@ -361,58 +384,63 @@ async def stuck_job_watchdog_loop() -> None:
   cancelled: set[str] = set()
   while True:
     await asyncio.sleep(30)
+    now = int(time.time())
     for item in _scan_stuck_jobs():
-      jid = item["jobId"]
-      idle = item["idleSec"]
-      j = _jobs.get(jid)
-      if j and j.get("status") != "running":
-        warned.discard(jid)
-        cancelled.discard(jid)
-        continue
-      if jid not in warned:
-        warned.add(jid)
-        cloudlog.warning(
-          f"aid: stuck chat job {jid} session={item['sessionId']} idle={idle}s"
-        )
-        try:
-          from ai.core.sync.hub import notify_lifecycle
-          await notify_lifecycle(jid, item["sessionId"], "stuck", item)
-        except Exception:
-          pass
-      # 2026-09-01 运行时长兜底：持续输出型循环（复读/变体重复）事件不断、idle≈0——
-      # 用 createdAt（创建时间，循环期间不更新）判定总运行时长，超限强制取消
-      run_sec = now - int(j.get("createdAt") or j.get("updatedAt") or now)
-      if jid not in warned and run_sec >= _RUN_WARN_SEC:
-        warned.add(jid)
-        cloudlog.warning(f"aid: long-running chat job {jid} session={item['sessionId']} run={run_sec}s (loop?)")
-        try:
-          from ai.core.sync.hub import notify_lifecycle
-          await notify_lifecycle(jid, item["sessionId"], "run_timeout_warn", {**item, "runSec": run_sec})
-        except Exception:
-          pass
-      if jid not in cancelled and run_sec >= _RUN_MAX_SEC:
-        cancelled.add(jid)
-        cloudlog.warning(f"aid: auto-cancelling long-running job {jid} session={item['sessionId']} run={run_sec}s")
-        try:
-          await cancel_job(jid)
-          from ai.core.sync.hub import notify_lifecycle
-          await notify_lifecycle(jid, item["sessionId"], "run_timeout", {**item, "runSec": run_sec})
-        except Exception:
-          pass
-      # 2026-08-29 自动取消：警告后仍卡 idle≥_STUCK_CANCEL_SEC → cancel + 通知前端
-      if jid not in cancelled and idle >= _STUCK_CANCEL_SEC:
-        cancelled.add(jid)
-        cloudlog.warning(
-          f"aid: auto-cancelling stuck job {jid} session={item['sessionId']} idle={idle}s"
-        )
-        try:
-          await cancel_job(jid)
-          from ai.core.sync.hub import notify_lifecycle
-          await notify_lifecycle(jid, item["sessionId"], "stuck_cancelled", item)
-        except Exception:
-          pass
+      try:
+        jid = item["jobId"]
+        idle = item["idleSec"]
+        j = _jobs.get(jid)
+        if j and j.get("status") != "running":
+          warned.discard(jid)
+          cancelled.discard(jid)
+          continue
+        if jid not in warned:
+          warned.add(jid)
+          cloudlog.warning(
+            f"aid: stuck chat job {jid} session={item['sessionId']} idle={idle}s"
+          )
+          try:
+            from ai.core.sync.hub import notify_lifecycle
+            await notify_lifecycle(jid, item["sessionId"], "stuck", item)
+          except Exception:
+            pass
+        # 2026-09-01 运行时长兜底：持续输出型循环（复读/变体重复）事件不断、idle≈0——
+        # 用 createdAt（创建时间，循环期间不更新）判定总运行时长，超限强制取消
+        run_sec = now - int(j.get("createdAt") or j.get("updatedAt") or now)
+        if jid not in warned and run_sec >= _RUN_WARN_SEC:
+          warned.add(jid)
+          cloudlog.warning(f"aid: long-running chat job {jid} session={item['sessionId']} run={run_sec}s (loop?)")
+          try:
+            from ai.core.sync.hub import notify_lifecycle
+            await notify_lifecycle(jid, item["sessionId"], "run_timeout_warn", {**item, "runSec": run_sec})
+          except Exception:
+            pass
+        if jid not in cancelled and run_sec >= _RUN_MAX_SEC:
+          cancelled.add(jid)
+          cloudlog.warning(f"aid: auto-cancelling long-running job {jid} session={item['sessionId']} run={run_sec}s")
+          try:
+            await cancel_job(jid)
+            from ai.core.sync.hub import notify_lifecycle
+            await notify_lifecycle(jid, item["sessionId"], "run_timeout", {**item, "runSec": run_sec})
+          except Exception:
+            pass
+        # 2026-08-29 自动取消：警告后仍卡 idle≥_STUCK_CANCEL_SEC → cancel + 通知前端
+        if jid not in cancelled and idle >= _STUCK_CANCEL_SEC:
+          cancelled.add(jid)
+          cloudlog.warning(
+            f"aid: auto-cancelling stuck job {jid} session={item['sessionId']} idle={idle}s"
+          )
+          try:
+            await cancel_job(jid)
+            from ai.core.sync.hub import notify_lifecycle
+            await notify_lifecycle(jid, item["sessionId"], "stuck_cancelled", item)
+          except Exception:
+            pass
 
 
+      except Exception as e:
+        # Never let one bad iteration kill the watchdog for the rest of the process.
+        cloudlog.warning(f"aid: stuck watchdog iteration failed: {e}")
 def ensure_stuck_watchdog() -> None:
   global _watchdog_task
   if _watchdog_task and not _watchdog_task.done():

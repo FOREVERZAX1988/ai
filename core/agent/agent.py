@@ -511,6 +511,10 @@ class Agent:
         extra={"session_ctx": self.log},
       )
 
+    from ai.core.chat.jobs import mark_tool_inflight
+
+    unblocked = sum(1 for p in prepared if not p["blocked"])
+    mark_tool_inflight(self.job_id, unblocked)
     tasks = [asyncio.create_task(_exec(p)) for p in prepared]
     try:
       if self.concurrent_tools and len(tasks) > 1:
@@ -523,6 +527,8 @@ class Agent:
           t.cancel()
       await asyncio.gather(*tasks, return_exceptions=True)
       raise
+    finally:
+      mark_tool_inflight(self.job_id, -unblocked)
 
     # Phase 3: post hooks (special tools only), result emission, log append — ordered.
     for p, raw in zip(prepared, raw_results):

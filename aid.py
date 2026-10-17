@@ -32,7 +32,12 @@ def main() -> None:
     from ai.core.diagnostics import run_startup_diagnostics
     diag = run_startup_diagnostics(Params())
     if not diag.ok:
-      cloudlog.warning(f"aid: startup diagnostics reported {len(diag.checks)} check(s); non-fatal by default")
+      failed = [c for c in diag.checks if not c.get("ok")]
+      cloudlog.warning(
+        f"aid: startup diagnostics: {len(failed)}/{len(diag.checks)} check(s) failed: "
+        + ", ".join(str(c.get('name')) for c in failed)
+        + " (non-fatal by default)"
+      )
   except Exception as e:
     cloudlog.warning(f"aid: startup diagnostics skipped: {e}")
 

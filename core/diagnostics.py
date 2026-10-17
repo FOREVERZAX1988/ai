@@ -52,8 +52,17 @@ def run_checks(params: Any = None) -> list[dict[str, Any]]:
   ):
     checks.append(_check_import(mod, fatal=False))
   if params is not None:
+    # The Params binding on this fork exposes all_keys()/get(), not keys(). Probing a
+    # non-existent method made this check report a fatal failure on every boot while
+    # the store itself was perfectly healthy — which is exactly the kind of noise that
+    # hides a real startup regression.
     try:
-      params.keys()
+      keys_fn = getattr(params, "all_keys", None) or getattr(params, "keys", None)
+      if not callable(keys_fn):
+        raise RuntimeError("Params exposes neither all_keys() nor keys()")
+      if not keys_fn():
+        raise RuntimeError("Params store returned no keys")
+      params.get("Version")
       checks.append({"name": "params", "ok": True, "severity": "fatal", "message": "ok", "error_code": ""})
     except Exception as e:
       checks.append({"name": "params", "ok": False, "severity": "fatal", "message": str(e), "error_code": ERR_STARTUP_DIAG})
