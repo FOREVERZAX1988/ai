@@ -72,7 +72,7 @@ def append_daily_memory(
   else:
     body = prev.rstrip() + "\n"
 
-  label = title.strip() or "会话"
+  label = (title or "").strip() or "会话"
   if session_id:
     label = f"{label} ({session_id[:8]})"
   section = f"\n## {stamp} — {label}\n"

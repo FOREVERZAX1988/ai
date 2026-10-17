@@ -63,7 +63,7 @@ class DailyMemoryBackend(AbstractMemoryBackend):
     return daily_memory.append_daily_memory(
       bullets=[text],
       session_id=session_id,
-      title=title or None,
+      title=title or "",
     )
 
   def read(self, *, limit: int = 5) -> Any:
