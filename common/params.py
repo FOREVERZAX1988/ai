@@ -583,6 +583,30 @@ ITEMS = [
     "default": "Asia/Shanghai",
   },
   {
+    "key": "ai_timezone_source",
+    "flags": "PERSISTENT",
+    "param_type": "STRING",
+    "default": "",
+  },
+  {
+    "key": "ai_timezone_auto_network",
+    "flags": "PERSISTENT",
+    "param_type": "BOOL",
+    "default": "0",
+  },
+  {
+    "key": "ai_timezone_net_candidate",
+    "flags": "PERSISTENT",
+    "param_type": "STRING",
+    "default": "",
+  },
+  {
+    "key": "ai_timezone_net_hits",
+    "flags": "PERSISTENT",
+    "param_type": "STRING",
+    "default": "0",
+  },
+  {
     "key": "ai_first_run_done",
     "flags": "PERSISTENT",
     "param_type": "BOOL",

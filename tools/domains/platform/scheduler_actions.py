@@ -72,18 +72,23 @@ async def execute_scheduler_action(
     the network egress IP (works without GPS fix / ignition) and, if the UTC
     offset differs from the saved zone, updates ai_timezone + OS system clock.
     """
-    from ai.infra.timezone import detect_timezone_from_ip, read_ai_timezone_name, apply_os_timezone, utc_offset_hours
-    from ai.common.storage import write_param
+    from ai.infra.timezone import (
+      TIMEZONE_SOURCE_NETWORK, consider_timezone_update, detect_timezone_from_ip,
+      network_auto_enabled,
+    )
     try:
+      if not network_auto_enabled(params):
+        # Network egress IP is proxy-poisoned (Shanghai device -> Asia/Singapore
+        # via a Singapore exit node) and is opt-in only. See 1018 timezone fix.
+        return "network tz auto disabled"
       detected = await _to_thread(detect_timezone_from_ip)
       if not detected:
         return "no ip zone"
-      current = read_ai_timezone_name(params)
-      if detected != current and abs(utc_offset_hours(detected) - utc_offset_hours(current)) > 0.01:
-        write_param(params, "ai_timezone", detected)
-        applied = await _to_thread(apply_os_timezone, detected)
-        return f"tz {current}->{detected} applied={applied}"
-      return "tz unchanged"
+      # The gate persists its own consecutive-detection counter, so repeated
+      # wifi-join events accumulate towards NETWORK_CONFIRM_REQUIRED.
+      _applied, reason = consider_timezone_update(
+        detected, TIMEZONE_SOURCE_NETWORK, params=params)
+      return f"tz {reason}"
     except Exception as e:
       return f"tz error: {e}"
 

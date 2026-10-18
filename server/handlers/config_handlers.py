@@ -228,9 +228,12 @@ async def api_post_config(request: web.Request) -> web.Response:
     tz = body.get("timezone")
     if tz is not None and str(tz).strip():
       _put("ai_timezone", str(tz).strip())
-      # 用户手动设置时区同步到 OS 系统时钟
+      # 用户手动设置时区同步到 OS 系统时钟，并标记来源 manual（自动判定不再覆盖）
       try:
-        from ai.infra.timezone import apply_os_timezone
+        from ai.infra.timezone import (
+          TIMEZONE_SOURCE_MANUAL, apply_os_timezone, write_timezone_source,
+        )
+        write_timezone_source(TIMEZONE_SOURCE_MANUAL, _PARAMS)
         apply_os_timezone(str(tz).strip())
       except Exception:
         pass

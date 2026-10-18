@@ -111,41 +111,127 @@ def get_route_timezone(params: Params | None = None) -> ZoneInfo | timezone:
   return _zone_or_fixed(read_ai_timezone_name(params))
 
 
+def _read_tzfile_bytes(zone_file: str) -> bytes | None:
+  try:
+    with open(zone_file, "rb") as f:
+      return f.read()
+  except Exception:
+    return None
+
+
+def _atomic_write(dst: str, data: bytes) -> bool:
+  """Atomically replace dst (regular file or symlink path) with data."""
+  import tempfile
+  d = os.path.dirname(dst) or "."
+  try:
+    fd, tmp = tempfile.mkstemp(dir=d, prefix=".tz-")
+  except Exception:
+    return False
+  try:
+    with os.fdopen(fd, "wb") as f:
+      f.write(data)
+    os.chmod(tmp, 0o644)
+    os.replace(tmp, dst)  # replaces the symlink itself, not the zoneinfo target
+    return True
+  except Exception:
+    try:
+      os.unlink(tmp)
+    except Exception:
+      pass
+    return False
+
+
+def effective_os_zone() -> str:
+  """Best-effort: which zone the OS clock actually resolves to right now."""
+  link = "/etc/localtime"
+  try:
+    real = os.path.realpath(link)
+    if real.startswith("/usr/share/zoneinfo/"):
+      return real[len("/usr/share/zoneinfo/"):]
+  except Exception:
+    pass
+  # Fall back to /etc/timezone content (may point at /data/etc/timezone).
+  try:
+    with open("/etc/timezone") as f:
+      return f.read().strip()
+  except Exception:
+    return ""
+
+
+def _repoint_etc_localtime(zone_file: str) -> bool:
+  """Point /etc/localtime at zone_file. / is read-only on the device, so the
+  symlink swap needs a temporary rw remount (restored afterwards)."""
+  import subprocess
+  link = "/etc/localtime"
+  want = os.path.realpath(zone_file)
+  try:
+    if os.path.islink(link):
+      if os.path.realpath(link) == want:
+        return True
+      cmd = f"mount -o remount,rw / && ln -sfn {zone_file} {link} && mount -o remount,ro /"
+      try:
+        subprocess.run(["sudo", "-n", "sh", "-c", cmd], capture_output=True, timeout=25)
+      finally:
+        if os.path.realpath(link) != want:
+          try:
+            subprocess.run(["sudo", "-n", "sh", "-c", "mount -o remount,ro /"],
+                           capture_output=True, timeout=15)
+          except Exception:
+            pass
+      return os.path.realpath(link) == want
+    # Plain file (bind-mounted localtime): overwrite in place.
+    data = _read_tzfile_bytes(zone_file)
+    if data is None:
+      return False
+    return _atomic_write(link, data) or _sudo_copy(zone_file, link)
+  except Exception:
+    return False
+
+
 def apply_os_timezone(tz_name: str) -> bool:
-  """Apply the IANA timezone to the OS system clock (localtime files).
+  """Apply an IANA timezone to the OS so `date`, logs and routes agree.
 
-  The OS clock is kept in UTC (network NTP sync), but the display/route timezone
-  is driven by /data/etc/localtime (+ symlinked /etc/localtime). Writing the
-  correct TZinfo file here makes `date`, logs and the OS clock read back in the
-  local timezone, matching what routes/Cabana display. Best-effort; never raises.
-
-  /data is rw but /data/etc/localtime is root-owned, so a plain write may fail;
-  fall back to sudo cp (the comma user is a sudoer and /data is rw ext4).
+  Fixed in 1018: the old version copied the tzfile to /data/etc/localtime while
+  /etc/localtime was a symlink into /usr/share/zoneinfo — i.e. it wrote a file
+  nobody reads, so `date` never changed and /etc/timezone (-> /data/etc/timezone)
+  could disagree with the effective zone. Now we (1) repoint /etc/localtime,
+  (2) mirror /data/etc/localtime, (3) write /etc/timezone, then verify.
+  Best-effort; never raises.
   """
   if not tz_name:
     return False
   zone_file = f"/usr/share/zoneinfo/{tz_name}"
   if not os.path.isfile(zone_file):
-    zone_file = ""
-  ok = False
-  try:
-    if zone_file:
-      import shutil
-      try:
-        shutil.copy(zone_file, "/data/etc/localtime")
-        ok = True
-        # /etc/localtime -> /data/etc/localtime symlink; also fix ownership chain if we can.
-      except PermissionError:
-        ok = _sudo_copy(zone_file, "/data/etc/localtime")
-    # Also write /etc/timezone so tools that read it see the right zone.
-    try:
-      with open("/etc/timezone", "w") as f:
-        f.write(tz_name + "\n")
-    except PermissionError:
-      ok = _sudo_copy_text(tz_name + "\n", "/etc/timezone") or ok
-    return ok
-  except Exception:
     return False
+  ok = _repoint_etc_localtime(zone_file)
+  # Mirror to /data/etc/localtime for anything that reads the /data copy.
+  try:
+    data = _read_tzfile_bytes(zone_file)
+    dst = "/data/etc/localtime"
+    if data is not None and os.path.isdir("/data/etc"):
+      if _read_tzfile_bytes(dst) != data:
+        if not _atomic_write(dst, data):
+          _sudo_copy(zone_file, dst)
+  except Exception:
+    pass
+  # /etc/timezone is a symlink to /data/etc/timezone on the device.
+  text = tz_name + "\n"
+  try:
+    try:
+      with open("/etc/timezone") as f:
+        same = f.read() == text
+    except Exception:
+      same = False
+    if not same:
+      if not _atomic_write("/etc/timezone", text.encode()):
+        _sudo_copy_text(text, "/etc/timezone")
+  except Exception:
+    pass
+  eff = effective_os_zone()
+  if eff and eff != tz_name:
+    # Effective zone still disagrees (read-only root refused the swap).
+    return ok and False
+  return ok or eff == tz_name
 
 
 def _sudo_copy(src: str, dst: str) -> bool:
@@ -198,3 +284,95 @@ def utc_offset_hours(name: str | None) -> float:
     return now.utcoffset().total_seconds() / 3600.0 if now.utcoffset() else 0.0
   except Exception:
     return _TZ_FIXED_OFFSET_HOURS.get(name, _TZ_FIXED_OFFSET_HOURS[DEFAULT_AI_TIMEZONE])
+
+
+# --- auto-detect policy (1018) -------------------------------------------------
+# Proxy/VPN egress makes ip-api report a foreign zone (a Shanghai device behind a
+# Singapore exit node resolves to Asia/Singapore), so network auto-detect is OFF
+# unless the user explicitly enables it. GPS stays the authoritative source.
+TIMEZONE_SOURCE_MANUAL = "manual"
+TIMEZONE_SOURCE_GPS = "gps"
+TIMEZONE_SOURCE_NETWORK = "network"
+NETWORK_AUTO_DEFAULT = False
+NETWORK_CONFIRM_REQUIRED = 3
+
+
+def read_timezone_source(params: Params | None = None) -> str:
+  from ai.common.storage import read_param
+  raw = read_param(params, "ai_timezone_source")
+  if not raw:
+    return ""
+  return (raw.decode() if isinstance(raw, bytes) else str(raw)).strip()
+
+
+def write_timezone_source(source: str, params: Params | None = None) -> None:
+  from ai.common.storage import write_param
+  try:
+    write_param(params, "ai_timezone_source", source)
+  except Exception:
+    pass
+
+
+def network_auto_enabled(params: Params | None = None) -> bool:
+  from ai.common.storage import read_param_bool
+  return read_param_bool(params, "ai_timezone_auto_network", NETWORK_AUTO_DEFAULT)
+
+
+def _zone_known(name: str | None) -> bool:
+  if not name:
+    return False
+  return os.path.isfile(f"/usr/share/zoneinfo/{name}") or name in _TZ_FIXED_OFFSET_HOURS
+
+
+def _bump_network_confirmations(params: Params | None, candidate: str) -> int:
+  """Count consecutive identical network detections (persisted, so a reboot or a
+  one-shot wifi-join trigger keeps accumulating instead of restarting at 1)."""
+  from ai.common.storage import read_param, write_param
+  prev = read_param(params, "ai_timezone_net_candidate") or ""
+  if isinstance(prev, bytes):
+    prev = prev.decode(errors="replace")
+  prev = str(prev).strip()
+  try:
+    hits = int(str(read_param(params, "ai_timezone_net_hits") or "0").strip() or "0")
+  except Exception:
+    hits = 0
+  hits = hits + 1 if prev == candidate else 1
+  write_param(params, "ai_timezone_net_candidate", candidate)
+  write_param(params, "ai_timezone_net_hits", str(hits))
+  return hits
+
+
+def _reset_network_confirmations(params: Params | None) -> None:
+  from ai.common.storage import write_param
+  write_param(params, "ai_timezone_net_candidate", "")
+  write_param(params, "ai_timezone_net_hits", "0")
+
+
+def consider_timezone_update(detected: str | None, source: str, *, params: Params | None = None,
+                             confirmations: int = 1) -> tuple[bool, str]:
+  """Single gate for every auto timezone writer. Returns (applied, reason)."""
+  if not detected:
+    return False, "no-detection"
+  if not _zone_known(detected):
+    return False, f"unknown-zone({detected})"
+  params = params if params is not None else Params()
+  current = read_ai_timezone_name(params)
+  if detected == current:
+    return False, "unchanged"
+  if abs(utc_offset_hours(detected) - utc_offset_hours(current)) <= 0.01:
+    # Same-offset name flip (Shanghai/Hong_Kong/Singapore/Taipei are all +8).
+    return False, f"same-offset({current}->{detected})"
+  if source == TIMEZONE_SOURCE_NETWORK:
+    if not network_auto_enabled(params):
+      return False, "network-auto-disabled"
+    if read_timezone_source(params) == TIMEZONE_SOURCE_MANUAL:
+      return False, "manual-pinned"
+    hits = max(int(confirmations or 1), _bump_network_confirmations(params, detected))
+    if hits < NETWORK_CONFIRM_REQUIRED:
+      return False, f"need-confirm({hits}/{NETWORK_CONFIRM_REQUIRED})"
+    _reset_network_confirmations(params)
+  from ai.common.storage import write_param
+  write_param(params, "ai_timezone", detected)
+  write_timezone_source(source, params)
+  applied = apply_os_timezone(detected)
+  return True, f"{current}->{detected} applied_os={applied}"

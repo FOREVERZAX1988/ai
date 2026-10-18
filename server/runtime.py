@@ -84,24 +84,27 @@ async def _read_gps_fix() -> tuple[float | None, float | None]:
 
 
 async def gps_auto_timezone_loop(_app: web.Application) -> None:
-  """Auto-calibrate the AI timezone from GPS or network (IP) — whichever is available.
+  """Auto-calibrate the timezone from GPS (authoritative) or network IP (opt-in).
 
   Priority:
-    1. GPS fix (most accurate; needs ignition + satellite lock).
-    2. Network egress IP (works without GPS / ignition — comma device calibrates
-       its timezone as soon as it has internet, fulfilling "一联网就自动校准时区").
+    1. GPS fix — proxy-proof, the only always-on auto source.
+    2. Network egress IP — OFF by default (ai_timezone_auto_network=0): a proxy/VPN
+       exit node reports Asia/Singapore for a device actually in Shanghai. When
+       enabled it needs NETWORK_CONFIRM_REQUIRED consecutive identical results and
+       never overrides a manually pinned zone.
 
-  Conservative: only writes when the detected zone differs from the current one,
-  then also applies it to the OS system clock (/etc/localtime + /etc/timezone) so
-  `date`, logs and routes all share the same timezone.
+  Every writer funnels through infra.timezone.consider_timezone_update(), which
+  also enforces the same-offset rule (Shanghai/Hong_Kong/Singapore are all +8, so
+  a name-only flip is ignored instead of churning the user's setting).
   """
   from ai.infra.timezone import (
+    TIMEZONE_SOURCE_GPS,
+    TIMEZONE_SOURCE_NETWORK,
+    consider_timezone_update,
     detect_timezone_from_gps,
     detect_timezone_from_ip,
-    read_ai_timezone_name,
-    utc_offset_hours,
+    network_auto_enabled,
   )
-  from ai.common.storage import write_param
 
   # Small backoff: wait for services + network/GPS to warm up before first probe.
   await asyncio.sleep(30)
@@ -110,45 +113,38 @@ async def gps_auto_timezone_loop(_app: web.Application) -> None:
   while True:
     await asyncio.sleep(cooldown_s)
     try:
-      detected = None
-      source = None
+      detected: str | None = None
+      source: str | None = None
 
-      # 1. Try GPS first (most accurate).
+      # 1. GPS first (most accurate, and immune to proxy exit-node geolocation).
       lat, lng = await _read_gps_fix()
       if lat is not None and lng is not None:
         detected = detect_timezone_from_gps(lat, lng)
-        source = f"gps(lat={lat:.3f},lng={lng:.3f})"
+        source = TIMEZONE_SOURCE_GPS
 
-      # 2. Fall back to network egress IP when no GPS fix (or GPS couldn't resolve).
+      # 2. Network fallback — only when explicitly enabled.
       if not detected:
+        if not network_auto_enabled(_PARAMS):
+          cloudlog.debug("aid: tz: no GPS fix; network auto-detect disabled")
+          continue
         try:
           if await device_wifi_connected():
-            # IP lookup is blocking I/O; keep it off the event loop.
             loop = asyncio.get_event_loop()
-            detected = await loop.run_in_executor(None, detect_timezone_from_ip)
-            source = "ip"
-            if detected:
-              cloudlog.info(f"aid: tz: network auto-detect -> {detected}")
+            got = await loop.run_in_executor(None, detect_timezone_from_ip)
+            if got:
+              cloudlog.info(f"aid: tz: network auto-detect -> {got}")
+              detected, source = got, TIMEZONE_SOURCE_NETWORK
         except Exception as e:
           cloudlog.debug(f"aid: tz: ip lookup failed: {e}")
 
-      if not detected:
+      if not detected or not source:
         cloudlog.debug("aid: tz: no GPS fix and no network zone resolved")
         continue
 
-      current = read_ai_timezone_name(_PARAMS)
-      # Only apply when the UTC offset actually changes (a real timezone move,
-      # e.g. Shanghai->Tokyo +8->+9). Skip same-offset name flips (e.g. IP
-      # geolocation Shanghai->Hong_Kong both +8) so the user's saved zone isn't
-      # churned by cosmetic differences.
-      changed = detected != current and abs(utc_offset_hours(detected) - utc_offset_hours(current)) > 0.01
-      if changed:
-        cloudlog.info(f"aid: tz: auto-update {current} -> {detected} ({source})")
-        write_param(_PARAMS, "ai_timezone", detected)
-        # Sync OS system clock so `date`/logs/routes share the same timezone.
-        from ai.infra.timezone import apply_os_timezone
-        apply_os_timezone(detected)
-      elif detected != current:
-        cloudlog.debug(f"aid: tz: same offset ({current}->{detected}), keep current")
+      applied, reason = consider_timezone_update(detected, source, params=_PARAMS)
+      if applied:
+        cloudlog.info(f"aid: tz: applied {reason}")
+      else:
+        cloudlog.debug(f"aid: tz: keep current ({reason})")
     except Exception as e:
       cloudlog.debug(f"aid: gps tz loop: {e}")
