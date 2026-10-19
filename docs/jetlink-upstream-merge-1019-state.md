@@ -139,3 +139,39 @@ app 侧这轮上游只有 UI 文案/设置项结构变化，**没有协议破坏
   采样命令：`grep -h 'jetlink: stages' /data/log/swaglog.* | tail -50`；
   无线地址实测：`192.168.10.65` 是一加16（SM8975，能跑大模型），`192.168.10.36` 是 Beam Pro
   （SM6450，engine 建不出来，只用来验 apk）。同 LAN 即可，不需要外网。
+
+## 1️⃣ 收尾（2026-10-19 22:20–22:35，行车预览 + 家里路由器）
+
+**结论：① 关账，不再作为阻塞项。** 判定依据分两层，任一层都够：
+
+1. **真机镜头链路已 PASS（19:43–19:54，451 条样本）**：pickup 41.9 / warp 2.6 / pair 0.6 /
+   encode 3.6 / send 4.5 / reply 45.5（p50，ms）。车身侧 warp+pair+encode+send 合计 11.3 ms。
+   这条覆盖的就是「镜头帧真的从 comma 走到手机再回来」这件事本身。
+2. **合入后的代码级闭环（本 boot 实测日志）**：`prepared the large model ahead of the swap in 2.25 s`、
+   `borrowed the gadget (udc a600000.dwc3)`、`gadget presented`；切到 Wi-Fi 后
+   `on Wi-Fi, releasing the link`（链路模式切换正确放掉 gadget）。打印点仍在
+   `jetlink/openpilot/model_state.py:742/750`，`tests/test_stages.py` 21 passed。
+
+**本轮新取得的可用证据**：LAN 上 join 握手是通的 —— comma 拨到 `192.168.10.36` 后一路走到
+`htp-whole-SM6450 trt None, engine none, loaded None` / `not joined yet (engine build failed: OrtError
+Node 'node_conv2d_token_91' OpType:Conv domain:com.ms.internal.nhwc ...)`。也就是说
+**失败发生在手机侧 engine 构建，不在链路**；大模型协作不需要外网，只有模型下载需要。
+
+**为什么这一轮没采到新样本**：`192.168.10.65`（一加16，SM8975）的 5599 端口
+`Connection refused` —— 手机上的 jetlink app 服务端没起（app 不在前台/未启动）。
+`192.168.10.36`（Beam Pro）5599 是 OPEN 的，所以自动发现必然先接它。
+**下次要新样本只需**：一加16 上把 app 打开停在 jetlink 页 → 行车预览开着即可，
+`grep -h 'jetlink: stages' /data/log/swaglog.* | tail -5`。**这不是验收门槛，不专门为它安排一轮。**
+
+### 顺带修掉的真 bug（jetlink_repo `8b77fa1`）
+`/data/.jetlink_wifi_peer` 里的时间戳是**本次开机的单调钟**，重启归零；判据只看
+`monotonic() - ts > PEER_TTL_S`，于是上一次开机写下的时间戳读成未来（age 为负），
+永远"新鲜"。**用户看到的「路由器模式报 SM6450」这个怪现象就是它**：重启后仍被钉在
+上次开机记住的 .36 上。修法：`age < 0` 即过期，新增
+`test_a_peer_remembered_before_a_reboot_is_not_dialed`（`TestDiscoverOrder` 9 passed）。
+
+### 留给下一轮（不阻塞）
+LAN 上有多台 jetlink server 时缺偏好规则：`discover()` 的 sweep 按子网序走，`.36` 总在 `.65`
+之前，且 `_save_peer` 记的是「TCP connect 成功」而不是「真正 join 成功、engine 起来」。
+正确做法：只在 join 成功（engine loaded）后记住该 peer，并让 join 失败的主机进 `skip` 换下一台。
+单独立项，不与本轮冲突收口混在一起。
