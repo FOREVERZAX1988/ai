@@ -100,3 +100,42 @@ git -C /data/openpilot/jetlink_repo rev-parse HEAD                  # 仍是 7df
 app 侧这轮上游只有 UI 文案/设置项结构变化，**没有协议破坏性改动**，
 所以现在的 apk 仍可对 `jetlink_repo@7dfaa30` 的 comma 跑；
 等 Android 冲突落完、重新出包时再升级（HEVC 需要新 apk 才会走 `frame_codecs`）。
+
+---
+
+## 九、收尾记录（2026-10-19 22:30，本文所记的中途状态已全部落地）
+
+上游 test `59efe220e6` 与 jetlink cn `39c555e` 的合入已提交，本文「28 待办」不再有效，
+以本节为准。四条合并原则逐条落点：
+
+| 层 | 谁赢 | 依据 |
+|---|---|---|
+| HEVC 载体（`hevc_venus.py` + `CHevc` + `stream.py` 头门） | 上游 | 唯一让「上路+弱 Wi-Fi」结构性成立的方案；适配器按上游接线 `hevc_encoder=hevc_venus.make_encoder` |
+| 帧循环/降级（medium 决定循环、流水线不为自己等待、患者写、静默宽限、preview 落后帧 hold） | 我们 | 上游此层为空；合入时保留我们的策略做肉 |
+| 诊断（`jetlink: stages` 行 = 验收脚本依赖） | 我们保留接口 | 上游分位 stages 进状态页并保留同一行文本（`model_state.py` 打印，`stages.py` 注释写明） |
+| 迟到判定 | 上游 watermark + 我们的静默宽限 | 单比较替换调参窗，宽限只在链路整体静默时兜底 |
+| 淡入 | 上游 | 叠加在我们的 `in_control` 安全门上（安全门不弃） |
+| 就绪判定 | 上游 | `Status.read()` 先问 `unavailable()`（owner 活、warp 建好）再回答 ready，比只看 spec 的 ready 位更严 |
+| 车型数据（opendbc） | 我们的 Macan 纵向 + 上游 mazda 两修 | 见父仓 `bbde8dbc0f` |
+
+- 父仓：`43657ec00e`（jetlink 指针 → `bc70384` + venus 编码器接线）、
+  `bbde8dbc0f`（opendbc → `ee86beb36`，mazda MADS 重新武装 / Oceania VIN；就绪测试跟上游语义）
+- jetlink_repo：`bc70384`（上游 lean-mici 分层 + HEVC 载体 叠在我们的帧循环上）
+- `.gitmodules`：保持 `FOREVERZAX1988/*` 与 `branch = sp-macan-test`，不取上游版本
+- 已知未做/未动（非本次引入）：
+  - `test_offline_it_is_tried_once_per_change`（1≠2）——10-17 已记录的离线重试去重漂移，
+    要动的是 fetcher 的去重 memo 重置时机，单独一轮做
+  - `car.capnp` 布局分叉：`activeCarrot/atcDistance` 我们在 `CarControl` 顶层 `@19/@20`，
+    上游在 `HUDControl @11/@12`；`steerRatioV2 @80` 为 Macan PDS 本地字段
+  - 手机 APK 仍是旧包：HEVC 要新包才会走 `frame_codecs`，旧包继续走无损路径，不阻塞
+
+### 1️⃣ 真机验收口径（行车预览）
+- 六段分布（pickup/warp/pair/encode/send/reply）已于 19:43–19:54 真机 PASS，451 条样本：
+  车身侧 warp+pair+encode+send 合计 p50 = 11.3 ms，「链路慢」假设否掉；时间几乎全在 reply（手机侧推理）。
+- 合入后本轮只做代码级闭环：`jetlink: stages` 打印点仍在（`model_state.py:742/750`）、
+  `tests/test_stages.py` 21 passed、设备重启后 `jetlink_adapter` 正常起来（日志
+  「nothing to provision」+「4 model(s) only newer catalogs list」、无异常）。
+- 还差一次「合入后」的真机镜头链路采样（需要 行车预览 重开 + 手机 app 连上），
+  采样命令：`grep -h 'jetlink: stages' /data/log/swaglog.* | tail -50`；
+  无线地址实测：`192.168.10.65` 是一加16（SM8975，能跑大模型），`192.168.10.36` 是 Beam Pro
+  （SM6450，engine 建不出来，只用来验 apk）。同 LAN 即可，不需要外网。
