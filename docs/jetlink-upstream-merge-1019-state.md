@@ -170,8 +170,20 @@ Node 'node_conv2d_token_91' OpType:Conv domain:com.ms.internal.nhwc ...)`。也�
 上次开机记住的 .36 上。修法：`age < 0` 即过期，新增
 `test_a_peer_remembered_before_a_reboot_is_not_dialed`（`TestDiscoverOrder` 9 passed）。
 
-### 留给下一轮（不阻塞）
-LAN 上有多台 jetlink server 时缺偏好规则：`discover()` 的 sweep 按子网序走，`.36` 总在 `.65`
-之前，且 `_save_peer` 记的是「TCP connect 成功」而不是「真正 join 成功、engine 起来」。
-正确做法：只在 join 成功（engine loaded）后记住该 peer，并让 join 失败的主机进 `skip` 换下一台。
-单独立项，不与本轮冲突收口混在一起。
+### 多 server 偏好（2026-10-20 已落地，jetlink_repo `7e1f161`）
+上面这条 `.36` 抢在 `.65` 前面的偏好缺口已经做掉，原则是「connect 成功 ≠ 可用」：
+
+- `discover()` 不再写 peer 文件（原 `_save_peer` 记的是「TCP connect 成功」，只证明有监听者）。
+- 记住由 `wifi.remember_peer()` 负责，调用点在 `open_link()` 的 `ensure()` 成功之后 ——
+  也就是**这台机器的 engine 真的 loaded** 才会被记成「下次先拨它」。
+- 拨号把 host 挂在 client 上（`peer_host`），join 才知道自己拨的是哪台。
+- 答不出这台模型的主机（`note_build_failure` 记下了答案，或已有 `BUILD_REFUSED`）进
+  `wifi.UNUSABLE`，进程内有效（= 当次驾驶）：`discover()` 像对待 `skip` 一样跳过它，
+  `_saved_peer()` 不返回它，`remember_peer()` 不写它 —— 下一次 join 顺序落到下一台候选。
+- 有线不动：`link.wifi` 为假时既不记也不跳，用户自己的手机该再试一次。
+
+测试：`tests/test_wifi_discovery.py` +5（单靠探测不记、engine loaded 才记、unusable 永不写入、
+落到下一台、已记但本次 unusable 的 peer 不再拨），`tests/openpilot/test_link.py` +2。
+全量 1498 passed / 186 subtests；`test_joining`/`test_warp` 里 5–19 个
+`the test reached the machine's own files`（`/dev/shm/jetlink` 被在跑的 modeld 占着）
+是既有的环境性报错，stash 掉本次改动后同样出现，与本次无关。
