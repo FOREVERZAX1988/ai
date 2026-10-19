@@ -53,9 +53,13 @@
 **1️⃣ ✅ 已做（2026-10-19，jetlink `caf0113`）C4 侧六段分段计时**
 六段：取帧 → warp → 配对等待 → 硬编 → 发送 → 等 REPLY；64 槽环形缓冲按 frame id 索引，**在读到 REPLY 的地方收口**（自己等的帧在 `infer_end`，pipelined 帧由后一帧的 `drain` 读走）。落点与 lean-mici 不同（他们的 `link.py`/`status.py`）：在 jetlink 里就是 `jetlink/openpilot/stages.py`（环形 + 分位）+ `client._take_reply` 的 `on_answer` 钩子 + `model_state` 的三处打点。**纯增量、不碰控制、不碰 parity、不动 panda。**
 输出两条日志（§2 第 1 步）：每帧 `jetlink: stages frame N …`（随帧行节奏，含首 3 帧/超 50 ms/1 Hz），30 s `jetlink: stages frames N untimed …` 分位。**故意不上 capnp**：等真要做 UI 面板或跨行程回放再把"最近一帧 + 分位" publish 出去，环形缓冲永远不进 schema（上游 35/200 提交动 `log.capnp`，本仓已吃过两次序号冲突）。
+- **验证状态（2026-10-19）**：`tests/openpilot` 在设备上 76 passed（`test_stages.py` 全绿）。真机验收仍看 `jetlink: stages` 行 —— 一次 preview 或一次上路即可产出，当前日志里还没有（重启后尚未跑过镜头链路）。**在设备上跑这套测试会多出 2 个 error，是 `tests/openpilot/conftest.py` 的 `/data/` 守卫把 lazy import 记成"碰了机器自己的文件"**（仓库在 `/data/openpilot` 下才触发；CI 在 `/home/runner` 下不受影响）—— 不要把这两条当失败。
 
-**2️⃣ mDNS 服务发现（限 wlan0 子网）**
-判据：接口必须 wlan0 + 解析 IP 必须落在 wlan0 的 IPv4 子网 + 连败 3 次重新发现，配手动 IP 兜底。当前 Wi-Fi 只拨默认网关，**手机是 peer 客户端（非网关）的 AP 场景必然连不上**。落点 `jetlink/comma/wifi.py`。
+**2️⃣ ✅ 已做（上游 `879d782` + `859796d`，2026-10-15，经 `996508e` 并入 cn）子网自动发现 —— 但要说清它 不是 mDNS（没有任何 Avahi/Bonjour 依赖）**
+- 判据逐条对上了：**网关先单独试**（热点场景一行结束，`link.dial`）→ 网关拒连才 `wifi.discover(skip={gw})`；**只扫本机 wlan0 自己的 IPv4 子网**（`local_addr()` 用 SIOCGIFADDR/SIOCGIFNETMASK 读 `INTERFACE='wlan0'`，别的接口不参与）；32 线程并发 connect、0.25 s/主机、254 主机上限；**记住 peer** `/data/.jetlink_wifi_peer`（TTL 300 s，复用前必须先回包）；**手动兜底**仍是 `JetlinkLink`（`0=off / 1=usb / 2=ios / 3=wifi`，本机 =3），非 wifi 就走既有路径。
+- 探测是**裸 TCP connect**，一个字节都不发、不发 HELLO → 不建会话、不加载手机模型，扫整个 /24 也不会把手机叫醒。
+- 「连败 3 次重新发现」这条不用单独实现：**每次 join 都重跑 discover**，记住的 peer 只有仍回包才复用，等于每轮都在重新发现。
+- 遗留（低优先）：手机换网段后第一次 join 仍全扫一遍（TTL 到期），慢就慢那一次；嫌慢再加"上次失败网段"标记。
 
 **3️⃣（最后做）C4 侧 venus 硬编 HEVC —— 只作为弱链路传输路径**
 单帧 393,304 B → ~8 KB（**48×**），零 CPU（当前 Wi-Fi lossless 只 2.1×）。解开 `joining.py:33-38` 那个"发帧 9 ms/帧 → 饿死 DM 模型 → commIssue"的约束，从而可 20 Hz 常发 → 接管零冷启动。
