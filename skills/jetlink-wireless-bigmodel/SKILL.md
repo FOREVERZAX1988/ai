@@ -19,13 +19,17 @@
 
 ## 2. 取证顺序（不要 cat 整个文件，不要连做三次 grep）
 
-1. `grep_log` 搜 `jetlink: trips` → 结构化行：frames / held / pipelined / span_s / p50_ms / p99_ms / max_ms / server_ms，并算 hold_ratio、backlog。
-2. **同一条链路取两段**（preview 段 vs onroad 段）对比：修后**两边都应是 pipelined、p50 同一量级**。
+1. `grep_log` 搜 `jetlink: stages` → **先看这一段，它直接指出是哪一段慢**（2026-10-19 起，见 §5 1️⃣）：
+   - 每帧行：`stages frame 42 pickup 50.1 warp 0.9 pair 4.2 encode 3.1 send 2.8 reply 43.5`，六段一一对应 `取帧 / warp / 配对等待(含打包与 drain) / 硬编(无 packer 时为 -) / 发送 / 等 REPLY`。
+   - 30 s 分位行：`stages frames 1200 untimed 0 pickup 50.0/50.4/73.2 …`（每段 p50/p99/max，`-` 表示该段没发生过）。
+   - 读法：`pickup` 超 55 ms → **相机/modeld 自己掉帧，不是链路**；`pair` 或 `send` 暴涨 → C4 侧 CPU/传输；`reply` ≈ N×50 ms → **主机落后 N 帧**（pipelined 帧唯一能看见的量，四段帧行里没有这一段）。
+2. `grep_log` 搜 `jetlink: trips` → frames / held / pipelined / span_s / p50_ms / p99_ms / max_ms / server_ms，并算 hold_ratio、backlog。
+3. **同一条链路取两段**（preview 段 vs onroad 段）对比：修后**两边都应是 pipelined、p50 同一量级**。
    - 健康：`frames 4401 held 0 pipelined 4401 p50 7.7 p99 8.6`
    - 异常：`p50 45–56`、`held` 上升、`pipelined` 归零 → 帧循环又被介质判错，回 §1 证据链查固件版本
-3. `grep_log` 搜 `jetlink:` 看事件链：`in control, a preview's silence rule…`（仅旧固件）/ `modeld dropped x% of camera frames` / `next attempt in 5 s (failure N, link held Ns, drop N, lag N)` / `leaving (b…`。
-4. 端到端分解口径（实测）：`p50 55.6 ms = warp 2.8 + data 0.7 + send 3.8 + wait 43.5`；服务端 `gpu 24–26 + queue 5–13`。**comma 侧只占 ~7 ms → C3 不是瓶颈**，不要建议换设备或降模型。
-5. 怀疑丢帧：`read_manager_log` 看 modeld dropped 比例；秒级时间线用 `read_onroad_events`。
+4. `grep_log` 搜 `jetlink:` 看事件链：`in control, a preview's silence rule…`（仅旧固件）/ `modeld dropped x% of camera frames` / `next attempt in 5 s (failure N, link held Ns, drop N, lag N)` / `leaving (b…`。
+5. 端到端分解口径（实测，四段旧口径）：`p50 55.6 ms = warp 2.8 + data 0.7 + send 3.8 + wait 43.5`；服务端 `gpu 24–26 + queue 5–13`。**comma 侧只占 ~7 ms → C3 不是瓶颈**，不要建议换设备或降模型。
+6. 怀疑丢帧：`read_manager_log` 看 modeld dropped 比例；秒级时间线用 `read_onroad_events`。
 
 ## 3. 判读阈值
 
@@ -46,8 +50,9 @@
 
 > 排序原则（2026-10-19 定）：**先纯增量遥测 → 再修"必然连不上"的发现逻辑 → 最后才动帧表示**（唯一有回归风险的一项）。下表 1️⃣→2️⃣→3️⃣ 即执行顺序。
 
-**1️⃣（先做）C4 侧六段分段计时**（`frame_stages.h` 可直搬）
-六段：取帧 → warp → 配对等待 → 硬编 → 发送 → 等 REPLY，64 槽环形缓冲按 frame_idx 索引，随 REPLY 报 `BigStageTimes`。落点 `link.py` + `status.py`。**纯增量、不碰控制、不碰 parity。** 现在只有服务端遥测、C4 侧空白 → 下次再断，分不清是 warp 慢、发送慢还是等回复慢，等于又回到靠猜。
+**1️⃣ ✅ 已做（2026-10-19，jetlink `caf0113`）C4 侧六段分段计时**
+六段：取帧 → warp → 配对等待 → 硬编 → 发送 → 等 REPLY；64 槽环形缓冲按 frame id 索引，**在读到 REPLY 的地方收口**（自己等的帧在 `infer_end`，pipelined 帧由后一帧的 `drain` 读走）。落点与 lean-mici 不同（他们的 `link.py`/`status.py`）：在 jetlink 里就是 `jetlink/openpilot/stages.py`（环形 + 分位）+ `client._take_reply` 的 `on_answer` 钩子 + `model_state` 的三处打点。**纯增量、不碰控制、不碰 parity、不动 panda。**
+输出两条日志（§2 第 1 步）：每帧 `jetlink: stages frame N …`（随帧行节奏，含首 3 帧/超 50 ms/1 Hz），30 s `jetlink: stages frames N untimed …` 分位。**故意不上 capnp**：等真要做 UI 面板或跨行程回放再把"最近一帧 + 分位" publish 出去，环形缓冲永远不进 schema（上游 35/200 提交动 `log.capnp`，本仓已吃过两次序号冲突）。
 
 **2️⃣ mDNS 服务发现（限 wlan0 子网）**
 判据：接口必须 wlan0 + 解析 IP 必须落在 wlan0 的 IPv4 子网 + 连败 3 次重新发现，配手动 IP 兜底。当前 Wi-Fi 只拨默认网关，**手机是 peer 客户端（非网关）的 AP 场景必然连不上**。落点 `jetlink/comma/wifi.py`。
