@@ -1,5 +1,5 @@
 {
-  "version": 35,
+  "version": 36,
   "skills": [
     {"id": "safety-policy", "name": "安全边界", "description": "告诉 AI 什么时候只能看、什么时候可以改参数", "path": "safety-policy/SKILL.md", "default_enabled": true, "requires_tools": []},
     {"id": "memory-protocol", "name": "记忆习惯", "description": "让 AI 记住你的车型、常用设置和备注", "path": "memory-protocol/SKILL.md", "default_enabled": true, "requires_tools": ["update_agent_memory", "get_agent_memory", "search_memory_semantic", "append_daily_memory", "update_workspace_file", "update_user_profile"]},
@@ -60,6 +60,7 @@
     {"id": "webui-vehicle-qa", "name": "WebUI 上车验收", "description": "对照 scrcpy 真机画面验收 overlay / HUD / 设置（P0 必须上车）", "path": "webui-vehicle-qa/SKILL.md", "default_enabled": true, "requires_tools": ["webui_health_check", "webui_service_status", "webui_package_info", "webui_qa_checklist", "webui_report_template", "webui_onboarding_status", "webui_headless_status", "get_vehicle_state", "read_onroad_events"]},
     {"id": "webui-development", "name": "WebUI PC 开发", "description": "PC 预览、Dev 预设、健康检查与开发交接", "path": "webui-development/SKILL.md", "default_enabled": true, "requires_tools": ["webui_health_check", "webui_service_status", "webui_package_info", "webui_qa_checklist", "webui_apply_dev_preset", "webui_list_dev_presets", "webui_onboarding_status", "webui_headless_status", "get_host_environment", "get_build_info"]},
     {"id": "headless-webui", "name": "无屏模式与 WebUI", "description": "无屏 C3 的 WebUI 全功能操作、AGNOS/Wi-Fi/设置 API 与排障", "path": "headless-webui/SKILL.md", "default_enabled": true, "requires_tools": ["webui_health_check", "webui_service_status", "webui_package_info", "webui_headless_status", "webui_onboarding_status", "get_host_environment", "get_display_settings", "get_device_settings", "manager_control", "read_params", "write_params", "network_diagnostics"]},
-    {"id": "toyota-angle-limits", "name": "丰田转向角限幅放宽", "description": "丰田大弯/闸道弯转向不足、及时接管-转向超过限制。诊断 steerSaturated、指导前端+安全层一致的角速度与角度限幅放宽", "path": "toyota-angle-limits/SKILL.md", "default_enabled": true, "brands": ["toyota", "lexus"], "requires_tools": ["read_onroad_events", "grep_log", "trip_review", "search_knowledge_base", "get_car_platform_bundle"]}
+    {"id": "toyota-angle-limits", "name": "丰田转向角限幅放宽", "description": "丰田大弯/闸道弯转向不足、及时接管-转向超过限制。诊断 steerSaturated、指导前端+安全层一致的角速度与角度限幅放宽", "path": "toyota-angle-limits/SKILL.md", "default_enabled": true, "brands": ["toyota", "lexus"], "requires_tools": ["read_onroad_events", "grep_log", "trip_review", "search_knowledge_base", "get_car_platform_bundle"]},
+    {"id": "jetlink-wireless-bigmodel", "name": "jetlink 无线大模型", "description": "手机 App 无线供大模型：路上掉小模型/超时的取证与优化路线（preview gate、packet pipeline、C4 venus 硬编借鉴）", "path": "jetlink-wireless-bigmodel/SKILL.md", "default_enabled": true, "requires_tools": ["grep_log", "read_manager_log", "read_params", "search_knowledge_base", "network_diagnostics"]}
   ]
 }
