@@ -36,15 +36,16 @@
 
 判据失效 = `DRIFT`（我们其实搬了，或上游又改了）→ 回来改表，**不要**继续相信这张清单。
 
-状态分布：`todo` 10 / `todo-after` 8（依赖同批其它条目）/ `eval` 9（体积大或要驾驶者决策）/
-`pointer` 6（jetlink 5 连 + opendbc）/ `docs` 2。
+状态分布（2026-10-20 深夜，第二轮第一条搬完之后）：`todo` 7 / `todo-after` 6（依赖同批其它条目）/
+`eval` 9（体积大或要驾驶者决策）/ `pointer` 6（jetlink 5 连 + opendbc）/ `docs` 2。
 （第一轮搬完 `0429a86b67` / `0fa33738ca` / `4f4256c37b` / `02cd2d1b5b` 与 `c2df04b193` 的测试
-门控之后是 31 条，已移入同段的 `ported` 留档；见 `upstream_port_round1_20261020.md`。）
+门控之后是 31 条；第二轮搬完 `6ad1f5b099` 之后是 **30 条**。搬过的都在同段 `ported` 留档，
+战果见 `upstream_port_round1_20261020.md` / `upstream_port_round2_20261020.md`。）
 
 值得先看的四条：
 - `0429a86b67` 红灯 latch 在 5 km/h 以上没有退役 → 前车在速度下消失会把红灯 veto 重新按上来（真 bug）。
 - `0fa33738ca` proclog 缓存改按 `starttime` 身份索引 + 资源前 `gc.freeze()`（我们仍按 PID，PID 复用会串数）。
-- `6ad1f5b099` 导航 GPS 来源收口到一个模块（我们 `carrot_serv` 里还是散装判断）。
+- ~~`6ad1f5b099` 导航 GPS 来源收口到一个模块~~ —— 2026-10-20 深夜已搬（`0a52d4c701`），见 round2。
 - `4f4256c37b` 一半是纯删除：`auto_update._notify_cwp` 那条没人要的回传，我们还在跑。
 
 ## 3. 顺手修掉的坑：`remote.upstream.fetch` 只盯一个分支
@@ -77,9 +78,9 @@ python3 ai/scripts/upstream_divergence_check.py --only stopping_controller.py
 python3 ai/scripts/upstream_divergence_check.py --json
 ```
 
-当前（2026-10-20 晚，第一轮搬完三条之后）：`phase 0 OK` / `phase 1 => 20/20 as expected` /
-`phase 2 => 31/31 still unported as recorded`。第一轮的战果与踩坑见
-`upstream_port_round1_20261020.md`。
+当前（2026-10-20 深夜，第二轮第一条搬完之后）：`phase 0 OK` / `phase 1 => 20/20 as expected` /
+`phase 2 => 30/30 still unported as recorded`。两轮的战果与踩坑见
+`upstream_port_round1_20261020.md` / `upstream_port_round2_20261020.md`。
 
 ## 5. 重新以上游为基底时的用法
 

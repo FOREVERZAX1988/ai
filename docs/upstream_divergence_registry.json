@@ -305,7 +305,7 @@
   "about": "上游 test 上已经实现、我们还没移植的提交清单。每条的 probes 是机器可判定的「仍未移植」判据：路径应当不存在 / 符号应当不存在 / 该符号应当还在（因为上游那次是删除）/ 子模块指针应当还不是我们的祖先。检查器 ai/scripts/upstream_divergence_check.py 会逐条验；一旦某条探针失效（= 我们其实已经搬了或上游又改了），它报 DRIFT，提醒回来改这张表。ported=已移植（探针已反转为 DRIFT，条目移出 items 留档）。status: todo=独立可搬 | todo-after=依赖同批其它条目 | eval=体积大或需驾驶者决策 | pointer=子模块指针 | docs=文档，随条目走。",
   "scope": "upstream/test 59efe220e6..817f4a78c2（2026-10-20 17:30 +0800，35 个提交）",
   "checked_at": "2026-10-20",
-  "ours_tip": "6378ec4aff",
+  "ours_tip": "0a52d4c701",
   "upstream_tip": "817f4a78c2",
   "items": [
    {
@@ -373,22 +373,6 @@
     ]
    },
    {
-    "commit": "6ad1f5b099345ca5ce69915e20be7eda678cc2bc",
-    "subject": "carrot: answer the navigation GPS source in one place",
-    "date": "10-20 12:09",
-    "group": "carrot/gps",
-    "status": "todo",
-    "impact": "导航 GPS 来源收口到 gps_sources.py（84 行），carrot_serv 改成一处作答（我们 carrot_serv 里 GPS 来源判断仍是散装）",
-    "next": "独立可搬，注意与 carrot_serv 现有分支对齐",
-    "probes": [
-     {
-      "kind": "path_absent",
-      "target": "openpilot/sunnypilot/carrot/gps_sources.py",
-      "needle": null
-     }
-    ]
-   },
-   {
     "commit": "9d722b3acc9bd4b1583159f47f0138ecefcd470d",
     "subject": "tools: capture bounded device memory history",
     "date": "10-20 12:09",
@@ -430,11 +414,12 @@
     "next": "随对应代码条目",
     "probes": [
      {
-      "kind": "path_absent",
+      "kind": "symbol_absent",
       "target": "docs/gps_source_priority_20261020.md",
-      "needle": null
+      "needle": "c2df04b19"
      }
-    ]
+    ],
+    "probes_note": "2026-10-20 换过判据：原来用 path_absent docs/gps_source_priority_20261020.md，但那文件是 6ad1f5b099 建的，搬完 GPS 那条就会假 DRIFT；真正判据是本条追加的「车机实测」段落（含 c2df04b19 那行）"
    },
    {
     "commit": "bde651b930bd55f6be1a8f6947235eb94c79cf75",
@@ -872,6 +857,19 @@
     "evidence": "test_signal_departure.py 22 passed、test_proclog_identity.py 8 passed；两个文件现与 upstream/test 逐字节一致",
     "local_fix": "无（我们先各自独立修了同样的两处，随后直接采用上游版本以零分叉）",
     "partial": "只搬了测试门控；test_gps_sources.py 部分依赖 6ad1f5b099，v_asm_server.py 部分仍以独立条目留在 items"
+   },
+   {
+    "commit": "6ad1f5b099345ca5ce69915e20be7eda678cc2bc",
+    "subject": "carrot: answer the navigation GPS source in one place",
+    "group": "carrot/gps",
+    "ported_at": "2026-10-20",
+    "ours_commit": "0a52d4c701",
+    "probe_was": "path_absent openpilot/sunnypilot/carrot/gps_sources.py",
+    "evidence": "test_gps_sources.py 21 passed；test_carrot_man.py 150 passed；carrot/tests 全套 684 passed / 6 skipped / 0 errors；ruff 对新增两文件零告警",
+    "local_fix": "carrot_man.py 冲突：上游把新服务写死在 SubMaster 字面量里，本树已抽成 CARROT_SERVICES 常量（广播线程共用同一列表），按本树写法解 —— 只把 'liveLocationKalman' 加进常量",
+    "expect_diff_after": [
+     "openpilot/sunnypilot/carrot/carrot_man.py"
+    ]
    }
   ]
  }
