@@ -139,13 +139,173 @@
     "from openpilot.common.repo_tools import load"
    ],
    "note": "上游仍写 assist_enabled，与我们 signal_assist_runtime.py 的退役逻辑相反"
+  },
+  {
+   "path": "openpilot/sunnypilot/carrot/signal_assist.py",
+   "verdict": "ours",
+   "expect_diff": false,
+   "upstream_commit": "0429a86b67",
+   "ours_keeps": [
+    "与上游逐字节一致（移植后不分叉）"
+   ],
+   "upstream_intent_present": [
+    "def departed_signal_stop",
+    "reason='departed_stop'"
+   ],
+   "note": "红灯停止记忆过 5 km/h 退役；这条 intent 丢了就是 bug 复发"
+  },
+  {
+   "path": "openpilot/sunnypilot/carrot/signal_start_guard.py",
+   "verdict": "ours",
+   "expect_diff": false,
+   "upstream_commit": "0429a86b67",
+   "ours_keeps": [
+    "与上游逐字节一致"
+   ],
+   "upstream_intent_present": [
+    "departed_signal_stop(speed)",
+    "reason='departed_stop'"
+   ],
+   "note": "时钟回滚分支之前先退役 latch"
+  },
+  {
+   "path": "openpilot/sunnypilot/carrot/carrot_functions.py",
+   "verdict": "mixed",
+   "expect_diff": true,
+   "upstream_commit": "0429a86b67",
+   "ours_keeps": [
+    "get_mode 的引号注解（本树既有，ruff UP037 会提示，未动）"
+   ],
+   "upstream_intent_present": [
+    "_retire_departed_signal_stop",
+    "_signal_stop_owned",
+    "departed_signal_stop(v_ego)"
+   ],
+   "note": "末级输出门只释放信号 veto，不动 MPC/模型障碍/前车已经要求的制动"
+  },
+  {
+   "path": "openpilot/system/proclogd.py",
+   "verdict": "ours",
+   "expect_diff": false,
+   "upstream_commit": "0fa33738ca",
+   "ours_keeps": [
+    "与上游逐字节一致"
+   ],
+   "upstream_intent_present": [
+    "_smaps_identity",
+    "def _prune_proc_cache",
+    "gc.freeze()"
+   ],
+   "note": "缓存按 starttime 身份索引 + 每轮 prune + 建资源前冻结；三条一起丢了才会串数"
+  },
+  {
+   "path": "openpilot/system/tests/test_proclog_identity.py",
+   "verdict": "ours",
+   "expect_diff": false,
+   "upstream_commit": "0fa33738ca",
+   "ours_keeps": [
+    "与上游逐字节一致（含 c2df04b193 的 _smaps_cycle = 1 修正）"
+   ],
+   "upstream_intent_present": [
+    "_prune_proc_cache",
+    "gc.freeze()",
+    "starttime"
+   ],
+   "note": "重基线时若被换回旧版（不推进 cycle），8 例里 1 例会立刻失败"
+  },
+  {
+   "path": "openpilot/sunnypilot/carrot/tests/test_signal_departure.py",
+   "verdict": "ours",
+   "expect_diff": false,
+   "upstream_commit": "0429a86b67",
+   "ours_keeps": [
+    "与上游逐字节一致（含 c2df04b193 的 CarrotPlanner 改名）"
+   ],
+   "upstream_intent_present": [
+    "departed_signal_stop",
+    "SignalStartGuard",
+    "e2eStopped"
+   ],
+   "note": "整文件覆盖成 0429a86b67 的原版会让 11 例重新静默 skip"
+  },
+  {
+   "path": "openpilot/selfdrive/selfdrived/events.py",
+   "verdict": "mixed",
+   "expect_diff": true,
+   "upstream_commit": "4f4256c37b",
+   "ours_keeps": [
+    "本树自有的大量 carrot/sunnypilot 事件与中文提示文本",
+    "EVENTS 里的分叉条目"
+   ],
+   "upstream_intent_present": [
+    "def bind_nnff_notice",
+    "def nnff_load_alert",
+    "EventName.torqueNNLoad"
+   ],
+   "note": "bind 是按实例重绑 EVENTS（不每帧复制）；get_events_mapping 必须返回 self._events_mapping"
+  },
+  {
+   "path": "openpilot/selfdrive/selfdrived/selfdrived.py",
+   "verdict": "mixed",
+   "expect_diff": true,
+   "upstream_commit": "4f4256c37b",
+   "ours_keeps": [
+    "本树 CP_SP/mads/jetlink 相关分支",
+    "is_remote 未使用（既有 ruff 提示）"
+   ],
+   "upstream_intent_present": [
+    "def update_nnff_alert",
+    "self.update_nnff_alert(CS)",
+    "EventName.torqueNNLoad"
+   ],
+   "note": "gate: frame>=550 且 frame%50、初始化完成、非 passive、CAN 正常、无 NO_ENTRY、当前无其它提示、NNLC 已开、型号非空非 MOCK"
+  },
+  {
+   "path": "openpilot/cereal/log.capnp",
+   "verdict": "mixed",
+   "expect_diff": true,
+   "upstream_commit": "4f4256c37b",
+   "ours_keeps": [
+    "缺 ModelDataV2.meta.laneWidthLeft/Right @10/@11 —— 属未移植 bde651b930"
+   ],
+   "upstream_intent_present": [
+    "torqueNNLoad @105",
+    "radarStationaryLead @104"
+   ],
+   "note": "改 capnp 要在设备上重跑 SCons 生成，否则 EventName 里读不到新字段"
+  },
+  {
+   "path": "openpilot/sunnypilot/carrot/server/services/auto_update.py",
+   "verdict": "ours",
+   "expect_diff": false,
+   "upstream_commit": "4f4256c37b",
+   "ours_keeps": [
+    "与上游逐字节一致（_notify_cwp 已删除）"
+   ],
+   "upstream_intent_present": [
+    "AUTO_UPDATE_ERROR_ALERT"
+   ],
+   "note": "_notify_cwp / NOTIFY_TIMEOUT / _diff_stats 都随上游删掉了；再加回来等于复活已否决的 beacon"
+  },
+  {
+   "path": "openpilot/sunnypilot/carrot/server/tests/test_auto_update.py",
+   "verdict": "ours",
+   "expect_diff": true,
+   "upstream_commit": "4f4256c37b",
+   "ours_keeps": [
+    "删掉 _notify_cwp monkeypatch 与 notify 期望（上游漏改，会 AttributeError）"
+   ],
+   "upstream_intent_present": [
+    "_run_git_pull"
+   ],
+   "note": "整文件覆盖成上游版会让这例重新 failed"
   }
  ],
  "upstream_pending_port": {
-  "about": "上游 test 上已经实现、我们还没移植的提交清单。每条的 probes 是机器可判定的「仍未移植」判据：路径应当不存在 / 符号应当不存在 / 该符号应当还在（因为上游那次是删除）/ 子模块指针应当还不是我们的祖先。检查器 ai/scripts/upstream_divergence_check.py 会逐条验；一旦某条探针失效（= 我们其实已经搬了或上游又改了），它报 DRIFT，提醒回来改这张表。status: todo=独立可搬 | todo-after=依赖同批其它条目 | eval=体积大或需驾驶者决策 | pointer=子模块指针 | docs=文档，随条目走。",
+  "about": "上游 test 上已经实现、我们还没移植的提交清单。每条的 probes 是机器可判定的「仍未移植」判据：路径应当不存在 / 符号应当不存在 / 该符号应当还在（因为上游那次是删除）/ 子模块指针应当还不是我们的祖先。检查器 ai/scripts/upstream_divergence_check.py 会逐条验；一旦某条探针失效（= 我们其实已经搬了或上游又改了），它报 DRIFT，提醒回来改这张表。ported=已移植（探针已反转为 DRIFT，条目移出 items 留档）。status: todo=独立可搬 | todo-after=依赖同批其它条目 | eval=体积大或需驾驶者决策 | pointer=子模块指针 | docs=文档，随条目走。",
   "scope": "upstream/test 59efe220e6..817f4a78c2（2026-10-20 17:30 +0800，35 个提交）",
   "checked_at": "2026-10-20",
-  "ours_tip": "c14a63ea20",
+  "ours_tip": "6378ec4aff",
   "upstream_tip": "817f4a78c2",
   "items": [
    {
@@ -213,38 +373,6 @@
     ]
    },
    {
-    "commit": "0429a86b673bd651740514add3022928436f0ff1",
-    "subject": "carrot: retire stopped-red memory once the car leaves creep",
-    "date": "10-20 12:08",
-    "group": "carrot/signal",
-    "status": "todo",
-    "impact": "真 bug：红灯 latch 只在静止时上闩、没有速度范围；跟车绕开 veto 后 latch 仍上着，前车在高速消失就把红灯 veto 重新按上来（直接改 v_cruise/stop_dist/xState）。修法=过 5 km/h 退役 latch 并带走它注入的 e2eStopped",
-    "next": "有 SignalAssistMode>0 就会中；建议优先搬（含 test_signal_departure.py 22 例）",
-    "probes": [
-     {
-      "kind": "symbol_absent",
-      "target": "openpilot/sunnypilot/carrot/signal_assist.py",
-      "needle": "departed_signal_stop"
-     }
-    ]
-   },
-   {
-    "commit": "0fa33738caf5c7e88f65d04fee1b0f34cbfcd91c",
-    "subject": "system: key the proclog caches by process identity",
-    "date": "10-20 12:08",
-    "group": "system/proclog",
-    "status": "todo",
-    "impact": "_smaps/_proc 缓存改成按 starttime 身份索引 + 每轮 prune + 建资源前 gc.freeze()（我们的版本仍按 PID 缓存，PID 复用会串内存数）",
-    "next": "小而稳，建议下一批就搬（含 test_proclog_identity.py）",
-    "probes": [
-     {
-      "kind": "symbol_absent",
-      "target": "openpilot/system/proclogd.py",
-      "needle": "_smaps_identity"
-     }
-    ]
-   },
-   {
     "commit": "6ad1f5b099345ca5ce69915e20be7eda678cc2bc",
     "subject": "carrot: answer the navigation GPS source in one place",
     "date": "10-20 12:09",
@@ -278,17 +406,17 @@
    },
    {
     "commit": "c2df04b19345c675413d43908917631ef8863b79",
-    "subject": "test: run the departure and GPS cases on the device they need",
+    "subject": "xiaoge: BSD lane inference floor + backpressure (rest of c2df04b193)",
     "date": "10-20 12:13",
-    "group": "tests/device-routing",
-    "status": "todo-after",
-    "impact": "把 GPS/停走用例改到该跑的设备上跑 + v_asm_server 小修",
-    "next": "随 6ad1f5b099 / 0429a86b67",
+    "group": "xiaoge/bsd-lane",
+    "status": "todo",
+    "impact": "c2df04b193 的测试门控部分已随三条一起搬（见 ported）。剩下这一半是 xiaoge/v_asm_server.py：OnnxLaneIntervalMs 默认 400→1000、下限 MIN_LANE_INTERVAL_MS=600、每次推理后按 last_inference_ms*1.15 反压。上游在 SDM845 上实测：车道模型 Gold 核 ~421ms / Silver 核 941-1104ms，两条相机线程并发推理时会翻倍 → 默认 400ms 会造成背靠背推理、GIL 饿死其它线程，下游看到的就是间歇性「model lagging」freshness 报错",
+    "next": "独立可搬，但要先确认我们 v_asm_server 的 last_inference_ms 字段存在；搬完做一次设备上的 lagging 计数对比（BSD 车道频率从 2.5Hz 降到 1Hz 是可见代价）",
     "probes": [
      {
-      "kind": "path_absent",
-      "target": "openpilot/system/tests/test_proclog_identity.py",
-      "needle": null
+      "kind": "symbol_absent",
+      "target": "openpilot/sunnypilot/carrot/xiaoge/v_asm_server.py",
+      "needle": "MIN_LANE_INTERVAL_MS"
      }
     ]
    },
@@ -426,43 +554,6 @@
     ]
    },
    {
-    "commit": "4f4256c37b55a589b4cae1e97b84bdcec959ac0f",
-    "subject": "selfdrived: one-shot NNFF model notice + drop the dead phone-home residue",
-    "date": "10-20 13:56",
-    "group": "selfdrived/nnff",
-    "status": "todo",
-    "impact": "两件事：① torqueNNLoad @105 每次上电一次性播报加载的 NNFF 扭矩模型（型号被替换时也说得清）；② 删掉 auto_update 里已经没人要的 _notify_cwp 回传（我们还在跑，每次更新都打 notify）",
-    "next": "②可以现在就搬（纯删除）；① 需要 cereal 加字段 + 编译",
-    "probes": [
-     {
-      "kind": "symbol_absent",
-      "target": "openpilot/cereal/log.capnp",
-      "needle": "torqueNNLoad"
-     },
-     {
-      "kind": "symbol_present",
-      "target": "openpilot/sunnypilot/carrot/server/services/auto_update.py",
-      "needle": "_notify_cwp"
-     }
-    ]
-   },
-   {
-    "commit": "02cd2d1b5bee326f5ef29f82183b4e3491e5a293",
-    "subject": "tests: fix two NNFF notice expectations caught on device",
-    "date": "10-20 14:00",
-    "group": "selfdrived/nnff",
-    "status": "todo-after",
-    "impact": "NNFF 通知两条断言按设备实测修正",
-    "next": "随 4f4256c37b",
-    "probes": [
-     {
-      "kind": "path_absent",
-      "target": "openpilot/selfdrive/selfdrived/tests/test_nnff_notice.py",
-      "needle": null
-     }
-    ]
-   },
-   {
     "commit": "80cd489f0ec168129b56b542d5da1059ea99e016",
     "subject": "latcontrol: per-vehicle tune library + gated dispatch hook (StarPilot port)",
     "date": "10-20 14:01",
@@ -485,12 +576,12 @@
     "group": "docs",
     "status": "docs",
     "impact": "NNFF 通知那一轮的设备实测记录",
-    "next": "随 4f4256c37b",
+    "next": "这条是上游在自己设备上跑完 NNFF 那一轮的战果记录（skip=0、20/20、全 carrot 614/614）。我们的 docs/nnff_notice_20261020.md 目前只有移植来的移植前版本；等我们在设备上跑出 skip=0 之后再补这一段",
     "probes": [
      {
-      "kind": "path_absent",
+      "kind": "symbol_absent",
       "target": "docs/nnff_notice_20261020.md",
-      "needle": null
+      "needle": "614/614 OK"
      }
     ]
    },
@@ -717,6 +808,70 @@
       "needle": null
      }
     ]
+   }
+  ],
+  "ported": [
+   {
+    "commit": "0429a86b673bd651740514add3022928436f0ff1",
+    "subject": "carrot: retire stopped-red memory once the car leaves creep",
+    "group": "carrot/signal",
+    "ported_at": "2026-10-20",
+    "ours_commit": "c392fb4e6c",
+    "probe_was": "symbol_absent signal_assist.py:departed_signal_stop",
+    "evidence": "test_signal_departure.py 22 passed / 0 skipped；carrot/tests 636 -> 658 passed",
+    "local_fix": "上游测试导入的是 CarrotPilot，本树类名 CarrotPlanner → 22 例里 11 例静默 skip（上游本机同样 skip）。改成 CarrotPlanner as CarrotPilot 后才真跑。",
+    "expect_diff_after": [
+     "openpilot/sunnypilot/carrot/carrot_functions.py",
+     "openpilot/sunnypilot/carrot/tests/test_signal_departure.py"
+    ]
+   },
+   {
+    "commit": "0fa33738caf5c7e88f65d04fee1b0f34cbfcd91c",
+    "subject": "system: key the proclog caches by process identity",
+    "group": "system/proclog",
+    "ported_at": "2026-10-20",
+    "ours_commit": "0c858ccab4",
+    "probe_was": "symbol_absent proclogd.py:_smaps_identity",
+    "evidence": "test_proclog_identity.py 9 passed / 0 skipped（上游 8 例里 1 例必失败，见 local_fix）；openpilot/system/tests 的 4 failed + 5 errors 已 git stash 前后对照确认为既有环境问题",
+    "local_fix": "上游用例在 _smaps_cycle==0 时必失败（首轮按设计无条件刷新 callee），上游本机 8 例全 skip 从未跑过。用例显式把 _smaps_cycle 置 1，并补 1 例锁住「首轮无条件刷新」。",
+    "expect_diff_after": [
+     "openpilot/system/tests/test_proclog_identity.py"
+    ]
+   },
+   {
+    "commit": "4f4256c37b55a589b4cae1e97b84bdcec959ac0f",
+    "subject": "selfdrived: one-shot NNFF model notice + drop the dead phone-home residue",
+    "group": "selfdrived/nnff",
+    "ported_at": "2026-10-20",
+    "ours_commit": "d337e96239",
+    "probe_was": "symbol_absent log.capnp:torqueNNLoad + symbol_present auto_update.py:_notify_cwp",
+    "evidence": "test_nnff_notice 20 passed（真跑，不是 skip）；test_signal_stop_prepare_runtime 12 passed；carrot/server/tests 136 passed / 48 skipped；ruff 干净",
+    "local_fix": "上游删了 _notify_cwp 却没改 carrot/server/tests/{test_auto_update,test_git_config}.py 的 monkeypatch（raising=True → AttributeError），实测 1 failed。两处 hook 与 notify 期望一并删除。",
+    "expect_diff_after": [
+     "openpilot/sunnypilot/carrot/server/tests/test_auto_update.py",
+     "openpilot/sunnypilot/carrot/server/tests/test_git_config.py"
+    ]
+   },
+   {
+    "commit": "02cd2d1b5be0e1e5dd3bd0c61a6e2e3b5b0c26bb",
+    "subject": "tests: fix two NNFF notice expectations caught on device",
+    "group": "selfdrived/nnff",
+    "ported_at": "2026-10-20",
+    "ours_commit": "d337e96239",
+    "probe_was": "path_absent selfdrive/selfdrived/tests/test_nnff_notice.py",
+    "evidence": "test_nnff_notice.py 现与 upstream/test 逐字节一致；20 passed",
+    "local_fix": "无（我们先独立推出同样的两处修正，随后直接采用上游版本以零分叉）"
+   },
+   {
+    "commit": "c2df04b19345c675413d43908917631ef8863b79",
+    "subject": "test: run the departure and GPS cases on the device they need (测试门控部分)",
+    "group": "tests/device-routing",
+    "ported_at": "2026-10-20",
+    "ours_commit": "6378ec4aff",
+    "probe_was": "path_absent openpilot/system/tests/test_proclog_identity.py",
+    "evidence": "test_signal_departure.py 22 passed、test_proclog_identity.py 8 passed；两个文件现与 upstream/test 逐字节一致",
+    "local_fix": "无（我们先各自独立修了同样的两处，随后直接采用上游版本以零分叉）",
+    "partial": "只搬了测试门控；test_gps_sources.py 部分依赖 6ad1f5b099，v_asm_server.py 部分仍以独立条目留在 items"
    }
   ]
  }

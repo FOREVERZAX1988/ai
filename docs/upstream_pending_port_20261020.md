@@ -4,7 +4,7 @@
 
 | | commit | 说明 |
 |---|---|---|
-| 我们 | `c14a63ea20` | sp-macan-test（2026-10-20 12:5x，END_SOFT_RATE 跟随上游后） |
+| 我们 | `c14a63ea20` → `6378ec4aff` | 审计当时 12:5x（END_SOFT_RATE 跟随上游后）；第一轮三条搬完 + ai 文档更新后是 `6378ec4aff` |
 | 上游 | `817f4a78c2` | mouxangithub/openpilot `test`，2026-10-20 17:30 (+0800) |
 | 审计范围 | `59efe220e6..817f4a78c2` | 今天这一批 **35 个提交** |
 
@@ -38,6 +38,8 @@
 
 状态分布：`todo` 10 / `todo-after` 8（依赖同批其它条目）/ `eval` 9（体积大或要驾驶者决策）/
 `pointer` 6（jetlink 5 连 + opendbc）/ `docs` 2。
+（第一轮搬完 `0429a86b67` / `0fa33738ca` / `4f4256c37b` / `02cd2d1b5b` 与 `c2df04b193` 的测试
+门控之后是 31 条，已移入同段的 `ported` 留档；见 `upstream_port_round1_20261020.md`。）
 
 值得先看的四条：
 - `0429a86b67` 红灯 latch 在 5 km/h 以上没有退役 → 前车在速度下消失会把红灯 veto 重新按上来（真 bug）。
@@ -75,7 +77,9 @@ python3 ai/scripts/upstream_divergence_check.py --only stopping_controller.py
 python3 ai/scripts/upstream_divergence_check.py --json
 ```
 
-当前：`phase 0 OK` / `phase 1 => 9/9 as expected` / `phase 2 => 35/35 still unported as recorded`。
+当前（2026-10-20 晚，第一轮搬完三条之后）：`phase 0 OK` / `phase 1 => 20/20 as expected` /
+`phase 2 => 31/31 still unported as recorded`。第一轮的战果与踩坑见
+`upstream_port_round1_20261020.md`。
 
 ## 5. 重新以上游为基底时的用法
 
