@@ -1,5 +1,5 @@
 {
- "about": "For each file where upstream mouxangithub/openpilot test and our sp-macan-test differ on purpose. `verdict`: ours = our version wins on rebase; mixed = upstream intent is already inside ours, we additionally carry fork content; pending-ab = our version wins for now, driver A/B outstanding. `expect_diff`: true means the file MUST still differ from upstream after a rebase (if it does not, our patch was silently dropped).",
+ "about": "For each file where upstream mouxangithub/openpilot test and our sp-macan-test differ on purpose. `verdict`: ours = our version wins on rebase; mixed = upstream intent is already inside ours, we additionally carry fork content; pending-ab = our version wins for now, driver A/B outstanding. `expect_diff`: true means the file MUST still differ from upstream after a rebase (if it does not, our patch was silently dropped). `upstream` = byte-identical to upstream again after a port (no fork content left), so a rebase takes the upstream file verbatim.",
  "upstream": "https://github.com/mouxangithub/openpilot",
  "upstream_ref": "upstream/test",
  "audited_at": "2026-10-20",
@@ -262,17 +262,19 @@
   },
   {
    "path": "openpilot/cereal/log.capnp",
-   "verdict": "mixed",
-   "expect_diff": true,
-   "upstream_commit": "4f4256c37b",
+   "verdict": "upstream",
+   "expect_diff": false,
+   "upstream_commit": "bde651b930",
    "ours_keeps": [
-    "缺 ModelDataV2.meta.laneWidthLeft/Right @10/@11 —— 属未移植 bde651b930"
+    "无 —— 已与上游 test 逐字节一致（bde651b930 补上 laneWidthLeft/Right 后最后一条分叉消失）"
    ],
    "upstream_intent_present": [
     "torqueNNLoad @105",
-    "radarStationaryLead @104"
+    "radarStationaryLead @104",
+    "laneWidthLeft @10",
+    "laneWidthRight @11"
    ],
-   "note": "改 capnp 要在设备上重跑 SCons 生成，否则 EventName 里读不到新字段"
+   "note": "expect_diff 翻 false：`git diff upstream/test -- openpilot/cereal/log.capnp` 为空，rebase 冲突一律取上游版；改 capnp 后 python 端走 capnp.load()，重启进程即生效，C++ 端仍需在设备上重跑 SCons（libcereal.a 要用新 header 重编）"
   },
   {
    "path": "openpilot/sunnypilot/carrot/server/services/auto_update.py",
@@ -323,7 +325,7 @@
   "about": "上游 test 上已经实现、我们还没移植的提交清单。每条的 probes 是机器可判定的「仍未移植」判据：路径应当不存在 / 符号应当不存在 / 该符号应当还在（因为上游那次是删除）/ 子模块指针应当还不是我们的祖先。检查器 ai/scripts/upstream_divergence_check.py 会逐条验；一旦某条探针失效（= 我们其实已经搬了或上游又改了），它报 DRIFT，提醒回来改这张表。ported=已移植（探针已反转为 DRIFT，条目移出 items 留档）。status: todo=独立可搬 | todo-after=依赖同批其它条目 | eval=体积大或需驾驶者决策 | pointer=子模块指针 | docs=文档，随条目走。",
   "scope": "upstream/test 59efe220e6..817f4a78c2（2026-10-20 17:30 +0800，35 个提交）",
   "checked_at": "2026-10-20",
-  "ours_tip": "f3fba66794",
+  "ours_tip": "7648f7495e",
   "upstream_tip": "817f4a78c2",
   "items": [
    {
@@ -424,29 +426,13 @@
     "probes_note": "2026-10-20 换过判据：原来用 path_absent docs/gps_source_priority_20261020.md，但那文件是 6ad1f5b099 建的，搬完 GPS 那条就会假 DRIFT；真正判据是本条追加的「车机实测」段落（含 c2df04b19 那行）"
    },
    {
-    "commit": "bde651b930bd55f6be1a8f6947235eb94c79cf75",
-    "subject": "xiaoge: fill ModelDataV2.meta lane widths to open the BSD gate",
-    "date": "10-20 13:05",
-    "group": "modeld/lane-width",
-    "status": "todo",
-    "impact": "ModelDataV2.meta 加 laneWidthLeft/Right(@10/@11)，modeld 每帧填，打开 xiaoge BSD 门控",
-    "next": "需要 cereal 加字段 + modeld 两处（原生/sunnypilot 两条路径）",
-    "probes": [
-     {
-      "kind": "path_absent",
-      "target": "openpilot/selfdrive/modeld/lane_width.py",
-      "needle": null
-     }
-    ]
-   },
-   {
     "commit": "d4ee34a206ea257070538b3da4abae56be555633",
     "subject": "xiaoge: update lane width docstring now that the schema defines it",
     "date": "10-20 13:25",
     "group": "xiaoge/lane-width",
-    "status": "todo-after",
+    "status": "todo",
     "impact": "删掉 carrot_man_input.py 里伪造车道宽的旧路，改成读 schema；依赖 bde651b930 先落",
-    "next": "随 bde651b930",
+    "next": "bde651b930 已落（ours 7648f7495e），不再被阻塞；开搬前先对上游 diff 一遍：本树 carrot_man_input.py 当前 grep 不到 width/laneWidth 字样，「伪造车道宽旧路」可能早已不存在",
     "probes": [
      {
       "kind": "path_present",
@@ -880,6 +866,16 @@
     "probe_was": "symbol_absent openpilot/sunnypilot/carrot/xiaoge/v_asm_server.py:MIN_LANE_INTERVAL_MS",
     "evidence": "上游该 commit 的另 3 个文件（test_signal_departure/test_gps_sources/test_proclog_identity）此前已随 abcd 批搬完，本轮补 v_asm_server.py：OnnxLaneIntervalMs 默认 400->1000、MIN_LANE_INTERVAL_MS=600 下限、BSD 与车道两线程各一处 max(区间, last_*_inference_ms*1.15) 反压。git apply 上游单文件 hunk 全干净命中；落地后与 upstream/test 同文件 diff 只剩既有本地分叉（import errno + bind_http_server EADDRINUSE 重试）与一行无害字符串拼接差异。py_compile OK；test_xiaoge_cereal_fields.py 6 passed / 0 skipped；sunnypilot/carrot/tests 全量 682 passed / 6 skipped（test_carrot_navi_no_aiohttp.py 2 failed 为既有环境问题：子进程 ModuleNotFoundError: No module named openpilot，与本文件零交集）。",
     "device_check": "重启 xiaoge_data 后看 /api/status：stored OnnxLaneIntervalMs=400 时 lane.intervalSeconds 应被抬到 0.6（floor 生效），lane.latencyMs>600 时实际间隔应自动拉到 latency*1.15；代价是 BSD 车道频率 2.5Hz->~1.7Hz（默认值下 1Hz），观察 modelV2 freshness / model lagging 计数是否下降。"
+   },
+   {
+    "commit": "bde651b930bd55f6be1a8f6947235eb94c79cf75",
+    "subject": "xiaoge: fill ModelDataV2.meta lane widths to open the BSD gate",
+    "group": "modeld/lane-width",
+    "ported_at": "2026-10-20",
+    "ours_commit": "7648f7495e",
+    "probe_was": "path_absent openpilot/selfdrive/modeld/lane_width.py",
+    "evidence": "lane_width.py 与 tests/test_lane_width.py 逐字节等于上游（diff 为空）；test_lane_width 6 passed；carrot/tests 全套 586 passed / 6 skipped / 5 errors，5 个 error 全是环境缺 pytest 的 import（与本轮无关）；capnp 动态加载确认 ModelDataV2.MetaData 现有 laneWidthLeft/Right:float32；modelV2 序列化→反序列化后 lane_width_meters 读出 3.4/2.8，gate 3.4>=3.0 开、2.8 关；capnpc 重新生成 gen/cpp/log.capnp.h 并 -fsyntax-only 编译通过（MetaData 数据段 3→4 words）",
+    "local_fix": "三个 modeld/log.capnp 的增量行集与上游完全一致，无冲突改写；唯一偏差=上游 test_xiaoge_cereal_fields.py 注释把 ordinal 写成 @2/@3（与它自己 log.capnp 的 @10/@11 矛盾），本树按实际 ordinal 写 @10/@11。本地 log.capnp 是 dynamic capnp.load()，加字段对 python 端即刻生效（重启进程即可），无需 codegen；C++ libcereal.a 仍是旧 header 编的，按 capnp 结构演化规则向后兼容，下次 scons 全量构建时一并刷新"
    }
   ]
  }
