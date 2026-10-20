@@ -335,13 +335,30 @@
         "Off keeps stock sunnypilot behaviour"
       ],
       "note": "34f7b78b14 把纵向源开关抬到 Developer 页；这三串是那次改动在本文件里的落点，掉了就是被 rebase 冲掉了"
+    },
+    {
+      "path": "openpilot/selfdrive/car/tests/fleet_safety.py",
+      "verdict": "mixed",
+      "expect_diff": true,
+      "upstream_commit": "6963554164",
+      "ours_keeps": [
+        "cp.alternativeExperience = recorded.alternativeExperience（本分叉横向授权走 MADS，AE 取自日志）",
+        "每个 panda 的 libsafety 追加 set_mads_params(ENABLE_MADS, disengage/pause)（本分叉 MADS 门控）",
+        "configuration_policy 文案补 alternativeExperience taken from the log"
+      ],
+      "upstream_intent_present": [
+        "ROOT = Path(__file__).resolve().parents[4]",
+        "module.load(str(target/'libsafety.so'))",
+        "cc_sp = convert_carControlSP(custom.CarControlSP.new_message())"
+      ],
+      "note": "fleet_safety 的四条上游补丁都逐字节搬了；本树只多 MADS/AE 那段本地适配。它掉了就是被 rebase 冲掉——那会让 MADS 单独横向的 HCA_01 全部变成 unexpected rejection"
     }
   ],
   "upstream_pending_port": {
     "about": "上游 test 上已经实现、我们还没移植的提交清单。每条的 probes 是机器可判定的「仍未移植」判据：路径应当不存在 / 符号应当不存在 / 该符号应当还在（因为上游那次是删除）/ 子模块指针应当还不是我们的祖先。检查器 ai/scripts/upstream_divergence_check.py 会逐条验；一旦某条探针失效（= 我们其实已经搬了或上游又改了），它报 DRIFT，提醒回来改这张表。ported=已移植（探针已反转为 DRIFT，条目移出 items 留档）。status: todo=独立可搬 | todo-after=依赖同批其它条目 | eval=体积大或需驾驶者决策 | pointer=子模块指针 | docs=文档，随条目走。",
     "scope": "upstream/test 59efe220e6..817f4a78c2（2026-10-20 17:30 +0800，35 个提交）",
     "checked_at": "2026-10-20",
-    "ours_tip": "2c25665dc2",
+    "ours_tip": "04eaf99e5b",
     "upstream_tip": "817f4a78c2",
     "items": [
       {
@@ -426,22 +443,6 @@
         "probes_note": "2026-10-20 换过判据：原来用 path_absent docs/gps_source_priority_20261020.md，但那文件是 6ad1f5b099 建的，搬完 GPS 那条就会假 DRIFT；真正判据是本条追加的「车机实测」段落（含 c2df04b19 那行）"
       },
       {
-        "commit": "e7652e5f147bbba2eb7e94a5f6ac241a72570c31",
-        "subject": "tests: port StarPilot offline fleet_safety audit (controller+safety replay)",
-        "date": "10-20 13:38",
-        "group": "fleet_safety",
-        "status": "eval",
-        "impact": "StarPilot 离线车队安全审计（controller+safety 回放，322+200 行）+ opendbc 指针 f062516",
-        "next": "想要「改 safety 前先全车型回放」的能力时再搬；会引入 opendbc 依赖",
-        "probes": [
-          {
-            "kind": "path_absent",
-            "target": "openpilot/selfdrive/car/tests/fleet_safety_core.py",
-            "needle": null
-          }
-        ]
-      },
-      {
         "commit": "b96f079ca8d01830d624bdbd80eb9c307f99babf",
         "subject": "latcontrol: user Kp scale via CustomKp param (StarPilot SteerKP equivalent)",
         "date": "10-20 13:46",
@@ -518,54 +519,6 @@
             "kind": "submodule_not_ancestor",
             "target": "jetlink_repo",
             "needle": "dbb4877e3387b2fd38d1c28d66ea5225423a0bd2"
-          }
-        ]
-      },
-      {
-        "commit": "4a4d60661585b1aaa74c82d567eea499bfe77177",
-        "subject": "fleet_safety: fix ROOT for this tree's openpilot/ nesting (parents[4])",
-        "date": "10-20 14:17",
-        "group": "fleet_safety",
-        "status": "todo-after",
-        "impact": "fleet_safety 的 ROOT 修正（这棵树的 openpilot/ 多一层，parents[4]）",
-        "next": "随 e7652e5f14 一起",
-        "probes": [
-          {
-            "kind": "path_absent",
-            "target": "openpilot/selfdrive/car/tests/fleet_safety.py",
-            "needle": null
-          }
-        ]
-      },
-      {
-        "commit": "aa524aec3ecf6c8d399be813622065ca258d38cc",
-        "subject": "fleet_safety: dlopen the copied prebuilt libsafety.so per panda",
-        "date": "10-20 14:22",
-        "group": "fleet_safety",
-        "status": "todo-after",
-        "impact": "fleet_safety 每个 panda dlopen 复制出来的 prebuilt libsafety.so（避免重 link 破坏在跑进程 —— 和我们 params.py 私有副本踩的是同一个坑）",
-        "next": "随 e7652e5f14 一起",
-        "probes": [
-          {
-            "kind": "path_absent",
-            "target": "openpilot/selfdrive/car/tests/fleet_safety.py",
-            "needle": null
-          }
-        ]
-      },
-      {
-        "commit": "696355416490c1c0f26ffa729b8754cc968599f8",
-        "subject": "fleet_safety: build CarControlSP through convert_carControlSP like the car test",
-        "date": "10-20 14:25",
-        "group": "fleet_safety",
-        "status": "todo-after",
-        "impact": "fleet_safety 用 convert_carControlSP 构 CarControlSP，与 car test 对齐",
-        "next": "随 e7652e5f14 一起（同一文件，逐条补丁有顺序依赖）",
-        "probes": [
-          {
-            "kind": "path_absent",
-            "target": "openpilot/selfdrive/car/tests/fleet_safety.py",
-            "needle": null
           }
         ]
       },
@@ -852,6 +805,46 @@
         "probe_was": "path_absent openpilot/sunnypilot/models/chunked_download.py",
         "evidence": "4 个新文件 git hash-object 与上游逐字节一致：chunked_download.py / model_catalog.py(89 条 id) / model_source_map_v25.json / tests/test_chunked_download.py；chunked_download.py 仅多 +x。探针 phase2 该条如期翻 DRIFT（path now exists: chunked_download.py）→ 改表后 21/21。离线单测 test_chunked_download 7 tests OK（0.06s，全假 HTTP 不联网）；models 目录整包 101 tests OK（skipped=2，需 PYTHONPATH 带 /data/.pydeps 才有 pytest）；ruff check openpilot/sunnypilot/models/ All checks passed；默认下载路径未变：只有远端真给 .chunkmanifest 才走分块，否则 try_download_chunked 返回 None 回落原 _download_file。",
         "local_fix": "manager.py 三处适配（Path 导入、_try_chunked_download 方法按上游同文插入、单文件分支改成 chunked-first + None 回落）+ 去掉本树重复的 maybe_apply_default_model import（19 行已带 carry_over_picks）；fetcher.py 删掉 ModelParser 内重复的 get_chunk_name 导入；README 9 行 StarPilot 出处说明随上游。本树 manager.py 与上游仅剩 6 行 noqa 注释文案差异（我们带原因说明）。"
+      },
+      {
+        "commit": "4a4d60661585b1aaa74c82d567eea499bfe77177",
+        "subject": "fleet_safety: fix ROOT for this tree's openpilot/ nesting (parents[4])",
+        "group": "fleet_safety",
+        "ported_at": "2026-10-20",
+        "ours_commit": "04eaf99e5b",
+        "probe_was": "path_absent openpilot/selfdrive/car/tests/fleet_safety.py",
+        "evidence": "补丁逐字节应用，blob 576b2a48d0 与上游一致。本树同样把 openpilot/ 多嵌一层，parents[3] 会指到 openpilot/ 而非仓库根，build_safety 就找不到 opendbc_repo/opendbc/safety/tests/libsafety/safety.c。",
+        "local_fix": "无"
+      },
+      {
+        "commit": "696355416490c1c0f26ffa729b8754cc968599f8",
+        "subject": "fleet_safety: build CarControlSP through convert_carControlSP like the car test",
+        "group": "fleet_safety",
+        "ported_at": "2026-10-20",
+        "ours_commit": "04eaf99e5b",
+        "probe_was": "path_absent openpilot/selfdrive/car/tests/fleet_safety.py",
+        "evidence": "补丁逐字节应用，最终 blob dc98c96d8c 与上游一致。本树 convert_carControlSP(custom.CarControlSP.new_message()) -> structs.CarControlSP 与 interface.apply(cc, cc_sp, now) 的类型要求对得上。",
+        "local_fix": "有：上游按 get_params() 的 CP 跑，alternativeExperience 恒 0，而本分叉横向授权走 MADS（card.py 把 ENABLE_MADS OR 进 CP，实车日志 AE=1024）——照原样跑，MADS 单独横向的 HCA_01（0x126/bus0）全被审计成 unexpected rejection（实测 376 帧）。本地两处适配：cp.alternativeExperience=recorded.alternativeExperience；每个 panda 的 libsafety 追加 set_mads_params(ENABLE_MADS, disengage/pause)（同 replay_drive.py，set_alternative_experience 只写整数，MADS 状态机要 mads_set_alternative_experience）。改后本机自车日志 000000aa--000d7806f5--20: pass —— 8894 帧 TX 全接受、0 拒绝、814 帧 active TX 全接受、AE=1024。"
+      },
+      {
+        "commit": "aa524aec3ecf6c8d399be813622065ca258d38cc",
+        "subject": "fleet_safety: dlopen the copied prebuilt libsafety.so per panda",
+        "group": "fleet_safety",
+        "ported_at": "2026-10-20",
+        "ours_commit": "04eaf99e5b",
+        "probe_was": "path_absent openpilot/selfdrive/car/tests/fleet_safety.py",
+        "evidence": "补丁逐字节应用，blob 141dc64669 与上游一致。实测 load() 后 libsafety 可 dlopen、set_safety_hooks 正常，即 prebuilt .so 直接加载这条路在本机通。",
+        "local_fix": "无"
+      },
+      {
+        "commit": "e7652e5f147bbba2eb7e94a5f6ac241a72570c31",
+        "subject": "tests: port StarPilot offline fleet_safety audit (controller+safety replay)",
+        "group": "fleet_safety",
+        "ported_at": "2026-10-20",
+        "ours_commit": "04eaf99e5b",
+        "probe_was": "path_absent openpilot/selfdrive/car/tests/fleet_safety_core.py",
+        "evidence": "新建 openpilot/selfdrive/car/tests/fleet_safety.py + fleet_safety_core.py，两者 git hash-object 与上游逐字节相同（f282182bb7 322 行 / aaf553a301 200 行）。opendbc_repo 指针：上游同提交带 f087c437f8->f06251665f，而那一步唯一实质改动是 non_tested_cars 补逗号（routes.py 缺逗号导致 SyntaxError，本树原本也中招——ast.parse 直接报 line 69）。本树在自己的 opendbc 线上先落 ac1ac7c7a（routes.py blob 37b27d1dc 与上游修后一致），父仓只 bump 到本地那条。实测 --inventory：304 platforms / 240 有路由 / 293 条注册路由；build_safety 用 cc 编出 libsafety.so 并 dlopen 成功、set_safety_hooks(0,0)=0。",
+        "local_fix": "无（两文件原样，仅多 chmod +x 不适用——非脚本入口，走 -m）"
       }
     ]
   }
