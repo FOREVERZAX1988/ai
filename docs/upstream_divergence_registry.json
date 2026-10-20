@@ -341,7 +341,7 @@
     "about": "上游 test 上已经实现、我们还没移植的提交清单。每条的 probes 是机器可判定的「仍未移植」判据：路径应当不存在 / 符号应当不存在 / 该符号应当还在（因为上游那次是删除）/ 子模块指针应当还不是我们的祖先。检查器 ai/scripts/upstream_divergence_check.py 会逐条验；一旦某条探针失效（= 我们其实已经搬了或上游又改了），它报 DRIFT，提醒回来改这张表。ported=已移植（探针已反转为 DRIFT，条目移出 items 留档）。status: todo=独立可搬 | todo-after=依赖同批其它条目 | eval=体积大或需驾驶者决策 | pointer=子模块指针 | docs=文档，随条目走。",
     "scope": "upstream/test 59efe220e6..817f4a78c2（2026-10-20 17:30 +0800，35 个提交）",
     "checked_at": "2026-10-20",
-    "ours_tip": "af32099cd7",
+    "ours_tip": "2c25665dc2",
     "upstream_tip": "817f4a78c2",
     "items": [
       {
@@ -634,22 +634,6 @@
         ]
       },
       {
-        "commit": "4d0d11e831d01c3adcde220caf2d2bb46c79cefd",
-        "subject": "models: StarPilot-style chunked download + v25 source map for the catalog",
-        "date": "10-20 16:47",
-        "group": "models",
-        "status": "todo",
-        "impact": "模型分块下载 + v25 源映射表（catalog 扩到 453 行）；我们 models/manager.py 仍是整包下载，弱网/大模型时下载超时更脆",
-        "next": "可以先搬 chunked_download.py 与 catalog，再决定是否切默认",
-        "probes": [
-          {
-            "kind": "path_absent",
-            "target": "openpilot/sunnypilot/models/chunked_download.py",
-            "needle": null
-          }
-        ]
-      },
-      {
         "commit": "077456330f38f470e6bca7f68a8ffb282b05054d",
         "subject": "params: register FLM and vision speed-limit keys",
         "date": "10-20 16:47",
@@ -858,6 +842,16 @@
         "probe_was": "path_absent openpilot/sunnypilot/carrot/tests/audit_ui_reach.py",
         "evidence": "3 个新文件与上游逐字节相同：docs/carrot_no_ui_switches.md (sha 9aee47bfbc)、audit_ui_reach.py (5f76e10639)、test_carrot_ui_reach.py (6b68608ad3)。本树实测 test_carrot_ui_reach 4 tests OK —— 即 scanner 现算出来的表与本树签入的 md 完全一致，说明这台车（Macan 分叉）里 Carrot* 控制路径开关同样是 19 个、5 有入口 14 没入口，且反证上一轮 34f7b78b14 的 CarrotLongitudinalSourceEnabled Developer 入口已就位（若未搬，该开关会掉进「没有 UI 入口」那一栏而让测试红）。",
         "local_fix": "无（原样搬运，3 文件均未改动；文档由 audit_ui_reach.py 生成，不手改）"
+      },
+      {
+        "commit": "4d0d11e831d01c3adcde220caf2d2bb46c79cefd",
+        "subject": "models: StarPilot-style chunked download + v25 source map for the catalog",
+        "group": "models",
+        "ported_at": "2026-10-20",
+        "ours_commit": "2c25665dc2",
+        "probe_was": "path_absent openpilot/sunnypilot/models/chunked_download.py",
+        "evidence": "4 个新文件 git hash-object 与上游逐字节一致：chunked_download.py / model_catalog.py(89 条 id) / model_source_map_v25.json / tests/test_chunked_download.py；chunked_download.py 仅多 +x。探针 phase2 该条如期翻 DRIFT（path now exists: chunked_download.py）→ 改表后 21/21。离线单测 test_chunked_download 7 tests OK（0.06s，全假 HTTP 不联网）；models 目录整包 101 tests OK（skipped=2，需 PYTHONPATH 带 /data/.pydeps 才有 pytest）；ruff check openpilot/sunnypilot/models/ All checks passed；默认下载路径未变：只有远端真给 .chunkmanifest 才走分块，否则 try_download_chunked 返回 None 回落原 _download_file。",
+        "local_fix": "manager.py 三处适配（Path 导入、_try_chunked_download 方法按上游同文插入、单文件分支改成 chunked-first + None 回落）+ 去掉本树重复的 maybe_apply_default_model import（19 行已带 carry_over_picks）；fetcher.py 删掉 ModelParser 内重复的 get_chunk_name 导入；README 9 行 StarPilot 出处说明随上游。本树 manager.py 与上游仅剩 6 行 noqa 注释文案差异（我们带原因说明）。"
       }
     ]
   }
