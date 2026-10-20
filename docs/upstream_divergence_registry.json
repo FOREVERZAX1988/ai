@@ -299,13 +299,31 @@
     "_run_git_pull"
    ],
    "note": "整文件覆盖成上游版会让这例重新 failed"
+  },
+  {
+   "path": "openpilot/selfdrive/controls/radard.py",
+   "verdict": "mixed",
+   "expect_diff": true,
+   "upstream_commit": "2ffd3d1758",
+   "ours_keeps": [
+    "Macan B1 标定同源常量 (MACAN_B1_T_A/B <- opendbc macan_calib)",
+    "_macan_fuse_leads() 原厂雷达融合 + 落点1 idx 滞回 / 落点2 视觉平滑与变化率限幅",
+    "get_custom_yrel() hyundai SCC 分支"
+   ],
+   "upstream_intent_present": [
+    "def apply_vision_lead_hold",
+    "RADARLESS_TRACK_HOLD_TIME = 0.45",
+    "blended_aLeadK",
+    "should_hold_tracked_vision_lead"
+   ],
+   "note": "上游 2ffd3d1758 的 hold 只在 CP.radarUnavailable 分支生效，Macan（有雷达）走不到；aLeadK 80/20 平滑是全局的（雷达/无雷达都用 get_RadarState_from_vision）。合并冲突时本文件的 3 个上游 hunk 必须重新落到本地上下文，不能整包 git apply。"
   }
  ],
  "upstream_pending_port": {
   "about": "上游 test 上已经实现、我们还没移植的提交清单。每条的 probes 是机器可判定的「仍未移植」判据：路径应当不存在 / 符号应当不存在 / 该符号应当还在（因为上游那次是删除）/ 子模块指针应当还不是我们的祖先。检查器 ai/scripts/upstream_divergence_check.py 会逐条验；一旦某条探针失效（= 我们其实已经搬了或上游又改了），它报 DRIFT，提醒回来改这张表。ported=已移植（探针已反转为 DRIFT，条目移出 items 留档）。status: todo=独立可搬 | todo-after=依赖同批其它条目 | eval=体积大或需驾驶者决策 | pointer=子模块指针 | docs=文档，随条目走。",
   "scope": "upstream/test 59efe220e6..817f4a78c2（2026-10-20 17:30 +0800，35 个提交）",
   "checked_at": "2026-10-20",
-  "ours_tip": "0a52d4c701",
+  "ours_tip": "ef587c9fb2",
   "upstream_tip": "817f4a78c2",
   "items": [
    {
@@ -449,22 +467,6 @@
      {
       "kind": "path_present",
       "target": "openpilot/sunnypilot/carrot/carrot_man_input.py",
-      "needle": null
-     }
-    ]
-   },
-   {
-    "commit": "2ffd3d17585cdb55ac35a080352597218aaaf927",
-    "subject": "radard: hold recently dropped vision leads for radarless cars",
-    "date": "10-20 13:31",
-    "group": "radard",
-    "status": "todo",
-    "impact": "无雷达车：最近掉帧的视觉前车继续保持（lead_behavior.py 191 行）+ radard 78 行。我们有雷达，但对视觉前车抖动/丢失同样受益",
-    "next": "先判断我们的 radard_dpath 是否已自带 hold；否则搬 lead_behavior 并接 radard",
-    "probes": [
-     {
-      "kind": "path_absent",
-      "target": "openpilot/selfdrive/controls/lib/lead_behavior.py",
       "needle": null
      }
     ]
@@ -870,6 +872,20 @@
     "expect_diff_after": [
      "openpilot/sunnypilot/carrot/carrot_man.py"
     ]
+   },
+   {
+    "commit": "2ffd3d17585cdb55ac35a080352597218aaaf927",
+    "subject": "radard: hold recently dropped vision leads for radarless cars",
+    "group": "radard",
+    "ported_at": "2026-10-20",
+    "ours_commit": "ef587c9fb2",
+    "probe_was": "path_absent openpilot/selfdrive/controls/lib/lead_behavior.py",
+    "evidence": "test_lead_behavior.py 41 passed / 0 skipped（上游整包搬）；test_macan_radar_fusion.py 10 passed 证明本机 Macan 融合分叉未被动到",
+    "local_fix": "git apply 不能整包落地：我们 radard.py 相对该 commit 父有 246 行 Macan 分叉（_macan_fuse_leads / B1 标定 / 复盘落点），故三个新文件逐字节取上游，radard.py 按上游 3 个 hunk 手工落到本地上下文（import time、lead_behavior 常量导入、RADARLESS_TRACK_HOLD_TIME/_RADARLESS_STOP_DISTANCE、__init__ 状态 + apply_vision_lead_hold()、leadOne 包一层、aLeadK 80/20）。落地后 diff 上游同 commit 版本只剩 Macan 分叉行（upstream-only 行数 1，为既有主函数 SubMaster 列表差异，非本次引入）。",
+    "expect_diff_after": [
+     "openpilot/selfdrive/controls/radard.py"
+    ],
+    "device_check": "暂无（雷达车不受影响）；无雷达车看 radard 日志 leadOne 是否在掉帧后 0.45s 内仍 present 且 modelProb>=0.70"
    }
   ]
  }
