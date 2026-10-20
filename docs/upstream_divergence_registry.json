@@ -341,7 +341,7 @@
     "about": "上游 test 上已经实现、我们还没移植的提交清单。每条的 probes 是机器可判定的「仍未移植」判据：路径应当不存在 / 符号应当不存在 / 该符号应当还在（因为上游那次是删除）/ 子模块指针应当还不是我们的祖先。检查器 ai/scripts/upstream_divergence_check.py 会逐条验；一旦某条探针失效（= 我们其实已经搬了或上游又改了），它报 DRIFT，提醒回来改这张表。ported=已移植（探针已反转为 DRIFT，条目移出 items 留档）。status: todo=独立可搬 | todo-after=依赖同批其它条目 | eval=体积大或需驾驶者决策 | pointer=子模块指针 | docs=文档，随条目走。",
     "scope": "upstream/test 59efe220e6..817f4a78c2（2026-10-20 17:30 +0800，35 个提交）",
     "checked_at": "2026-10-20",
-    "ours_tip": "e5858f8b77",
+    "ours_tip": "af32099cd7",
     "upstream_tip": "817f4a78c2",
     "items": [
       {
@@ -454,22 +454,6 @@
             "kind": "symbol_absent",
             "target": "openpilot/common/params_keys.h",
             "needle": "CustomKp"
-          }
-        ]
-      },
-      {
-        "commit": "28949f07aac935f8daa2b1787042154476590de3",
-        "subject": "ui: expose CarrotLongitudinalSourceEnabled and keep the switch table honest",
-        "date": "10-20 13:51",
-        "group": "ui/audit",
-        "status": "eval",
-        "impact": "UI 可达性审计工具（audit_ui_reach.py）+ 「哪些 carrot 开关没有 UI」的清单",
-        "next": "纯工具，想要「开关到底有没有入口」的检查时再搬",
-        "probes": [
-          {
-            "kind": "path_absent",
-            "target": "openpilot/sunnypilot/carrot/tests/audit_ui_reach.py",
-            "needle": null
           }
         ]
       },
@@ -864,6 +848,16 @@
         "probe_was": "symbol_absent openpilot/selfdrive/ui/sunnypilot/layouts/settings/carrot_tuning_items.py:CarrotLongitudinalSourceEnabled + submodule_not_ancestor webui:d35517c9",
         "evidence": "探针 phase2 该条如期翻 DRIFT（symbol appeared: CarrotLongitudinalSourceEnabled）→ 改表后 23/23。carrot_tuning_render_smoke.py 21/21（DEVELOPER 页真 render，含新开关与其描述；zh-CHS/zh-CHT 仍覆盖 154 条根页文案）；test_translations.py 48 passed（顺带修掉档案前就红的 %1 占位符两条）。ruff 16 条与 HEAD 同数，无新增。webui cherry-pick d35517c9 → 8ae8e69，指针 952cd76→8ae8e69。",
         "local_fix": "上游补丁在本树是 3 处小适配：(1) carrot_tuning_items.py 的 hunk 因相邻一条文案的换行风格（本树 implicit concat 不带 '+ '）而 offset 1 行，git apply 拒收，按语义手工落，新增 13 行与上游逐字一致；(2) 上游只动 pot/en/zh-CHS/zh-CHT 四份 .po，本树每份 .po 都带完整 msgid 清单，故 13 份全部补条目、非 en/zh 的 msgstr 留空（跑 update_translations.py 会重排成 1.6 万→2.9 万行噪声，已回滚）；(3) webui 是本树 fork，d35517c9 的分支点是 75dac813、我们领先 19 个提交，cherry-pick 到 sp-macan-test 上干净落地。"
+      },
+      {
+        "commit": "28949f07aac935f8daa2b1787042154476590de3",
+        "subject": "ui: expose CarrotLongitudinalSourceEnabled and keep the switch table honest",
+        "group": "ui/audit",
+        "ported_at": "2026-10-20",
+        "ours_commit": "af32099cd7",
+        "probe_was": "path_absent openpilot/sunnypilot/carrot/tests/audit_ui_reach.py",
+        "evidence": "3 个新文件与上游逐字节相同：docs/carrot_no_ui_switches.md (sha 9aee47bfbc)、audit_ui_reach.py (5f76e10639)、test_carrot_ui_reach.py (6b68608ad3)。本树实测 test_carrot_ui_reach 4 tests OK —— 即 scanner 现算出来的表与本树签入的 md 完全一致，说明这台车（Macan 分叉）里 Carrot* 控制路径开关同样是 19 个、5 有入口 14 没入口，且反证上一轮 34f7b78b14 的 CarrotLongitudinalSourceEnabled Developer 入口已就位（若未搬，该开关会掉进「没有 UI 入口」那一栏而让测试红）。",
+        "local_fix": "无（原样搬运，3 文件均未改动；文档由 audit_ui_reach.py 生成，不手改）"
       }
     ]
   }
