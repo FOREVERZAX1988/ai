@@ -401,7 +401,7 @@
         "group": "latcontrol/tunes",
         "status": "eval",
         "impact": "按车型的横向调参库（4902 行）+ 门控分发钩子；只对列进去的车型生效，Macan 大概不在表内",
-        "next": "先确认表里有没有 Macan/我们的车型，没有就不搬",
+        "next": "已核（2026-10-20）：上游 latcontrol_vehicle_tunes.py 4902 行里 0 条 PORSCHE/MACAN 命中，我们的 fingerprint 是 PORSCHE_MACAN_MK1（opendbc/car/volkswagen/values.py:531）→ 表里没有我们的车型，按本条判据「没有就不搬」不移植。将来上游补了 Macan 行再回来看。",
         "probes": [
           {
             "kind": "path_absent",
