@@ -323,7 +323,7 @@
   "about": "上游 test 上已经实现、我们还没移植的提交清单。每条的 probes 是机器可判定的「仍未移植」判据：路径应当不存在 / 符号应当不存在 / 该符号应当还在（因为上游那次是删除）/ 子模块指针应当还不是我们的祖先。检查器 ai/scripts/upstream_divergence_check.py 会逐条验；一旦某条探针失效（= 我们其实已经搬了或上游又改了），它报 DRIFT，提醒回来改这张表。ported=已移植（探针已反转为 DRIFT，条目移出 items 留档）。status: todo=独立可搬 | todo-after=依赖同批其它条目 | eval=体积大或需驾驶者决策 | pointer=子模块指针 | docs=文档，随条目走。",
   "scope": "upstream/test 59efe220e6..817f4a78c2（2026-10-20 17:30 +0800，35 个提交）",
   "checked_at": "2026-10-20",
-  "ours_tip": "ef587c9fb2",
+  "ours_tip": "f3fba66794",
   "upstream_tip": "817f4a78c2",
   "items": [
    {
@@ -403,22 +403,6 @@
       "kind": "path_absent",
       "target": "tools/memory_analysis/capture_device_memory.py",
       "needle": null
-     }
-    ]
-   },
-   {
-    "commit": "c2df04b19345c675413d43908917631ef8863b79",
-    "subject": "xiaoge: BSD lane inference floor + backpressure (rest of c2df04b193)",
-    "date": "10-20 12:13",
-    "group": "xiaoge/bsd-lane",
-    "status": "todo",
-    "impact": "c2df04b193 的测试门控部分已随三条一起搬（见 ported）。剩下这一半是 xiaoge/v_asm_server.py：OnnxLaneIntervalMs 默认 400→1000、下限 MIN_LANE_INTERVAL_MS=600、每次推理后按 last_inference_ms*1.15 反压。上游在 SDM845 上实测：车道模型 Gold 核 ~421ms / Silver 核 941-1104ms，两条相机线程并发推理时会翻倍 → 默认 400ms 会造成背靠背推理、GIL 饿死其它线程，下游看到的就是间歇性「model lagging」freshness 报错",
-    "next": "独立可搬，但要先确认我们 v_asm_server 的 last_inference_ms 字段存在；搬完做一次设备上的 lagging 计数对比（BSD 车道频率从 2.5Hz 降到 1Hz 是可见代价）",
-    "probes": [
-     {
-      "kind": "symbol_absent",
-      "target": "openpilot/sunnypilot/carrot/xiaoge/v_asm_server.py",
-      "needle": "MIN_LANE_INTERVAL_MS"
      }
     ]
    },
@@ -886,6 +870,16 @@
      "openpilot/selfdrive/controls/radard.py"
     ],
     "device_check": "暂无（雷达车不受影响）；无雷达车看 radard 日志 leadOne 是否在掉帧后 0.45s 内仍 present 且 modelProb>=0.70"
+   },
+   {
+    "commit": "c2df04b19345c675413d43908917631ef8863b79",
+    "subject": "xiaoge: BSD lane inference floor + backpressure (rest of c2df04b193)",
+    "group": "xiaoge/bsd-lane",
+    "ported_at": "2026-10-20",
+    "ours_commit": "f3fba66794",
+    "probe_was": "symbol_absent openpilot/sunnypilot/carrot/xiaoge/v_asm_server.py:MIN_LANE_INTERVAL_MS",
+    "evidence": "上游该 commit 的另 3 个文件（test_signal_departure/test_gps_sources/test_proclog_identity）此前已随 abcd 批搬完，本轮补 v_asm_server.py：OnnxLaneIntervalMs 默认 400->1000、MIN_LANE_INTERVAL_MS=600 下限、BSD 与车道两线程各一处 max(区间, last_*_inference_ms*1.15) 反压。git apply 上游单文件 hunk 全干净命中；落地后与 upstream/test 同文件 diff 只剩既有本地分叉（import errno + bind_http_server EADDRINUSE 重试）与一行无害字符串拼接差异。py_compile OK；test_xiaoge_cereal_fields.py 6 passed / 0 skipped；sunnypilot/carrot/tests 全量 682 passed / 6 skipped（test_carrot_navi_no_aiohttp.py 2 failed 为既有环境问题：子进程 ModuleNotFoundError: No module named openpilot，与本文件零交集）。",
+    "device_check": "重启 xiaoge_data 后看 /api/status：stored OnnxLaneIntervalMs=400 时 lane.intervalSeconds 应被抬到 0.6（floor 生效），lane.latencyMs>600 时实际间隔应自动拉到 latency*1.15；代价是 BSD 车道频率 2.5Hz->~1.7Hz（默认值下 1Hz），观察 modelV2 freshness / model lagging 计数是否下降。"
    }
   ]
  }
