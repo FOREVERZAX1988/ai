@@ -408,22 +408,6 @@
             "needle": "SpeedLimitVision"
           }
         ]
-      },
-      {
-        "commit": "817f4a78c27830d448f5e54ee55bd6bf43233e35",
-        "subject": "scripts: scripted onroad-scenario simulation for the stop/depart policy",
-        "date": "10-20 17:30",
-        "group": "script/stop-depart",
-        "status": "todo-after",
-        "impact": "给 4b21c8cfdb 的 stop/depart 策略写的脚本化仿真；本机离线就能跑，不依赖车",
-        "next": "等 4b21c8cfdb 决定后再补；否则单独搬过来没有被测对象。现随 B 批：它测的对象就是 4b21c8cfdb 的 policy，两条一起搬才成立。",
-        "probes": [
-          {
-            "kind": "path_absent",
-            "target": "scripts/simulate_lead_stop_depart.py",
-            "needle": null
-          }
-        ]
       }
     ],
     "ported": [
@@ -793,6 +777,20 @@
         ],
         "deferred": "longitudinal_planner.py 的 +38/-2 钩子在 deferred_hooks 第二条：锚点是 LeadFollowPolicy 阶段，要按本树 carrot_source/cutin_predecel/红线预减速 的实际顺序重写，默认关、需上路验（Step2）",
         "evidence": "68 passed (test_lead_stop_depart_policy 27 + test_lead_behavior 41), ruff clean; grep 确认无人 import 新模块 = 默认零影响; libparams_c.so scons -j1 重编 38s 无 LMK, keys 675->676, check_key OK"
+      },
+      {
+        "commit": "817f4a78c2",
+        "full_commit": "817f4a78c27830d448f5e54ee55bd6bf43233e35",
+        "subject": "scripts: scripted onroad-scenario simulation for the stop/depart policy",
+        "group": "script/stop-depart",
+        "ported_at": "2026-10-21",
+        "ours_commit": "c50554ac49",
+        "partial": false,
+        "probe_was": "path_absent scripts/simulate_lead_stop_depart.py",
+        "ported_files": [
+          "scripts/simulate_lead_stop_depart.py (226 行, byte-identical, chmod +x)"
+        ],
+        "evidence": "真机 offroad 跑 5/5 PASS (standstill_depart 3.70s/4.50m, approach_brake min gap 60.6m, low_speed_stop 2.8s/9.2m, radar_gap_settle engaged=True/6.80m, gate_off_passthrough unchanged); 被测对象 lead_stop_depart_policy.py 来自 ed7720231c"
       }
     ],
     "next_batch": {

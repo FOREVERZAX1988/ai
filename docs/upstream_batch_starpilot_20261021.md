@@ -138,3 +138,24 @@ Params().get("CustomKp", return_default=True) -> EXC UnknownKeyName b'CustomKp'
   （`LeadFollowPolicyEnabled` + `LeadStopDepartPolicyEnabled`），要按本树
   `carrot_source` / `cutin_predecel` / 红线预减速 的实际顺序手工合并一次，默认关、
   跑通后再验。`deferred_hooks` 里两条探针（`symbol_absent`）保持有效。
+
+## 8. items 条目 `817f4a78c2`（stop/depart 脚本化仿真）—— 已搬
+
+- 日期：2026-10-21。单文件 `scripts/simulate_lead_stop_depart.py`（226 行），
+  `git hash-object` == 上游 blob `33d10d502e`，chmod +x。
+- 为何此时能独立成立：它的被测对象 `lead_stop_depart_policy.py` 已在 §7 的
+  ed7720231c 落地；此前登记表写「没有被测对象」的理由已失效。
+- 真机实测（offroad、无 cereal、20Hz 闭环、真机 long_mpc 常量）**5/5 PASS**：
+
+  | 场景 | 结果 |
+  |---|---|
+  | standstill_depart | launched at 3.70s, min gap 4.50m |
+  | approach_brake | braking from 0.0s, min gap 60.6m |
+  | low_speed_stop | stopped at 2.8s, final gap 9.2m |
+  | radar_gap_settle | settle accel engaged=True, max gap 6.80m |
+  | gate_off_passthrough | a_target unchanged without a lead |
+
+- 价值：这是 Step2（planner 钩子）在 offroad 阶段**唯一**能拿到的行为基线 ——
+  钩子接上后再跑同一脚本，逐场景对比 depart 时刻/最小间距即可判定有没有改坏。
+- 登记表：items 4→3（余下 982fb613f5 / d81eec5899 两条 eval + 077456330f 那条
+  纯登记键，随它们走）。
