@@ -85,3 +85,27 @@ Params().get("CustomKp", return_default=True) -> EXC UnknownKeyName b'CustomKp'
   - 仍未做：`latcontrol_torque.py` 里 CustomKp 的就地 `try/except` 收归
     `read_float()`；`2d9c586376` 另外 9 个 call site 随整批（批次 A/B/C）一起搬。
 - 结论 §4 第 2 条的 P 已落地，§4 其余待决策项不变。
+
+## 6. items 条目 `80cd489f0e`（车辆横向调参表）—— 已搬（部分）
+
+- 日期：2026-10-21。裁决从「上游无 PORSCHE/MACAN 命中，按没有就不搬」改为
+  **搬**（Macan 走空表回默认 = 零影响），以满足 A 批 `44a32ec77c` 的 import 前置。
+- 逐字节搬入 4 个文件（`git hash-object` 与上游同 commit blob 一致）：
+  - `openpilot/selfdrive/controls/lib/latcontrol_vehicle_tunes.py`（4902 行）
+  - `openpilot/sunnypilot/common/testing_grounds.py`（292 行）
+  - `openpilot/sunnypilot/selfdrive/controls/lib/vehicle_tune_dispatch.py`（72 行）
+  - `openpilot/sunnypilot/selfdrive/controls/lib/tests/test_vehicle_tune_dispatch.py`（49 行）
+- `params_keys.h` 增 `VehicleTunesEnabled`（PERSISTENT|BACKUP, BOOL, "0"）；
+  `pyproject.toml` 给调参表加 E501 豁免（保持与上游 byte-comparable）。
+- **有意不搬**：同提交里 `latcontrol_torque.py` 的 +23/-1 门控钩子。理由：那是 Macan
+  路径上分叉最重的文件；钩子做的 ff/friction_threshold/friction_scale/output_scale
+  只对注册表内 5 个指纹生效，且 `VehicleTunesEnabled` 默认 0。留到 A 批
+  （`44a32ec77c`/`2d9c586376` 触碰同一文件）时一并落，避免在分叉文件上多插一刀。
+- 实测（真机、非 mock）：`test_vehicle_tune_dispatch.py` 5 passed；
+  `resolve_vehicle_tune(PORSCHE_MACAN) -> None`；registry 5 指纹
+  （BOLT_2017=1 / BOLT_2018_2021=1 / ACCORD / GV70_ELECTRIFIED / G70_2020，
+  Bolt 2022-2023 三个别名按 `_CAR_ALIASES` 收敛到同一个 `CHEVROLET_BOLT_EUV`）；
+  `testing_grounds` 默认 `('1','A')`（无 slots.json 时走默认）。
+- `libparams_c.so` 用 `scons -j1 openpilot/common/libparams_c.so` 在 -O0 钉住后重编成功
+  （38s，无 LMK）；真机核对 `VehicleTunesEnabled` 注册默认 False、写入/读回往返 True。
+- 登记表：items 7→6（本条移入 `ported`，标 `partial`，`deferred` 写明钩子去 A 批）。
