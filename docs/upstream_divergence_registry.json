@@ -316,7 +316,7 @@
     "blended_aLeadK",
     "should_hold_tracked_vision_lead"
    ],
-   "note": "上游 2ffd3d1758 的 hold 只在 CP.radarUnavailable 分支生效，Macan（有雷达）走不到；aLeadK 80/20 平滑是全局的（雷达/无雷达都用 get_RadarState_from_vision）。合并冲突时本文件的 3 个上游 hunk 必须重新落到本地上下文，不能整包 git apply。"
+   "note": "上游 2ffd3d1758 的 hold 门是 `if not CP.radarUnavailable: return`。Macan 的 CP.radarUnavailable=True（vw_mlb DBC 只有 Bus.pt、无 Bus.radar → interface.py:19 判成无雷达，属“没定义雷达总线”的误标），但我们旁路合成单点（radar_interface._update_macan：ACC_02.Abstandsindex + ACC_04 前车速度 → trackId=1），所以 tracks 非空、get_lead 会走雷达 track 匹配；只有合成 track 匹配不上、掉到视觉 fallback 的帧才可能被 hold，hold 因此在 Macan 生效。aLeadK 80/20 平滑是全局的（雷达/无雷达都用 get_RadarState_from_vision）。无点云的真因=原厂 ACC 模块内部消化目标表、点数据不上 CAN，不是这车没雷达硬件。合并冲突时本文件的 3 个上游 hunk 必须重新落到本地上下文，不能整包 git apply。"
   }
  ],
  "upstream_pending_port": {

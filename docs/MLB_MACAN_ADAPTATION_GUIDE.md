@@ -11,7 +11,7 @@
 | 车型 | Porsche Macan MK1（VolkswagenMLBPlatformConfig，fingerprint=PORSCHE_MACAN_MK1） |
 | DBC | vw_mlb（opendbc/dbc/vw_mlb.dbc） |
 | 总线 | gateway 单 panda：CAN0=ADAS 网关(bus0)、CAN2=原厂 ACC 雷达域(src=2)、bus128=OP 代发帧 |
-| 纵向 | 原厂 ACC 雷达（bus2），OP 代发 ACC_05(0x10D)；radarUnavailable=True（radarState 走视觉 modelV2.leadsV3） |
+| 纵向 | 原厂 ACC 雷达（bus2），OP 代发 ACC_05(0x10D)；radarUnavailable=True（vw_mlb DBC 只有 Bus.pt、无 Bus.radar → 属“没定义雷达总线”的误标），但 radar_interface 用 ACC_02.Abstandsindex + ACC_04 前车速度旁路合成单点，radarState 里有 1 个合成 track（trackId=1）可与视觉匹配；无点云的真因=ACC 模块内部消化目标表，不是没雷达硬件 |
 | 横向 | 纯扭矩控制（configure_torque_tune；MLB 无角度接口） |
 | EPS 扭矩 | LH_EPS_03.EPS_Lenkmoment，单位 0.01Nm（[-251,237]→实际[-2.51,2.37]Nm） |
 | 轴距 | 2.896 m |
