@@ -789,6 +789,12 @@
           "openpilot/common/params_keys.h"
         ]
       }
-    ]
+    ],
+    "next_batch": {
+      "about": "上游 test 在 items 之后又走了一段（StarPilot 整批），驾驶者口径是整批立项、单独评估，不混进 items 单条。此段不进 items，避免 phase 2 逐条探针失真；裁决见 doc。",
+      "scope": "upstream/test 817f4a78c2..2d9c586376（13 个提交，2026-10-21 02:38 +0800）",
+      "doc": "docs/upstream_batch_starpilot_20261021.md",
+      "verdict": "整批暂不搬：它 import 了 items 里未移植的 latcontrol_vehicle_tunes.py / flm_workspace.py / lateral_arbitration.py。前置 P = 2d9c586376 的 sunnypilot/common/param_read.py 单独优先（修的是我们已实测的 UnknownKeyName 坑）。"
+    }
   }
 }
