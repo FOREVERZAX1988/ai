@@ -109,3 +109,32 @@ Params().get("CustomKp", return_default=True) -> EXC UnknownKeyName b'CustomKp'
 - `libparams_c.so` 用 `scons -j1 openpilot/common/libparams_c.so` 在 -O0 钉住后重编成功
   （38s，无 LMK）；真机核对 `VehicleTunesEnabled` 注册默认 False、写入/读回往返 True。
 - 登记表：items 7→6（本条移入 `ported`，标 `partial`，`deferred` 写明钩子去 A 批）。
+
+## 7. items 条目 `4b21c8cfdb`（stop/depart 策略）—— Step1 已搬（零影响）
+
+- 日期：2026-10-21。按 §3 的两步走建议执行 Step1，**不碰** `longitudinal_planner.py`。
+- 逐字节搬入（`git hash-object` == 上游 4b21c8cfdb 的 blob）：
+  - `openpilot/selfdrive/controls/lib/lead_stop_depart_policy.py`（1792 行，`249a2d7a50`）
+  - `openpilot/selfdrive/controls/lib/tests/test_lead_stop_depart_policy.py`（261 行，`886c2a6103`）
+  - `openpilot/selfdrive/controls/lib/longitudinal_vehicle_tunes.py` → 整文件换成上游
+    896 行版（`ad2e421c86`）。本树原 16 行 seed 的 `get_far_lead_coast_headway_floor`
+    与上游逐字节一致，唯一引用方 `selfdrive/controls/tests/test_lead_behavior.py`
+    未改一行；上游版还自带「sp seed accessors」收尾段，注释也一起过来了。
+- `params_keys.h` 增 `LeadStopDepartPolicyEnabled`（PERSISTENT|BACKUP, BOOL, "0"），
+  紧随 `LeadFollowPolicyEnabled`。
+- 零影响证据：
+  - `grep -rn lead_stop_depart_policy --include=*.py` → 除自身测试外**无人 import**；
+  - `longitudinal_planner.py` 里 `LeadStopDepart|stop_depart` 命中 0，钩子确实没进；
+  - 键默认 0（`Params().get` 返回 None → `get_bool` 默认 False）。
+- 实测（真机）：`test_lead_stop_depart_policy.py` + `test_lead_behavior.py` **68 passed**；
+  `ruff check` 三个新文件全过（无需再加 E501 豁免）。
+- `libparams_c.so`：`scons -j1 openpilot/common/libparams_c.so` 在 `-O0` 钉住下 38s 一次过
+  （无 LMK），keys 675→**676**，`check_key('LeadStopDepartPolicyEnabled')` OK；
+  `sudo systemctl restart comma` 后 manager(683348) 与 `carrot_server`(683725) 的
+  `/proc/*/maps` 都指向新副本 `libparams_c-1792540594-2872216.so`；
+  `/api/push/status` 返回 `subscriptions: 2`（顺带回归了 Web Push 回 Params 那条）。
+- 登记表：items 5→4（本条移入 `ported`，`partial: true`）。
+- **Step2（需上路）仍未做**：`longitudinal_planner.py` 的两个 deferred 钩子
+  （`LeadFollowPolicyEnabled` + `LeadStopDepartPolicyEnabled`），要按本树
+  `carrot_source` / `cutin_predecel` / 红线预减速 的实际顺序手工合并一次，默认关、
+  跑通后再验。`deferred_hooks` 里两条探针（`symbol_absent`）保持有效。

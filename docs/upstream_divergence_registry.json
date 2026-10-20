@@ -1,858 +1,860 @@
 {
- "about": "For each file where upstream mouxangithub/openpilot test and our sp-macan-test differ on purpose. `verdict`: ours = our version wins on rebase; mixed = upstream intent is already inside ours, we additionally carry fork content; pending-ab = our version wins for now, driver A/B outstanding. `expect_diff`: true means the file MUST still differ from upstream after a rebase (if it does not, our patch was silently dropped). `upstream` = byte-identical to upstream again after a port (no fork content left), so a rebase takes the upstream file verbatim.",
- "upstream": "https://github.com/mouxangithub/openpilot",
- "upstream_ref": "upstream/test",
- "audited_at": "2026-10-20",
- "base_commit": "09ffdf60",
- "entries": [
-  {
-   "path": "openpilot/sunnypilot/jetlink_adapter/__init__.py",
-   "verdict": "mixed",
-   "expect_diff": true,
-   "upstream_commit": "52d31c1d70",
-   "ours_keeps": [
-    "_Keys.preview -> IsOnroadPreview",
-    "WARP_DIR/warp_path()/lossless_warp_path()",
-    "long API=3 history comment"
-   ],
-   "upstream_intent_present": [
-    "from openpilot.sunnypilot.jetlink_adapter import hevc_venus",
-    "encoder = hevc_venus.make_encoder if hevc_venus.available() else None",
-    "hevc_encoder=encoder"
-   ],
-   "note": "HEVC 接线只有一套（第 225/231/235 行），不存在两套并存"
-  },
-  {
-   "path": "openpilot/selfdrive/controls/lib/longitudinal_mpc_lib/long_mpc.py",
-   "verdict": "mixed",
-   "expect_diff": true,
-   "upstream_commit": "f45472b01b",
-   "ours_keeps": [
-    "t_follow_user_scale() (planner 仍在调用，上游没有)",
-    "stop_distance 不可运行时覆盖的注释"
-   ],
-   "upstream_intent_present": [
-    "A_CHANGE_FACTORS = np.interp(",
-    "W[4,4] = cost_weights[4] * A_CHANGE_FACTORS[i]",
-    "def t_follow_user_scale("
-   ],
-   "note": "仅顺序与注释差异；A_CHANGE_FACTORS 已在"
-  },
-  {
-   "path": "openpilot/selfdrive/monitoring/dmonitoringd.py",
-   "verdict": "pending-ab",
-   "expect_diff": true,
-   "upstream_commit": "f45472b01b",
-   "ours_keeps": [
-    "demo 预览与常规两支都不门控 AlwaysOnDM（sunnypilot 风格）"
-   ],
-   "upstream_intent_present": [
-    "soft_hold_pause_eligible(sm, time.monotonic(), demo_mode)",
-    "soft_hold_state_packet(DM, valid=valid)"
-   ],
-   "note": "上游两支都要求 DM.always_on；我们两支都不要求。policy.py 内部仍用 always_on 决定告警，故差异只在「关掉 AlwaysOnDM 时策略是否继续跑」。待驾驶者 A/B"
-  },
-  {
-   "path": "openpilot/sunnypilot/carrot/radar/radard_dpath.py",
-   "verdict": "ours",
-   "expect_diff": true,
-   "upstream_commit": "f45472b01b",
-   "ours_keeps": [
-    "_LEAD_FIELD_ALIASES / _assign_lead 的注释更准确（log.capnp=present vs custom.capnp=status）"
-   ],
-   "upstream_intent_present": [
-    "self.radar_state = log.RadarState.new_message()",
-    "radar_msg = messaging.new_message(\"radarState\")"
-   ],
-   "note": "纯注释差异，无行为差异"
-  },
-  {
-   "path": "openpilot/sunnypilot/selfdrive/controls/lib/stopping_controller.py",
-   "verdict": "pending-ab",
-   "expect_diff": true,
-   "upstream_commit": "c41a03695d",
-   "ours_keeps": [
-    "END_SOFT_RATE = 0.4 —— 2026-10-20 驾驶者「先跟随上游」后已与上游同值，不再算分叉（父仓 8b426e4572，路试体感受压）",
-    "无前车时 _end_request 不切得比曲线更深（target = line）",
-    "停车 latch 不限 pid 状态（stopping 期间也 latch）",
-    "END 曲线抛物线 + 实测注释（5-0 km/h 表与上游不同）"
-   ],
-   "upstream_intent_present": [
-    "def update(self, prev_state, state, CS, a_target, prev_accel, stock_accel, accel_limits, has_lead=False",
-    "END_PLAN_MIN",
-    "END_REQUEST = END_HI"
-   ],
-   "note": "上游 END_SOFT_RATE=0.4 的哲学是「入口全程 <0.5 m/s^3，乘客感觉不到第二次刹车」；我们原本 1.0（本车实测调参），2026-10-20 驾驶者决定先跟随上游 → 已改成 0.4（8b426e4572），体感/停车点留待下次路试，不合适就一行改回 1.0。本文件其余两处分叉（无前车不切深、stopping 期也 latch）仍待 A/B，故 expect_diff 仍为 true。"
-  },
-  {
-   "path": "openpilot/selfdrive/controls/tests/test_longcontrol.py",
-   "verdict": "ours",
-   "expect_diff": true,
-   "upstream_commit": "c41a03695d",
-   "ours_keeps": [
-    "断言按我们的 END_SOFT_RATE/latch 写，19 passed"
-   ],
-   "upstream_intent_present": [
-    "LongControlSP.stopping_decel_rate"
-   ],
-   "note": "上游 tip 的这条测试自己就挂：test_stopping_decel_rate_is_smooth_while_rolling 断言 stopping_decel_rate(0.1)==0.3，而同一提交里的 numpy.interp 曲线给 0.07（我们换上上游三文件跑 1 failed / 18 passed）。不要整体搬上游这个文件"
-  },
-  {
-   "path": "openpilot/selfdrive/car/cruise.py",
-   "verdict": "mixed",
-   "expect_diff": true,
-   "upstream_commit": "047f38d783",
-   "ours_keeps": [
-    "carrot 巡航（VCruiseCarrot/蓝牙/拨杆/导航限速等约 +20 行）"
-   ],
-   "upstream_intent_present": [
-    "return self.params.get(key, return_default=True)",
-    "def _param(self, key)"
-   ],
-   "note": "注册默认值语义已完全落地，剩余差异全是 carrot 功能"
-  },
-  {
-   "path": "openpilot/sunnypilot/selfdrive/controls/lib/tests/test_longitudinal_planner.py",
-   "verdict": "ours",
-   "expect_diff": true,
-   "upstream_commit": "279ad6f0c6",
-   "ours_keeps": [
-    "_StubScc(.vision/.map) 与 _carrot_is_a_competing_target() 源码扫描守卫",
-    "targets 断言保留在本地候选表"
-   ],
-   "upstream_intent_present": [
-    "assert planner.source != LongitudinalPlanSource.carrot",
-    "assert not self._carrot_is_a_competing_target()",
-    "planner.targets[LongitudinalPlanSource.carrot][0]"
-   ],
-   "note": "我们版本是超集，43 passed"
-  },
-  {
-   "path": "openpilot/sunnypilot/carrot/tests/test_signal_assist_runtime.py",
-   "verdict": "ours",
-   "expect_diff": true,
-   "upstream_commit": "d251c69946",
-   "ours_keeps": [
-    "离线测试开关文件名 'enable'（assist_enabled 已退役，SignalAssistMode 是唯一用户开关）"
-   ],
-   "upstream_intent_present": [
-    "from openpilot.common.repo_tools import load"
-   ],
-   "note": "上游仍写 assist_enabled，与我们 signal_assist_runtime.py 的退役逻辑相反"
-  },
-  {
-   "path": "openpilot/sunnypilot/carrot/signal_assist.py",
-   "verdict": "ours",
-   "expect_diff": false,
-   "upstream_commit": "0429a86b67",
-   "ours_keeps": [
-    "与上游逐字节一致（移植后不分叉）"
-   ],
-   "upstream_intent_present": [
-    "def departed_signal_stop",
-    "reason='departed_stop'"
-   ],
-   "note": "红灯停止记忆过 5 km/h 退役；这条 intent 丢了就是 bug 复发"
-  },
-  {
-   "path": "openpilot/sunnypilot/carrot/signal_start_guard.py",
-   "verdict": "ours",
-   "expect_diff": false,
-   "upstream_commit": "0429a86b67",
-   "ours_keeps": [
-    "与上游逐字节一致"
-   ],
-   "upstream_intent_present": [
-    "departed_signal_stop(speed)",
-    "reason='departed_stop'"
-   ],
-   "note": "时钟回滚分支之前先退役 latch"
-  },
-  {
-   "path": "openpilot/sunnypilot/carrot/carrot_functions.py",
-   "verdict": "mixed",
-   "expect_diff": true,
-   "upstream_commit": "0429a86b67",
-   "ours_keeps": [
-    "get_mode 的引号注解（本树既有，ruff UP037 会提示，未动）"
-   ],
-   "upstream_intent_present": [
-    "_retire_departed_signal_stop",
-    "_signal_stop_owned",
-    "departed_signal_stop(v_ego)"
-   ],
-   "note": "末级输出门只释放信号 veto，不动 MPC/模型障碍/前车已经要求的制动"
-  },
-  {
-   "path": "openpilot/system/proclogd.py",
-   "verdict": "ours",
-   "expect_diff": false,
-   "upstream_commit": "0fa33738ca",
-   "ours_keeps": [
-    "与上游逐字节一致"
-   ],
-   "upstream_intent_present": [
-    "_smaps_identity",
-    "def _prune_proc_cache",
-    "gc.freeze()"
-   ],
-   "note": "缓存按 starttime 身份索引 + 每轮 prune + 建资源前冻结；三条一起丢了才会串数"
-  },
-  {
-   "path": "openpilot/system/tests/test_proclog_identity.py",
-   "verdict": "ours",
-   "expect_diff": false,
-   "upstream_commit": "0fa33738ca",
-   "ours_keeps": [
-    "与上游逐字节一致（含 c2df04b193 的 _smaps_cycle = 1 修正）"
-   ],
-   "upstream_intent_present": [
-    "_prune_proc_cache",
-    "gc.freeze()",
-    "starttime"
-   ],
-   "note": "重基线时若被换回旧版（不推进 cycle），8 例里 1 例会立刻失败"
-  },
-  {
-   "path": "openpilot/sunnypilot/carrot/tests/test_signal_departure.py",
-   "verdict": "ours",
-   "expect_diff": false,
-   "upstream_commit": "0429a86b67",
-   "ours_keeps": [
-    "与上游逐字节一致（含 c2df04b193 的 CarrotPlanner 改名）"
-   ],
-   "upstream_intent_present": [
-    "departed_signal_stop",
-    "SignalStartGuard",
-    "e2eStopped"
-   ],
-   "note": "整文件覆盖成 0429a86b67 的原版会让 11 例重新静默 skip"
-  },
-  {
-   "path": "openpilot/selfdrive/selfdrived/events.py",
-   "verdict": "mixed",
-   "expect_diff": true,
-   "upstream_commit": "4f4256c37b",
-   "ours_keeps": [
-    "本树自有的大量 carrot/sunnypilot 事件与中文提示文本",
-    "EVENTS 里的分叉条目"
-   ],
-   "upstream_intent_present": [
-    "def bind_nnff_notice",
-    "def nnff_load_alert",
-    "EventName.torqueNNLoad"
-   ],
-   "note": "bind 是按实例重绑 EVENTS（不每帧复制）；get_events_mapping 必须返回 self._events_mapping"
-  },
-  {
-   "path": "openpilot/selfdrive/selfdrived/selfdrived.py",
-   "verdict": "mixed",
-   "expect_diff": true,
-   "upstream_commit": "4f4256c37b",
-   "ours_keeps": [
-    "本树 CP_SP/mads/jetlink 相关分支",
-    "is_remote 未使用（既有 ruff 提示）"
-   ],
-   "upstream_intent_present": [
-    "def update_nnff_alert",
-    "self.update_nnff_alert(CS)",
-    "EventName.torqueNNLoad"
-   ],
-   "note": "gate: frame>=550 且 frame%50、初始化完成、非 passive、CAN 正常、无 NO_ENTRY、当前无其它提示、NNLC 已开、型号非空非 MOCK"
-  },
-  {
-   "path": "openpilot/cereal/log.capnp",
-   "verdict": "upstream",
-   "expect_diff": false,
-   "upstream_commit": "bde651b930",
-   "ours_keeps": [
-    "无 —— 已与上游 test 逐字节一致（bde651b930 补上 laneWidthLeft/Right 后最后一条分叉消失）"
-   ],
-   "upstream_intent_present": [
-    "torqueNNLoad @105",
-    "radarStationaryLead @104",
-    "laneWidthLeft @10",
-    "laneWidthRight @11"
-   ],
-   "note": "expect_diff 翻 false：`git diff upstream/test -- openpilot/cereal/log.capnp` 为空，rebase 冲突一律取上游版；改 capnp 后 python 端走 capnp.load()，重启进程即生效，C++ 端仍需在设备上重跑 SCons（libcereal.a 要用新 header 重编）"
-  },
-  {
-   "path": "openpilot/sunnypilot/carrot/server/services/auto_update.py",
-   "verdict": "ours",
-   "expect_diff": false,
-   "upstream_commit": "4f4256c37b",
-   "ours_keeps": [
-    "与上游逐字节一致（_notify_cwp 已删除）"
-   ],
-   "upstream_intent_present": [
-    "AUTO_UPDATE_ERROR_ALERT"
-   ],
-   "note": "_notify_cwp / NOTIFY_TIMEOUT / _diff_stats 都随上游删掉了；再加回来等于复活已否决的 beacon"
-  },
-  {
-   "path": "openpilot/sunnypilot/carrot/server/tests/test_auto_update.py",
-   "verdict": "ours",
-   "expect_diff": true,
-   "upstream_commit": "4f4256c37b",
-   "ours_keeps": [
-    "删掉 _notify_cwp monkeypatch 与 notify 期望（上游漏改，会 AttributeError）"
-   ],
-   "upstream_intent_present": [
-    "_run_git_pull"
-   ],
-   "note": "整文件覆盖成上游版会让这例重新 failed"
-  },
-  {
-   "path": "openpilot/selfdrive/controls/radard.py",
-   "verdict": "mixed",
-   "expect_diff": true,
-   "upstream_commit": "2ffd3d1758",
-   "ours_keeps": [
-    "Macan B1 标定同源常量 (MACAN_B1_T_A/B <- opendbc macan_calib)",
-    "_macan_fuse_leads() 原厂雷达融合 + 落点1 idx 滞回 / 落点2 视觉平滑与变化率限幅",
-    "get_custom_yrel() hyundai SCC 分支"
-   ],
-   "upstream_intent_present": [
-    "def apply_vision_lead_hold",
-    "RADARLESS_TRACK_HOLD_TIME = 0.45",
-    "blended_aLeadK",
-    "should_hold_tracked_vision_lead"
-   ],
-   "note": "上游 2ffd3d1758 的 hold 门是 `if not CP.radarUnavailable: return`。Macan 的 CP.radarUnavailable=True（vw_mlb DBC 只有 Bus.pt、无 Bus.radar → interface.py:19 判成无雷达，属“没定义雷达总线”的误标），但我们旁路合成单点（radar_interface._update_macan：ACC_02.Abstandsindex + ACC_04 前车速度 → trackId=1），所以 tracks 非空、get_lead 会走雷达 track 匹配；只有合成 track 匹配不上、掉到视觉 fallback 的帧才可能被 hold，hold 因此在 Macan 生效。aLeadK 80/20 平滑是全局的（雷达/无雷达都用 get_RadarState_from_vision）。无点云的真因=原厂 ACC 模块内部消化目标表、点数据不上 CAN，不是这车没雷达硬件。合并冲突时本文件的 3 个上游 hunk 必须重新落到本地上下文，不能整包 git apply。"
-  },
-  {
-   "path": "openpilot/selfdrive/ui/sunnypilot/layouts/settings/carrot_tuning_items.py",
-   "verdict": "mixed",
-   "expect_diff": true,
-   "upstream_commit": "34f7b78b14",
-   "ours_keeps": [
-    "build_start_items/build_navi_items 里本树自有的 Params 直读项（如 Speed Source PCM 文案换行不带 '+'）",
-    "carrot_tuning_egpu 页（上游没有）"
-   ],
-   "upstream_intent_present": [
-    "section_heading_sp(tr('Longitudinal Control (advanced)'))",
-    "param='CarrotLongitudinalSourceEnabled'",
-    "Off keeps stock sunnypilot behaviour"
-   ],
-   "note": "34f7b78b14 把纵向源开关抬到 Developer 页；这三串是那次改动在本文件里的落点，掉了就是被 rebase 冲掉了"
-  },
-  {
-   "path": "openpilot/selfdrive/car/tests/fleet_safety.py",
-   "verdict": "mixed",
-   "expect_diff": true,
-   "upstream_commit": "6963554164",
-   "ours_keeps": [
-    "cp.alternativeExperience = recorded.alternativeExperience（本分叉横向授权走 MADS，AE 取自日志）",
-    "每个 panda 的 libsafety 追加 set_mads_params(ENABLE_MADS, disengage/pause)（本分叉 MADS 门控）",
-    "configuration_policy 文案补 alternativeExperience taken from the log"
-   ],
-   "upstream_intent_present": [
-    "ROOT = Path(__file__).resolve().parents[4]",
-    "module.load(str(target/'libsafety.so'))",
-    "cc_sp = convert_carControlSP(custom.CarControlSP.new_message())"
-   ],
-   "note": "fleet_safety 的四条上游补丁都逐字节搬了；本树只多 MADS/AE 那段本地适配。它掉了就是被 rebase 冲掉——那会让 MADS 单独横向的 HCA_01 全部变成 unexpected rejection"
-  }
- ],
- "upstream_pending_port": {
-  "about": "上游 test 上已经实现、我们还没移植的提交清单。每条的 probes 是机器可判定的「仍未移植」判据：路径应当不存在 / 符号应当不存在 / 该符号应当还在（因为上游那次是删除）/ 子模块指针应当还不是我们的祖先。检查器 ai/scripts/upstream_divergence_check.py 会逐条验；一旦某条探针失效（= 我们其实已经搬了或上游又改了），它报 DRIFT，提醒回来改这张表。ported=已移植（探针已反转为 DRIFT，条目移出 items 留档）。status: todo=独立可搬 | todo-after=依赖同批其它条目 | eval=体积大或需驾驶者决策 | pointer=子模块指针 | docs=文档，随条目走。",
-  "scope": "upstream/test 59efe220e6..817f4a78c2（2026-10-20 17:30 +0800，35 个提交）",
-  "checked_at": "2026-10-21",
-  "ours_tip": "PENDING",
-  "upstream_tip": "817f4a78c2",
-  "items": [
-   {
-    "commit": "982fb613f51f0ddb47a0b1784c89b5838c9a8e7c",
-    "subject": "flm: port the Firestar Lateral Method analyzer workspace + CLI (StarPilot)",
-    "date": "10-20 16:46",
-    "group": "flm",
-    "status": "eval",
-    "impact": "Firestar 横向方法分析工作区（3789 行）+ CLI，纯离线调参工具",
-    "next": "不影响行车；想要横向调参手段时再搬",
-    "probes": [
-     {
-      "kind": "path_absent",
-      "target": "openpilot/selfdrive/controls/lib/flm_workspace.py",
-      "needle": null
-     }
-    ]
-   },
-   {
-    "commit": "d81eec58999ff32d2acf51e3976419fd0bcd01a9",
-    "subject": "speed_limit_vision: port the vision speed-limit daemon (StarPilot)",
-    "date": "10-20 16:46",
-    "group": "speed_limit_vision",
-    "status": "eval",
-    "impact": "视觉限速 daemon（2883 行）+ 3 个 onnx 共 ~22MB，需要 LFS/分块推；调度里新增进程",
-    "next": "体积大、且我们限速还有 carrot 导航/蓝牙两路，先评估是否值得",
-    "probes": [
-     {
-      "kind": "path_absent",
-      "target": "openpilot/sunnypilot/system/speed_limit_vision.py",
-      "needle": null
-     }
-    ]
-   },
-   {
-    "commit": "077456330f38f470e6bca7f68a8ffb282b05054d",
-    "subject": "params: register FLM and vision speed-limit keys",
-    "date": "10-20 16:47",
-    "group": "params",
-    "status": "todo-after",
-    "impact": "登记 FLM / 视觉限速的 Params 键；单独搬无意义",
-    "next": "随 982fb613f5 / d81eec5899 一起",
-    "probes": [
-     {
-      "kind": "symbol_absent",
-      "target": "openpilot/common/params_keys.h",
-      "needle": "SpeedLimitVision"
-     }
-    ]
-   },
-   {
-    "commit": "4b21c8cfdbe2912fba0bcccd0268a93ddceea1e8",
-    "subject": "planner: StarPilot stop/depart policy - vision approach caps + standstill lead depart (#13)",
-    "date": "10-20 17:18",
-    "group": "planner/stop-depart",
-    "status": "todo-after",
-    "impact": "StarPilot stop/depart 策略：视觉接近上限 + 静止前车起步，1792 行策略 + 890 行车辆调参表；与我们的 _update_x_state/停车曲线可能正面冲突",
-    "next": "2026-10-21 只读评估结论（按驾驶者口径「先只读接近段再定」执行，未动代码）：①「接近段」本体 harmless —— get_vision_lead_approach_cap 是纯函数，只收紧不放松（返回 max(accel_min, -approach_decel)，即一个刹车帽），且三重门槛：lead 必须是视觉前车（lead.radar=True 直接 return None）、modelProb>=0.85、投影接近速度>=2.0m/s、距紧跟随窗口<4.5s且已在 desired_gap+2.0 以内；兜底还要求 approach_decel>=0.15 否则不生效。对 Macan 这类雷达前车基本不触发。②同段的 untracked_slow_lead / approach_lift / close_stop 系列同为纯逻辑，方向性都是「更早刹/更稳停」，不放松安全。③真正的落点是 longitudinal_planner.py 的 36/-2 钩子，而它的上下文锚点是上游的 LeadFollowPolicyEnabled 阶段——本树没有该阶段（items 51caaa4a3a 未搬），所以钩子无法原样应用，必须按本树阶段顺序重写，并且要和我们自己的 carrot_source / cutin_predecel / 红线预减速阶段排序核对（上游注释自己就写明红线预减速在其之后跑，可能覆盖 a_target）。④longitudinal_vehicle_tunes.py 的 885/-5 是整文件替换：上游 890 行版本里 get_far_lead_coast_headway_floor 与我们 seed 的 8 行逐字节一致，本树唯一引用方是 test_lead_behavior.py，替换风险低。建议两步走：Step1（零影响，下轮可做）= 搬 lead_stop_depart_policy.py + test_lead_stop_depart_policy.py（27 例）+ 整文件换 longitudinal_vehicle_tunes.py + 注册 LeadStopDepartPolicyEnabled（默认 0），不碰 planner；Step2（要上路验收）= 等 51caaa4a3a 落地后按本树阶段顺序重写钩子。",
-    "probes": [
-     {
-      "kind": "path_absent",
-      "target": "openpilot/selfdrive/controls/lib/lead_stop_depart_policy.py",
-      "needle": null
-     }
-    ]
-   },
-   {
-    "commit": "817f4a78c27830d448f5e54ee55bd6bf43233e35",
-    "subject": "scripts: scripted onroad-scenario simulation for the stop/depart policy",
-    "date": "10-20 17:30",
-    "group": "script/stop-depart",
-    "status": "todo-after",
-    "impact": "给 4b21c8cfdb 的 stop/depart 策略写的脚本化仿真；本机离线就能跑，不依赖车",
-    "next": "等 4b21c8cfdb 决定后再补；否则单独搬过来没有被测对象。现随 B 批：它测的对象就是 4b21c8cfdb 的 policy，两条一起搬才成立。",
-    "probes": [
-     {
-      "kind": "path_absent",
-      "target": "scripts/simulate_lead_stop_depart.py",
-      "needle": null
-     }
-    ]
-   }
-  ],
-  "ported": [
-   {
-    "commit": "0429a86b673bd651740514add3022928436f0ff1",
-    "subject": "carrot: retire stopped-red memory once the car leaves creep",
-    "group": "carrot/signal",
-    "ported_at": "2026-10-20",
-    "ours_commit": "c392fb4e6c",
-    "probe_was": "symbol_absent signal_assist.py:departed_signal_stop",
-    "evidence": "test_signal_departure.py 22 passed / 0 skipped；carrot/tests 636 -> 658 passed",
-    "local_fix": "上游测试导入的是 CarrotPilot，本树类名 CarrotPlanner → 22 例里 11 例静默 skip（上游本机同样 skip）。改成 CarrotPlanner as CarrotPilot 后才真跑。",
-    "expect_diff_after": [
-     "openpilot/sunnypilot/carrot/carrot_functions.py",
-     "openpilot/sunnypilot/carrot/tests/test_signal_departure.py"
-    ]
-   },
-   {
-    "commit": "0fa33738caf5c7e88f65d04fee1b0f34cbfcd91c",
-    "subject": "system: key the proclog caches by process identity",
-    "group": "system/proclog",
-    "ported_at": "2026-10-20",
-    "ours_commit": "0c858ccab4",
-    "probe_was": "symbol_absent proclogd.py:_smaps_identity",
-    "evidence": "test_proclog_identity.py 9 passed / 0 skipped（上游 8 例里 1 例必失败，见 local_fix）；openpilot/system/tests 的 4 failed + 5 errors 已 git stash 前后对照确认为既有环境问题",
-    "local_fix": "上游用例在 _smaps_cycle==0 时必失败（首轮按设计无条件刷新 callee），上游本机 8 例全 skip 从未跑过。用例显式把 _smaps_cycle 置 1，并补 1 例锁住「首轮无条件刷新」。",
-    "expect_diff_after": [
-     "openpilot/system/tests/test_proclog_identity.py"
-    ]
-   },
-   {
-    "commit": "4f4256c37b55a589b4cae1e97b84bdcec959ac0f",
-    "subject": "selfdrived: one-shot NNFF model notice + drop the dead phone-home residue",
-    "group": "selfdrived/nnff",
-    "ported_at": "2026-10-20",
-    "ours_commit": "d337e96239",
-    "probe_was": "symbol_absent log.capnp:torqueNNLoad + symbol_present auto_update.py:_notify_cwp",
-    "evidence": "test_nnff_notice 20 passed（真跑，不是 skip）；test_signal_stop_prepare_runtime 12 passed；carrot/server/tests 136 passed / 48 skipped；ruff 干净",
-    "local_fix": "上游删了 _notify_cwp 却没改 carrot/server/tests/{test_auto_update,test_git_config}.py 的 monkeypatch（raising=True → AttributeError），实测 1 failed。两处 hook 与 notify 期望一并删除。",
-    "expect_diff_after": [
-     "openpilot/sunnypilot/carrot/server/tests/test_auto_update.py",
-     "openpilot/sunnypilot/carrot/server/tests/test_git_config.py"
-    ]
-   },
-   {
-    "commit": "02cd2d1b5be0e1e5dd3bd0c61a6e2e3b5b0c26bb",
-    "subject": "tests: fix two NNFF notice expectations caught on device",
-    "group": "selfdrived/nnff",
-    "ported_at": "2026-10-20",
-    "ours_commit": "d337e96239",
-    "probe_was": "path_absent selfdrive/selfdrived/tests/test_nnff_notice.py",
-    "evidence": "test_nnff_notice.py 现与 upstream/test 逐字节一致；20 passed",
-    "local_fix": "无（我们先独立推出同样的两处修正，随后直接采用上游版本以零分叉）"
-   },
-   {
-    "commit": "c2df04b19345c675413d43908917631ef8863b79",
-    "subject": "test: run the departure and GPS cases on the device they need (测试门控部分)",
-    "group": "tests/device-routing",
-    "ported_at": "2026-10-20",
-    "ours_commit": "6378ec4aff",
-    "probe_was": "path_absent openpilot/system/tests/test_proclog_identity.py",
-    "evidence": "test_signal_departure.py 22 passed、test_proclog_identity.py 8 passed；两个文件现与 upstream/test 逐字节一致",
-    "local_fix": "无（我们先各自独立修了同样的两处，随后直接采用上游版本以零分叉）",
-    "partial": "只搬了测试门控；test_gps_sources.py 部分依赖 6ad1f5b099，v_asm_server.py 部分仍以独立条目留在 items"
-   },
-   {
-    "commit": "6ad1f5b099345ca5ce69915e20be7eda678cc2bc",
-    "subject": "carrot: answer the navigation GPS source in one place",
-    "group": "carrot/gps",
-    "ported_at": "2026-10-20",
-    "ours_commit": "0a52d4c701",
-    "probe_was": "path_absent openpilot/sunnypilot/carrot/gps_sources.py",
-    "evidence": "test_gps_sources.py 21 passed；test_carrot_man.py 150 passed；carrot/tests 全套 684 passed / 6 skipped / 0 errors；ruff 对新增两文件零告警",
-    "local_fix": "carrot_man.py 冲突：上游把新服务写死在 SubMaster 字面量里，本树已抽成 CARROT_SERVICES 常量（广播线程共用同一列表），按本树写法解 —— 只把 'liveLocationKalman' 加进常量",
-    "expect_diff_after": [
-     "openpilot/sunnypilot/carrot/carrot_man.py"
-    ]
-   },
-   {
-    "commit": "2ffd3d17585cdb55ac35a080352597218aaaf927",
-    "subject": "radard: hold recently dropped vision leads for radarless cars",
-    "group": "radard",
-    "ported_at": "2026-10-20",
-    "ours_commit": "ef587c9fb2",
-    "probe_was": "path_absent openpilot/selfdrive/controls/lib/lead_behavior.py",
-    "evidence": "test_lead_behavior.py 41 passed / 0 skipped（上游整包搬）；test_macan_radar_fusion.py 10 passed 证明本机 Macan 融合分叉未被动到",
-    "local_fix": "git apply 不能整包落地：我们 radard.py 相对该 commit 父有 246 行 Macan 分叉（_macan_fuse_leads / B1 标定 / 复盘落点），故三个新文件逐字节取上游，radard.py 按上游 3 个 hunk 手工落到本地上下文（import time、lead_behavior 常量导入、RADARLESS_TRACK_HOLD_TIME/_RADARLESS_STOP_DISTANCE、__init__ 状态 + apply_vision_lead_hold()、leadOne 包一层、aLeadK 80/20）。落地后 diff 上游同 commit 版本只剩 Macan 分叉行（upstream-only 行数 1，为既有主函数 SubMaster 列表差异，非本次引入）。",
-    "expect_diff_after": [
-     "openpilot/selfdrive/controls/radard.py"
-    ],
-    "device_check": "暂无（雷达车不受影响）；无雷达车看 radard 日志 leadOne 是否在掉帧后 0.45s 内仍 present 且 modelProb>=0.70"
-   },
-   {
-    "commit": "c2df04b19345c675413d43908917631ef8863b79",
-    "subject": "xiaoge: BSD lane inference floor + backpressure (rest of c2df04b193)",
-    "group": "xiaoge/bsd-lane",
-    "ported_at": "2026-10-20",
-    "ours_commit": "f3fba66794",
-    "probe_was": "symbol_absent openpilot/sunnypilot/carrot/xiaoge/v_asm_server.py:MIN_LANE_INTERVAL_MS",
-    "evidence": "上游该 commit 的另 3 个文件（test_signal_departure/test_gps_sources/test_proclog_identity）此前已随 abcd 批搬完，本轮补 v_asm_server.py：OnnxLaneIntervalMs 默认 400->1000、MIN_LANE_INTERVAL_MS=600 下限、BSD 与车道两线程各一处 max(区间, last_*_inference_ms*1.15) 反压。git apply 上游单文件 hunk 全干净命中；落地后与 upstream/test 同文件 diff 只剩既有本地分叉（import errno + bind_http_server EADDRINUSE 重试）与一行无害字符串拼接差异。py_compile OK；test_xiaoge_cereal_fields.py 6 passed / 0 skipped；sunnypilot/carrot/tests 全量 682 passed / 6 skipped（test_carrot_navi_no_aiohttp.py 2 failed 为既有环境问题：子进程 ModuleNotFoundError: No module named openpilot，与本文件零交集）。",
-    "device_check": "重启 xiaoge_data 后看 /api/status：stored OnnxLaneIntervalMs=400 时 lane.intervalSeconds 应被抬到 0.6（floor 生效），lane.latencyMs>600 时实际间隔应自动拉到 latency*1.15；代价是 BSD 车道频率 2.5Hz->~1.7Hz（默认值下 1Hz），观察 modelV2 freshness / model lagging 计数是否下降。"
-   },
-   {
-    "commit": "bde651b930bd55f6be1a8f6947235eb94c79cf75",
-    "subject": "xiaoge: fill ModelDataV2.meta lane widths to open the BSD gate",
-    "group": "modeld/lane-width",
-    "ported_at": "2026-10-20",
-    "ours_commit": "7648f7495e",
-    "probe_was": "path_absent openpilot/selfdrive/modeld/lane_width.py",
-    "evidence": "lane_width.py 与 tests/test_lane_width.py 逐字节等于上游（diff 为空）；test_lane_width 6 passed；carrot/tests 全套 586 passed / 6 skipped / 5 errors，5 个 error 全是环境缺 pytest 的 import（与本轮无关）；capnp 动态加载确认 ModelDataV2.MetaData 现有 laneWidthLeft/Right:float32；modelV2 序列化→反序列化后 lane_width_meters 读出 3.4/2.8，gate 3.4>=3.0 开、2.8 关；capnpc 重新生成 gen/cpp/log.capnp.h 并 -fsyntax-only 编译通过（MetaData 数据段 3→4 words）",
-    "local_fix": "三个 modeld/log.capnp 的增量行集与上游完全一致，无冲突改写；唯一偏差=上游 test_xiaoge_cereal_fields.py 注释把 ordinal 写成 @2/@3（与它自己 log.capnp 的 @10/@11 矛盾），本树按实际 ordinal 写 @10/@11。本地 log.capnp 是 dynamic capnp.load()，加字段对 python 端即刻生效（重启进程即可），无需 codegen；C++ libcereal.a 仍是旧 header 编的，按 capnp 结构演化规则向后兼容，下次 scons 全量构建时一并刷新"
-   },
-   {
-    "commit": "d4ee34a206ea257070538b3da4abae56be555633",
-    "subject": "xiaoge: update lane width docstring now that the schema defines it",
-    "group": "xiaoge/lane-width",
-    "ported_at": "2026-10-20",
-    "ours_commit": "939c917934",
-    "probe_was": "path_present openpilot/sunnypilot/carrot/carrot_man_input.py",
-    "evidence": "xiaoge_vision.py 与上游 post-image 逐字节相同（diff 空）；test_xiaoge_cereal_fields.py 6 passed + test_lane_width.py 6 passed；全树 grep 确认 carrot_man_input 零引用；探针 phase2 该条翻 DRIFT → 改表后 26/26",
-    "local_fix": "本树 carrot_man_input.py 比上游 pre-image 多一行 `import time`（hash 619b7ce0 ≠ 上游 dff5cc19），git apply 整包报 patch does not apply；改为 git rm + 手工落 docstring，落完 xiaoge_vision.py 与上游 post-image 完全一致。",
-    "expect_diff_after": []
-   },
-   {
-    "commit": "830c2e7a79392bd0b6cf684807838d431e3e1453",
-    "subject": "scripts: a carrot suite runner that refuses to pass with silent skips",
-    "group": "scripts",
-    "ported_at": "2026-10-20",
-    "ours_commit": "5eed7a48e9",
-    "probe_was": "path_absent scripts/test_carrot.py",
-    "evidence": "scripts/test_carrot.py 与上游逐字节相同（diff 为空，只多 chmod +x 的可执行位）。本机实测：不带允许清单 617 run / 5 failed / 6 skipped → rc=1，且每个 skip 后面打 '<-- NOT ALLOWED'（正是要拦的『绿线里藏 skip』）；带 --allow-from scripts/test_carrot_allow.json → rc=0；--list-only → rc=0，可拿来取基线。允许清单里 6 条 skip 全属 test_gps_sources.TestCarrotServUsesTheSameSelector：_serv_importable() 一旦发现 sys.modules 已有（其它 carrot 测试桩化的）zstandard 就主动返回 False，单独跑该模块 `python3 -m unittest openpilot.sunnypilot.carrot.tests.test_gps_sources` 是 21 tests OK，可见 discover 下这 6 条是被收集顺序遮蔽而不是真跑不了；另 5 条 failures 全是模块顶层 import pytest，本机 /usr/local/venv/bin/python3 未装 pytest。探针 phase2 该条如期翻 DRIFT（path now exists）→ 改表后 25/25。",
-    "local_fix": "上游这条只带跑批器本体、不带允许清单；本树另加 scripts/test_carrot_allow.json（兄弟文件，本地新增、不送上游），把 6 条顺序遮蔽 skip 与 5 条缺 pytest 的导入失败逐条写清原因，runner 本体保持零改写，方便以后 rebase 原样取上游文件。"
-   },
-   {
-    "commit": "9d722b3acc9bd4b1583159f47f0138ecefcd470d",
-    "subject": "tools: capture bounded device memory history",
-    "group": "tools/memory",
-    "ported_at": "2026-10-20",
-    "ours_commit": "175cbd3296",
-    "probe_was": "path_absent tools/memory_analysis/capture_device_memory.py",
-    "evidence": "168 行与上游逐字节一致（sha256 01b39efe…）；设备 offroad 实测 --seconds 60 → 12 行 rc=0，首行 detail 含 54 进程/kgsl GPU/ion 堆；同路径二次运行 O_EXCL 拒绝",
-    "local_fix": "无（原样搬运，仅 chmod +x）；上游文件自带 navipilot 出处与角色关键字表，未改动"
-   },
-   {
-    "commit": "34f7b78b14caed74432f133f9f4ff8f81815db6b",
-    "subject": "ui: give CarrotLongitudinalSourceEnabled a Developer-page toggle",
-    "group": "ui/toggle",
-    "ported_at": "2026-10-20",
-    "ours_commit": "02de3e28ed",
-    "probe_was": "symbol_absent openpilot/selfdrive/ui/sunnypilot/layouts/settings/carrot_tuning_items.py:CarrotLongitudinalSourceEnabled + submodule_not_ancestor webui:d35517c9",
-    "evidence": "探针 phase2 该条如期翻 DRIFT（symbol appeared: CarrotLongitudinalSourceEnabled）→ 改表后 23/23。carrot_tuning_render_smoke.py 21/21（DEVELOPER 页真 render，含新开关与其描述；zh-CHS/zh-CHT 仍覆盖 154 条根页文案）；test_translations.py 48 passed（顺带修掉档案前就红的 %1 占位符两条）。ruff 16 条与 HEAD 同数，无新增。webui cherry-pick d35517c9 → 8ae8e69，指针 952cd76→8ae8e69。",
-    "local_fix": "上游补丁在本树是 3 处小适配：(1) carrot_tuning_items.py 的 hunk 因相邻一条文案的换行风格（本树 implicit concat 不带 '+ '）而 offset 1 行，git apply 拒收，按语义手工落，新增 13 行与上游逐字一致；(2) 上游只动 pot/en/zh-CHS/zh-CHT 四份 .po，本树每份 .po 都带完整 msgid 清单，故 13 份全部补条目、非 en/zh 的 msgstr 留空（跑 update_translations.py 会重排成 1.6 万→2.9 万行噪声，已回滚）；(3) webui 是本树 fork，d35517c9 的分支点是 75dac813、我们领先 19 个提交，cherry-pick 到 sp-macan-test 上干净落地。"
-   },
-   {
-    "commit": "28949f07aac935f8daa2b1787042154476590de3",
-    "subject": "ui: expose CarrotLongitudinalSourceEnabled and keep the switch table honest",
-    "group": "ui/audit",
-    "ported_at": "2026-10-20",
-    "ours_commit": "af32099cd7",
-    "probe_was": "path_absent openpilot/sunnypilot/carrot/tests/audit_ui_reach.py",
-    "evidence": "3 个新文件与上游逐字节相同：docs/carrot_no_ui_switches.md (sha 9aee47bfbc)、audit_ui_reach.py (5f76e10639)、test_carrot_ui_reach.py (6b68608ad3)。本树实测 test_carrot_ui_reach 4 tests OK —— 即 scanner 现算出来的表与本树签入的 md 完全一致，说明这台车（Macan 分叉）里 Carrot* 控制路径开关同样是 19 个、5 有入口 14 没入口，且反证上一轮 34f7b78b14 的 CarrotLongitudinalSourceEnabled Developer 入口已就位（若未搬，该开关会掉进「没有 UI 入口」那一栏而让测试红）。",
-    "local_fix": "无（原样搬运，3 文件均未改动；文档由 audit_ui_reach.py 生成，不手改）"
-   },
-   {
-    "commit": "4d0d11e831d01c3adcde220caf2d2bb46c79cefd",
-    "subject": "models: StarPilot-style chunked download + v25 source map for the catalog",
-    "group": "models",
-    "ported_at": "2026-10-20",
-    "ours_commit": "2c25665dc2",
-    "probe_was": "path_absent openpilot/sunnypilot/models/chunked_download.py",
-    "evidence": "4 个新文件 git hash-object 与上游逐字节一致：chunked_download.py / model_catalog.py(89 条 id) / model_source_map_v25.json / tests/test_chunked_download.py；chunked_download.py 仅多 +x。探针 phase2 该条如期翻 DRIFT（path now exists: chunked_download.py）→ 改表后 21/21。离线单测 test_chunked_download 7 tests OK（0.06s，全假 HTTP 不联网）；models 目录整包 101 tests OK（skipped=2，需 PYTHONPATH 带 /data/.pydeps 才有 pytest）；ruff check openpilot/sunnypilot/models/ All checks passed；默认下载路径未变：只有远端真给 .chunkmanifest 才走分块，否则 try_download_chunked 返回 None 回落原 _download_file。",
-    "local_fix": "manager.py 三处适配（Path 导入、_try_chunked_download 方法按上游同文插入、单文件分支改成 chunked-first + None 回落）+ 去掉本树重复的 maybe_apply_default_model import（19 行已带 carry_over_picks）；fetcher.py 删掉 ModelParser 内重复的 get_chunk_name 导入；README 9 行 StarPilot 出处说明随上游。本树 manager.py 与上游仅剩 6 行 noqa 注释文案差异（我们带原因说明）。"
-   },
-   {
-    "commit": "4a4d60661585b1aaa74c82d567eea499bfe77177",
-    "subject": "fleet_safety: fix ROOT for this tree's openpilot/ nesting (parents[4])",
-    "group": "fleet_safety",
-    "ported_at": "2026-10-20",
-    "ours_commit": "04eaf99e5b",
-    "probe_was": "path_absent openpilot/selfdrive/car/tests/fleet_safety.py",
-    "evidence": "补丁逐字节应用，blob 576b2a48d0 与上游一致。本树同样把 openpilot/ 多嵌一层，parents[3] 会指到 openpilot/ 而非仓库根，build_safety 就找不到 opendbc_repo/opendbc/safety/tests/libsafety/safety.c。",
-    "local_fix": "无"
-   },
-   {
-    "commit": "696355416490c1c0f26ffa729b8754cc968599f8",
-    "subject": "fleet_safety: build CarControlSP through convert_carControlSP like the car test",
-    "group": "fleet_safety",
-    "ported_at": "2026-10-20",
-    "ours_commit": "04eaf99e5b",
-    "probe_was": "path_absent openpilot/selfdrive/car/tests/fleet_safety.py",
-    "evidence": "补丁逐字节应用，最终 blob dc98c96d8c 与上游一致。本树 convert_carControlSP(custom.CarControlSP.new_message()) -> structs.CarControlSP 与 interface.apply(cc, cc_sp, now) 的类型要求对得上。",
-    "local_fix": "有：上游按 get_params() 的 CP 跑，alternativeExperience 恒 0，而本分叉横向授权走 MADS（card.py 把 ENABLE_MADS OR 进 CP，实车日志 AE=1024）——照原样跑，MADS 单独横向的 HCA_01（0x126/bus0）全被审计成 unexpected rejection（实测 376 帧）。本地两处适配：cp.alternativeExperience=recorded.alternativeExperience；每个 panda 的 libsafety 追加 set_mads_params(ENABLE_MADS, disengage/pause)（同 replay_drive.py，set_alternative_experience 只写整数，MADS 状态机要 mads_set_alternative_experience）。改后本机自车日志 000000aa--000d7806f5--20: pass —— 8894 帧 TX 全接受、0 拒绝、814 帧 active TX 全接受、AE=1024。"
-   },
-   {
-    "commit": "aa524aec3ecf6c8d399be813622065ca258d38cc",
-    "subject": "fleet_safety: dlopen the copied prebuilt libsafety.so per panda",
-    "group": "fleet_safety",
-    "ported_at": "2026-10-20",
-    "ours_commit": "04eaf99e5b",
-    "probe_was": "path_absent openpilot/selfdrive/car/tests/fleet_safety.py",
-    "evidence": "补丁逐字节应用，blob 141dc64669 与上游一致。实测 load() 后 libsafety 可 dlopen、set_safety_hooks 正常，即 prebuilt .so 直接加载这条路在本机通。",
-    "local_fix": "无"
-   },
-   {
-    "commit": "e7652e5f147bbba2eb7e94a5f6ac241a72570c31",
-    "subject": "tests: port StarPilot offline fleet_safety audit (controller+safety replay)",
-    "group": "fleet_safety",
-    "ported_at": "2026-10-20",
-    "ours_commit": "04eaf99e5b",
-    "probe_was": "path_absent openpilot/selfdrive/car/tests/fleet_safety_core.py",
-    "evidence": "新建 openpilot/selfdrive/car/tests/fleet_safety.py + fleet_safety_core.py，两者 git hash-object 与上游逐字节相同（f282182bb7 322 行 / aaf553a301 200 行）。opendbc_repo 指针：上游同提交带 f087c437f8->f06251665f，而那一步唯一实质改动是 non_tested_cars 补逗号（routes.py 缺逗号导致 SyntaxError，本树原本也中招——ast.parse 直接报 line 69）。本树在自己的 opendbc 线上先落 ac1ac7c7a（routes.py blob 37b27d1dc 与上游修后一致），父仓只 bump 到本地那条。实测 --inventory：304 platforms / 240 有路由 / 293 条注册路由；build_safety 用 cc 编出 libsafety.so 并 dlopen 成功、set_safety_hooks(0,0)=0。",
-    "local_fix": "无（两文件原样，仅多 chmod +x 不适用——非脚本入口，走 -m）"
-   },
-   {
-    "commit": "590f0bf790fa8708327c9f9c9e326b5732731ae1",
-    "subject": "jetlink: the comma's six stages reach the host",
-    "group": "submodule/jetlink",
-    "ported_at": "2026-10-20",
-    "ours_commit": "64b6386ff6",
-    "probe_was": "submodule_not_ancestor jetlink_repo f2cedcfd4f",
-    "evidence": "jetlink_repo 3ffb61f（merge up/cn dbb4877，含 f2cedcf）。上游 16 文件（ControlProtocol/FrameStats/Session/WireProtocol/FrameStageTable/index.html/client.py/model_state.py/protocol.py + 测试与 conformance/wire.json）。并入方式=git merge up/cn（五条一起），本树 jetlink 于 6186a4b 上 merge 成 3ffb61f；五条 needle 现全部是 HEAD 祖先。唯一冲突在 jetlink/openpilot/model_state.py 两处：__init__ 里 _last_summary_logged 与 _stages_reported 并存；帧路径尾部先保留本树 caf0113 的 jetlink: stages 日志（last()+SLOW_FRAME/period 判据）与 trips summary，再调上游的 self._report_stages(t4)。语义自检：report_stages 走 try_send，老 server unknown_message 被 _forgive 放过，不污染 seq。实测 1521 passed/33 skipped（/usr/local/venv/bin/python3，numpy 原生）、ruff check jetlink tests 全绿。Swift 侧本机不能交叉编译，交 CI。",
-    "local_fix": "无（上游原样并入；本树自有 caf0113 的六段日志一行未丢）"
-   },
-   {
-    "commit": "869ec7e9fc2fd00a0d0bcdf6e92e2ac381a28854",
-    "subject": "jetlink: the pin follows the stages fix",
-    "group": "submodule/jetlink",
-    "ported_at": "2026-10-20",
-    "ours_commit": "64b6386ff6",
-    "probe_was": "submodule_not_ancestor jetlink_repo 05960480fa",
-    "evidence": "jetlink_repo 3ffb61f（merge up/cn dbb4877，含 0596048）。随同一次 merge 并入（ControlProtocol.swift +1、Session.swift 4 行），无冲突。",
-    "local_fix": "无（原样并入）"
-   },
-   {
-    "commit": "3c154c0f72ab7fe4a62b9c5c8d2f2aa197593506",
-    "subject": "jetlink: the pin follows the table fix",
-    "group": "submodule/jetlink",
-    "ported_at": "2026-10-20",
-    "ours_commit": "64b6386ff6",
-    "probe_was": "submodule_not_ancestor jetlink_repo d5cf94ce65",
-    "evidence": "jetlink_repo 3ffb61f（merge up/cn dbb4877，含 d5cf94c）。FrameStageTable.swift 先构 sections 再拼（10+/7-），自动合并无冲突。",
-    "local_fix": "无（原样并入）"
-   },
-   {
-    "commit": "87cce8055cf36f1263f34b576a6f1369858a5660",
-    "subject": "jetlink: pin the formatted stages work",
-    "group": "submodule/jetlink",
-    "ported_at": "2026-10-20",
-    "ours_commit": "64b6386ff6",
-    "probe_was": "submodule_not_ancestor jetlink_repo 2967959703",
-    "evidence": "jetlink_repo 3ffb61f（merge up/cn dbb4877，含 2967959）。FrameStageTable.swift 按 swift-format 的参数列表（10+/6-），自动合并无冲突。",
-    "local_fix": "无（原样并入）"
-   },
-   {
-    "commit": "e4b13bdc61c5e68e3d4a1f39e2f234a123e1c147",
-    "subject": "jetlink: stage tables on the screens, stage reports that wait for nothing",
-    "group": "submodule/jetlink",
-    "ported_at": "2026-10-20",
-    "ours_commit": "64b6386ff6",
-    "probe_was": "submodule_not_ancestor jetlink_repo dbb4877e3387b2fd38d1c28d66ea5225423a0bd2",
-    "evidence": "jetlink_repo 3ffb61f（merge up/cn dbb4877，含 dbb4877）。index.html/StatusContent.swift/StatusView.swift/client.py/test_client.py 共 5 文件自动合并无冲突；index.html 与 FrameStageTable 的 stage 表在合并后仍通过 test_conformance 的 wire.json 一致性检查。",
-    "local_fix": "无（原样并入）"
-   },
-   {
-    "commit": "ef7514aa1fbfc57a0e38ea199f801b2f8ba569da",
-    "subject": "opendbc: bump pin for hyundai carstate staticmethod fix",
-    "group": "submodule/opendbc",
-    "ported_at": "2026-10-20",
-    "ours_commit": "9afcc5a6c",
-    "probe_was": "submodule_not_ancestor opendbc_repo 85095af0cbca6eb1edda4ac9bec1ddf4bc895c13",
-    "evidence": "opendbc_repo 9afcc5a6c：与上游 85095af0c 逐字节一致的 1 行改动（@staticmethod）。注意：我们是 cherry-pick 式搬运而不是 merge 上游指针，所以 submodule_not_ancestor 探针永远不会翻 DRIFT；把这条从 items 移出后它的守门改为人工核验（ac1ac7c7a 缺装饰器 -> 9afcc5a6c 已补）。",
-    "local_fix": "无（原样并入）"
-   },
-   {
-    "commit": "f29fd60fbce81a6504ef544cf4ca7b543c353a51",
-    "subject": "docs: record the device results for the three changes",
-    "group": "docs",
-    "ported_at": "2026-10-20",
-    "ours_commit": "d6073facd1",
-    "probe_was": "symbol_absent docs/gps_source_priority_20261020.md c2df04b19",
-    "evidence": "docs/gps_source_priority_20261020.md、proclog_identity、signal_departure_hold 三份文档的「验证」段改成车机（comma tizi a821bfb2 @d6073facd1）实测：gps_sources 单模块 21/21 OK、proclog 8/8 OK、9 个 test_signal_* 78/78 OK、carrot 全套 628 run / 0 failed / 6 skip。注意：上游 needle `c2df04b19` 是上游自己设备的提交号，我们故意不抄——我们记的是自己设备的 sha 与数字，所以这条探针按设计保持 absent，守门改为人工核验「验证段含车机实测结果」。",
-    "local_fix": "无（记录改成我们设备的结果，不照抄上游数字）"
-   },
-   {
-    "commit": "43ba6fa17b99a7da685b553d1ce579ed686ffa92",
-    "subject": "docs: record the device results for the NNFF notice round",
-    "group": "docs",
-    "ported_at": "2026-10-20",
-    "ours_commit": "1c59fc74fd",
-    "probe_was": "symbol_absent docs/nnff_notice_20261020.md 614/614 OK",
-    "evidence": "docs/nnff_notice_20261020.md 的 Validation 段补上车机实测：test_nnff_notice 20/20 passed / skip=0、test_signal_stop_prepare_runtime 11 passed、alerts 三件套 12/12、carrot 全套 628 run / 0 failed / 6 skip（上游记的是 610/614 那套数字，我们按本树真实数写，故 needle `614/614 OK` 按设计保持 absent）。附记环境坑：pytest 装在 /data/.pydeps，必须 PYTHONPATH=/data/openpilot:/data/.pydeps。",
-    "local_fix": "无（记录改成我们设备的结果，不照抄上游数字）"
-   },
-   {
-    "commit": "059d38437846b55c393d543e2c9e84eb2fcb47c1",
-    "subject": "carrot_server: PWA installability + Web Push (Galaxy-inspired)",
-    "group": "carrot_server",
-    "ported_at": "2026-10-21",
-    "ours_commit": "6b25dc7062",
-    "probe_was": "path_absent openpilot/sunnypilot/carrot/server/features/push.py",
-    "evidence": "features/push.py + services/web_push.py + web/{manifest.webmanifest,sw.js,push.html} + static.py 注入，见 docs/carrot_web_push_20261021.md。车机 offroad 实测（192.168.10.79:7000）：/push 200 text/html、/manifest.webmanifest 200 application/manifest+json、/sw.js 200 application/javascript、/api/push/status 200 且首次调用生成 VAPID 键并落盘 /data/carrot/state/web_push.json（公钥 65 字节）；首页 / 里能看到 manifest link 与 serviceWorker.register('/sw.js')；无订阅时 POST /api/push/test → 404 no subscriptions。测试：test_web_push.py 8 passed、carrot_server 全套 144 passed / 48 skipped、ruff All checks passed。重复性判据（本条原 next）：与 support_discord / dashcam_upload_report / vision_diag 不重复 —— 那三条都是往第三方发消息，Web Push 是手机本机浏览器推送，车机只在本地存订阅。",
-    "local_fix": "1) 状态存 /data/carrot/state/web_push.json（临时文件 + os.replace），不放 Params：本仓 params_keys.h 是编译期严格键表，加键要重建 libparams_c.so，而本机 scons -j1 编 params.cc 时 clang++ 被 lowmemorykiller 杀掉（dmesg: to free 1998980kB），重建做不了；params_keys.h 的两行已撤回，本移植零编译依赖（代价：这两个值不进 Params 备份）。（2026-10-21 补记：libparams_c.so 的重建路径已打通，见 docs/libparams_c_rebuild_recipe_20261021.md；本条状态不变，订阅仍存 JSON。）2) 多一个 /push 页面（上游只有 API），因为 SW/Push 权限必须由用户手势在安全上下文触发，页面还写明 http 局域网不能推送。3) manifest 图标声明真实 800x800（上游写 any，Chrome 对 PNG 不认 any）。4) pyproject.toml 给 web_push.py 开 TID251（VAPID exp 必须是 wall-clock epoch）。",
-    "pending_driver": "手机侧收推送需要 https：局域网 http 只能验页面可达；用 carrot 的 cloudflared 隧道域名打开 https://<域名>/push → 开启通知 → 发送测试通知，且车机需能出网。"
-   },
-   {
-    "commit": "b96f079ca8d01830d624bdbd80eb9c307f99babf",
-    "subject": "latcontrol: user Kp scale via CustomKp param (StarPilot SteerKP equivalent)",
-    "group": "latcontrol",
-    "ported_at": "2026-10-21",
-    "ours_commit": "6161ffccb3",
-    "probe_was": "symbol_absent params_keys.h:CustomKp",
-    "evidence": "新增 test_latcontrol_custom_kp.py 7 passed（未注册键回落 1.0 / 1.0 不重建 PID / 1.5 乘曲线 / 5.0→2.0 与 0.1→0.5 夹紧 / NaN 与 inf 回落 / 值不变保积分器 / 300 帧节奏）；test_latcontrol_torque_buffer+test_torqued_lat_accel_offset+test_latcontrol_torque_ext 14 passed；params_keys.h g++ -fsyntax-only 通过；latcontrol_torque.py 与上游同 commit 版本 diff 为空（34 行增量逐字节相同）。；2026-10-21 重建 libparams_c.so 后真机核对（非 mock）：keys 670→671、CustomKp 类型 FLOAT、注册默认 b'1.0'、put/get 往返 1.25、remove 后回到未设置（read_float 回落 1.0）、未知键仍抛 UnknownKeyName。重建配方见 docs/libparams_c_rebuild_recipe_20261021.md —— scons -O2 -g 编 params.cc 会被 lowmemorykiller 杀掉，改 -O1 单 TU 手工编 + 按 scons 的 LINK 行手工链。此前「旧 libparams_c.so 不认 CustomKp 已过期」的判断是错的（read_float 的兜底掩盖了 UnknownKeyName），库确实一直是 10-17 的旧库。",
-    "local_fix": "两处：①params_keys.h 落点不同（本树没有上游那个 Mazda 注释块，Mazda 键在 780 行），手工插在 TorqueParamsOverrideLatAccelFactor 之后，相对顺序一致；②_read_custom_kp_scale 加 try/except→1.0，因本机 libparams_c.so 仍是旧库、实测 Params().get(\"CustomKp\") 抛 UnknownKeyName，不兜底 controls 守护进程会在 init 挂掉（上游 2d9c586376 后来用 sunnypilot/common/param_read.py 统一兜底，；③2026-10-21 补 UI 面：Developer 页新增 'Steering Kp Scale' 行（option_item_sp(param='CustomKp', 50..200 step 5, use_float_scaling, use_registered_default)，范围与 CUSTOM_KP_SCALE_LIMITS(0.5,2.0) 对齐），zh-CHS/zh-CHT 译文同步。为此给 OptionControlSP 加了 use_registered_default：UnifiedParams.get 对「已注册但用户没写过」的键返回 None，UI 会显示最小值 0.50 而车实际跑 1.00；顺带修了同一分支的老 bug（None→min_value 之后又被 float 缩放一次，50 变 50.00）。",
-    "expect_diff_after": [
-     "openpilot/common/params_keys.h"
-    ]
-   },
-   {
-    "commit": "80cd489f0ec168129b56b542d5da1059ea99e016",
-    "subject": "latcontrol: per-vehicle tune library + gated dispatch hook (StarPilot port)",
-    "group": "latcontrol/tunes",
-    "ported_at": "2026-10-21",
-    "ours_commit": "PENDING",
-    "probe_was": "path_absent openpilot/selfdrive/controls/lib/latcontrol_vehicle_tunes.py",
-    "partial": true,
-    "ported_files": [
-     "openpilot/selfdrive/controls/lib/latcontrol_vehicle_tunes.py (byte-identical)",
-     "openpilot/sunnypilot/common/testing_grounds.py (byte-identical)",
-     "openpilot/sunnypilot/selfdrive/controls/lib/vehicle_tune_dispatch.py (byte-identical)",
-     "openpilot/sunnypilot/selfdrive/controls/lib/tests/test_vehicle_tune_dispatch.py (byte-identical)",
-     "openpilot/common/params_keys.h: +VehicleTunesEnabled (PERSISTENT|BACKUP, BOOL, \"0\")",
-     "pyproject.toml: E501 exemption for latcontrol_vehicle_tunes.py"
-    ],
-    "deferred": "上游同一提交里 latcontrol_torque.py 的 +23/-1 门控钩子（resolve_vehicle_tune + ff/friction_threshold/friction_scale/output_scale 应用）本轮不搬：它是 Macan 车控路径上分叉最重的文件，钩子只对注册表内 5 个指纹（Bolt 2017/Bolt 2018-2021/Accord/GV70 ELECTRIFIED/G70 2020）且 VehicleTunesEnabled=1 时生效，Macan 解析为 None。留到 A 批（44a32ec77c/2d9c586376 触碰同一文件时）一起落。",
-    "evidence": "test_vehicle_tune_dispatch.py 5 passed；真机（非 mock）导入链探针：registry=5 指纹、PORSCHE_MACAN -> None、testing_grounds 默认 ('1','A')、tunes 常量正常；scons -j1 openpilot/common/libparams_c.so 重编成功（-O0 钉住后 38s，无 LMK），VehicleTunesEnabled 注册默认 False、put/get 往返 True、恢复 False。"
-   },
-   {
-    "commit": "51caaa4a3ab32b0da57eabe34f349b89fdc2bcce",
-    "subject": "planner: gated non-urgent lead-follow policy (StarPilot port)",
-    "group": "planner/lead-follow",
-    "ported_at": "2026-10-21",
-    "ours_commit": "PENDING",
-    "probe_was": "path_absent openpilot/selfdrive/controls/lib/lead_follow_policy.py",
-    "partial": true,
-    "ported_files": [
-     "openpilot/selfdrive/controls/lib/lead_follow_policy.py (byte-identical, 261 行)",
-     "openpilot/selfdrive/controls/tests/test_lead_follow_policy.py (byte-identical, 97 行)",
-     "openpilot/common/params_keys.h: +LeadFollowPolicyEnabled (PERSISTENT|BACKUP, BOOL, \"0\")"
-    ],
-    "deferred": "上游同一提交里 longitudinal_planner.py 的 +23 钩子本轮不搬（默认关、且要按本树阶段顺序重排）；等 4b21c8cfdb 的 stop/depart 钩子一起做，两条的 planner 改动手工合并一次。",
-    "evidence": "test_lead_follow_policy.py + test_lead_behavior.py 50 passed；ruff 全过；两文件 git hash-object 与上游 blob 一致；scons -j1 重编 libparams_c.so 后真机核对 LeadFollowPolicyEnabled 默认 False（VehicleTunesEnabled 亦 False）。上游 commit 自述存在 present/status 双读适配，已确认 _lead_present 同时读 present 与 status，故 test 里用 status=True 的用例在本树照样成立。"
-   }
-  ],
-  "next_batch": {
-   "about": "上游 test 在 items 之后又走了一段（StarPilot 整批），驾驶者口径是整批立项、单独评估，不混进 items 单条。此段不进 items，避免 phase 2 逐条探针失真；裁决见 doc。",
-   "scope": "upstream/test 817f4a78c2..2d9c586376（13 个提交，2026-10-21 02:38 +0800）",
-   "doc": "docs/upstream_batch_starpilot_20261021.md",
-   "verdict": "整批暂不搬：它 import 了 items 里未移植的 latcontrol_vehicle_tunes.py / flm_workspace.py / lateral_arbitration.py。前置 P = 2d9c586376 的 sunnypilot/common/param_read.py 单独优先（修的是我们已实测的 UnknownKeyName 坑）。",
-   "prerequisite_p": {
-    "what": "2d9c586376 的 openpilot/sunnypilot/common/param_read.py + tests/test_param_read.py",
-    "status": "done",
-    "port_date": "2026-10-21",
-    "ours_commit": "eafa58890d",
-    "scope_kept": "只搬模块本体 + 自带 127 行测试（与上游逐字节相同），该提交其余 9 个 call site 仍随整批留在 items 之外",
-    "evidence": "test_param_read.py 17 passed；真机 Params 探针（非 mock）：read_float/read_bool/read_str 读未注册键回落 1.0 / False / 'x'，不再抛 UnknownKeyName；CustomKp 现可正常读回 1.0（此前记录的「旧 libparams_c.so 不认 CustomKp」已过期）",
-    "remaining": "① CustomKp 就地 try/except（latcontrol_torque.py）待收归 read_float(params, 'CustomKp', 1.0)；② 其余 9 个 call site 随整批一起搬"
-   },
-   "batches": {
-    "about": "2026-10-21 裁决：剩余 items 已无可单独搬的条目，全部收敛为两批，各自整批立项。",
-    "A_latcontrol_flm": {
-     "members": [
-      "80cd489f0e",
-      "982fb613f5",
-      "d81eec5899",
-      "077456330f"
-     ],
-     "why_batched": "互相 import：077456330f 注册的键是 982fb613f5/d81eec5899 的 param；982fb613f5 的门控分发钩子 import 80cd489f0e 的 tunes 表。80cd489f0e 原判据「Macan 0 命中就不搬」失效——文件是 import 前置，空命中走回默认。",
-     "verdict": "暂不搬。整批只在驾驶者明确要「横向调参手段 / FLM 分析工具 / 视觉限速」时立项；不影响行车。"
+  "about": "For each file where upstream mouxangithub/openpilot test and our sp-macan-test differ on purpose. `verdict`: ours = our version wins on rebase; mixed = upstream intent is already inside ours, we additionally carry fork content; pending-ab = our version wins for now, driver A/B outstanding. `expect_diff`: true means the file MUST still differ from upstream after a rebase (if it does not, our patch was silently dropped). `upstream` = byte-identical to upstream again after a port (no fork content left), so a rebase takes the upstream file verbatim.",
+  "upstream": "https://github.com/mouxangithub/openpilot",
+  "upstream_ref": "upstream/test",
+  "audited_at": "2026-10-20",
+  "base_commit": "09ffdf60",
+  "entries": [
+    {
+      "path": "openpilot/sunnypilot/jetlink_adapter/__init__.py",
+      "verdict": "mixed",
+      "expect_diff": true,
+      "upstream_commit": "52d31c1d70",
+      "ours_keeps": [
+        "_Keys.preview -> IsOnroadPreview",
+        "WARP_DIR/warp_path()/lossless_warp_path()",
+        "long API=3 history comment"
+      ],
+      "upstream_intent_present": [
+        "from openpilot.sunnypilot.jetlink_adapter import hevc_venus",
+        "encoder = hevc_venus.make_encoder if hevc_venus.available() else None",
+        "hevc_encoder=encoder"
+      ],
+      "note": "HEVC 接线只有一套（第 225/231/235 行），不存在两套并存"
     },
-    "B_planner_follow_stopdepart": {
-     "members": [
-      "51caaa4a3a",
-      "4b21c8cfdb",
-      "817f4a78c2"
-     ],
-     "why_batched": "4b21c8cfdb 模块顶层 import 51caaa4a3a 的 lead_follow_policy._desired_follow_distance；817f4a78c2 的仿真脚本测的就是 4b21c8cfdb 的 policy。拆开任一条都会 import 失败或没有被测对象。",
-     "verdict": "暂不搬，需上车 A/B。真差异（跟车松紧、停走衔接）只能在路上看；param 默认 0 + 27 条纯逻辑单测已在位，搬了也不改变默认行为。"
+    {
+      "path": "openpilot/selfdrive/controls/lib/longitudinal_mpc_lib/long_mpc.py",
+      "verdict": "mixed",
+      "expect_diff": true,
+      "upstream_commit": "f45472b01b",
+      "ours_keeps": [
+        "t_follow_user_scale() (planner 仍在调用，上游没有)",
+        "stop_distance 不可运行时覆盖的注释"
+      ],
+      "upstream_intent_present": [
+        "A_CHANGE_FACTORS = np.interp(",
+        "W[4,4] = cost_weights[4] * A_CHANGE_FACTORS[i]",
+        "def t_follow_user_scale("
+      ],
+      "note": "仅顺序与注释差异；A_CHANGE_FACTORS 已在"
+    },
+    {
+      "path": "openpilot/selfdrive/monitoring/dmonitoringd.py",
+      "verdict": "pending-ab",
+      "expect_diff": true,
+      "upstream_commit": "f45472b01b",
+      "ours_keeps": [
+        "demo 预览与常规两支都不门控 AlwaysOnDM（sunnypilot 风格）"
+      ],
+      "upstream_intent_present": [
+        "soft_hold_pause_eligible(sm, time.monotonic(), demo_mode)",
+        "soft_hold_state_packet(DM, valid=valid)"
+      ],
+      "note": "上游两支都要求 DM.always_on；我们两支都不要求。policy.py 内部仍用 always_on 决定告警，故差异只在「关掉 AlwaysOnDM 时策略是否继续跑」。待驾驶者 A/B"
+    },
+    {
+      "path": "openpilot/sunnypilot/carrot/radar/radard_dpath.py",
+      "verdict": "ours",
+      "expect_diff": true,
+      "upstream_commit": "f45472b01b",
+      "ours_keeps": [
+        "_LEAD_FIELD_ALIASES / _assign_lead 的注释更准确（log.capnp=present vs custom.capnp=status）"
+      ],
+      "upstream_intent_present": [
+        "self.radar_state = log.RadarState.new_message()",
+        "radar_msg = messaging.new_message(\"radarState\")"
+      ],
+      "note": "纯注释差异，无行为差异"
+    },
+    {
+      "path": "openpilot/sunnypilot/selfdrive/controls/lib/stopping_controller.py",
+      "verdict": "pending-ab",
+      "expect_diff": true,
+      "upstream_commit": "c41a03695d",
+      "ours_keeps": [
+        "END_SOFT_RATE = 0.4 —— 2026-10-20 驾驶者「先跟随上游」后已与上游同值，不再算分叉（父仓 8b426e4572，路试体感受压）",
+        "无前车时 _end_request 不切得比曲线更深（target = line）",
+        "停车 latch 不限 pid 状态（stopping 期间也 latch）",
+        "END 曲线抛物线 + 实测注释（5-0 km/h 表与上游不同）"
+      ],
+      "upstream_intent_present": [
+        "def update(self, prev_state, state, CS, a_target, prev_accel, stock_accel, accel_limits, has_lead=False",
+        "END_PLAN_MIN",
+        "END_REQUEST = END_HI"
+      ],
+      "note": "上游 END_SOFT_RATE=0.4 的哲学是「入口全程 <0.5 m/s^3，乘客感觉不到第二次刹车」；我们原本 1.0（本车实测调参），2026-10-20 驾驶者决定先跟随上游 → 已改成 0.4（8b426e4572），体感/停车点留待下次路试，不合适就一行改回 1.0。本文件其余两处分叉（无前车不切深、stopping 期也 latch）仍待 A/B，故 expect_diff 仍为 true。"
+    },
+    {
+      "path": "openpilot/selfdrive/controls/tests/test_longcontrol.py",
+      "verdict": "ours",
+      "expect_diff": true,
+      "upstream_commit": "c41a03695d",
+      "ours_keeps": [
+        "断言按我们的 END_SOFT_RATE/latch 写，19 passed"
+      ],
+      "upstream_intent_present": [
+        "LongControlSP.stopping_decel_rate"
+      ],
+      "note": "上游 tip 的这条测试自己就挂：test_stopping_decel_rate_is_smooth_while_rolling 断言 stopping_decel_rate(0.1)==0.3，而同一提交里的 numpy.interp 曲线给 0.07（我们换上上游三文件跑 1 failed / 18 passed）。不要整体搬上游这个文件"
+    },
+    {
+      "path": "openpilot/selfdrive/car/cruise.py",
+      "verdict": "mixed",
+      "expect_diff": true,
+      "upstream_commit": "047f38d783",
+      "ours_keeps": [
+        "carrot 巡航（VCruiseCarrot/蓝牙/拨杆/导航限速等约 +20 行）"
+      ],
+      "upstream_intent_present": [
+        "return self.params.get(key, return_default=True)",
+        "def _param(self, key)"
+      ],
+      "note": "注册默认值语义已完全落地，剩余差异全是 carrot 功能"
+    },
+    {
+      "path": "openpilot/sunnypilot/selfdrive/controls/lib/tests/test_longitudinal_planner.py",
+      "verdict": "ours",
+      "expect_diff": true,
+      "upstream_commit": "279ad6f0c6",
+      "ours_keeps": [
+        "_StubScc(.vision/.map) 与 _carrot_is_a_competing_target() 源码扫描守卫",
+        "targets 断言保留在本地候选表"
+      ],
+      "upstream_intent_present": [
+        "assert planner.source != LongitudinalPlanSource.carrot",
+        "assert not self._carrot_is_a_competing_target()",
+        "planner.targets[LongitudinalPlanSource.carrot][0]"
+      ],
+      "note": "我们版本是超集，43 passed"
+    },
+    {
+      "path": "openpilot/sunnypilot/carrot/tests/test_signal_assist_runtime.py",
+      "verdict": "ours",
+      "expect_diff": true,
+      "upstream_commit": "d251c69946",
+      "ours_keeps": [
+        "离线测试开关文件名 'enable'（assist_enabled 已退役，SignalAssistMode 是唯一用户开关）"
+      ],
+      "upstream_intent_present": [
+        "from openpilot.common.repo_tools import load"
+      ],
+      "note": "上游仍写 assist_enabled，与我们 signal_assist_runtime.py 的退役逻辑相反"
+    },
+    {
+      "path": "openpilot/sunnypilot/carrot/signal_assist.py",
+      "verdict": "ours",
+      "expect_diff": false,
+      "upstream_commit": "0429a86b67",
+      "ours_keeps": [
+        "与上游逐字节一致（移植后不分叉）"
+      ],
+      "upstream_intent_present": [
+        "def departed_signal_stop",
+        "reason='departed_stop'"
+      ],
+      "note": "红灯停止记忆过 5 km/h 退役；这条 intent 丢了就是 bug 复发"
+    },
+    {
+      "path": "openpilot/sunnypilot/carrot/signal_start_guard.py",
+      "verdict": "ours",
+      "expect_diff": false,
+      "upstream_commit": "0429a86b67",
+      "ours_keeps": [
+        "与上游逐字节一致"
+      ],
+      "upstream_intent_present": [
+        "departed_signal_stop(speed)",
+        "reason='departed_stop'"
+      ],
+      "note": "时钟回滚分支之前先退役 latch"
+    },
+    {
+      "path": "openpilot/sunnypilot/carrot/carrot_functions.py",
+      "verdict": "mixed",
+      "expect_diff": true,
+      "upstream_commit": "0429a86b67",
+      "ours_keeps": [
+        "get_mode 的引号注解（本树既有，ruff UP037 会提示，未动）"
+      ],
+      "upstream_intent_present": [
+        "_retire_departed_signal_stop",
+        "_signal_stop_owned",
+        "departed_signal_stop(v_ego)"
+      ],
+      "note": "末级输出门只释放信号 veto，不动 MPC/模型障碍/前车已经要求的制动"
+    },
+    {
+      "path": "openpilot/system/proclogd.py",
+      "verdict": "ours",
+      "expect_diff": false,
+      "upstream_commit": "0fa33738ca",
+      "ours_keeps": [
+        "与上游逐字节一致"
+      ],
+      "upstream_intent_present": [
+        "_smaps_identity",
+        "def _prune_proc_cache",
+        "gc.freeze()"
+      ],
+      "note": "缓存按 starttime 身份索引 + 每轮 prune + 建资源前冻结；三条一起丢了才会串数"
+    },
+    {
+      "path": "openpilot/system/tests/test_proclog_identity.py",
+      "verdict": "ours",
+      "expect_diff": false,
+      "upstream_commit": "0fa33738ca",
+      "ours_keeps": [
+        "与上游逐字节一致（含 c2df04b193 的 _smaps_cycle = 1 修正）"
+      ],
+      "upstream_intent_present": [
+        "_prune_proc_cache",
+        "gc.freeze()",
+        "starttime"
+      ],
+      "note": "重基线时若被换回旧版（不推进 cycle），8 例里 1 例会立刻失败"
+    },
+    {
+      "path": "openpilot/sunnypilot/carrot/tests/test_signal_departure.py",
+      "verdict": "ours",
+      "expect_diff": false,
+      "upstream_commit": "0429a86b67",
+      "ours_keeps": [
+        "与上游逐字节一致（含 c2df04b193 的 CarrotPlanner 改名）"
+      ],
+      "upstream_intent_present": [
+        "departed_signal_stop",
+        "SignalStartGuard",
+        "e2eStopped"
+      ],
+      "note": "整文件覆盖成 0429a86b67 的原版会让 11 例重新静默 skip"
+    },
+    {
+      "path": "openpilot/selfdrive/selfdrived/events.py",
+      "verdict": "mixed",
+      "expect_diff": true,
+      "upstream_commit": "4f4256c37b",
+      "ours_keeps": [
+        "本树自有的大量 carrot/sunnypilot 事件与中文提示文本",
+        "EVENTS 里的分叉条目"
+      ],
+      "upstream_intent_present": [
+        "def bind_nnff_notice",
+        "def nnff_load_alert",
+        "EventName.torqueNNLoad"
+      ],
+      "note": "bind 是按实例重绑 EVENTS（不每帧复制）；get_events_mapping 必须返回 self._events_mapping"
+    },
+    {
+      "path": "openpilot/selfdrive/selfdrived/selfdrived.py",
+      "verdict": "mixed",
+      "expect_diff": true,
+      "upstream_commit": "4f4256c37b",
+      "ours_keeps": [
+        "本树 CP_SP/mads/jetlink 相关分支",
+        "is_remote 未使用（既有 ruff 提示）"
+      ],
+      "upstream_intent_present": [
+        "def update_nnff_alert",
+        "self.update_nnff_alert(CS)",
+        "EventName.torqueNNLoad"
+      ],
+      "note": "gate: frame>=550 且 frame%50、初始化完成、非 passive、CAN 正常、无 NO_ENTRY、当前无其它提示、NNLC 已开、型号非空非 MOCK"
+    },
+    {
+      "path": "openpilot/cereal/log.capnp",
+      "verdict": "upstream",
+      "expect_diff": false,
+      "upstream_commit": "bde651b930",
+      "ours_keeps": [
+        "无 —— 已与上游 test 逐字节一致（bde651b930 补上 laneWidthLeft/Right 后最后一条分叉消失）"
+      ],
+      "upstream_intent_present": [
+        "torqueNNLoad @105",
+        "radarStationaryLead @104",
+        "laneWidthLeft @10",
+        "laneWidthRight @11"
+      ],
+      "note": "expect_diff 翻 false：`git diff upstream/test -- openpilot/cereal/log.capnp` 为空，rebase 冲突一律取上游版；改 capnp 后 python 端走 capnp.load()，重启进程即生效，C++ 端仍需在设备上重跑 SCons（libcereal.a 要用新 header 重编）"
+    },
+    {
+      "path": "openpilot/sunnypilot/carrot/server/services/auto_update.py",
+      "verdict": "ours",
+      "expect_diff": false,
+      "upstream_commit": "4f4256c37b",
+      "ours_keeps": [
+        "与上游逐字节一致（_notify_cwp 已删除）"
+      ],
+      "upstream_intent_present": [
+        "AUTO_UPDATE_ERROR_ALERT"
+      ],
+      "note": "_notify_cwp / NOTIFY_TIMEOUT / _diff_stats 都随上游删掉了；再加回来等于复活已否决的 beacon"
+    },
+    {
+      "path": "openpilot/sunnypilot/carrot/server/tests/test_auto_update.py",
+      "verdict": "ours",
+      "expect_diff": true,
+      "upstream_commit": "4f4256c37b",
+      "ours_keeps": [
+        "删掉 _notify_cwp monkeypatch 与 notify 期望（上游漏改，会 AttributeError）"
+      ],
+      "upstream_intent_present": [
+        "_run_git_pull"
+      ],
+      "note": "整文件覆盖成上游版会让这例重新 failed"
+    },
+    {
+      "path": "openpilot/selfdrive/controls/radard.py",
+      "verdict": "mixed",
+      "expect_diff": true,
+      "upstream_commit": "2ffd3d1758",
+      "ours_keeps": [
+        "Macan B1 标定同源常量 (MACAN_B1_T_A/B <- opendbc macan_calib)",
+        "_macan_fuse_leads() 原厂雷达融合 + 落点1 idx 滞回 / 落点2 视觉平滑与变化率限幅",
+        "get_custom_yrel() hyundai SCC 分支"
+      ],
+      "upstream_intent_present": [
+        "def apply_vision_lead_hold",
+        "RADARLESS_TRACK_HOLD_TIME = 0.45",
+        "blended_aLeadK",
+        "should_hold_tracked_vision_lead"
+      ],
+      "note": "上游 2ffd3d1758 的 hold 门是 `if not CP.radarUnavailable: return`。Macan 的 CP.radarUnavailable=True（vw_mlb DBC 只有 Bus.pt、无 Bus.radar → interface.py:19 判成无雷达，属“没定义雷达总线”的误标），但我们旁路合成单点（radar_interface._update_macan：ACC_02.Abstandsindex + ACC_04 前车速度 → trackId=1），所以 tracks 非空、get_lead 会走雷达 track 匹配；只有合成 track 匹配不上、掉到视觉 fallback 的帧才可能被 hold，hold 因此在 Macan 生效。aLeadK 80/20 平滑是全局的（雷达/无雷达都用 get_RadarState_from_vision）。无点云的真因=原厂 ACC 模块内部消化目标表、点数据不上 CAN，不是这车没雷达硬件。合并冲突时本文件的 3 个上游 hunk 必须重新落到本地上下文，不能整包 git apply。"
+    },
+    {
+      "path": "openpilot/selfdrive/ui/sunnypilot/layouts/settings/carrot_tuning_items.py",
+      "verdict": "mixed",
+      "expect_diff": true,
+      "upstream_commit": "34f7b78b14",
+      "ours_keeps": [
+        "build_start_items/build_navi_items 里本树自有的 Params 直读项（如 Speed Source PCM 文案换行不带 '+'）",
+        "carrot_tuning_egpu 页（上游没有）"
+      ],
+      "upstream_intent_present": [
+        "section_heading_sp(tr('Longitudinal Control (advanced)'))",
+        "param='CarrotLongitudinalSourceEnabled'",
+        "Off keeps stock sunnypilot behaviour"
+      ],
+      "note": "34f7b78b14 把纵向源开关抬到 Developer 页；这三串是那次改动在本文件里的落点，掉了就是被 rebase 冲掉了"
+    },
+    {
+      "path": "openpilot/selfdrive/car/tests/fleet_safety.py",
+      "verdict": "mixed",
+      "expect_diff": true,
+      "upstream_commit": "6963554164",
+      "ours_keeps": [
+        "cp.alternativeExperience = recorded.alternativeExperience（本分叉横向授权走 MADS，AE 取自日志）",
+        "每个 panda 的 libsafety 追加 set_mads_params(ENABLE_MADS, disengage/pause)（本分叉 MADS 门控）",
+        "configuration_policy 文案补 alternativeExperience taken from the log"
+      ],
+      "upstream_intent_present": [
+        "ROOT = Path(__file__).resolve().parents[4]",
+        "module.load(str(target/'libsafety.so'))",
+        "cc_sp = convert_carControlSP(custom.CarControlSP.new_message())"
+      ],
+      "note": "fleet_safety 的四条上游补丁都逐字节搬了；本树只多 MADS/AE 那段本地适配。它掉了就是被 rebase 冲掉——那会让 MADS 单独横向的 HCA_01 全部变成 unexpected rejection"
     }
-   }
-  },
-  "deferred_hooks": [
-   {
-    "from_commit": "51caaa4a3ab32b0da57eabe34f349b89fdc2bcce",
-    "what": "longitudinal_planner.py 的 +23 行 LeadFollowPolicyEnabled 阶段",
-    "status": "deferred",
-    "why": "默认关；要按本树阶段顺序重排，且与 4b21c8cfdb 的 stop/depart 钩子在同一段代码，手工合并一次即可",
-    "probe": {
-     "kind": "symbol_absent",
-     "target": "openpilot/selfdrive/controls/lib/longitudinal_planner.py",
-     "needle": "LeadFollowPolicyEnabled"
-    }
-   },
-   {
-    "from_commit": "4b21c8cfdbe2912fba0bcccd0268a93ddceea1e8",
-    "what": "longitudinal_planner.py 的 +36/-2 行 LeadStopDepartPolicyEnabled 阶段（含 effective_t_follow 计算外提）",
-    "status": "deferred",
-    "why": "默认关；锚点（LeadFollowPolicy 阶段）刚由上一条落地，需按本树 carrot_source/cutin_predecel/红线预减速 的顺序核对后再写",
-    "probe": {
-     "kind": "symbol_absent",
-     "target": "openpilot/selfdrive/controls/lib/longitudinal_planner.py",
-     "needle": "LeadStopDepartPolicyEnabled"
-    }
-   }
-  ]
- }
+  ],
+  "upstream_pending_port": {
+    "about": "上游 test 上已经实现、我们还没移植的提交清单。每条的 probes 是机器可判定的「仍未移植」判据：路径应当不存在 / 符号应当不存在 / 该符号应当还在（因为上游那次是删除）/ 子模块指针应当还不是我们的祖先。检查器 ai/scripts/upstream_divergence_check.py 会逐条验；一旦某条探针失效（= 我们其实已经搬了或上游又改了），它报 DRIFT，提醒回来改这张表。ported=已移植（探针已反转为 DRIFT，条目移出 items 留档）。status: todo=独立可搬 | todo-after=依赖同批其它条目 | eval=体积大或需驾驶者决策 | pointer=子模块指针 | docs=文档，随条目走。",
+    "scope": "upstream/test 59efe220e6..817f4a78c2（2026-10-20 17:30 +0800，35 个提交）",
+    "checked_at": "2026-10-21",
+    "ours_tip": "PENDING",
+    "upstream_tip": "817f4a78c2",
+    "items": [
+      {
+        "commit": "982fb613f51f0ddb47a0b1784c89b5838c9a8e7c",
+        "subject": "flm: port the Firestar Lateral Method analyzer workspace + CLI (StarPilot)",
+        "date": "10-20 16:46",
+        "group": "flm",
+        "status": "eval",
+        "impact": "Firestar 横向方法分析工作区（3789 行）+ CLI，纯离线调参工具",
+        "next": "不影响行车；想要横向调参手段时再搬",
+        "probes": [
+          {
+            "kind": "path_absent",
+            "target": "openpilot/selfdrive/controls/lib/flm_workspace.py",
+            "needle": null
+          }
+        ]
+      },
+      {
+        "commit": "d81eec58999ff32d2acf51e3976419fd0bcd01a9",
+        "subject": "speed_limit_vision: port the vision speed-limit daemon (StarPilot)",
+        "date": "10-20 16:46",
+        "group": "speed_limit_vision",
+        "status": "eval",
+        "impact": "视觉限速 daemon（2883 行）+ 3 个 onnx 共 ~22MB，需要 LFS/分块推；调度里新增进程",
+        "next": "体积大、且我们限速还有 carrot 导航/蓝牙两路，先评估是否值得",
+        "probes": [
+          {
+            "kind": "path_absent",
+            "target": "openpilot/sunnypilot/system/speed_limit_vision.py",
+            "needle": null
+          }
+        ]
+      },
+      {
+        "commit": "077456330f38f470e6bca7f68a8ffb282b05054d",
+        "subject": "params: register FLM and vision speed-limit keys",
+        "date": "10-20 16:47",
+        "group": "params",
+        "status": "todo-after",
+        "impact": "登记 FLM / 视觉限速的 Params 键；单独搬无意义",
+        "next": "随 982fb613f5 / d81eec5899 一起",
+        "probes": [
+          {
+            "kind": "symbol_absent",
+            "target": "openpilot/common/params_keys.h",
+            "needle": "SpeedLimitVision"
+          }
+        ]
+      },
+      {
+        "commit": "817f4a78c27830d448f5e54ee55bd6bf43233e35",
+        "subject": "scripts: scripted onroad-scenario simulation for the stop/depart policy",
+        "date": "10-20 17:30",
+        "group": "script/stop-depart",
+        "status": "todo-after",
+        "impact": "给 4b21c8cfdb 的 stop/depart 策略写的脚本化仿真；本机离线就能跑，不依赖车",
+        "next": "等 4b21c8cfdb 决定后再补；否则单独搬过来没有被测对象。现随 B 批：它测的对象就是 4b21c8cfdb 的 policy，两条一起搬才成立。",
+        "probes": [
+          {
+            "kind": "path_absent",
+            "target": "scripts/simulate_lead_stop_depart.py",
+            "needle": null
+          }
+        ]
+      }
+    ],
+    "ported": [
+      {
+        "commit": "0429a86b673bd651740514add3022928436f0ff1",
+        "subject": "carrot: retire stopped-red memory once the car leaves creep",
+        "group": "carrot/signal",
+        "ported_at": "2026-10-20",
+        "ours_commit": "c392fb4e6c",
+        "probe_was": "symbol_absent signal_assist.py:departed_signal_stop",
+        "evidence": "test_signal_departure.py 22 passed / 0 skipped；carrot/tests 636 -> 658 passed",
+        "local_fix": "上游测试导入的是 CarrotPilot，本树类名 CarrotPlanner → 22 例里 11 例静默 skip（上游本机同样 skip）。改成 CarrotPlanner as CarrotPilot 后才真跑。",
+        "expect_diff_after": [
+          "openpilot/sunnypilot/carrot/carrot_functions.py",
+          "openpilot/sunnypilot/carrot/tests/test_signal_departure.py"
+        ]
+      },
+      {
+        "commit": "0fa33738caf5c7e88f65d04fee1b0f34cbfcd91c",
+        "subject": "system: key the proclog caches by process identity",
+        "group": "system/proclog",
+        "ported_at": "2026-10-20",
+        "ours_commit": "0c858ccab4",
+        "probe_was": "symbol_absent proclogd.py:_smaps_identity",
+        "evidence": "test_proclog_identity.py 9 passed / 0 skipped（上游 8 例里 1 例必失败，见 local_fix）；openpilot/system/tests 的 4 failed + 5 errors 已 git stash 前后对照确认为既有环境问题",
+        "local_fix": "上游用例在 _smaps_cycle==0 时必失败（首轮按设计无条件刷新 callee），上游本机 8 例全 skip 从未跑过。用例显式把 _smaps_cycle 置 1，并补 1 例锁住「首轮无条件刷新」。",
+        "expect_diff_after": [
+          "openpilot/system/tests/test_proclog_identity.py"
+        ]
+      },
+      {
+        "commit": "4f4256c37b55a589b4cae1e97b84bdcec959ac0f",
+        "subject": "selfdrived: one-shot NNFF model notice + drop the dead phone-home residue",
+        "group": "selfdrived/nnff",
+        "ported_at": "2026-10-20",
+        "ours_commit": "d337e96239",
+        "probe_was": "symbol_absent log.capnp:torqueNNLoad + symbol_present auto_update.py:_notify_cwp",
+        "evidence": "test_nnff_notice 20 passed（真跑，不是 skip）；test_signal_stop_prepare_runtime 12 passed；carrot/server/tests 136 passed / 48 skipped；ruff 干净",
+        "local_fix": "上游删了 _notify_cwp 却没改 carrot/server/tests/{test_auto_update,test_git_config}.py 的 monkeypatch（raising=True → AttributeError），实测 1 failed。两处 hook 与 notify 期望一并删除。",
+        "expect_diff_after": [
+          "openpilot/sunnypilot/carrot/server/tests/test_auto_update.py",
+          "openpilot/sunnypilot/carrot/server/tests/test_git_config.py"
+        ]
+      },
+      {
+        "commit": "02cd2d1b5be0e1e5dd3bd0c61a6e2e3b5b0c26bb",
+        "subject": "tests: fix two NNFF notice expectations caught on device",
+        "group": "selfdrived/nnff",
+        "ported_at": "2026-10-20",
+        "ours_commit": "d337e96239",
+        "probe_was": "path_absent selfdrive/selfdrived/tests/test_nnff_notice.py",
+        "evidence": "test_nnff_notice.py 现与 upstream/test 逐字节一致；20 passed",
+        "local_fix": "无（我们先独立推出同样的两处修正，随后直接采用上游版本以零分叉）"
+      },
+      {
+        "commit": "c2df04b19345c675413d43908917631ef8863b79",
+        "subject": "test: run the departure and GPS cases on the device they need (测试门控部分)",
+        "group": "tests/device-routing",
+        "ported_at": "2026-10-20",
+        "ours_commit": "6378ec4aff",
+        "probe_was": "path_absent openpilot/system/tests/test_proclog_identity.py",
+        "evidence": "test_signal_departure.py 22 passed、test_proclog_identity.py 8 passed；两个文件现与 upstream/test 逐字节一致",
+        "local_fix": "无（我们先各自独立修了同样的两处，随后直接采用上游版本以零分叉）",
+        "partial": "只搬了测试门控；test_gps_sources.py 部分依赖 6ad1f5b099，v_asm_server.py 部分仍以独立条目留在 items"
+      },
+      {
+        "commit": "6ad1f5b099345ca5ce69915e20be7eda678cc2bc",
+        "subject": "carrot: answer the navigation GPS source in one place",
+        "group": "carrot/gps",
+        "ported_at": "2026-10-20",
+        "ours_commit": "0a52d4c701",
+        "probe_was": "path_absent openpilot/sunnypilot/carrot/gps_sources.py",
+        "evidence": "test_gps_sources.py 21 passed；test_carrot_man.py 150 passed；carrot/tests 全套 684 passed / 6 skipped / 0 errors；ruff 对新增两文件零告警",
+        "local_fix": "carrot_man.py 冲突：上游把新服务写死在 SubMaster 字面量里，本树已抽成 CARROT_SERVICES 常量（广播线程共用同一列表），按本树写法解 —— 只把 'liveLocationKalman' 加进常量",
+        "expect_diff_after": [
+          "openpilot/sunnypilot/carrot/carrot_man.py"
+        ]
+      },
+      {
+        "commit": "2ffd3d17585cdb55ac35a080352597218aaaf927",
+        "subject": "radard: hold recently dropped vision leads for radarless cars",
+        "group": "radard",
+        "ported_at": "2026-10-20",
+        "ours_commit": "ef587c9fb2",
+        "probe_was": "path_absent openpilot/selfdrive/controls/lib/lead_behavior.py",
+        "evidence": "test_lead_behavior.py 41 passed / 0 skipped（上游整包搬）；test_macan_radar_fusion.py 10 passed 证明本机 Macan 融合分叉未被动到",
+        "local_fix": "git apply 不能整包落地：我们 radard.py 相对该 commit 父有 246 行 Macan 分叉（_macan_fuse_leads / B1 标定 / 复盘落点），故三个新文件逐字节取上游，radard.py 按上游 3 个 hunk 手工落到本地上下文（import time、lead_behavior 常量导入、RADARLESS_TRACK_HOLD_TIME/_RADARLESS_STOP_DISTANCE、__init__ 状态 + apply_vision_lead_hold()、leadOne 包一层、aLeadK 80/20）。落地后 diff 上游同 commit 版本只剩 Macan 分叉行（upstream-only 行数 1，为既有主函数 SubMaster 列表差异，非本次引入）。",
+        "expect_diff_after": [
+          "openpilot/selfdrive/controls/radard.py"
+        ],
+        "device_check": "暂无（雷达车不受影响）；无雷达车看 radard 日志 leadOne 是否在掉帧后 0.45s 内仍 present 且 modelProb>=0.70"
+      },
+      {
+        "commit": "c2df04b19345c675413d43908917631ef8863b79",
+        "subject": "xiaoge: BSD lane inference floor + backpressure (rest of c2df04b193)",
+        "group": "xiaoge/bsd-lane",
+        "ported_at": "2026-10-20",
+        "ours_commit": "f3fba66794",
+        "probe_was": "symbol_absent openpilot/sunnypilot/carrot/xiaoge/v_asm_server.py:MIN_LANE_INTERVAL_MS",
+        "evidence": "上游该 commit 的另 3 个文件（test_signal_departure/test_gps_sources/test_proclog_identity）此前已随 abcd 批搬完，本轮补 v_asm_server.py：OnnxLaneIntervalMs 默认 400->1000、MIN_LANE_INTERVAL_MS=600 下限、BSD 与车道两线程各一处 max(区间, last_*_inference_ms*1.15) 反压。git apply 上游单文件 hunk 全干净命中；落地后与 upstream/test 同文件 diff 只剩既有本地分叉（import errno + bind_http_server EADDRINUSE 重试）与一行无害字符串拼接差异。py_compile OK；test_xiaoge_cereal_fields.py 6 passed / 0 skipped；sunnypilot/carrot/tests 全量 682 passed / 6 skipped（test_carrot_navi_no_aiohttp.py 2 failed 为既有环境问题：子进程 ModuleNotFoundError: No module named openpilot，与本文件零交集）。",
+        "device_check": "重启 xiaoge_data 后看 /api/status：stored OnnxLaneIntervalMs=400 时 lane.intervalSeconds 应被抬到 0.6（floor 生效），lane.latencyMs>600 时实际间隔应自动拉到 latency*1.15；代价是 BSD 车道频率 2.5Hz->~1.7Hz（默认值下 1Hz），观察 modelV2 freshness / model lagging 计数是否下降。"
+      },
+      {
+        "commit": "bde651b930bd55f6be1a8f6947235eb94c79cf75",
+        "subject": "xiaoge: fill ModelDataV2.meta lane widths to open the BSD gate",
+        "group": "modeld/lane-width",
+        "ported_at": "2026-10-20",
+        "ours_commit": "7648f7495e",
+        "probe_was": "path_absent openpilot/selfdrive/modeld/lane_width.py",
+        "evidence": "lane_width.py 与 tests/test_lane_width.py 逐字节等于上游（diff 为空）；test_lane_width 6 passed；carrot/tests 全套 586 passed / 6 skipped / 5 errors，5 个 error 全是环境缺 pytest 的 import（与本轮无关）；capnp 动态加载确认 ModelDataV2.MetaData 现有 laneWidthLeft/Right:float32；modelV2 序列化→反序列化后 lane_width_meters 读出 3.4/2.8，gate 3.4>=3.0 开、2.8 关；capnpc 重新生成 gen/cpp/log.capnp.h 并 -fsyntax-only 编译通过（MetaData 数据段 3→4 words）",
+        "local_fix": "三个 modeld/log.capnp 的增量行集与上游完全一致，无冲突改写；唯一偏差=上游 test_xiaoge_cereal_fields.py 注释把 ordinal 写成 @2/@3（与它自己 log.capnp 的 @10/@11 矛盾），本树按实际 ordinal 写 @10/@11。本地 log.capnp 是 dynamic capnp.load()，加字段对 python 端即刻生效（重启进程即可），无需 codegen；C++ libcereal.a 仍是旧 header 编的，按 capnp 结构演化规则向后兼容，下次 scons 全量构建时一并刷新"
+      },
+      {
+        "commit": "d4ee34a206ea257070538b3da4abae56be555633",
+        "subject": "xiaoge: update lane width docstring now that the schema defines it",
+        "group": "xiaoge/lane-width",
+        "ported_at": "2026-10-20",
+        "ours_commit": "939c917934",
+        "probe_was": "path_present openpilot/sunnypilot/carrot/carrot_man_input.py",
+        "evidence": "xiaoge_vision.py 与上游 post-image 逐字节相同（diff 空）；test_xiaoge_cereal_fields.py 6 passed + test_lane_width.py 6 passed；全树 grep 确认 carrot_man_input 零引用；探针 phase2 该条翻 DRIFT → 改表后 26/26",
+        "local_fix": "本树 carrot_man_input.py 比上游 pre-image 多一行 `import time`（hash 619b7ce0 ≠ 上游 dff5cc19），git apply 整包报 patch does not apply；改为 git rm + 手工落 docstring，落完 xiaoge_vision.py 与上游 post-image 完全一致。",
+        "expect_diff_after": []
+      },
+      {
+        "commit": "830c2e7a79392bd0b6cf684807838d431e3e1453",
+        "subject": "scripts: a carrot suite runner that refuses to pass with silent skips",
+        "group": "scripts",
+        "ported_at": "2026-10-20",
+        "ours_commit": "5eed7a48e9",
+        "probe_was": "path_absent scripts/test_carrot.py",
+        "evidence": "scripts/test_carrot.py 与上游逐字节相同（diff 为空，只多 chmod +x 的可执行位）。本机实测：不带允许清单 617 run / 5 failed / 6 skipped → rc=1，且每个 skip 后面打 '<-- NOT ALLOWED'（正是要拦的『绿线里藏 skip』）；带 --allow-from scripts/test_carrot_allow.json → rc=0；--list-only → rc=0，可拿来取基线。允许清单里 6 条 skip 全属 test_gps_sources.TestCarrotServUsesTheSameSelector：_serv_importable() 一旦发现 sys.modules 已有（其它 carrot 测试桩化的）zstandard 就主动返回 False，单独跑该模块 `python3 -m unittest openpilot.sunnypilot.carrot.tests.test_gps_sources` 是 21 tests OK，可见 discover 下这 6 条是被收集顺序遮蔽而不是真跑不了；另 5 条 failures 全是模块顶层 import pytest，本机 /usr/local/venv/bin/python3 未装 pytest。探针 phase2 该条如期翻 DRIFT（path now exists）→ 改表后 25/25。",
+        "local_fix": "上游这条只带跑批器本体、不带允许清单；本树另加 scripts/test_carrot_allow.json（兄弟文件，本地新增、不送上游），把 6 条顺序遮蔽 skip 与 5 条缺 pytest 的导入失败逐条写清原因，runner 本体保持零改写，方便以后 rebase 原样取上游文件。"
+      },
+      {
+        "commit": "9d722b3acc9bd4b1583159f47f0138ecefcd470d",
+        "subject": "tools: capture bounded device memory history",
+        "group": "tools/memory",
+        "ported_at": "2026-10-20",
+        "ours_commit": "175cbd3296",
+        "probe_was": "path_absent tools/memory_analysis/capture_device_memory.py",
+        "evidence": "168 行与上游逐字节一致（sha256 01b39efe…）；设备 offroad 实测 --seconds 60 → 12 行 rc=0，首行 detail 含 54 进程/kgsl GPU/ion 堆；同路径二次运行 O_EXCL 拒绝",
+        "local_fix": "无（原样搬运，仅 chmod +x）；上游文件自带 navipilot 出处与角色关键字表，未改动"
+      },
+      {
+        "commit": "34f7b78b14caed74432f133f9f4ff8f81815db6b",
+        "subject": "ui: give CarrotLongitudinalSourceEnabled a Developer-page toggle",
+        "group": "ui/toggle",
+        "ported_at": "2026-10-20",
+        "ours_commit": "02de3e28ed",
+        "probe_was": "symbol_absent openpilot/selfdrive/ui/sunnypilot/layouts/settings/carrot_tuning_items.py:CarrotLongitudinalSourceEnabled + submodule_not_ancestor webui:d35517c9",
+        "evidence": "探针 phase2 该条如期翻 DRIFT（symbol appeared: CarrotLongitudinalSourceEnabled）→ 改表后 23/23。carrot_tuning_render_smoke.py 21/21（DEVELOPER 页真 render，含新开关与其描述；zh-CHS/zh-CHT 仍覆盖 154 条根页文案）；test_translations.py 48 passed（顺带修掉档案前就红的 %1 占位符两条）。ruff 16 条与 HEAD 同数，无新增。webui cherry-pick d35517c9 → 8ae8e69，指针 952cd76→8ae8e69。",
+        "local_fix": "上游补丁在本树是 3 处小适配：(1) carrot_tuning_items.py 的 hunk 因相邻一条文案的换行风格（本树 implicit concat 不带 '+ '）而 offset 1 行，git apply 拒收，按语义手工落，新增 13 行与上游逐字一致；(2) 上游只动 pot/en/zh-CHS/zh-CHT 四份 .po，本树每份 .po 都带完整 msgid 清单，故 13 份全部补条目、非 en/zh 的 msgstr 留空（跑 update_translations.py 会重排成 1.6 万→2.9 万行噪声，已回滚）；(3) webui 是本树 fork，d35517c9 的分支点是 75dac813、我们领先 19 个提交，cherry-pick 到 sp-macan-test 上干净落地。"
+      },
+      {
+        "commit": "28949f07aac935f8daa2b1787042154476590de3",
+        "subject": "ui: expose CarrotLongitudinalSourceEnabled and keep the switch table honest",
+        "group": "ui/audit",
+        "ported_at": "2026-10-20",
+        "ours_commit": "af32099cd7",
+        "probe_was": "path_absent openpilot/sunnypilot/carrot/tests/audit_ui_reach.py",
+        "evidence": "3 个新文件与上游逐字节相同：docs/carrot_no_ui_switches.md (sha 9aee47bfbc)、audit_ui_reach.py (5f76e10639)、test_carrot_ui_reach.py (6b68608ad3)。本树实测 test_carrot_ui_reach 4 tests OK —— 即 scanner 现算出来的表与本树签入的 md 完全一致，说明这台车（Macan 分叉）里 Carrot* 控制路径开关同样是 19 个、5 有入口 14 没入口，且反证上一轮 34f7b78b14 的 CarrotLongitudinalSourceEnabled Developer 入口已就位（若未搬，该开关会掉进「没有 UI 入口」那一栏而让测试红）。",
+        "local_fix": "无（原样搬运，3 文件均未改动；文档由 audit_ui_reach.py 生成，不手改）"
+      },
+      {
+        "commit": "4d0d11e831d01c3adcde220caf2d2bb46c79cefd",
+        "subject": "models: StarPilot-style chunked download + v25 source map for the catalog",
+        "group": "models",
+        "ported_at": "2026-10-20",
+        "ours_commit": "2c25665dc2",
+        "probe_was": "path_absent openpilot/sunnypilot/models/chunked_download.py",
+        "evidence": "4 个新文件 git hash-object 与上游逐字节一致：chunked_download.py / model_catalog.py(89 条 id) / model_source_map_v25.json / tests/test_chunked_download.py；chunked_download.py 仅多 +x。探针 phase2 该条如期翻 DRIFT（path now exists: chunked_download.py）→ 改表后 21/21。离线单测 test_chunked_download 7 tests OK（0.06s，全假 HTTP 不联网）；models 目录整包 101 tests OK（skipped=2，需 PYTHONPATH 带 /data/.pydeps 才有 pytest）；ruff check openpilot/sunnypilot/models/ All checks passed；默认下载路径未变：只有远端真给 .chunkmanifest 才走分块，否则 try_download_chunked 返回 None 回落原 _download_file。",
+        "local_fix": "manager.py 三处适配（Path 导入、_try_chunked_download 方法按上游同文插入、单文件分支改成 chunked-first + None 回落）+ 去掉本树重复的 maybe_apply_default_model import（19 行已带 carry_over_picks）；fetcher.py 删掉 ModelParser 内重复的 get_chunk_name 导入；README 9 行 StarPilot 出处说明随上游。本树 manager.py 与上游仅剩 6 行 noqa 注释文案差异（我们带原因说明）。"
+      },
+      {
+        "commit": "4a4d60661585b1aaa74c82d567eea499bfe77177",
+        "subject": "fleet_safety: fix ROOT for this tree's openpilot/ nesting (parents[4])",
+        "group": "fleet_safety",
+        "ported_at": "2026-10-20",
+        "ours_commit": "04eaf99e5b",
+        "probe_was": "path_absent openpilot/selfdrive/car/tests/fleet_safety.py",
+        "evidence": "补丁逐字节应用，blob 576b2a48d0 与上游一致。本树同样把 openpilot/ 多嵌一层，parents[3] 会指到 openpilot/ 而非仓库根，build_safety 就找不到 opendbc_repo/opendbc/safety/tests/libsafety/safety.c。",
+        "local_fix": "无"
+      },
+      {
+        "commit": "696355416490c1c0f26ffa729b8754cc968599f8",
+        "subject": "fleet_safety: build CarControlSP through convert_carControlSP like the car test",
+        "group": "fleet_safety",
+        "ported_at": "2026-10-20",
+        "ours_commit": "04eaf99e5b",
+        "probe_was": "path_absent openpilot/selfdrive/car/tests/fleet_safety.py",
+        "evidence": "补丁逐字节应用，最终 blob dc98c96d8c 与上游一致。本树 convert_carControlSP(custom.CarControlSP.new_message()) -> structs.CarControlSP 与 interface.apply(cc, cc_sp, now) 的类型要求对得上。",
+        "local_fix": "有：上游按 get_params() 的 CP 跑，alternativeExperience 恒 0，而本分叉横向授权走 MADS（card.py 把 ENABLE_MADS OR 进 CP，实车日志 AE=1024）——照原样跑，MADS 单独横向的 HCA_01（0x126/bus0）全被审计成 unexpected rejection（实测 376 帧）。本地两处适配：cp.alternativeExperience=recorded.alternativeExperience；每个 panda 的 libsafety 追加 set_mads_params(ENABLE_MADS, disengage/pause)（同 replay_drive.py，set_alternative_experience 只写整数，MADS 状态机要 mads_set_alternative_experience）。改后本机自车日志 000000aa--000d7806f5--20: pass —— 8894 帧 TX 全接受、0 拒绝、814 帧 active TX 全接受、AE=1024。"
+      },
+      {
+        "commit": "aa524aec3ecf6c8d399be813622065ca258d38cc",
+        "subject": "fleet_safety: dlopen the copied prebuilt libsafety.so per panda",
+        "group": "fleet_safety",
+        "ported_at": "2026-10-20",
+        "ours_commit": "04eaf99e5b",
+        "probe_was": "path_absent openpilot/selfdrive/car/tests/fleet_safety.py",
+        "evidence": "补丁逐字节应用，blob 141dc64669 与上游一致。实测 load() 后 libsafety 可 dlopen、set_safety_hooks 正常，即 prebuilt .so 直接加载这条路在本机通。",
+        "local_fix": "无"
+      },
+      {
+        "commit": "e7652e5f147bbba2eb7e94a5f6ac241a72570c31",
+        "subject": "tests: port StarPilot offline fleet_safety audit (controller+safety replay)",
+        "group": "fleet_safety",
+        "ported_at": "2026-10-20",
+        "ours_commit": "04eaf99e5b",
+        "probe_was": "path_absent openpilot/selfdrive/car/tests/fleet_safety_core.py",
+        "evidence": "新建 openpilot/selfdrive/car/tests/fleet_safety.py + fleet_safety_core.py，两者 git hash-object 与上游逐字节相同（f282182bb7 322 行 / aaf553a301 200 行）。opendbc_repo 指针：上游同提交带 f087c437f8->f06251665f，而那一步唯一实质改动是 non_tested_cars 补逗号（routes.py 缺逗号导致 SyntaxError，本树原本也中招——ast.parse 直接报 line 69）。本树在自己的 opendbc 线上先落 ac1ac7c7a（routes.py blob 37b27d1dc 与上游修后一致），父仓只 bump 到本地那条。实测 --inventory：304 platforms / 240 有路由 / 293 条注册路由；build_safety 用 cc 编出 libsafety.so 并 dlopen 成功、set_safety_hooks(0,0)=0。",
+        "local_fix": "无（两文件原样，仅多 chmod +x 不适用——非脚本入口，走 -m）"
+      },
+      {
+        "commit": "590f0bf790fa8708327c9f9c9e326b5732731ae1",
+        "subject": "jetlink: the comma's six stages reach the host",
+        "group": "submodule/jetlink",
+        "ported_at": "2026-10-20",
+        "ours_commit": "64b6386ff6",
+        "probe_was": "submodule_not_ancestor jetlink_repo f2cedcfd4f",
+        "evidence": "jetlink_repo 3ffb61f（merge up/cn dbb4877，含 f2cedcf）。上游 16 文件（ControlProtocol/FrameStats/Session/WireProtocol/FrameStageTable/index.html/client.py/model_state.py/protocol.py + 测试与 conformance/wire.json）。并入方式=git merge up/cn（五条一起），本树 jetlink 于 6186a4b 上 merge 成 3ffb61f；五条 needle 现全部是 HEAD 祖先。唯一冲突在 jetlink/openpilot/model_state.py 两处：__init__ 里 _last_summary_logged 与 _stages_reported 并存；帧路径尾部先保留本树 caf0113 的 jetlink: stages 日志（last()+SLOW_FRAME/period 判据）与 trips summary，再调上游的 self._report_stages(t4)。语义自检：report_stages 走 try_send，老 server unknown_message 被 _forgive 放过，不污染 seq。实测 1521 passed/33 skipped（/usr/local/venv/bin/python3，numpy 原生）、ruff check jetlink tests 全绿。Swift 侧本机不能交叉编译，交 CI。",
+        "local_fix": "无（上游原样并入；本树自有 caf0113 的六段日志一行未丢）"
+      },
+      {
+        "commit": "869ec7e9fc2fd00a0d0bcdf6e92e2ac381a28854",
+        "subject": "jetlink: the pin follows the stages fix",
+        "group": "submodule/jetlink",
+        "ported_at": "2026-10-20",
+        "ours_commit": "64b6386ff6",
+        "probe_was": "submodule_not_ancestor jetlink_repo 05960480fa",
+        "evidence": "jetlink_repo 3ffb61f（merge up/cn dbb4877，含 0596048）。随同一次 merge 并入（ControlProtocol.swift +1、Session.swift 4 行），无冲突。",
+        "local_fix": "无（原样并入）"
+      },
+      {
+        "commit": "3c154c0f72ab7fe4a62b9c5c8d2f2aa197593506",
+        "subject": "jetlink: the pin follows the table fix",
+        "group": "submodule/jetlink",
+        "ported_at": "2026-10-20",
+        "ours_commit": "64b6386ff6",
+        "probe_was": "submodule_not_ancestor jetlink_repo d5cf94ce65",
+        "evidence": "jetlink_repo 3ffb61f（merge up/cn dbb4877，含 d5cf94c）。FrameStageTable.swift 先构 sections 再拼（10+/7-），自动合并无冲突。",
+        "local_fix": "无（原样并入）"
+      },
+      {
+        "commit": "87cce8055cf36f1263f34b576a6f1369858a5660",
+        "subject": "jetlink: pin the formatted stages work",
+        "group": "submodule/jetlink",
+        "ported_at": "2026-10-20",
+        "ours_commit": "64b6386ff6",
+        "probe_was": "submodule_not_ancestor jetlink_repo 2967959703",
+        "evidence": "jetlink_repo 3ffb61f（merge up/cn dbb4877，含 2967959）。FrameStageTable.swift 按 swift-format 的参数列表（10+/6-），自动合并无冲突。",
+        "local_fix": "无（原样并入）"
+      },
+      {
+        "commit": "e4b13bdc61c5e68e3d4a1f39e2f234a123e1c147",
+        "subject": "jetlink: stage tables on the screens, stage reports that wait for nothing",
+        "group": "submodule/jetlink",
+        "ported_at": "2026-10-20",
+        "ours_commit": "64b6386ff6",
+        "probe_was": "submodule_not_ancestor jetlink_repo dbb4877e3387b2fd38d1c28d66ea5225423a0bd2",
+        "evidence": "jetlink_repo 3ffb61f（merge up/cn dbb4877，含 dbb4877）。index.html/StatusContent.swift/StatusView.swift/client.py/test_client.py 共 5 文件自动合并无冲突；index.html 与 FrameStageTable 的 stage 表在合并后仍通过 test_conformance 的 wire.json 一致性检查。",
+        "local_fix": "无（原样并入）"
+      },
+      {
+        "commit": "ef7514aa1fbfc57a0e38ea199f801b2f8ba569da",
+        "subject": "opendbc: bump pin for hyundai carstate staticmethod fix",
+        "group": "submodule/opendbc",
+        "ported_at": "2026-10-20",
+        "ours_commit": "9afcc5a6c",
+        "probe_was": "submodule_not_ancestor opendbc_repo 85095af0cbca6eb1edda4ac9bec1ddf4bc895c13",
+        "evidence": "opendbc_repo 9afcc5a6c：与上游 85095af0c 逐字节一致的 1 行改动（@staticmethod）。注意：我们是 cherry-pick 式搬运而不是 merge 上游指针，所以 submodule_not_ancestor 探针永远不会翻 DRIFT；把这条从 items 移出后它的守门改为人工核验（ac1ac7c7a 缺装饰器 -> 9afcc5a6c 已补）。",
+        "local_fix": "无（原样并入）"
+      },
+      {
+        "commit": "f29fd60fbce81a6504ef544cf4ca7b543c353a51",
+        "subject": "docs: record the device results for the three changes",
+        "group": "docs",
+        "ported_at": "2026-10-20",
+        "ours_commit": "d6073facd1",
+        "probe_was": "symbol_absent docs/gps_source_priority_20261020.md c2df04b19",
+        "evidence": "docs/gps_source_priority_20261020.md、proclog_identity、signal_departure_hold 三份文档的「验证」段改成车机（comma tizi a821bfb2 @d6073facd1）实测：gps_sources 单模块 21/21 OK、proclog 8/8 OK、9 个 test_signal_* 78/78 OK、carrot 全套 628 run / 0 failed / 6 skip。注意：上游 needle `c2df04b19` 是上游自己设备的提交号，我们故意不抄——我们记的是自己设备的 sha 与数字，所以这条探针按设计保持 absent，守门改为人工核验「验证段含车机实测结果」。",
+        "local_fix": "无（记录改成我们设备的结果，不照抄上游数字）"
+      },
+      {
+        "commit": "43ba6fa17b99a7da685b553d1ce579ed686ffa92",
+        "subject": "docs: record the device results for the NNFF notice round",
+        "group": "docs",
+        "ported_at": "2026-10-20",
+        "ours_commit": "1c59fc74fd",
+        "probe_was": "symbol_absent docs/nnff_notice_20261020.md 614/614 OK",
+        "evidence": "docs/nnff_notice_20261020.md 的 Validation 段补上车机实测：test_nnff_notice 20/20 passed / skip=0、test_signal_stop_prepare_runtime 11 passed、alerts 三件套 12/12、carrot 全套 628 run / 0 failed / 6 skip（上游记的是 610/614 那套数字，我们按本树真实数写，故 needle `614/614 OK` 按设计保持 absent）。附记环境坑：pytest 装在 /data/.pydeps，必须 PYTHONPATH=/data/openpilot:/data/.pydeps。",
+        "local_fix": "无（记录改成我们设备的结果，不照抄上游数字）"
+      },
+      {
+        "commit": "059d38437846b55c393d543e2c9e84eb2fcb47c1",
+        "subject": "carrot_server: PWA installability + Web Push (Galaxy-inspired)",
+        "group": "carrot_server",
+        "ported_at": "2026-10-21",
+        "ours_commit": "6b25dc7062",
+        "probe_was": "path_absent openpilot/sunnypilot/carrot/server/features/push.py",
+        "evidence": "features/push.py + services/web_push.py + web/{manifest.webmanifest,sw.js,push.html} + static.py 注入，见 docs/carrot_web_push_20261021.md。车机 offroad 实测（192.168.10.79:7000）：/push 200 text/html、/manifest.webmanifest 200 application/manifest+json、/sw.js 200 application/javascript、/api/push/status 200 且首次调用生成 VAPID 键并落盘 /data/carrot/state/web_push.json（公钥 65 字节）；首页 / 里能看到 manifest link 与 serviceWorker.register('/sw.js')；无订阅时 POST /api/push/test → 404 no subscriptions。测试：test_web_push.py 8 passed、carrot_server 全套 144 passed / 48 skipped、ruff All checks passed。重复性判据（本条原 next）：与 support_discord / dashcam_upload_report / vision_diag 不重复 —— 那三条都是往第三方发消息，Web Push 是手机本机浏览器推送，车机只在本地存订阅。",
+        "local_fix": "1) 状态存 /data/carrot/state/web_push.json（临时文件 + os.replace），不放 Params：本仓 params_keys.h 是编译期严格键表，加键要重建 libparams_c.so，而本机 scons -j1 编 params.cc 时 clang++ 被 lowmemorykiller 杀掉（dmesg: to free 1998980kB），重建做不了；params_keys.h 的两行已撤回，本移植零编译依赖（代价：这两个值不进 Params 备份）。（2026-10-21 补记：libparams_c.so 的重建路径已打通，见 docs/libparams_c_rebuild_recipe_20261021.md；本条状态不变，订阅仍存 JSON。）2) 多一个 /push 页面（上游只有 API），因为 SW/Push 权限必须由用户手势在安全上下文触发，页面还写明 http 局域网不能推送。3) manifest 图标声明真实 800x800（上游写 any，Chrome 对 PNG 不认 any）。4) pyproject.toml 给 web_push.py 开 TID251（VAPID exp 必须是 wall-clock epoch）。",
+        "pending_driver": "手机侧收推送需要 https：局域网 http 只能验页面可达；用 carrot 的 cloudflared 隧道域名打开 https://<域名>/push → 开启通知 → 发送测试通知，且车机需能出网。"
+      },
+      {
+        "commit": "b96f079ca8d01830d624bdbd80eb9c307f99babf",
+        "subject": "latcontrol: user Kp scale via CustomKp param (StarPilot SteerKP equivalent)",
+        "group": "latcontrol",
+        "ported_at": "2026-10-21",
+        "ours_commit": "6161ffccb3",
+        "probe_was": "symbol_absent params_keys.h:CustomKp",
+        "evidence": "新增 test_latcontrol_custom_kp.py 7 passed（未注册键回落 1.0 / 1.0 不重建 PID / 1.5 乘曲线 / 5.0→2.0 与 0.1→0.5 夹紧 / NaN 与 inf 回落 / 值不变保积分器 / 300 帧节奏）；test_latcontrol_torque_buffer+test_torqued_lat_accel_offset+test_latcontrol_torque_ext 14 passed；params_keys.h g++ -fsyntax-only 通过；latcontrol_torque.py 与上游同 commit 版本 diff 为空（34 行增量逐字节相同）。；2026-10-21 重建 libparams_c.so 后真机核对（非 mock）：keys 670→671、CustomKp 类型 FLOAT、注册默认 b'1.0'、put/get 往返 1.25、remove 后回到未设置（read_float 回落 1.0）、未知键仍抛 UnknownKeyName。重建配方见 docs/libparams_c_rebuild_recipe_20261021.md —— scons -O2 -g 编 params.cc 会被 lowmemorykiller 杀掉，改 -O1 单 TU 手工编 + 按 scons 的 LINK 行手工链。此前「旧 libparams_c.so 不认 CustomKp 已过期」的判断是错的（read_float 的兜底掩盖了 UnknownKeyName），库确实一直是 10-17 的旧库。",
+        "local_fix": "两处：①params_keys.h 落点不同（本树没有上游那个 Mazda 注释块，Mazda 键在 780 行），手工插在 TorqueParamsOverrideLatAccelFactor 之后，相对顺序一致；②_read_custom_kp_scale 加 try/except→1.0，因本机 libparams_c.so 仍是旧库、实测 Params().get(\"CustomKp\") 抛 UnknownKeyName，不兜底 controls 守护进程会在 init 挂掉（上游 2d9c586376 后来用 sunnypilot/common/param_read.py 统一兜底，；③2026-10-21 补 UI 面：Developer 页新增 'Steering Kp Scale' 行（option_item_sp(param='CustomKp', 50..200 step 5, use_float_scaling, use_registered_default)，范围与 CUSTOM_KP_SCALE_LIMITS(0.5,2.0) 对齐），zh-CHS/zh-CHT 译文同步。为此给 OptionControlSP 加了 use_registered_default：UnifiedParams.get 对「已注册但用户没写过」的键返回 None，UI 会显示最小值 0.50 而车实际跑 1.00；顺带修了同一分支的老 bug（None→min_value 之后又被 float 缩放一次，50 变 50.00）。",
+        "expect_diff_after": [
+          "openpilot/common/params_keys.h"
+        ]
+      },
+      {
+        "commit": "80cd489f0ec168129b56b542d5da1059ea99e016",
+        "subject": "latcontrol: per-vehicle tune library + gated dispatch hook (StarPilot port)",
+        "group": "latcontrol/tunes",
+        "ported_at": "2026-10-21",
+        "ours_commit": "PENDING",
+        "probe_was": "path_absent openpilot/selfdrive/controls/lib/latcontrol_vehicle_tunes.py",
+        "partial": true,
+        "ported_files": [
+          "openpilot/selfdrive/controls/lib/latcontrol_vehicle_tunes.py (byte-identical)",
+          "openpilot/sunnypilot/common/testing_grounds.py (byte-identical)",
+          "openpilot/sunnypilot/selfdrive/controls/lib/vehicle_tune_dispatch.py (byte-identical)",
+          "openpilot/sunnypilot/selfdrive/controls/lib/tests/test_vehicle_tune_dispatch.py (byte-identical)",
+          "openpilot/common/params_keys.h: +VehicleTunesEnabled (PERSISTENT|BACKUP, BOOL, \"0\")",
+          "pyproject.toml: E501 exemption for latcontrol_vehicle_tunes.py"
+        ],
+        "deferred": "上游同一提交里 latcontrol_torque.py 的 +23/-1 门控钩子（resolve_vehicle_tune + ff/friction_threshold/friction_scale/output_scale 应用）本轮不搬：它是 Macan 车控路径上分叉最重的文件，钩子只对注册表内 5 个指纹（Bolt 2017/Bolt 2018-2021/Accord/GV70 ELECTRIFIED/G70 2020）且 VehicleTunesEnabled=1 时生效，Macan 解析为 None。留到 A 批（44a32ec77c/2d9c586376 触碰同一文件时）一起落。",
+        "evidence": "test_vehicle_tune_dispatch.py 5 passed；真机（非 mock）导入链探针：registry=5 指纹、PORSCHE_MACAN -> None、testing_grounds 默认 ('1','A')、tunes 常量正常；scons -j1 openpilot/common/libparams_c.so 重编成功（-O0 钉住后 38s，无 LMK），VehicleTunesEnabled 注册默认 False、put/get 往返 True、恢复 False。"
+      },
+      {
+        "commit": "51caaa4a3ab32b0da57eabe34f349b89fdc2bcce",
+        "subject": "planner: gated non-urgent lead-follow policy (StarPilot port)",
+        "group": "planner/lead-follow",
+        "ported_at": "2026-10-21",
+        "ours_commit": "PENDING",
+        "probe_was": "path_absent openpilot/selfdrive/controls/lib/lead_follow_policy.py",
+        "partial": true,
+        "ported_files": [
+          "openpilot/selfdrive/controls/lib/lead_follow_policy.py (byte-identical, 261 行)",
+          "openpilot/selfdrive/controls/tests/test_lead_follow_policy.py (byte-identical, 97 行)",
+          "openpilot/common/params_keys.h: +LeadFollowPolicyEnabled (PERSISTENT|BACKUP, BOOL, \"0\")"
+        ],
+        "deferred": "上游同一提交里 longitudinal_planner.py 的 +23 钩子本轮不搬（默认关、且要按本树阶段顺序重排）；等 4b21c8cfdb 的 stop/depart 钩子一起做，两条的 planner 改动手工合并一次。",
+        "evidence": "test_lead_follow_policy.py + test_lead_behavior.py 50 passed；ruff 全过；两文件 git hash-object 与上游 blob 一致；scons -j1 重编 libparams_c.so 后真机核对 LeadFollowPolicyEnabled 默认 False（VehicleTunesEnabled 亦 False）。上游 commit 自述存在 present/status 双读适配，已确认 _lead_present 同时读 present 与 status，故 test 里用 status=True 的用例在本树照样成立。"
+      },
+      {
+        "commit": "4b21c8cfdb",
+        "full_commit": "4b21c8cfdbe2912fba0bcccd0268a93ddceea1e8",
+        "subject": "planner: StarPilot stop/depart policy - vision approach caps + standstill lead depart (#13)",
+        "group": "planner/stop-depart",
+        "ported_at": "2026-10-21",
+        "ours_commit": "ed7720231c",
+        "partial": true,
+        "probe_was": "path_absent openpilot/selfdrive/controls/lib/lead_stop_depart_policy.py",
+        "ported_files": [
+          "openpilot/selfdrive/controls/lib/lead_stop_depart_policy.py (1792 行, byte-identical)",
+          "openpilot/selfdrive/controls/lib/tests/test_lead_stop_depart_policy.py (261 行, byte-identical)",
+          "openpilot/selfdrive/controls/lib/longitudinal_vehicle_tunes.py (整文件换上游 896 行版, byte-identical)",
+          "openpilot/common/params_keys.h: +LeadStopDepartPolicyEnabled (PERSISTENT|BACKUP, BOOL, \"0\")"
+        ],
+        "deferred": "longitudinal_planner.py 的 +38/-2 钩子在 deferred_hooks 第二条：锚点是 LeadFollowPolicy 阶段，要按本树 carrot_source/cutin_predecel/红线预减速 的实际顺序重写，默认关、需上路验（Step2）",
+        "evidence": "68 passed (test_lead_stop_depart_policy 27 + test_lead_behavior 41), ruff clean; grep 确认无人 import 新模块 = 默认零影响; libparams_c.so scons -j1 重编 38s 无 LMK, keys 675->676, check_key OK"
+      }
+    ],
+    "next_batch": {
+      "about": "上游 test 在 items 之后又走了一段（StarPilot 整批），驾驶者口径是整批立项、单独评估，不混进 items 单条。此段不进 items，避免 phase 2 逐条探针失真；裁决见 doc。",
+      "scope": "upstream/test 817f4a78c2..2d9c586376（13 个提交，2026-10-21 02:38 +0800）",
+      "doc": "docs/upstream_batch_starpilot_20261021.md",
+      "verdict": "整批暂不搬：它 import 了 items 里未移植的 latcontrol_vehicle_tunes.py / flm_workspace.py / lateral_arbitration.py。前置 P = 2d9c586376 的 sunnypilot/common/param_read.py 单独优先（修的是我们已实测的 UnknownKeyName 坑）。",
+      "prerequisite_p": {
+        "what": "2d9c586376 的 openpilot/sunnypilot/common/param_read.py + tests/test_param_read.py",
+        "status": "done",
+        "port_date": "2026-10-21",
+        "ours_commit": "eafa58890d",
+        "scope_kept": "只搬模块本体 + 自带 127 行测试（与上游逐字节相同），该提交其余 9 个 call site 仍随整批留在 items 之外",
+        "evidence": "test_param_read.py 17 passed；真机 Params 探针（非 mock）：read_float/read_bool/read_str 读未注册键回落 1.0 / False / 'x'，不再抛 UnknownKeyName；CustomKp 现可正常读回 1.0（此前记录的「旧 libparams_c.so 不认 CustomKp」已过期）",
+        "remaining": "① CustomKp 就地 try/except（latcontrol_torque.py）待收归 read_float(params, 'CustomKp', 1.0)；② 其余 9 个 call site 随整批一起搬"
+      },
+      "batches": {
+        "about": "2026-10-21 裁决：剩余 items 已无可单独搬的条目，全部收敛为两批，各自整批立项。",
+        "A_latcontrol_flm": {
+          "members": [
+            "80cd489f0e",
+            "982fb613f5",
+            "d81eec5899",
+            "077456330f"
+          ],
+          "why_batched": "互相 import：077456330f 注册的键是 982fb613f5/d81eec5899 的 param；982fb613f5 的门控分发钩子 import 80cd489f0e 的 tunes 表。80cd489f0e 原判据「Macan 0 命中就不搬」失效——文件是 import 前置，空命中走回默认。",
+          "verdict": "暂不搬。整批只在驾驶者明确要「横向调参手段 / FLM 分析工具 / 视觉限速」时立项；不影响行车。"
+        },
+        "B_planner_follow_stopdepart": {
+          "members": [
+            "51caaa4a3a",
+            "4b21c8cfdb",
+            "817f4a78c2"
+          ],
+          "why_batched": "4b21c8cfdb 模块顶层 import 51caaa4a3a 的 lead_follow_policy._desired_follow_distance；817f4a78c2 的仿真脚本测的就是 4b21c8cfdb 的 policy。拆开任一条都会 import 失败或没有被测对象。",
+          "verdict": "暂不搬，需上车 A/B。真差异（跟车松紧、停走衔接）只能在路上看；param 默认 0 + 27 条纯逻辑单测已在位，搬了也不改变默认行为。"
+        }
+      }
+    },
+    "deferred_hooks": [
+      {
+        "from_commit": "51caaa4a3ab32b0da57eabe34f349b89fdc2bcce",
+        "what": "longitudinal_planner.py 的 +23 行 LeadFollowPolicyEnabled 阶段",
+        "status": "deferred",
+        "why": "默认关；要按本树阶段顺序重排，且与 4b21c8cfdb 的 stop/depart 钩子在同一段代码，手工合并一次即可",
+        "probe": {
+          "kind": "symbol_absent",
+          "target": "openpilot/selfdrive/controls/lib/longitudinal_planner.py",
+          "needle": "LeadFollowPolicyEnabled"
+        }
+      },
+      {
+        "from_commit": "4b21c8cfdbe2912fba0bcccd0268a93ddceea1e8",
+        "what": "longitudinal_planner.py 的 +36/-2 行 LeadStopDepartPolicyEnabled 阶段（含 effective_t_follow 计算外提）",
+        "status": "deferred",
+        "why": "默认关；锚点（LeadFollowPolicy 阶段）刚由上一条落地，需按本树 carrot_source/cutin_predecel/红线预减速 的顺序核对后再写",
+        "probe": {
+          "kind": "symbol_absent",
+          "target": "openpilot/selfdrive/controls/lib/longitudinal_planner.py",
+          "needle": "LeadStopDepartPolicyEnabled"
+        }
+      }
+    ]
+  }
 }
