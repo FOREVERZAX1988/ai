@@ -5,8 +5,8 @@
 | | commit | 说明 |
 |---|---|---|
 | 我们 | `c14a63ea20` | sp-macan-test（2026-10-20 12:5x，END_SOFT_RATE 跟随上游后） |
-| 上游 | `0120b66f05` | mouxangithub/openpilot `test`，2026-10-20 17:30 (+0800) |
-| 审计范围 | `59efe220e6..0120b66f05` | 今天这一批 **35 个提交** |
+| 上游 | `817f4a78c2` | mouxangithub/openpilot `test`，2026-10-20 17:30 (+0800) |
+| 审计范围 | `59efe220e6..817f4a78c2` | 今天这一批 **35 个提交** |
 
 `git cherry HEAD upstream/test` 对这 35 条全给 `+`，即**没有一条的补丁本身在我们树里**。
 其中少数条目我们已经用别的写法实现过意图（例如 params 键 `CarrotLongitudinalSourceEnabled` 已在
