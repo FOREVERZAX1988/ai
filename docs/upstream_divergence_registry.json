@@ -358,25 +358,9 @@
     "about": "上游 test 上已经实现、我们还没移植的提交清单。每条的 probes 是机器可判定的「仍未移植」判据：路径应当不存在 / 符号应当不存在 / 该符号应当还在（因为上游那次是删除）/ 子模块指针应当还不是我们的祖先。检查器 ai/scripts/upstream_divergence_check.py 会逐条验；一旦某条探针失效（= 我们其实已经搬了或上游又改了），它报 DRIFT，提醒回来改这张表。ported=已移植（探针已反转为 DRIFT，条目移出 items 留档）。status: todo=独立可搬 | todo-after=依赖同批其它条目 | eval=体积大或需驾驶者决策 | pointer=子模块指针 | docs=文档，随条目走。",
     "scope": "upstream/test 59efe220e6..817f4a78c2（2026-10-20 17:30 +0800，35 个提交）",
     "checked_at": "2026-10-21",
-    "ours_tip": "6b25dc7062",
+    "ours_tip": "6161ffccb3",
     "upstream_tip": "817f4a78c2",
     "items": [
-      {
-        "commit": "b96f079ca8d01830d624bdbd80eb9c307f99babf",
-        "subject": "latcontrol: user Kp scale via CustomKp param (StarPilot SteerKP equivalent)",
-        "date": "10-20 13:46",
-        "group": "latcontrol",
-        "status": "eval",
-        "impact": "CustomKp：用户级横向 Kp 缩放（StarPilot SteerKP 等价物），latcontrol_torque 改 34 行",
-        "next": "我们横向已跟上游 tune，是否引入用户旋钮要驾驶者定",
-        "probes": [
-          {
-            "kind": "symbol_absent",
-            "target": "openpilot/common/params_keys.h",
-            "needle": "CustomKp"
-          }
-        ]
-      },
       {
         "commit": "80cd489f0ec168129b56b542d5da1059ea99e016",
         "subject": "latcontrol: per-vehicle tune library + gated dispatch hook (StarPilot port)",
@@ -791,6 +775,19 @@
         "evidence": "features/push.py + services/web_push.py + web/{manifest.webmanifest,sw.js,push.html} + static.py 注入，见 docs/carrot_web_push_20261021.md。车机 offroad 实测（192.168.10.79:7000）：/push 200 text/html、/manifest.webmanifest 200 application/manifest+json、/sw.js 200 application/javascript、/api/push/status 200 且首次调用生成 VAPID 键并落盘 /data/carrot/state/web_push.json（公钥 65 字节）；首页 / 里能看到 manifest link 与 serviceWorker.register('/sw.js')；无订阅时 POST /api/push/test → 404 no subscriptions。测试：test_web_push.py 8 passed、carrot_server 全套 144 passed / 48 skipped、ruff All checks passed。重复性判据（本条原 next）：与 support_discord / dashcam_upload_report / vision_diag 不重复 —— 那三条都是往第三方发消息，Web Push 是手机本机浏览器推送，车机只在本地存订阅。",
         "local_fix": "1) 状态存 /data/carrot/state/web_push.json（临时文件 + os.replace），不放 Params：本仓 params_keys.h 是编译期严格键表，加键要重建 libparams_c.so，而本机 scons -j1 编 params.cc 时 clang++ 被 lowmemorykiller 杀掉（dmesg: to free 1998980kB），重建做不了；params_keys.h 的两行已撤回，本移植零编译依赖（代价：这两个值不进 Params 备份）。2) 多一个 /push 页面（上游只有 API），因为 SW/Push 权限必须由用户手势在安全上下文触发，页面还写明 http 局域网不能推送。3) manifest 图标声明真实 800x800（上游写 any，Chrome 对 PNG 不认 any）。4) pyproject.toml 给 web_push.py 开 TID251（VAPID exp 必须是 wall-clock epoch）。",
         "pending_driver": "手机侧收推送需要 https：局域网 http 只能验页面可达；用 carrot 的 cloudflared 隧道域名打开 https://<域名>/push → 开启通知 → 发送测试通知，且车机需能出网。"
+      },
+      {
+        "commit": "b96f079ca8d01830d624bdbd80eb9c307f99babf",
+        "subject": "latcontrol: user Kp scale via CustomKp param (StarPilot SteerKP equivalent)",
+        "group": "latcontrol",
+        "ported_at": "2026-10-21",
+        "ours_commit": "6161ffccb3",
+        "probe_was": "symbol_absent params_keys.h:CustomKp",
+        "evidence": "新增 test_latcontrol_custom_kp.py 7 passed（未注册键回落 1.0 / 1.0 不重建 PID / 1.5 乘曲线 / 5.0→2.0 与 0.1→0.5 夹紧 / NaN 与 inf 回落 / 值不变保积分器 / 300 帧节奏）；test_latcontrol_torque_buffer+test_torqued_lat_accel_offset+test_latcontrol_torque_ext 14 passed；params_keys.h g++ -fsyntax-only 通过；latcontrol_torque.py 与上游同 commit 版本 diff 为空（34 行增量逐字节相同）。",
+        "local_fix": "两处：①params_keys.h 落点不同（本树没有上游那个 Mazda 注释块，Mazda 键在 780 行），手工插在 TorqueParamsOverrideLatAccelFactor 之后，相对顺序一致；②_read_custom_kp_scale 加 try/except→1.0，因本机 libparams_c.so 仍是旧库、实测 Params().get(\"CustomKp\") 抛 UnknownKeyName，不兜底 controls 守护进程会在 init 挂掉（上游 2d9c586376 后来用 sunnypilot/common/param_read.py 统一兜底，那批搬进来后可收归一处）。",
+        "expect_diff_after": [
+          "openpilot/common/params_keys.h"
+        ]
       }
     ]
   }

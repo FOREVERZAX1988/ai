@@ -171,3 +171,82 @@ rm -rf /data/.pydeps/{pytest,pluggy,iniconfig} /data/.pydeps/{pytest,pluggy,inic
 
 剩余 23 条里，顺序上仍独立的 `todo`：`4d0d11e831`（models：StarPilot 式分块下载 + v25
 源映射，体积最大）。其余多为 `eval`（需驾驶者决策）或 `todo-after`（等同批前置）。
+
+## 7. 第九条 `b96f079ca8` latcontrol —— CustomKp 用户级 Kp 缩放（默认 1.0，零影响）
+
+驾驶者的口径：**上游有这个面就要，但要"默认零影响"的形状** —— 默认 1.0，只在非 1.0
+时才真的乘进去。本条正是这个形状，所以按原样搬。
+
+### 上游在做什么
+
+`CustomKp` 是 StarPilot 的 Advanced Lateral Tuning "SteerKP" 等价物：一个乘在速度插值
+Kp 曲线（`INTERP_SPEEDS` / `KP_INTERP`）上的用户系数，1.0 = stock，夹在 0.5..2.0，
+300 帧（≈3s）刷新一次，且**只有值真的变了才重建控制器**（所以积分器不会被每 3 秒
+清一次）。上游特意说明：这里已经有 friction/latAccel 覆盖和 auto-tune 开关
+（CustomTorqueParams、TorqueParamsOverride*、LiveTorqueParamsToggle、LagdToggle），
+只差 Kp 这个面。
+
+### 落地
+
+| 文件 | 改动 |
+|---|---|
+| `openpilot/common/params_keys.h` | 新增 `{"CustomKp", {PERSISTENT \| BACKUP, FLOAT, "1.0"}}`（1 行） |
+| `openpilot/selfdrive/controls/lib/latcontrol_torque.py` | 34 行增量：常量 `CUSTOM_KP_REFRESH_FRAMES=300` / `CUSTOM_KP_SCALE_LIMITS=(0.5, 2.0)`、`_read_custom_kp_scale` / `_apply_custom_kp_scale` / `refresh_custom_kp_scale`，`update()` 开头调用刷新 |
+| `openpilot/selfdrive/controls/tests/test_latcontrol_custom_kp.py` | 新增 7 例（上游没有测试） |
+
+`latcontrol_torque.py` 与上游同 commit 版本 `diff` **为空**（34 行增量逐字节相同）。
+
+### 两处刻意的本地偏差
+
+1. **params_keys.h 的落点**：上游把这行插在 `TorqueParamsOverrideLatAccelFactor` 之后、
+   Mazda 两条注释块之前；本树没有那个 Mazda 块（`MazdaTorqueDefaultsApplied` 排在 780 行，
+   文件整体排法不同）。手工插在 `TorqueParamsOverrideLatAccelFactor` 之后 —— 与上游的
+   相对顺序一致，语义相同，只是绝对行号不同。
+2. **`_read_custom_kp_scale` 加 try/except 回落 1.0**（这是本轮唯一一处"上游没有"的代码）。
+   原因：`params_keys.h` 是编进 `libparams_c.so` 的，本机现在跑的仍是旧库。
+   实测（本机、改动前）：
+   ```
+   Params().get("CustomKp", return_default=True) -> EXC UnknownKeyName b'CustomKp'
+   Params().get("BogusKey_xyz_123", ...)         -> EXC UnknownKeyName b'BogusKey_xyz_123'
+   ```
+   也就是说：只搬上游那 34 行、不兜底，controls 守护进程会在 `__init__` 里直接抛死
+   （不是"功能没开"，是**整个横向控制器起不来**）。
+   巧的是上游后来自己也被这坑打到 —— `2d9c586376`「fix: survive an unregistered parameter
+   key instead of killing the daemon」（**在当前 items 之外的新上游批次里**，尚未移植）就是
+   为此新增 `openpilot/sunnypilot/common/param_read.py` 统一兜底。所以这里的就地 try/except
+   是**临时形状**：等那批搬进来，改为 `read_float(self.params, "CustomKp", 1.0)`，兜底收归一处。
+
+### 验证
+
+| 项 | 结果 |
+|---|---|
+| `test_latcontrol_custom_kp.py`（新增） | **7 passed** — 未注册键回落 1.0 / 默认 1.0 不重建控制器 / 1.5 乘曲线 / 5.0→2.0 与 0.1→0.5 夹紧 / NaN 与 inf 回落 1.0 / 值不变保留积分器 / 300 帧节奏（300 帧内只读 1 次） |
+| `test_latcontrol_torque_buffer.py` + `test_torqued_lat_accel_offset.py` + `test_latcontrol_torque_ext.py` | **14 passed**（证 `__init__` 里新增 `Params()` 与 PID 重建没碰坏既有行为） |
+| `params_keys.h` 语法 | `g++ -std=c++17 -fsyntax-only`（`-Iopenpilot -Iopenpilot/cereal/gen/cpp -I capnp include`）通过；顺带确认 `keys.count("CustomKp") == 1` |
+| 探针 | phase 1 **23/23**、phase 2 **7/7** 无 DRIFT（items 8 → 7，ported 29 条） |
+
+### 生效面（为什么叫"零影响"）
+
+- 不设 `CustomKp`，或设为 1.0 → Kp 曲线与改动前逐值相同，`refresh_custom_kp_scale` 也不会
+  重建控制器（`abs(scale - self._custom_kp_scale) > 1e-6` 才动）。
+- 只有用户主动写一个非 1.0 的值，并且**设备重建过 `libparams_c.so`**（或走能读到该键的
+  Params 实现）才会起作用；不重建时走 try/except 回落 1.0，车照开。
+
+### 仍未做的一步
+
+要不要给这个 param 配一个 UI 面（Developer 页滑块 / carrot tuning 项）？上游这条只加了
+param 键、没加 UI，上游是靠 webui 的 param 编辑器用的。本树暂按上游口径（无 UI），
+若驾驶者要一个手调入口，可另起一条在 `carrot_tuning_items.py` 的 Developer 页加。
+
+## 8. 下一条
+
+剩余 7 条：`51caaa4a3a`（planner: gated non-urgent lead-follow policy，新文件
+`lead_follow_policy.py` + 门控挂钩）是最独立的；`077456330f`（注册 FLM / vision
+speed-limit 参数键）是 `982fb613f5` 和 `d81eec5899` 的前置；`4b21c8cfdb` + `817f4a78c2`
+（stop/depart policy 与它的仿真脚本）成对；`80cd489f0e` 已在登记表里判为"上游 tune 表
+无 PORSCHE/MACAN，按没有就不搬"。
+
+另外：上游 test 已经走到 `2d9c586376`（我们登记表 scope 只到 `817f4a78c2`），
+`817f4a78c2..2d9c586376` 这 **13 个提交**（StarPilot 整批 port + 那个 unregistered-key
+fix）还没进登记表 —— 按驾驶者口径"整批立项单独评估"，应另开一轮做 scope 刷新与逐条裁决，
+不要混进本条。
