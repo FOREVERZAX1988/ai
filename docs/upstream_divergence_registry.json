@@ -443,22 +443,6 @@
         ]
       },
       {
-        "commit": "ef7514aa1fbfc57a0e38ea199f801b2f8ba569da",
-        "subject": "opendbc: bump pin for hyundai carstate staticmethod fix",
-        "date": "10-20 14:28",
-        "group": "submodule/opendbc",
-        "status": "pointer",
-        "impact": "opendbc 指针：hyundai _vehicle_speed_camera_distance_time 缺 @staticmethod。我们 fork 落后上游 5 个提交（另有 277 个自己的提交）",
-        "next": "在 opendbc fork 里 cherry-pick 那 5 个（至少这一个），再 bump 指针",
-        "probes": [
-          {
-            "kind": "submodule_not_ancestor",
-            "target": "opendbc_repo",
-            "needle": "85095af0cbca6eb1edda4ac9bec1ddf4bc895c13"
-          }
-        ]
-      },
-      {
         "commit": "059d38437846b55c393d543e2c9e84eb2fcb47c1",
         "subject": "carrot_server: PWA installability + Web Push (Galaxy-inspired)",
         "date": "10-20 16:15",
@@ -814,6 +798,16 @@
         "ours_commit": "64b6386ff6",
         "probe_was": "submodule_not_ancestor jetlink_repo dbb4877e3387b2fd38d1c28d66ea5225423a0bd2",
         "evidence": "jetlink_repo 3ffb61f（merge up/cn dbb4877，含 dbb4877）。index.html/StatusContent.swift/StatusView.swift/client.py/test_client.py 共 5 文件自动合并无冲突；index.html 与 FrameStageTable 的 stage 表在合并后仍通过 test_conformance 的 wire.json 一致性检查。",
+        "local_fix": "无（原样并入）"
+      },
+      {
+        "commit": "ef7514aa1fbfc57a0e38ea199f801b2f8ba569da",
+        "subject": "opendbc: bump pin for hyundai carstate staticmethod fix",
+        "group": "submodule/opendbc",
+        "ported_at": "2026-10-20",
+        "ours_commit": "9afcc5a6c",
+        "probe_was": "submodule_not_ancestor opendbc_repo 85095af0cbca6eb1edda4ac9bec1ddf4bc895c13",
+        "evidence": "opendbc_repo 9afcc5a6c：与上游 85095af0c 逐字节一致的 1 行改动（@staticmethod）。注意：我们是 cherry-pick 式搬运而不是 merge 上游指针，所以 submodule_not_ancestor 探针永远不会翻 DRIFT；把这条从 items 移出后它的守门改为人工核验（ac1ac7c7a 缺装饰器 -> 9afcc5a6c 已补）。",
         "local_fix": "无（原样并入）"
       }
     ]
