@@ -794,7 +794,16 @@
       "about": "上游 test 在 items 之后又走了一段（StarPilot 整批），驾驶者口径是整批立项、单独评估，不混进 items 单条。此段不进 items，避免 phase 2 逐条探针失真；裁决见 doc。",
       "scope": "upstream/test 817f4a78c2..2d9c586376（13 个提交，2026-10-21 02:38 +0800）",
       "doc": "docs/upstream_batch_starpilot_20261021.md",
-      "verdict": "整批暂不搬：它 import 了 items 里未移植的 latcontrol_vehicle_tunes.py / flm_workspace.py / lateral_arbitration.py。前置 P = 2d9c586376 的 sunnypilot/common/param_read.py 单独优先（修的是我们已实测的 UnknownKeyName 坑）。"
+      "verdict": "整批暂不搬：它 import 了 items 里未移植的 latcontrol_vehicle_tunes.py / flm_workspace.py / lateral_arbitration.py。前置 P = 2d9c586376 的 sunnypilot/common/param_read.py 单独优先（修的是我们已实测的 UnknownKeyName 坑）。",
+      "prerequisite_p": {
+        "what": "2d9c586376 的 openpilot/sunnypilot/common/param_read.py + tests/test_param_read.py",
+        "status": "done",
+        "port_date": "2026-10-21",
+        "ours_commit": "eafa58890d",
+        "scope_kept": "只搬模块本体 + 自带 127 行测试（与上游逐字节相同），该提交其余 9 个 call site 仍随整批留在 items 之外",
+        "evidence": "test_param_read.py 17 passed；真机 Params 探针（非 mock）：read_float/read_bool/read_str 读未注册键回落 1.0 / False / 'x'，不再抛 UnknownKeyName；CustomKp 现可正常读回 1.0（此前记录的「旧 libparams_c.so 不认 CustomKp」已过期）",
+        "remaining": "① CustomKp 就地 try/except（latcontrol_torque.py）待收归 read_float(params, 'CustomKp', 1.0)；② 其余 9 个 call site 随整批一起搬"
+      }
     }
   }
 }

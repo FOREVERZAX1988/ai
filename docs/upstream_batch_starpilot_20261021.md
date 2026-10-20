@@ -71,3 +71,17 @@ Params().get("CustomKp", return_default=True) -> EXC UnknownKeyName b'CustomKp'
 4. 批次 A 里 `80cd489f0e` 在登记表里原判是「上游 tune 表无 PORSCHE/MACAN，按没有就不搬」，
    但它是 `44a32ec77c`/`2d9c586376` 的 import 前置 —— 这条判据要改：
    **要么搬（Macan 走空表回默认），要么整批不搬**。
+
+## 5. 执行记录
+
+- **2026-10-21 前置 P 已完成**：搬 `2d9c586376` 的
+  `openpilot/sunnypilot/common/param_read.py` + `tests/test_param_read.py`，
+  与上游逐字节相同（`diff` 为空）。本地提交 `eafa58890d`。
+  - 实测：`test_param_read.py` 17 passed；真机 `Params` 探针（非 mock）读未注册键
+    回落默认值，不再抛 `UnknownKeyName`。
+  - 修正一条过期记录：本机 `libparams_c.so` **已经认识** `CustomKp`
+    （`read_float(p, "CustomKp", 1.0)` → 1.0 正常返回），此前「旧库不认该键」的判断
+    只代表上一轮 scons 未重建完成时的状态。
+  - 仍未做：`latcontrol_torque.py` 里 CustomKp 的就地 `try/except` 收归
+    `read_float()`；`2d9c586376` 另外 9 个 call site 随整批（批次 A/B/C）一起搬。
+- 结论 §4 第 2 条的 P 已落地，§4 其余待决策项不变。
