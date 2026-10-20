@@ -90,3 +90,35 @@ DRIFT   f29fd60fbc  path now exists: docs/gps_source_priority_20261020.md       
 按清单顺序，仍然独立可搬的 `todo`：`9d722b3acc`（tools 内存历史采样）、
 `2ffd3d1758`（radard 为无雷达车保留刚丢的视觉前车）、`bde651b930`（ModelDataV2.meta 车道宽度）、
 `830c2e7a79`（carrot 测试 runner 拒绝静默 skip）、`34f7b78b14`（UI 开关）。
+
+## 4. 第六条收尾：把「缺 pytest」的 5 条 failures 从允许清单里消掉
+
+`830c2e7a79` 落地时 `scripts/test_carrot_allow.json` 记了 11 条环境缺口：6 条 skip（收集顺序
+把 `zstandard` 桩掉）＋ 5 条 `import pytest` 的导入失败。后者是**能靠装依赖解决**的缺口，按
+runner 自己的规矩（"能用安装依赖解决的缺口不要往这里塞"）应当清掉。
+
+过程与结论：
+
+| 尝试 | 结果 |
+|---|---|
+| `pip install pytest` 进 `/usr/local/venv` | **失败**：`OSError: [Errno 30] Read-only file system`（`/dev/sda7` 整根分区 ro） |
+| `pip install --no-deps --target /data/.pydeps pytest pluggy iniconfig` | 成功：pytest 9.1.1 / pluggy 1.7.0 / iniconfig 2.3.1（`packaging`、`pygments` 由 venv 满足，不动） |
+
+`/data/.pydeps` 本来就在这台设备的 `PYTHONPATH` 里（`build_carrot_vision.sh` 等脚本同款），
+所以 venv 一个字节没改，清掉 pytest 只需删该目录下的三个包：
+
+```
+rm -rf /data/.pydeps/{pytest,pluggy,iniconfig} /data/.pydeps/{pytest,pluggy,iniconfig}-*.dist-info
+```
+
+装完复跑（`PYTHONPATH` 必须含 `/data/.pydeps`，否则仍是 617 run / 5 failed）：
+
+| 跑法 | 结果 |
+|---|---|
+| 带 `--allow-from` | **624 run, 0 failed, 6 skipped, rc=0** |
+| 不带 `--allow-from` | 624 run, 0 failed, 6 skipped, **rc=1**（6 条 skip 全是 `<-- NOT ALLOWED`，runner 语义正确） |
+| 单独 `python3 -m unittest openpilot.sunnypilot.carrot.tests.test_gps_sources` | 21 tests OK —— 反证那 6 条 skip 是收集顺序遮蔽，不是真缺口 |
+
+用例数从 617 涨到 624：那 5 个模块原来整块 `_FailedTest`，现在真的跑起来了，且全过。
+`allow.json` 的 `failures` 清空，`_device`/`_run` 两段写明 pytest 装在 `/data/.pydeps` 而不是 venv。
+
