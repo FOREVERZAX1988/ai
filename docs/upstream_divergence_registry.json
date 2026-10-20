@@ -319,13 +319,29 @@
         "should_hold_tracked_vision_lead"
       ],
       "note": "上游 2ffd3d1758 的 hold 门是 `if not CP.radarUnavailable: return`。Macan 的 CP.radarUnavailable=True（vw_mlb DBC 只有 Bus.pt、无 Bus.radar → interface.py:19 判成无雷达，属“没定义雷达总线”的误标），但我们旁路合成单点（radar_interface._update_macan：ACC_02.Abstandsindex + ACC_04 前车速度 → trackId=1），所以 tracks 非空、get_lead 会走雷达 track 匹配；只有合成 track 匹配不上、掉到视觉 fallback 的帧才可能被 hold，hold 因此在 Macan 生效。aLeadK 80/20 平滑是全局的（雷达/无雷达都用 get_RadarState_from_vision）。无点云的真因=原厂 ACC 模块内部消化目标表、点数据不上 CAN，不是这车没雷达硬件。合并冲突时本文件的 3 个上游 hunk 必须重新落到本地上下文，不能整包 git apply。"
+    },
+    {
+      "path": "openpilot/selfdrive/ui/sunnypilot/layouts/settings/carrot_tuning_items.py",
+      "verdict": "mixed",
+      "expect_diff": true,
+      "upstream_commit": "34f7b78b14",
+      "ours_keeps": [
+        "build_start_items/build_navi_items 里本树自有的 Params 直读项（如 Speed Source PCM 文案换行不带 '+'）",
+        "carrot_tuning_egpu 页（上游没有）"
+      ],
+      "upstream_intent_present": [
+        "section_heading_sp(tr('Longitudinal Control (advanced)'))",
+        "param='CarrotLongitudinalSourceEnabled'",
+        "Off keeps stock sunnypilot behaviour"
+      ],
+      "note": "34f7b78b14 把纵向源开关抬到 Developer 页；这三串是那次改动在本文件里的落点，掉了就是被 rebase 冲掉了"
     }
   ],
   "upstream_pending_port": {
     "about": "上游 test 上已经实现、我们还没移植的提交清单。每条的 probes 是机器可判定的「仍未移植」判据：路径应当不存在 / 符号应当不存在 / 该符号应当还在（因为上游那次是删除）/ 子模块指针应当还不是我们的祖先。检查器 ai/scripts/upstream_divergence_check.py 会逐条验；一旦某条探针失效（= 我们其实已经搬了或上游又改了），它报 DRIFT，提醒回来改这张表。ported=已移植（探针已反转为 DRIFT，条目移出 items 留档）。status: todo=独立可搬 | todo-after=依赖同批其它条目 | eval=体积大或需驾驶者决策 | pointer=子模块指针 | docs=文档，随条目走。",
     "scope": "upstream/test 59efe220e6..817f4a78c2（2026-10-20 17:30 +0800，35 个提交）",
     "checked_at": "2026-10-20",
-    "ours_tip": "5eed7a48e9",
+    "ours_tip": "e5858f8b77",
     "upstream_tip": "817f4a78c2",
     "items": [
       {
@@ -454,27 +470,6 @@
             "kind": "path_absent",
             "target": "openpilot/sunnypilot/carrot/tests/audit_ui_reach.py",
             "needle": null
-          }
-        ]
-      },
-      {
-        "commit": "34f7b78b14caed74432f133f9f4ff8f81815db6b",
-        "subject": "ui: give CarrotLongitudinalSourceEnabled a Developer-page toggle",
-        "date": "10-20 13:52",
-        "group": "ui/toggle",
-        "status": "todo",
-        "impact": "给 CarrotLongitudinalSourceEnabled 一个 Developer 页开关（翻译 4 个 po + webui 指针 d35517c 一并）",
-        "next": "Params 键我们已有（params_keys.h:473），缺的只是 UI 项与翻译 → 便宜",
-        "probes": [
-          {
-            "kind": "symbol_absent",
-            "target": "openpilot/selfdrive/ui/sunnypilot/layouts/settings/carrot_tuning_items.py",
-            "needle": "CarrotLongitudinalSourceEnabled"
-          },
-          {
-            "kind": "submodule_not_ancestor",
-            "target": "webui",
-            "needle": "d35517c944418b60fa3555cf4c8c3cbf72edd4f0"
           }
         ]
       },
@@ -859,6 +854,16 @@
         "probe_was": "path_absent tools/memory_analysis/capture_device_memory.py",
         "evidence": "168 行与上游逐字节一致（sha256 01b39efe…）；设备 offroad 实测 --seconds 60 → 12 行 rc=0，首行 detail 含 54 进程/kgsl GPU/ion 堆；同路径二次运行 O_EXCL 拒绝",
         "local_fix": "无（原样搬运，仅 chmod +x）；上游文件自带 navipilot 出处与角色关键字表，未改动"
+      },
+      {
+        "commit": "34f7b78b14caed74432f133f9f4ff8f81815db6b",
+        "subject": "ui: give CarrotLongitudinalSourceEnabled a Developer-page toggle",
+        "group": "ui/toggle",
+        "ported_at": "2026-10-20",
+        "ours_commit": "02de3e28ed",
+        "probe_was": "symbol_absent openpilot/selfdrive/ui/sunnypilot/layouts/settings/carrot_tuning_items.py:CarrotLongitudinalSourceEnabled + submodule_not_ancestor webui:d35517c9",
+        "evidence": "探针 phase2 该条如期翻 DRIFT（symbol appeared: CarrotLongitudinalSourceEnabled）→ 改表后 23/23。carrot_tuning_render_smoke.py 21/21（DEVELOPER 页真 render，含新开关与其描述；zh-CHS/zh-CHT 仍覆盖 154 条根页文案）；test_translations.py 48 passed（顺带修掉档案前就红的 %1 占位符两条）。ruff 16 条与 HEAD 同数，无新增。webui cherry-pick d35517c9 → 8ae8e69，指针 952cd76→8ae8e69。",
+        "local_fix": "上游补丁在本树是 3 处小适配：(1) carrot_tuning_items.py 的 hunk 因相邻一条文案的换行风格（本树 implicit concat 不带 '+ '）而 offset 1 行，git apply 拒收，按语义手工落，新增 13 行与上游逐字一致；(2) 上游只动 pot/en/zh-CHS/zh-CHT 四份 .po，本树每份 .po 都带完整 msgid 清单，故 13 份全部补条目、非 en/zh 的 msgstr 留空（跑 update_translations.py 会重排成 1.6 万→2.9 万行噪声，已回滚）；(3) webui 是本树 fork，d35517c9 的分支点是 75dac813、我们领先 19 个提交，cherry-pick 到 sp-macan-test 上干净落地。"
       }
     ]
   }

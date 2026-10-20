@@ -122,3 +122,52 @@ rm -rf /data/.pydeps/{pytest,pluggy,iniconfig} /data/.pydeps/{pytest,pluggy,inic
 用例数从 617 涨到 624：那 5 个模块原来整块 `_FailedTest`，现在真的跑起来了，且全过。
 `allow.json` 的 `failures` 清空，`_device`/`_run` 两段写明 pytest 装在 `/data/.pydeps` 而不是 venv。
 
+
+## 5. 第八条 `34f7b78b14` ui/toggle —— 开关从「只能手写 param」抬到 Developer 页
+
+`CarrotLongitudinalSourceEnabled` 早就被 plannerd 每个周期读，我们这棵树的 Params 键
+（`params_keys.h:473`）也一直在，但页面上没有入口 —— 只能 adb 进去写 param，效果上
+等同于一段死代码。上游这次把它放到 Developer 页 killswitch 邻居旁边，并把「它到底
+改了什么」写在描述里（手机端目标速度成为一个规划源；跟车时距、舒适制动、停车点进入 MPC）。
+
+### 搬了什么
+
+| 文件 | 改动 |
+|---|---|
+| `carrot_tuning_items.py` | `build_dev_items()` 新增 `Longitudinal Control (advanced)` 标题 + `Carrot Longitudinal Source` 开关（位置：`Hardware / Tests` 与 `Navigation Control (advanced)` 之间），新开关描述含「需要手机连接，没有新鲜数据时源自动失效」 |
+| `app.pot` / `app_en.po` / `app_zh-CHS.po` / `app_zh-CHT.po` | 三条新 msgid（标题、开关名、长描述），zh-CHS/zh-CHT 用上游原文 |
+| `webui` | cherry-pick `d35517c9`（bridge 白名单加该键，两个 UI 对「哪些 param 存在」保持一致）→ 本树落成 `8ae8e69`，父仓指针 `952cd76`→`8ae8e69` |
+
+### 三处本地适配
+
+1. **hunk offset 1 行**：本树 `Traffic Congestion Slowdown` 的描述是 implicit concat（不带
+   `+`），上游那行带 `+`，`git apply` 因尾部上下文不符拒收（`patch` 能 fuzz 1 落，但不确定
+   落点）。按语义手工插入，新增 13 行与上游逐字一致。
+2. **翻译范围比上游宽**：上游只动 pot/en/zh-CHS/zh-CHT 四份；本树每份 `.po` 都带完整
+   msgid 清单（de/ja 等也是空 msgstr 的条目，不是缺条目），所以 13 份全部补上、非 en/zh
+   留空。先试过跑 `update_translations.py` 自动生成，它把 1.6 万行重排成 2.9 万行噪声
+   （顺序与换行全变），已回滚，改手工插入。
+3. **webui 是 fork**：`d35517c9` 的分支点是 `75dac813`，我们领先 19 个提交；它只动
+   `server/bridge/carrot_tuning_api.py`，该文件自分支点起我们没改过 → cherry-pick 干净。
+
+### 验证
+
+| 项 | 结果 |
+|---|---|
+| `carrot_tuning_render_smoke.py` | **PASSED 21/21**（DEVELOPER 页真 render：新开关带描述能渲染、9 行导航、字号仍限 40/50/60） |
+| `test_translations.py` | **48 passed**（顺带修掉两条档案前就红的：sunnypilot 版 `Excessive %1 actuation…` 的 zh-CHS/zh-CHT msgstr 把 `%1` 吞了 → 单独一条 `e5858f8b77`） |
+| `ruff check carrot_tuning_items.py` | 16 条，与 HEAD 完全同数（既有 F401/E501，非本次引入） |
+| 探针 | phase 1 **22/22**（新增本条 entry）、phase 2 **23/23** 无 DRIFT |
+
+清单 24 条 → **23 条**，`ported` 13 条。
+
+### 上车才看得到的一点
+
+开关本身默认 OFF，打开后才有「手机目标速度进 plan sources」。真要验，得在 Developer 页
+打开它、手机连着导航、看 `carrotManSP`/plannerd 的纵向源是否出现 carrot 那一路；本条
+只保证「开关在页面上、写进 param、webui 认得这个键」。
+
+## 6. 下一条
+
+剩余 23 条里，顺序上仍独立的 `todo`：`4d0d11e831`（models：StarPilot 式分块下载 + v25
+源映射，体积最大）。其余多为 `eval`（需驾驶者决策）或 `todo-after`（等同批前置）。
