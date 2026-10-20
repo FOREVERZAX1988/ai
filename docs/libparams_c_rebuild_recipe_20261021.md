@@ -40,7 +40,7 @@ lowmemorykiller: Killing 'clang++' (610695), adj 0,
 
 机器 3.6 GB RAM、offroad 空闲时 MemAvailable ≈ 1.9 GB；`params.cc` 用
 `-O2 -g -mcpu=cortex-a57` 单进程峰值就能把这个余量吃穿，LMK 直接杀编译器。
-（`-O0` 实测峰值 ≈ 240 MB，`-O1 -g` 也能过 —— 只有 `-O2 -g` 会死。）
+（2026-10-21 实测峰值见下一节：`-O1 -g` 1.9 GB，同样会被 LMK 杀；只有 `-O0` 的 261 MB 稳。）
 
 ## 可行配方（实测通过）
 
@@ -98,10 +98,58 @@ sudo systemctl restart comma
 
 op-aid.service 不在 comma 的 cgroup 内，助手会话不会被这次重启带走。
 
+## 2026-10-21 复盘：`-O1` 也不够，改成固定 `-O0`
+
+把「配方」交给 scons 之前先量了峰值（`/usr/bin/time -v` 的 Maximum resident set size，
+同一台机、同一 TU、同一组 `-I`，只有 `-O` 不同）：
+
+| 优化级 | clang++ 峰值 RSS | 耗时 | 结果 |
+|---|---|---|---|
+| `-O2 -g`（scons 默认） | —（未跑完） | — | `Error -9`，dmesg: `Killing 'clang++' (610695) ... cache 4848kB is below limit` |
+| `-O1 -g` | 1884940 kB ≈ 1.84 GiB | 68 s | 单跑能过（当时 MemAvailable 1872 MB，几乎顶满）；交给 scons 时被 `Error -9` 杀，dmesg 写的是 `to free 1817860kB on behalf of 'openpilot.sunny'` —— 不是 clang 自己涨爆，而是别的进程要 1.8 GB，LMK 挑了最大的 clang 下手 |
+| `-O0` | 261616 kB ≈ 256 MiB | 34 s | 在满是守护进程的 offroad 机器上一次过 |
+
+结论：`-O1` 的 1.84 GiB 在这台 3.6 GB 机器上不可复现地安全，`-O0` 才有 7 倍余量。
+已落 `openpilot/common/SConscript`：只把 `params.cc` 这一个 TU 克隆出 `-O0` 环境编译，
+其余 TU 仍是 `-O2`：
+
+```python
+_params_env = env.Clone(CCFLAGS=[f for f in env["CCFLAGS"] if f != "-O2"] + ["-O0"])
+_params_obj = _params_env.Object("params.o", "params.cc")
+_common = env.Library('common', ['swaglog.cc', 'util.cc', 'ratekeeper.cc', 'yuv.cc', _params_obj], LIBS="json11")
+```
+
+实测（本次）：`scons -j1 openpilot/common/libparams_c.so` → 38 s 一次过，
+`[AR] libcommon.a` / `[LINK] libparams_c.so` 都正常，无 LMK。也就是这台机器上
+「整机 scons 过不去」这条遗留项已经收口：手工编 `.o` 不再需要，`scons -n --verbose`
+打印的 `params.o` 命令行里只有 `-O0`（无 `-O2`）。
+
+## 关键坑：只重启 carrot_server 不够，manager 自己抱着旧 mmap
+
+重建后杀掉 `carrot_server` 让 manager 拉起新进程，新进程（07:36:00 启动）**仍然**
+mmap 旧的 `libparams_c-1792538280-1706104.so`，`check_key('WebPushVapid')` 抛
+`UnknownKeyName`。原因是 manager（`python3 ./manager.py`，07:23:56 启动，早于重建）
+自己 import 过 params，manager 拉子进程时子进程继承的是 manager 的内存镜像里的旧
+`.so`，不会重新 `stat` 源文件。所以要 `sudo systemctl restart comma`（= 杀掉 tmux
+`comma` 会话再起新 manager），让 manager 本身换到新库，子进程才跟着换。
+
+验证姿势（三条，缺一不可）：
+
+```bash
+# 1) 子进程真的加载了新副本
+grep params_c /proc/$(pgrep -f carrot.carrot_server | head -1)/maps | head -1
+# 期望 .../libparams_c-<新mtime>-<新size>.so
+# 2) 键表真的多出来
+PYTHONPATH=/data/openpilot /usr/local/venv/bin/python3 -c \
+  "from openpilot.common.params import Params; p=Params(); print(len(p.all_keys()), p.check_key('WebPushVapid'))"
+# 3) 业务面真的认
+curl -s http://127.0.0.1:7000/api/push/status
+```
+
 ## 副作用 / 遗留
 
-- 手工编出的 `params.o` 不带 scons 签名，下次任何人跑 `scons` 会重新用 `-O2 -g` 编
-  `params.o` 并再次被 LMK 杀掉（失败在建 `.o` 阶段，不会破坏已存在的 `libparams_c.so`）。
-  要长期干净，得给 `SConstruct` 的 host 编译加内存友好的例外（例如对
-  `openpilot/common/params.cc` 固定 `-O1`），否则这台机器上「整机 scons」始终过不去。
-- `-O1` vs `-O2` 对键表语义无差别；这里只有一堆 `std::unordered_map` 初始化与文件/zmq I/O。
+- `-O0 -g` 让 `libparams_c.so` 从 1.7 MB 涨到 2.87 MB（多出来的是 `-g` 调试信息与
+  未优化的键表初始化代码）。这台机器的 `/data` 余量够，且 `.so` 只在 `common/` 留一份。
+- 键表语义与 `-O2`/`-O1` 无差别；这里只有一堆 `std::unordered_map` 初始化与文件/zmq I/O。
+- 以后 `params_keys.h` 每加一个键，都仍需「重建 + `systemctl restart comma`」两步；
+  少了第二步的表现是**静默**的（新键在所有已跑进程里 `UnknownKeyName`）。
