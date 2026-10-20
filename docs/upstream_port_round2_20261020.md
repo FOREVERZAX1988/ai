@@ -250,3 +250,46 @@ speed-limit 参数键）是 `982fb613f5` 和 `d81eec5899` 的前置；`4b21c8cfd
 `817f4a78c2..2d9c586376` 这 **13 个提交**（StarPilot 整批 port + 那个 unregistered-key
 fix）还没进登记表 —— 按驾驶者口径"整批立项单独评估"，应另开一轮做 scope 刷新与逐条裁决，
 不要混进本条。
+
+## 9. 2026-10-21 裁决：剩 7 条收成两批，`4b21c8cfdb` 只读评估结论
+
+### 9.1 「接近段」能不能单独摘出来 —— 不能
+
+全部证据来自 `git show 4b21c8cfdb:...` 的只读读取，工作树未动：
+
+1. `get_vision_lead_approach_cap`（policy 480–537 行）不是可独立摘取的 cap：唯一调用点在
+   `apply()` 的 per-lead 循环里，它与 `get_close_lead_brake_cap`（radar 近距）、
+   `get_vision_slow_stopped_lead_cap`、`get_vision_low_speed_stop_buffer_cap` 共用同一个
+   `a_target` 折叠点。摘掉邻居 = 改了顺序语义。
+2. 它的输出还被送进 `tracked_vision_lead_approach_needs_immediate_brake`，写
+   `self.vision_lead_approach_confirm_t`（确认窗 0.25 s；立即刹车旁路阈值 −1.0 m/s²、
+   4.0 m/s 接近速度、0.20 前车刹车、28 m 或 0.85 s·v 距离）。后续 close-stop hold /
+   close release / settle / final guard 段读这些 latch。只摘 cap 不摘 latch =
+   「接近时压油门」但「停止保持与释放」仍走本机旧形状，是不对称的体感陷阱。
+3. 模块顶层硬依赖 `from ...lead_follow_policy import _desired_follow_distance`。
+   `lead_follow_policy.py` 来自 `51caaa4a3a`，而那条判的是「需 A/B，暂不搬」。
+   ⇒ `4b21c8cfdb` 是 `51caaa4a3a` 的下游：单独搬会 import 失败，把 helper 内联则等于
+   偷偷搬了 51caaa4a3a 的一段，登记表就失真了。
+4. 结论：**只取 vision approach cap 不成立，只能整块搬**。整块 = 1792 行 policy +
+   890 行 tune 面（替换本机 16 行 seed，seed 目前只有 `test_lead_behavior` 一个消费者）+
+   27 条纯逻辑单测 + 38 行 planner hook + 1 个默认 0 的 param（`LeadStopDepartPolicyEnabled`）。
+   硬前置就是 `51caaa4a3a`。
+5. 落地位置已核（真要搬时不用再找）：本机 `longitudinal_planner.py` 在 236–243 行做完
+   mpc/e2e/cruise 三路仲裁并 clip `output_a_target`，hook 插在 243 行之后、`apply_signal_prepare`
+   之前，即上游同一位置；本机缺的只有把 `effective_t_follow`（carrot t_follow / `mpc.get_t_follow`）
+   从 follow-policy 块里 hoist 出来的那一步，`force_decel` 本机已有。
+
+### 9.2 因此 items 收敛为两批，已无可单独搬的条目
+
+| 批 | 条目 | 为什么必须同批 | 本轮裁决 |
+|---|---|---|---|
+| A latcontrol/FLM | `80cd489f0e`、`982fb613f5`、`d81eec5899`、`077456330f` | 互相 import；`80cd489f0e` 原判据「Macan 0 命中就不搬」失效——它是 import 前置，空命中走回默认 | 暂不搬；只在明确要横向调参手段/FLM 工具/视觉限速时立项，不影响行车 |
+| B planner follow/stop-depart | `51caaa4a3a`、`4b21c8cfdb`、`817f4a78c2` | `4b21c8cfdb` 顶层 import `51caaa4a3a` 的 `_desired_follow_distance`；`817f4a78c2` 测的就是 `4b21c8cfdb` | 暂不搬，需上车 A/B（默认 0 的 param + 27 条纯逻辑单测已在位，搬了也不改默认行为，差异只能在路上看） |
+
+登记表本轮只改 `status` / `next` 并新增 `next_batch.batches`，没有改任何代码。
+
+### 9.3 状态
+
+- items 里 0 条可 offroad 单人推进：剩下的都是「整批 + 上车 A/B」或「不影响行车、按需立项」。
+- `817f4a78c2` 那条例外：**它是唯一 offroad 就能跑的东西**（纯脚本，不依赖车），但被测对象
+  `4b21c8cfdb` 不搬就没有测的东西，所以跟着 B 批。
