@@ -108,3 +108,22 @@ ruff                               干净（selfdrived.py:207 is_remote 未使�
 3. `carrot_functions.py` / `events.py` / `selfdrived.py` / `log.capnp` 仍是 `expect_diff: true`：
    前三个带本树自己的内容，`log.capnp` 只差 `ModelDataV2.meta.laneWidthLeft/Right`
    （属未移植 `bde651b930`）。
+
+## 6. 部到位了吗（推送 / CI / 上车检查）
+
+- 父仓 `44aad7483b` 已推 `origin/sp-macan-test` 与 `origin/sync/upstream-1019`（两分支 tip 相同，
+  `git ls-remote` 核对过）；ai 子仓 `df1f6ece` 已推 `origin/sp-macan-test`。
+- **这个仓没有针对 `sp-macan-test` 的 workflow**：GitHub API 查该分支历史 workflow_runs = 0，
+  两个新 SHA 也没有 run 生成。所以这轮没有 CI 可等（需要 CI 的是 jetlink 仓，本轮没碰它，
+  `jetlink_repo` 指针仍是 `6186a4b`＝CI 绿的那版）。
+- 磁盘上已经是新代码，但**进程里跑的还是旧字节码**：`proclogd` / `selfdrived` / `auto_update`
+  都要等一次 `sudo systemctl restart comma`（或重启设备）才生效。本次没有动任何服务。
+- 六个模块的 import + `py_compile` 已在设备本机（`PYTHONPATH=/data/openpilot`，
+  `/data/venv-jetlink/bin/python`）过一遍，全部通过。
+- 上车后看三件事：
+  1. `cereal` 的 Python 绑定是 pycapnp 运行时加载 `.capnp`，`EventName.torqueNNLoad` 立即可用
+     （本机已验证 = 105）；C++ 侧要等下一次 SCons 才会带这个枚举，但它只有 Python 用，不阻塞。
+  2. NNFF 播报：行车约 11 s 后应弹一次「NNFF 扭矩模型已加载」+ 型号；模糊匹配的机型带
+     「（替代模型）」。只有一次，且要 `NeuralNetworkLateralControl` 参数为开、型号非 MOCK。
+  3. proclogd：`proclog` 消息里每条进程应带 `starttime`，内存曲线不该出现「同一个 PID 换了
+     argv」的串数；`gc.freeze()` 在 `main()` 里、建 `PubMaster` 之前。
