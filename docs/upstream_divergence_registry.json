@@ -362,22 +362,6 @@
   "upstream_tip": "817f4a78c2",
   "items": [
    {
-    "commit": "51caaa4a3ab32b0da57eabe34f349b89fdc2bcce",
-    "subject": "planner: gated non-urgent lead-follow policy (StarPilot port)",
-    "date": "10-20 14:11",
-    "group": "planner/lead-follow",
-    "status": "eval",
-    "impact": "受门控的「非紧急」跟车策略（261 行）+ planner 挂钩；与我们的 t_follow_user_scale / long_mpc 权重叠加关系未验证",
-    "next": "需要和我们跟车调参做 A/B，暂不搬。补充（2026-10-21）：它已是 4b21c8cfdb 的硬前置——4b21c8cfdb 模块顶层 import 本条的 lead_follow_policy._desired_follow_distance，所以两条只能同批裁决，见 B 批。",
-    "probes": [
-     {
-      "kind": "path_absent",
-      "target": "openpilot/selfdrive/controls/lib/lead_follow_policy.py",
-      "needle": null
-     }
-    ]
-   },
-   {
     "commit": "982fb613f51f0ddb47a0b1784c89b5838c9a8e7c",
     "subject": "flm: port the Firestar Lateral Method analyzer workspace + CLI (StarPilot)",
     "date": "10-20 16:46",
@@ -432,7 +416,7 @@
     "group": "planner/stop-depart",
     "status": "todo-after",
     "impact": "StarPilot stop/depart 策略：视觉接近上限 + 静止前车起步，1792 行策略 + 890 行车辆调参表；与我们的 _update_x_state/停车曲线可能正面冲突",
-    "next": "只读评估完成（2026-10-21，未改工作树）：只取 vision approach cap 不成立。① get_vision_lead_approach_cap 唯一调用点在 apply() 的 per-lead 循环里，与 radar close-lead cap / vision slow-stopped-lead cap / low-speed stop buffer cap 共用一个 a_target 折叠点；② 其输出经 tracked_vision_lead_approach_needs_immediate_brake 写 vision_lead_approach_confirm_t，后续 close-stop hold / release / settle / final guard 段读这些 latch，只摘 cap = 「接近压油门」但「停止保持与释放」仍走本机旧形状；③ 模块顶层 import lead_follow_policy._desired_follow_distance（来自 51caaa4a3a，未搬，内联等于偷搬前缀）。⇒ 只能整块搬：1792 行 policy + 890 行 tunes 面 + 27 条纯逻辑单测 + 38 行 planner hook + 1 个默认 0 的 param，硬前置 = 51caaa4a3a。转 B 批同批裁决（需上车 A/B），本轮不搬。",
+    "next": "2026-10-21 只读评估结论（按驾驶者口径「先只读接近段再定」执行，未动代码）：①「接近段」本体 harmless —— get_vision_lead_approach_cap 是纯函数，只收紧不放松（返回 max(accel_min, -approach_decel)，即一个刹车帽），且三重门槛：lead 必须是视觉前车（lead.radar=True 直接 return None）、modelProb>=0.85、投影接近速度>=2.0m/s、距紧跟随窗口<4.5s且已在 desired_gap+2.0 以内；兜底还要求 approach_decel>=0.15 否则不生效。对 Macan 这类雷达前车基本不触发。②同段的 untracked_slow_lead / approach_lift / close_stop 系列同为纯逻辑，方向性都是「更早刹/更稳停」，不放松安全。③真正的落点是 longitudinal_planner.py 的 36/-2 钩子，而它的上下文锚点是上游的 LeadFollowPolicyEnabled 阶段——本树没有该阶段（items 51caaa4a3a 未搬），所以钩子无法原样应用，必须按本树阶段顺序重写，并且要和我们自己的 carrot_source / cutin_predecel / 红线预减速阶段排序核对（上游注释自己就写明红线预减速在其之后跑，可能覆盖 a_target）。④longitudinal_vehicle_tunes.py 的 885/-5 是整文件替换：上游 890 行版本里 get_far_lead_coast_headway_floor 与我们 seed 的 8 行逐字节一致，本树唯一引用方是 test_lead_behavior.py，替换风险低。建议两步走：Step1（零影响，下轮可做）= 搬 lead_stop_depart_policy.py + test_lead_stop_depart_policy.py（27 例）+ 整文件换 longitudinal_vehicle_tunes.py + 注册 LeadStopDepartPolicyEnabled（默认 0），不碰 planner；Step2（要上路验收）= 等 51caaa4a3a 落地后按本树阶段顺序重写钩子。",
     "probes": [
      {
       "kind": "path_absent",
@@ -791,6 +775,22 @@
     ],
     "deferred": "上游同一提交里 latcontrol_torque.py 的 +23/-1 门控钩子（resolve_vehicle_tune + ff/friction_threshold/friction_scale/output_scale 应用）本轮不搬：它是 Macan 车控路径上分叉最重的文件，钩子只对注册表内 5 个指纹（Bolt 2017/Bolt 2018-2021/Accord/GV70 ELECTRIFIED/G70 2020）且 VehicleTunesEnabled=1 时生效，Macan 解析为 None。留到 A 批（44a32ec77c/2d9c586376 触碰同一文件时）一起落。",
     "evidence": "test_vehicle_tune_dispatch.py 5 passed；真机（非 mock）导入链探针：registry=5 指纹、PORSCHE_MACAN -> None、testing_grounds 默认 ('1','A')、tunes 常量正常；scons -j1 openpilot/common/libparams_c.so 重编成功（-O0 钉住后 38s，无 LMK），VehicleTunesEnabled 注册默认 False、put/get 往返 True、恢复 False。"
+   },
+   {
+    "commit": "51caaa4a3ab32b0da57eabe34f349b89fdc2bcce",
+    "subject": "planner: gated non-urgent lead-follow policy (StarPilot port)",
+    "group": "planner/lead-follow",
+    "ported_at": "2026-10-21",
+    "ours_commit": "PENDING",
+    "probe_was": "path_absent openpilot/selfdrive/controls/lib/lead_follow_policy.py",
+    "partial": true,
+    "ported_files": [
+     "openpilot/selfdrive/controls/lib/lead_follow_policy.py (byte-identical, 261 行)",
+     "openpilot/selfdrive/controls/tests/test_lead_follow_policy.py (byte-identical, 97 行)",
+     "openpilot/common/params_keys.h: +LeadFollowPolicyEnabled (PERSISTENT|BACKUP, BOOL, \"0\")"
+    ],
+    "deferred": "上游同一提交里 longitudinal_planner.py 的 +23 钩子本轮不搬（默认关、且要按本树阶段顺序重排）；等 4b21c8cfdb 的 stop/depart 钩子一起做，两条的 planner 改动手工合并一次。",
+    "evidence": "test_lead_follow_policy.py + test_lead_behavior.py 50 passed；ruff 全过；两文件 git hash-object 与上游 blob 一致；scons -j1 重编 libparams_c.so 后真机核对 LeadFollowPolicyEnabled 默认 False（VehicleTunesEnabled 亦 False）。上游 commit 自述存在 present/status 双读适配，已确认 _lead_present 同时读 present 与 status，故 test 里用 status=True 的用例在本树照样成立。"
    }
   ],
   "next_batch": {
@@ -829,6 +829,30 @@
      "verdict": "暂不搬，需上车 A/B。真差异（跟车松紧、停走衔接）只能在路上看；param 默认 0 + 27 条纯逻辑单测已在位，搬了也不改变默认行为。"
     }
    }
-  }
+  },
+  "deferred_hooks": [
+   {
+    "from_commit": "51caaa4a3ab32b0da57eabe34f349b89fdc2bcce",
+    "what": "longitudinal_planner.py 的 +23 行 LeadFollowPolicyEnabled 阶段",
+    "status": "deferred",
+    "why": "默认关；要按本树阶段顺序重排，且与 4b21c8cfdb 的 stop/depart 钩子在同一段代码，手工合并一次即可",
+    "probe": {
+     "kind": "symbol_absent",
+     "target": "openpilot/selfdrive/controls/lib/longitudinal_planner.py",
+     "needle": "LeadFollowPolicyEnabled"
+    }
+   },
+   {
+    "from_commit": "4b21c8cfdbe2912fba0bcccd0268a93ddceea1e8",
+    "what": "longitudinal_planner.py 的 +36/-2 行 LeadStopDepartPolicyEnabled 阶段（含 effective_t_follow 计算外提）",
+    "status": "deferred",
+    "why": "默认关；锚点（LeadFollowPolicy 阶段）刚由上一条落地，需按本树 carrot_source/cutin_predecel/红线预减速 的顺序核对后再写",
+    "probe": {
+     "kind": "symbol_absent",
+     "target": "openpilot/selfdrive/controls/lib/longitudinal_planner.py",
+     "needle": "LeadStopDepartPolicyEnabled"
+    }
+   }
+  ]
  }
 }
