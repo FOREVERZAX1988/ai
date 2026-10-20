@@ -358,73 +358,9 @@
     "about": "上游 test 上已经实现、我们还没移植的提交清单。每条的 probes 是机器可判定的「仍未移植」判据：路径应当不存在 / 符号应当不存在 / 该符号应当还在（因为上游那次是删除）/ 子模块指针应当还不是我们的祖先。检查器 ai/scripts/upstream_divergence_check.py 会逐条验；一旦某条探针失效（= 我们其实已经搬了或上游又改了），它报 DRIFT，提醒回来改这张表。ported=已移植（探针已反转为 DRIFT，条目移出 items 留档）。status: todo=独立可搬 | todo-after=依赖同批其它条目 | eval=体积大或需驾驶者决策 | pointer=子模块指针 | docs=文档，随条目走。",
     "scope": "upstream/test 59efe220e6..817f4a78c2（2026-10-20 17:30 +0800，35 个提交）",
     "checked_at": "2026-10-20",
-    "ours_tip": "04eaf99e5b",
+    "ours_tip": "64b6386ff6",
     "upstream_tip": "817f4a78c2",
     "items": [
-      {
-        "commit": "590f0bf790fa8708327c9f9c9e326b5732731ae1",
-        "subject": "jetlink: the comma's six stages reach the host",
-        "date": "10-20 11:20",
-        "group": "submodule/jetlink",
-        "status": "pointer",
-        "impact": "jetlink 指针：comma 的六路 stage 送上主机（f2cedcf）",
-        "next": "随 e4b13bdc61 的 5 连一起评估",
-        "probes": [
-          {
-            "kind": "submodule_not_ancestor",
-            "target": "jetlink_repo",
-            "needle": "f2cedcfd4f"
-          }
-        ]
-      },
-      {
-        "commit": "869ec7e9fc2fd00a0d0bcdf6e92e2ac381a28854",
-        "subject": "jetlink: the pin follows the stages fix",
-        "date": "10-20 11:28",
-        "group": "submodule/jetlink",
-        "status": "pointer",
-        "impact": "jetlink 指针：stages 修复的补丁（0596048：CommaStages 少的那对花括号）",
-        "next": "随 e4b13bdc61 的 5 连一起评估",
-        "probes": [
-          {
-            "kind": "submodule_not_ancestor",
-            "target": "jetlink_repo",
-            "needle": "05960480fa"
-          }
-        ]
-      },
-      {
-        "commit": "3c154c0f72ab7fe4a62b9c5c8d2f2aa197593506",
-        "subject": "jetlink: the pin follows the table fix",
-        "date": "10-20 11:34",
-        "group": "submodule/jetlink",
-        "status": "pointer",
-        "impact": "jetlink 指针：表修复（d5cf94c：FrameStageTable 改为构建 sections 而不是 append）",
-        "next": "随 e4b13bdc61 的 5 连一起评估",
-        "probes": [
-          {
-            "kind": "submodule_not_ancestor",
-            "target": "jetlink_repo",
-            "needle": "d5cf94ce65"
-          }
-        ]
-      },
-      {
-        "commit": "87cce8055cf36f1263f34b576a6f1369858a5660",
-        "subject": "jetlink: pin the formatted stages work",
-        "date": "10-20 11:48",
-        "group": "submodule/jetlink",
-        "status": "pointer",
-        "impact": "jetlink 指针：格式化的 stages 工作（2967959）",
-        "next": "随 e4b13bdc61 的 5 连一起评估",
-        "probes": [
-          {
-            "kind": "submodule_not_ancestor",
-            "target": "jetlink_repo",
-            "needle": "2967959703"
-          }
-        ]
-      },
       {
         "commit": "f29fd60fbce81a6504ef544cf4ca7b543c353a51",
         "subject": "docs: record the device results for the three changes",
@@ -503,22 +439,6 @@
             "kind": "path_absent",
             "target": "openpilot/selfdrive/controls/lib/lead_follow_policy.py",
             "needle": null
-          }
-        ]
-      },
-      {
-        "commit": "e4b13bdc61c5e68e3d4a1f39e2f234a123e1c147",
-        "subject": "jetlink: stage tables on the screens, stage reports that wait for nothing",
-        "date": "10-20 14:16",
-        "group": "submodule/jetlink",
-        "status": "pointer",
-        "impact": "jetlink 指针：stage 表上屏 + 等待型 stage 报告（dbb4877e）；上游 jetlink 连着 5 个提交我们 fork 都没有",
-        "next": "在 jetlink fork 里评估这 5 个提交（f2cedcf→0596048→d5cf94c→2967959→dbb4877），我们的 stages 实现可能已另写一套",
-        "probes": [
-          {
-            "kind": "submodule_not_ancestor",
-            "target": "jetlink_repo",
-            "needle": "dbb4877e3387b2fd38d1c28d66ea5225423a0bd2"
           }
         ]
       },
@@ -845,6 +765,56 @@
         "probe_was": "path_absent openpilot/selfdrive/car/tests/fleet_safety_core.py",
         "evidence": "新建 openpilot/selfdrive/car/tests/fleet_safety.py + fleet_safety_core.py，两者 git hash-object 与上游逐字节相同（f282182bb7 322 行 / aaf553a301 200 行）。opendbc_repo 指针：上游同提交带 f087c437f8->f06251665f，而那一步唯一实质改动是 non_tested_cars 补逗号（routes.py 缺逗号导致 SyntaxError，本树原本也中招——ast.parse 直接报 line 69）。本树在自己的 opendbc 线上先落 ac1ac7c7a（routes.py blob 37b27d1dc 与上游修后一致），父仓只 bump 到本地那条。实测 --inventory：304 platforms / 240 有路由 / 293 条注册路由；build_safety 用 cc 编出 libsafety.so 并 dlopen 成功、set_safety_hooks(0,0)=0。",
         "local_fix": "无（两文件原样，仅多 chmod +x 不适用——非脚本入口，走 -m）"
+      },
+      {
+        "commit": "590f0bf790fa8708327c9f9c9e326b5732731ae1",
+        "subject": "jetlink: the comma's six stages reach the host",
+        "group": "submodule/jetlink",
+        "ported_at": "2026-10-20",
+        "ours_commit": "64b6386ff6",
+        "probe_was": "submodule_not_ancestor jetlink_repo f2cedcfd4f",
+        "evidence": "jetlink_repo 3ffb61f（merge up/cn dbb4877，含 f2cedcf）。上游 16 文件（ControlProtocol/FrameStats/Session/WireProtocol/FrameStageTable/index.html/client.py/model_state.py/protocol.py + 测试与 conformance/wire.json）。并入方式=git merge up/cn（五条一起），本树 jetlink 于 6186a4b 上 merge 成 3ffb61f；五条 needle 现全部是 HEAD 祖先。唯一冲突在 jetlink/openpilot/model_state.py 两处：__init__ 里 _last_summary_logged 与 _stages_reported 并存；帧路径尾部先保留本树 caf0113 的 jetlink: stages 日志（last()+SLOW_FRAME/period 判据）与 trips summary，再调上游的 self._report_stages(t4)。语义自检：report_stages 走 try_send，老 server unknown_message 被 _forgive 放过，不污染 seq。实测 1521 passed/33 skipped（/usr/local/venv/bin/python3，numpy 原生）、ruff check jetlink tests 全绿。Swift 侧本机不能交叉编译，交 CI。",
+        "local_fix": "无（上游原样并入；本树自有 caf0113 的六段日志一行未丢）"
+      },
+      {
+        "commit": "869ec7e9fc2fd00a0d0bcdf6e92e2ac381a28854",
+        "subject": "jetlink: the pin follows the stages fix",
+        "group": "submodule/jetlink",
+        "ported_at": "2026-10-20",
+        "ours_commit": "64b6386ff6",
+        "probe_was": "submodule_not_ancestor jetlink_repo 05960480fa",
+        "evidence": "jetlink_repo 3ffb61f（merge up/cn dbb4877，含 0596048）。随同一次 merge 并入（ControlProtocol.swift +1、Session.swift 4 行），无冲突。",
+        "local_fix": "无（原样并入）"
+      },
+      {
+        "commit": "3c154c0f72ab7fe4a62b9c5c8d2f2aa197593506",
+        "subject": "jetlink: the pin follows the table fix",
+        "group": "submodule/jetlink",
+        "ported_at": "2026-10-20",
+        "ours_commit": "64b6386ff6",
+        "probe_was": "submodule_not_ancestor jetlink_repo d5cf94ce65",
+        "evidence": "jetlink_repo 3ffb61f（merge up/cn dbb4877，含 d5cf94c）。FrameStageTable.swift 先构 sections 再拼（10+/7-），自动合并无冲突。",
+        "local_fix": "无（原样并入）"
+      },
+      {
+        "commit": "87cce8055cf36f1263f34b576a6f1369858a5660",
+        "subject": "jetlink: pin the formatted stages work",
+        "group": "submodule/jetlink",
+        "ported_at": "2026-10-20",
+        "ours_commit": "64b6386ff6",
+        "probe_was": "submodule_not_ancestor jetlink_repo 2967959703",
+        "evidence": "jetlink_repo 3ffb61f（merge up/cn dbb4877，含 2967959）。FrameStageTable.swift 按 swift-format 的参数列表（10+/6-），自动合并无冲突。",
+        "local_fix": "无（原样并入）"
+      },
+      {
+        "commit": "e4b13bdc61c5e68e3d4a1f39e2f234a123e1c147",
+        "subject": "jetlink: stage tables on the screens, stage reports that wait for nothing",
+        "group": "submodule/jetlink",
+        "ported_at": "2026-10-20",
+        "ours_commit": "64b6386ff6",
+        "probe_was": "submodule_not_ancestor jetlink_repo dbb4877e3387b2fd38d1c28d66ea5225423a0bd2",
+        "evidence": "jetlink_repo 3ffb61f（merge up/cn dbb4877，含 dbb4877）。index.html/StatusContent.swift/StatusView.swift/client.py/test_client.py 共 5 文件自动合并无冲突；index.html 与 FrameStageTable 的 stage 表在合并后仍通过 test_conformance 的 wire.json 一致性检查。",
+        "local_fix": "无（原样并入）"
       }
     ]
   }
