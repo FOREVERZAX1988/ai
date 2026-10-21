@@ -401,14 +401,43 @@
     "NNFF_MODELS_PATH"
    ],
    "note": "Upstream's import target only exists after a later commit; importing it here raised ImportError, so the function would have looked present and never returned a verdict."
+  },
+  {
+   "path": "openpilot/common/params.cc",
+   "verdict": "mixed",
+   "expect_diff": true,
+   "upstream_commit": "5c2498a30e",
+   "ours_keeps": [
+    "FileLock opens the lock file with O_CLOEXEC"
+   ],
+   "upstream_intent_present": [
+    "HANDLE_EINTR(flock(fd_, LOCK_EX))",
+    "int Params::put(const char* key, const char* value, size_t value_size)"
+   ],
+   "note": "Without O_CLOEXEC a child forked/exec'd while any process holds the params flock inherits the descriptor, and the lock outlives its owner: on 2026-10-21 /proc/locks showed the owner pid already dead while 9 threads across ui/hardwared/models/mapd/athenad/sunnylinkd/carrot_man waited, and every block=True param write in the stack hung. See ai/docs/upstream_port_round17_20261021.md."
+  },
+  {
+   "path": "openpilot/selfdrive/selfdrived/tests/test_state_machine.py",
+   "verdict": "mixed",
+   "expect_diff": true,
+   "upstream_commit": "5c2498a30e",
+   "ours_keeps": [
+    "_FAKE_EVENT_ID = max(EVENTS) + 1 instead of the literal 0"
+   ],
+   "upstream_intent_present": [
+    "class TestStateMachine(OpenpilotTestCase)",
+    "self.state_machine.update(self.events)",
+    "EVENTS[_FAKE_EVENT_ID]"
+   ],
+   "note": "Upstream fabricates its event under id 0, unused there (`none`). This tree's log.capnp has no `none`: 0 is canError, so EVENTS[0] = {} destroyed a real mapping for every later test in the process."
   }
  ],
  "upstream_pending_port": {
   "about": "上游 test 上已经实现、我们还没移植的提交清单。每条的 probes 是机器可判定的「仍未移植」判据：路径应当不存在 / 符号应当不存在 / 该符号应当还在（因为上游那次是删除）/ 子模块指针应当还不是我们的祖先。检查器 ai/scripts/upstream_divergence_check.py 会逐条验；一旦某条探针失效（= 我们其实已经搬了或上游又改了），它报 DRIFT，提醒回来改这张表。ported=已移植（探针已反转为 DRIFT，条目移出 items 留档）。status: todo=独立可搬 | todo-after=依赖同批其它条目 | eval=体积大或需驾驶者决策 | pointer=子模块指针 | docs=文档，随条目走。",
-  "scope": "upstream/test after 1b36f1ad36 (2026-10-21): round 16 ported the last feature, 63a6f3211b NNFF. Nothing left but 0facf5cf71 (agnos mirror, skip: not comma hardware). TRAP kept for the next reader: refs/remotes/mouxan/test is an orphan ref from a deleted remote and is stale (5f2ae96a64, 2026-10-17); always read refs/remotes/upstream/test after `git fetch upstream test` and confirm with `git ls-remote upstream test`.",
+  "scope": "upstream/test after 5c2498a30e (2026-10-21): round 17 ported the two commits added since round 16 (5c2498a30e controls presentation fixes, d52602e6e6 lead_forecast tests). Nothing left but 0facf5cf71 (agnos mirror, skip: not comma hardware). TRAP kept for the next reader: refs/remotes/mouxan/test is an orphan ref from a deleted remote and is stale; always read refs/remotes/upstream/test after `git fetch upstream test` and confirm with `git ls-remote upstream test`.",
   "checked_at": "2026-10-21",
-  "ours_tip": "853cc6f936",
-  "upstream_tip": "1b36f1ad36",
+  "ours_tip": "33c2cdd8c3",
+  "upstream_tip": "5c2498a30e",
   "items": [
    {
     "commit": "0facf5cf71",
@@ -1384,6 +1413,31 @@
      "openpilot/selfdrive/ui/sunnypilot/layouts/settings/developer.py",
      "openpilot/common/params_keys.h"
     ]
+   },
+   {
+    "commit": "5c2498a30ec6120285e81348404295d39477bfae",
+    "subject": "controls: two presentation fixes ported from cp's last week",
+    "group": "controls/presentation",
+    "ported_at": "2026-10-21",
+    "ours_commit": "33c2cdd8c3",
+    "probe_was": "symbol_absent latcontrol_angle.py:saturation_limited",
+    "evidence": "test_angle_saturation 3 passed + 8 subtests; test_steering_warning_delay 11 passed; selfdrived/tests 52 passed + 74 subtests",
+    "local_fix": "events.py carries 200+ fork lines, so its 54-line block was applied by hand rather than checked out; the ported test imported `from openpilot.cereal import car`, which never resolves here (car structs live in opendbc) - same class as 5034cefd01.",
+    "expect_diff_after": [
+     "openpilot/selfdrive/selfdrived/events.py",
+     "openpilot/selfdrive/selfdrived/tests/test_steering_warning_delay.py"
+    ]
+   },
+   {
+    "commit": "d52602e6e66e8d9516de8114f3194ca89074011f",
+    "subject": "lead_forecast: run its own tests for the first time",
+    "group": "controls/lead_forecast",
+    "ported_at": "2026-10-21",
+    "ours_commit": "round 15 item 21 (converted earlier)",
+    "probe_was": "symbol_absent test_forecast.py:import pytest",
+    "evidence": "test_forecast 26 passed (upstream 25 cases) + test_planner_hook 3 passed; both already unittest before this round",
+    "local_fix": "none needed - our conversion is a superset of upstream's, so no code was taken; recorded so the checker stops reporting it.",
+    "expect_diff_after": []
    }
   ],
   "next_batch": {
