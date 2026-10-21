@@ -84,3 +84,24 @@ wrapper 里一次都没放松——这是「跑得起来的模型一定是替身
 重基线（待办 7）、panda 指针 21 条（待办 25）、设备上跑不了整机 pytest（待办 26）。
 本轮又给待办 26 添了一条实证：**一个从未被任何验收清单覆盖的测试目录里躺着一条永远红的断言**，
 而它不是靠读代码发现的，是靠把整目录跑了一遍。
+
+## 顺带复核：10-19 的 jetlink 无线优化没被后面的合并吃掉
+
+驾驶者 10-21 报「行车预览下 Wi-Fi jetlink 完全稳不住，是不是合并把优化弄没了」。按 10-19 那支
+DAY_LOG 的五条修复逐条验（证据是 git 祖先关系，不是回忆）：
+
+| 修复 | 现在还在吗 |
+|---|---|
+| `a4e0d93` Wi-Fi 落后一帧不再每秒交还大模型 | **在**（jetlink 指针 `3ffb61f` 的祖先） |
+| `84de735` 被 hold 帧的迟到答复由下一帧读走 | **在** |
+| `904e041` stop 信号由 handler 接管（0.8.7-1019-1） | **在** |
+| `f09a8b7` Wi-Fi hold 窗口收回相机帧内 | **在** |
+| `b8cbb92` 帧循环由介质决定，不再由 preview 决定 | **在** |
+
+代码层面也对得上：`WIFI_HOLD_FRAME 0.046 / WIFI_SETTLING_FRAMES 8 / WIFI_HOLDS_ALLOWED 150`
+仍在 `jetlink/openpilot/model_state.py`，并且在 `joining.py:932` **按介质**注入；剩下的
+`IsOnroadPreview` 只出现在注释与声明里，不再是流水线的开关。父仓侧钉住这五条的
+`ae4e66ce80`（`sp-macantest-1018`）也是当前 HEAD 的祖先。
+
+所以 10-21 那次不稳**不是**合并丢代码。要定位得靠下一次上路的 swaglog（`p50/p99`、`held`、
+`drop %`、`lag N this drive` 那几行），本机 ignition=false、jetlink 不跑，offroad 复现不了。
