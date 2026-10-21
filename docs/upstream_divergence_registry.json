@@ -378,38 +378,6 @@
         ]
       },
       {
-        "commit": "7fd88d270b5fdc4a2433d0ec3e727bf7bc417a9a",
-        "subject": "safety: add a process watchdog and a trustworthy vehicle capability probe",
-        "date": "10-21",
-        "group": "safety/watchdog",
-        "status": "todo",
-        "impact": "新增 common/watchdog.{cc,h,py} + SConscript 目标；探活进程级健康并给出车辆能力探测",
-        "next": "C++ 侧新目标，需要自己的编译条目；与 aab6ed90f8（hw.h 路径修正）一起搬",
-        "probes": [
-          {
-            "kind": "path_absent",
-            "target": "openpilot/common/watchdog.cc",
-            "needle": null
-          }
-        ]
-      },
-      {
-        "commit": "aab6ed90f825a75a10d48253bc8cc6209119094f",
-        "subject": "fix(common): include the real hw.h path in watchdog.cc",
-        "date": "10-21",
-        "group": "safety/watchdog",
-        "status": "todo-after",
-        "impact": "watchdog.cc 的一行 include 修正",
-        "next": "随 7fd88d270b 一起搬，不单独动",
-        "probes": [
-          {
-            "kind": "path_absent",
-            "target": "openpilot/common/watchdog.h",
-            "needle": null
-          }
-        ]
-      },
-      {
         "commit": "dbe9c7c52c8a6734228e16b03cb1dd7cd51a36f0",
         "subject": "slc: comfort relaxation for sudden limit drops; safe-mode stock semantics",
         "date": "10-21",
@@ -1049,6 +1017,31 @@
         "expect_diff_after": [
           "translations/*.po 的条目顺序与上游不同（本树按差集合追加，未重排既有条目）"
         ]
+      },
+      {
+        "commit": "7fd88d270b",
+        "subject": "safety: add a process watchdog and a trustworthy vehicle capability probe",
+        "group": "port-20261021-r10",
+        "ported_at": "2026-10-21",
+        "ours_commit": "21c0a5995f",
+        "probe_was": "path_absent openpilot/common/watchdog.py",
+        "evidence": "新增 common/watchdog.py（kick/read/stale/clear，1 s 节流、CLOCK_BOOTTIME 对齐）+ common/watchdog.{h,cc}（进 libcommon，已实测 watchdog.o 编入 libcommon.a）+ manager 的 check_watchdog（「从没上报过」的宽限分支保证不会重启风暴）+ ui 主循环 kick + camerad 每帧 kick + sunnypilot/common/car_capability.py + carrot settings 的 current_vehicle_brand 改走可信快照。单测 30 passed（test_watchdog 15 + test_car_capability 15）；manager 目录 34 passed / 1 failed（test_restarting_process 的 AudioProcess isinstance 断言在 HEAD 同样失败：process_config 自己定义了子类，pre-existing）；carrot tests 711 passed / 6 skipped。真机手工验证：pid 心跳路径 /dev/shm/wd_<pid>、30 s 旧心跳在 5 s 阈值下返回 30.0、清除后返回 None、无文件永不超时。libcommon 重建（scons -j1 libparams_c.so）通过，未触发 LMK。",
+        "local_fix": "本树没有 ForceFingerprint / CarModel 两个键（那是上游/StarPilot 的强制指纹功能，本树未注册），capability_snapshot 的 forced 分支在本树恒为 False —— 调用方用 try/except 包住 get，读不存在的键不会炸，行为等价于「没有强制模型」。另：process_config.py 的冲突按本树 camerad 条件 or_(or_(driverview, livestream), onroad_preview) 手工合，上游那行是 or_(driverview, livestream, onroad_preview)；随补丁进来的 is_dm_disabled import 本树无使用者，删掉。",
+        "expect_diff_after": [
+          "process_config.py: camerad 的 should_run 条件本树多一层 or_（preview 分支），watchdog 参数与上游一致",
+          "capability_snapshot 的 forced 分支在本树是死代码（ForceFingerprint / CarModel 未注册）"
+        ]
+      },
+      {
+        "commit": "aab6ed90f8",
+        "subject": "fix(common): include the real hw.h path in watchdog.cc",
+        "group": "port-20261021-r10",
+        "ported_at": "2026-10-21",
+        "ours_commit": "21c0a5995f",
+        "probe_was": "symbol_absent watchdog_kick in openpilot/common/watchdog.cc",
+        "evidence": "与本轮一起落地：watchdog.cc 用的是修好后的 `#include \"common/hardware/hw.h\"` + `#include <unistd.h>`，本树 hw.h 确实在 openpilot/common/hardware/hw.h，watchdog.o 编译通过。上游原版写的是 system/hardware/hw.h，那条路径在本树不存在。",
+        "local_fix": "",
+        "expect_diff_after": []
       }
     ],
     "next_batch": {
