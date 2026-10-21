@@ -2,7 +2,7 @@
  "about": "For each file where upstream mouxangithub/openpilot test and our sp-macan-test differ on purpose. `verdict`: ours = our version wins on rebase; mixed = upstream intent is already inside ours, we additionally carry fork content; pending-ab = our version wins for now, driver A/B outstanding. `expect_diff`: true means the file MUST still differ from upstream after a rebase (if it does not, our patch was silently dropped). `upstream` = byte-identical to upstream again after a port (no fork content left), so a rebase takes the upstream file verbatim.",
  "upstream": "https://github.com/mouxangithub/openpilot",
  "upstream_ref": "upstream/test",
- "audited_at": "2026-10-20",
+ "audited_at": "2026-10-22",
  "base_commit": "09ffdf60",
  "entries": [
   {
@@ -434,14 +434,47 @@
     "EVENTS[_FAKE_EVENT_ID]"
    ],
    "note": "Upstream fabricates its event under id 0, unused there (`none`). This tree's log.capnp has no `none`: 0 is canError, so EVENTS[0] = {} destroyed a real mapping for every later test in the process."
+  },
+  {
+   "path": "openpilot/common/tests/test_watchdog.py",
+   "verdict": "mixed",
+   "expect_diff": true,
+   "upstream_commit": "21c0a5995f",
+   "ours_keeps": [
+    "test_a_stale_heartbeat_is_a_timeout writes now_ns - min(3600, uptime/2) and derives its threshold from that offset",
+    "assertGreater(dt, stale_s * 0.9) instead of the literal 3000"
+   ],
+   "upstream_intent_present": [
+    "class TestKickAndRead(unittest.TestCase)",
+    "watchdog.watchdog_timed_out(os.getpid()",
+    "struct.pack(\"<Q\""
+   ],
+   "note": "Upstream back-dates the heartbeat by a flat hour. CLOCK_BOOTTIME starts at boot, so on a device that has been up for less than an hour `_now_ns() - 3600e9` is negative and struct.pack('<Q') raises struct.error before the assertion can decide: the test was red for the first hour after every reboot (caught 2026-10-22 00:0x, uptime 2086 s). Intent (an old heartbeat must be reported as a timeout) is preserved; the offset now scales to the uptime and the threshold follows it."
+  },
+  {
+   "path": "openpilot/selfdrive/modeld/signal_neural_shadow.py",
+   "verdict": "mixed",
+   "expect_diff": true,
+   "upstream_commit": "30d93e8093",
+   "ours_keeps": [
+    "automatic_backend reads all four keys through sunnypilot/common/param_read.read_bool",
+    "the comment recording why DriverMonitoringSessionDisabled must read as not-disabled on this fork"
+   ],
+   "upstream_intent_present": [
+    "def automatic_backend(params):",
+    "if read_mode(params) == 2:",
+    "dm_needed = (read_bool(params, 'DriverMonitoringEnabled') and",
+    "'qcom' if read_bool(params, 'UsbGpuActive') and not dm_needed else 'tracking_cpu'"
+   ],
+   "note": "Upstream reads the four keys with raw params.get_bool(). DriverMonitoringSessionDisabled is absent from this fork's params_keys.h, and Params.get_bool raises UnknownKeyName for an unregistered key, so the auto worker would die on its first loop rather than pick a backend. read_bool treats the missing key as False, which is upstream's meaning of 'the DM session is not disabled'; the other three keys are registered here and read identically. test_signal_neural_shadow.py holds both halves: a fake Params that raises like the device, and a source rule that no raw params.get_* may reappear."
   }
  ],
  "upstream_pending_port": {
   "about": "上游 test 上已经实现、我们还没移植的提交清单。每条的 probes 是机器可判定的「仍未移植」判据：路径应当不存在 / 符号应当不存在 / 该符号应当还在（因为上游那次是删除）/ 子模块指针应当还不是我们的祖先。检查器 ai/scripts/upstream_divergence_check.py 会逐条验；一旦某条探针失效（= 我们其实已经搬了或上游又改了），它报 DRIFT，提醒回来改这张表。ported=已移植（探针已反转为 DRIFT，条目移出 items 留档）。status: todo=独立可搬 | todo-after=依赖同批其它条目 | eval=体积大或需驾驶者决策 | pointer=子模块指针 | docs=文档，随条目走。",
-  "scope": "upstream/test after 8b52c4eef5 (2026-10-21 23:2x): round 18 ported the four commits added since round 17 (8b52c4eef5 MPC terminal soft constraint, fe854a7588 opendbc vl_all clear, 1c4250535e replay-harness import, e17b39201c selfdrived test car module). e17b39201c needed zero work (our file already imported opendbc.car.structs) and fe854a7588 landed in our opendbc fork as 213d3f100 because the new upstream pin d8d5659d05 is not an ancestor of our branch. Nothing left but 0facf5cf71 (agnos mirror, skip: not comma hardware). TRAP kept for the next reader: refs/remotes/mouxan/test is an orphan ref from a deleted remote and is stale; always read refs/remotes/upstream/test after `git fetch upstream test` and confirm with `git ls-remote upstream test`.",
-  "checked_at": "2026-10-21",
-  "ours_tip": "f6c4684b44",
-  "upstream_tip": "8b52c4eef5",
+  "scope": "upstream/test after 655d8d8466 (2026-10-22 00:1x): round 20 ported the single commit added since round 19 (30d93e8093 neural observer worker + substitute-model tooling + the C3 simulation). Nothing left but 0facf5cf71 (agnos mirror, skip: not comma hardware). TRAP kept for the next reader: refs/remotes/mouxan/test is an orphan ref from a deleted remote and is stale; always read refs/remotes/upstream/test after `git fetch upstream test` and confirm with `git ls-remote upstream test`.",
+  "checked_at": "2026-10-22",
+  "ours_tip": "4f011c85c9",
+  "upstream_tip": "30d93e8093",
   "items": [
    {
     "commit": "0facf5cf71",
@@ -1488,6 +1521,96 @@
     "evidence": "our file was already byte-identical to upstream's post-fix version; zero work this round",
     "local_fix": "none needed",
     "expect_diff_after": []
+   },
+   {
+    "commit": "390bfc541937c9a0d0e1a5b18ad1e5c4d6f2b2b5",
+    "subject": "common: add MyMovingAverage so the signal replay harness can build this fork",
+    "probe_was": "symbol_absent openpilot/common/filter_simple.py:class MyMovingAverage",
+    "evidence": "121 passed / 4 skipped in tools/signal_analysis (was: 4 replay integration tests skipped for a missing MyMovingAverage).",
+    "local_fix": "Verbatim except one trailing space (W291) stripped from the self.sum line so the file passes the repo lint gate.",
+    "expect_diff_after": [
+     "one trailing space removed at MyMovingAverage.process (W291)"
+    ],
+    "group": "tools/signal_analysis",
+    "ported_at": "2026-10-22",
+    "ours_commit": "round 19 (this commit)"
+   },
+   {
+    "commit": "786b5de5db2b0c2b3b0e1d3b6a1e4c5d7f809a11",
+    "subject": "signal: port the geometry, motion-gate, selection and grouping experiments",
+    "probe_was": "path_absent tools/signal_analysis/signal_central_selection.py",
+    "evidence": "4 new modules + 4 suites + openpilot/sunnypilot/carrot/tests/test_signal_start_group.py; 16 passed (start-group) and the signal suites run in the 121 above. Also rewrote test_signal_revalidation / test_transition_probe to openpilot.common.repo_tools.load, which this tree already has.",
+    "local_fix": "Applied verbatim.",
+    "expect_diff_after": [],
+    "group": "tools/signal_analysis",
+    "ported_at": "2026-10-22",
+    "ours_commit": "round 19 (this commit)"
+   },
+   {
+    "commit": "b906e9272b6b7c8d9e0f1a2b3c4d5e6f708192a3",
+    "subject": "signal: add the conservative-green opt-in and the central replay harness",
+    "probe_was": "symbol_absent tools/signal_analysis/replay_signal_central.py",
+    "evidence": "conservative_green threaded through lamp_evidence/housing_proposals/night_proposals/detect/day_proposals and SignalTracker.__init__; default False so every existing caller (modeld signal_tracking_shadow.py, carrot signal_assist) is unchanged.",
+    "local_fix": "Applied verbatim (our signal_tracker.py base was byte-identical, so the 50/19 hunk applied with no conflict).",
+    "expect_diff_after": [],
+    "group": "tools/signal_analysis",
+    "ported_at": "2026-10-22",
+    "ours_commit": "round 19 (this commit)"
+   },
+   {
+    "commit": "5053036159c7a1b2c3d4e5f60718293a4b5c6d7e",
+    "subject": "signal: let the tracker refuse green on rejected motion context",
+    "probe_was": "symbol_absent tools/signal_analysis/signal_tracker.py:allow_green=True",
+    "evidence": "process(..., allow_green=True) default keeps the on-car path identical; red acquisition/history untouched by construction (only green votes and green tracks are demoted).",
+    "local_fix": "Applied verbatim.",
+    "expect_diff_after": [],
+    "group": "tools/signal_analysis",
+    "ported_at": "2026-10-22",
+    "ours_commit": "round 19 (this commit)"
+   },
+   {
+    "commit": "a093896dc7f0e1d2c3b4a5968778695a4b3c2d1e",
+    "subject": "signal: fix the literal newlines that replaced escapes in the allow_green block",
+    "probe_was": "n/a (fix-up of 5053036159 in the same batch; landed as part of the final file state)",
+    "evidence": "Final signal_tracker.py matches upstream byte-for-byte.",
+    "local_fix": "Ported as the final file state, not as a separate patch.",
+    "expect_diff_after": [],
+    "group": "tools/signal_analysis",
+    "ported_at": "2026-10-22",
+    "ours_commit": "round 19 (this commit)"
+   },
+   {
+    "commit": "d37ff2c6da0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d",
+    "subject": "signal: the central replay harness had an unbound load and a half-qualified name",
+    "probe_was": "n/a (fix-up of b906e9272b; landed as the final file state)",
+    "evidence": "replay_signal_central.py imports cleanly on device (smoke import of all 8 new modules returned OK).",
+    "local_fix": "Ported as the final file state.",
+    "expect_diff_after": [],
+    "group": "tools/signal_analysis",
+    "ported_at": "2026-10-22",
+    "ours_commit": "round 19 (this commit)"
+   },
+   {
+    "commit": "655d8d8466a1b2c3d4e5f60718293a4b5c6d7e8f",
+    "subject": "signal: port the neural crop inference wrapper and its benchmark",
+    "probe_was": "path_absent tools/signal_analysis/neural_signal.py",
+    "evidence": "neural_signal.py imports OK on device with no tinygrad/onnxruntime at import time (both are function-local). Both reference ONNX artifacts are pinned by sha256 and are NOT in the repo, so anything that runs is a local substitute by design - the module cannot silently pretend to have the real net.",
+    "local_fix": "Applied verbatim.",
+    "expect_diff_after": [],
+    "group": "tools/signal_analysis",
+    "ported_at": "2026-10-22",
+    "ours_commit": "round 19 (this commit)"
+   },
+   {
+    "commit": "fda5f89907a1b2c3d4e5f60718293a4b5c6d7e8",
+    "subject": "controls: pin the MPC terminal soft constraint in source and on a real solve",
+    "probe_was": "path_absent openpilot/selfdrive/controls/tests/test_mpc_terminal_slack.py",
+    "evidence": "4 passed on device, including the ON_DEVICE half that actually builds LongitudinalMpc and solves: solution_status 0, min(v_solution) >= -0.01, v_solution[1] >= 19. This is the first execution of the round-18 rebuilt solver by anything, so it also retires the \"the new .so has never been loaded\" worry for the python-side solve path.",
+    "local_fix": "Applied verbatim; our tree already carried the constraint itself from round 18 (8b52c4eef5), so this commit was test-only here.",
+    "expect_diff_after": [],
+    "group": "tools/signal_analysis",
+    "ported_at": "2026-10-22",
+    "ours_commit": "round 19 (this commit)"
    }
   ],
   "next_batch": {
