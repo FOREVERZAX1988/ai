@@ -372,10 +372,10 @@
  ],
  "upstream_pending_port": {
   "about": "上游 test 上已经实现、我们还没移植的提交清单。每条的 probes 是机器可判定的「仍未移植」判据：路径应当不存在 / 符号应当不存在 / 该符号应当还在（因为上游那次是删除）/ 子模块指针应当还不是我们的祖先。检查器 ai/scripts/upstream_divergence_check.py 会逐条验；一旦某条探针失效（= 我们其实已经搬了或上游又改了），它报 DRIFT，提醒回来改这张表。ported=已移植（探针已反转为 DRIFT，条目移出 items 留档）。status: todo=独立可搬 | todo-after=依赖同批其它条目 | eval=体积大或需驾驶者决策 | pointer=子模块指针 | docs=文档，随条目走。",
-  "scope": "upstream/test after 4993c3cf32 (2026-10-21); round 14 ported 26 of the 27 new commits (safe mode entry point, modes gate, tuning-level declarations, weather from Open-Meteo, watchdog sweep, modeld stage timing, two dead-code deletions, import guard, follow-gap type fix) and merged webui ec36718+599fdd0; 0facf5cf71 (agnos boot mirror -> Tencent cnb) is skipped as device-irrelevant; NNFF 63a6f3211b is the only pending item",
+  "scope": "upstream/test after 4993c3cf32 (2026-10-21): one commit, 1b36f1ad36, ported in round 15 (lead-forecast wrapper forwards *args and reads lead_index, plus an ast-based contract guard). TRAP: refs/remotes/mouxan/test is an orphan ref from a deleted remote and is stale (tip 5f2ae96a64, 2026-10-17); always read refs/remotes/upstream/test after `git fetch upstream test` and confirm with `git ls-remote upstream test`. NNFF 63a6f3211b stays the only pending item.",
   "checked_at": "2026-10-21",
-  "ours_tip": "8f7d558c70",
-  "upstream_tip": "4993c3cf32",
+  "ours_tip": "c313a42a96",
+  "upstream_tip": "1b36f1ad36",
   "items": [
    {
     "commit": "63a6f3211b44edb8ba9fd08fdcba3a7c98875b4d",
@@ -1337,6 +1337,17 @@
     "probe_was": "",
     "evidence": "按上游原补丁 3-way 落地，仅本机分叉处人工解冲突",
     "local_fix": "",
+    "expect_diff_after": []
+   },
+   {
+    "commit": "1b36f1ad36",
+    "subject": "plannerd: the lead-forecast wrapper could not take the MPC's arguments",
+    "group": "port-20261021-r15",
+    "ported_at": "2026-10-21",
+    "ours_commit": "2d6e06b4b3",
+    "probe_was": "本机 round 4 已用 **kwargs 补过同一个 TypeError，所以 plannerd 没崩；但缺 *args 转发与 lead_index 读取（一直按调用顺序取前车）",
+    "evidence": "整文件取上游：forecast.py blob 0cd5421b14 与上游逐字节一致；新增 test_lead_forecast_process_lead.py（ast 读两侧、不 import）4/4 OK；闭环 SCC + lead policy 49 passed；ruff 绿",
+    "local_fix": "无（本机那三行 **kwargs 本地补丁被上游超集取代，不保留两套）",
     "expect_diff_after": []
    }
   ],
