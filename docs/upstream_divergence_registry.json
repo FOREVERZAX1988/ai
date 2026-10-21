@@ -1346,7 +1346,7 @@
     "ported_at": "2026-10-21",
     "ours_commit": "2d6e06b4b3",
     "probe_was": "本机 round 4 已用 **kwargs 补过同一个 TypeError，所以 plannerd 没崩；但缺 *args 转发与 lead_index 读取（一直按调用顺序取前车）",
-    "evidence": "整文件取上游：forecast.py blob 0cd5421b14 与上游逐字节一致；新增 test_lead_forecast_process_lead.py（ast 读两侧、不 import）4/4 OK；闭环 SCC + lead policy 49 passed；ruff 绿",
+    "evidence": "整文件取上游：forecast.py blob 0cd5421b14 与上游逐字节一致；新增 test_lead_forecast_process_lead.py（ast 读两侧、不 import）4/4 OK；闭环 SCC + lead policy 49 passed；ruff 绿；同日后补：lead_forecast/tests/ 由 pytest-only 转 stdlib unittest（父仓 7e7516b3b3）——上游那 28 个测试此前在任何能跑的地方都没跑过（车机无 pytest、依赖拉 msgq），现已 unittest/pytest 双绿 29 个，并加护栏禁止同级 test_*.py 再 import pytest",
     "local_fix": "无（本机那三行 **kwargs 本地补丁被上游超集取代，不保留两套）",
     "expect_diff_after": []
    }
