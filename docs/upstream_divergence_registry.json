@@ -1302,7 +1302,7 @@
     "ported_at": "2026-10-21",
     "ours_commit": "8f7d558c70",
     "probe_was": "",
-    "evidence": "DynamicTFollowLC FLOAT->INT（行控件写不进去）；params_keys.h 冲突保留本地 DynamicTFollow FLOAT 行",
+    "evidence": "DynamicTFollowLC FLOAT->INT（行控件写不进去）；params_keys.h 冲突保留本地 DynamicTFollow FLOAT 行。2026-10-21 补：类型换了但车上旧值 '100.0' 没人迁，raw store 读它一律回落 0（ratio 0.00）；已改写 int 100，并加 test_param_types.py 三条护栏（含车机存值可解析检查）",
     "local_fix": "",
     "expect_diff_after": []
    },
