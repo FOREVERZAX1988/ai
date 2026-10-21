@@ -362,22 +362,6 @@
     "upstream_tip": "817f4a78c2",
     "items": [
       {
-        "commit": "982fb613f51f0ddb47a0b1784c89b5838c9a8e7c",
-        "subject": "flm: port the Firestar Lateral Method analyzer workspace + CLI (StarPilot)",
-        "date": "10-20 16:46",
-        "group": "flm",
-        "status": "eval",
-        "impact": "Firestar 横向方法分析工作区（3789 行）+ CLI，纯离线调参工具",
-        "next": "不影响行车；想要横向调参手段时再搬",
-        "probes": [
-          {
-            "kind": "path_absent",
-            "target": "openpilot/selfdrive/controls/lib/flm_workspace.py",
-            "needle": null
-          }
-        ]
-      },
-      {
         "commit": "d81eec58999ff32d2acf51e3976419fd0bcd01a9",
         "subject": "speed_limit_vision: port the vision speed-limit daemon (StarPilot)",
         "date": "10-20 16:46",
@@ -390,22 +374,6 @@
             "kind": "path_absent",
             "target": "openpilot/sunnypilot/system/speed_limit_vision.py",
             "needle": null
-          }
-        ]
-      },
-      {
-        "commit": "077456330f38f470e6bca7f68a8ffb282b05054d",
-        "subject": "params: register FLM and vision speed-limit keys",
-        "date": "10-20 16:47",
-        "group": "params",
-        "status": "todo-after",
-        "impact": "登记 FLM / 视觉限速的 Params 键；单独搬无意义",
-        "next": "随 982fb613f5 / d81eec5899 一起",
-        "probes": [
-          {
-            "kind": "symbol_absent",
-            "target": "openpilot/common/params_keys.h",
-            "needle": "SpeedLimitVision"
           }
         ]
       }
@@ -791,6 +759,42 @@
           "scripts/simulate_lead_stop_depart.py (226 行, byte-identical, chmod +x)"
         ],
         "evidence": "真机 offroad 跑 5/5 PASS (standstill_depart 3.70s/4.50m, approach_brake min gap 60.6m, low_speed_stop 2.8s/9.2m, radar_gap_settle engaged=True/6.80m, gate_off_passthrough unchanged); 被测对象 lead_stop_depart_policy.py 来自 ed7720231c"
+      },
+      {
+        "commit": "077456330f38f470e6bca7f68a8ffb282b05054d",
+        "subject": "params: register FLM and vision speed-limit keys",
+        "date": "10-20 16:47",
+        "group": "params",
+        "status": "ported",
+        "impact": "登记 FLM / 视觉限速的 Params 键；单独搬无意义",
+        "next": "随 982fb613f5 / d81eec5899 一起",
+        "probes": [
+          {
+            "kind": "symbol_absent",
+            "target": "openpilot/common/params_keys.h",
+            "needle": "SpeedLimitVision"
+          }
+        ],
+        "ported_at": "2026-10-21",
+        "ported_evidence": "2026-10-21 28 键全部登记进 openpilot/common/params_keys.h（FLM 14 + 视觉限速 14），单目标 scons 重建 libparams_c.so（-O0，peak 264MB / 41s，无 LMK），check_key 全 True、未知键仍抛 UnknownKeyName"
+      },
+      {
+        "commit": "982fb613f51f0ddb47a0b1784c89b5838c9a8e7c",
+        "subject": "flm: port the Firestar Lateral Method analyzer workspace + CLI (StarPilot)",
+        "date": "10-20 16:46",
+        "group": "flm",
+        "status": "ported",
+        "impact": "Firestar 横向方法分析工作区（3789 行）+ CLI，纯离线调参工具",
+        "next": "不影响行车；想要横向调参手段时再搬",
+        "probes": [
+          {
+            "kind": "path_absent",
+            "target": "openpilot/selfdrive/controls/lib/flm_workspace.py",
+            "needle": null
+          }
+        ],
+        "ported_at": "2026-10-21",
+        "ported_evidence": "2026-10-21 flm_workspace.py(3789)+tools/tuning/flm_cli.py+lateral_delay.py+pure tests 落地，pyproject 加 per-file-ignore；test_flm_workspace_pure 5 passed 1 skipped、ruff 绿、CLI --help 通。Macan capabilities: frictionFamily=standard / richProfile=torque_universal（与 Bolt2017 同形）"
       }
     ],
     "next_batch": {
