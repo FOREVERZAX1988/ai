@@ -46,6 +46,10 @@ dm_needed = (params.get_bool('DriverMonitoringEnabled') and
 
 ## 仿真（真跑，不是纸面）
 
+> **2026-10-22 06:5x 补充（驾驶者拍板后落地）**：这些依赖已从 `/data/tmp/nn_deps`（115 MB，靠 PYTHONPATH 临时挂）
+> 并入永久目录 `/data/.pydeps`（顶层目录名与已有包零重叠），源目录已删。现在 `python3 tools/signal_analysis/sim_neural_on_c3.py`
+> **不用任何 PYTHONPATH 前缀**就能跑（1.7 s，输出与本节记录逐项一致）。完整配方见 `ai/docs/neural_sim_recipe.md`。
+
 设备上没有 `onnx`/`onnxruntime`，装在 `/data/tmp/nn_deps`（`--no-deps --target`，
 借用系统 numpy 2.5.1 / cv2 4.13，`PYTHONPATH=/data/tmp/nn_deps:/data/.pydeps:/data/openpilot`）。
 注意两点，否则跑不起来：①`pip` 的 `TMPDIR` 默认是 150 MB 的 tmpfs，会 `No space left`
