@@ -174,6 +174,40 @@ def phase_pending(registry: dict) -> tuple[list[dict], int]:
   return rows, failures
 
 
+def phase_deferred_hooks(registry: dict) -> tuple[list[dict], int]:
+  """deferred_hooks 以前根本没跑过探针：钩子都落地了、status 还写着 deferred，checker 也照样全绿。
+
+  现在把两个方向都断言上，并且先查 status 与 probe.kind 是否自洽：
+    deferred -> probe.kind 必须是 symbol_absent（符号还没出现）
+    ported   -> probe.kind 必须是 symbol_present（符号必须在位）
+  照旧名的重构或「落地了但忘了标 done」都会在这里变红。
+  """
+  section = registry.get("upstream_pending_port") or {}
+  hooks = section.get("deferred_hooks") or []
+  rows, failures = [], 0
+  for hook in hooks:
+    status = hook.get("status", "")
+    probe = hook.get("probe") or {}
+    kind = probe.get("kind", "")
+    expected_kind = {"deferred": "symbol_absent", "ported": "symbol_present"}.get(status)
+    if expected_kind is None:
+      bad = [f"unknown status {status!r}"]
+    elif kind != expected_kind:
+      bad = [f"status={status} expects probe kind {expected_kind}, registry has {kind}"]
+    else:
+      state, detail = run_probe(probe)
+      bad = [] if state == "OK" else [detail]
+    failures += bool(bad)
+    rows.append({
+      "commit": (hook.get("from_commit") or "")[:10],
+      "what": hook.get("what", ""),
+      "status": status,
+      "state": "DRIFT" if bad else "OK",
+      "detail": " | ".join(bad),
+    })
+  return rows, failures
+
+
 def main() -> int:
   ap = argparse.ArgumentParser()
   ap.add_argument("--ref", default="upstream/test")
@@ -200,18 +234,19 @@ def main() -> int:
       fetch_state = "WARN"
       found = "; ".join(specs) or "none"
       fetch_detail = f"remote.upstream.fetch lacks refs/heads/* (found: {found}) -- git fetch can miss branches; use --fix-fetch"
-  entries, pending, failures = [], [], 0
+  entries, pending, hooks, failures = [], [], [], 0
   failures += fetch_state == "WARN"
   if not args.pending_only:
     entries, f1 = phase_entries(args, registry)
     failures += f1
   if not args.entries_only:
     pending, f2 = phase_pending(registry)
-    failures += f2
+    hooks, f3 = phase_deferred_hooks(registry)
+    failures += f2 + f3
 
   if args.json:
     print(json.dumps({"ref": args.ref, "side": args.side, "fetch": {"state": fetch_state, "detail": fetch_detail},
-                      "entries": entries, "pending": pending},
+                      "entries": entries, "pending": pending, "deferred_hooks": hooks},
                      ensure_ascii=False, indent=2))
     return 0 if failures == 0 else 1
 
@@ -233,6 +268,13 @@ def main() -> int:
       if r["state"] != "OK" or r["detail"]:
         print(f"            {r['detail']}")
     print(f"    => {sum(r['state'] == 'OK' for r in pending)}/{len(pending)} still unported as recorded")
+  if hooks:
+    print("  [phase 3] 已推迟钩子（status 与探针必须自洽）")
+    for r in hooks:
+      print(f"    {r['state']:7s} {r['commit']} {r['status']:8s} {r['what'][:60]}")
+      if r["state"] != "OK":
+        print(f"            {r['detail']}")
+    print(f"    => {sum(r['state'] == 'OK' for r in hooks)}/{len(hooks)} consistent")
   return 0 if failures == 0 else 1
 
 

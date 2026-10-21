@@ -775,7 +775,7 @@
           "openpilot/selfdrive/controls/lib/longitudinal_vehicle_tunes.py (整文件换上游 896 行版, byte-identical)",
           "openpilot/common/params_keys.h: +LeadStopDepartPolicyEnabled (PERSISTENT|BACKUP, BOOL, \"0\")"
         ],
-        "deferred": "longitudinal_planner.py 的 +38/-2 钩子在 deferred_hooks 第二条：锚点是 LeadFollowPolicy 阶段，要按本树 carrot_source/cutin_predecel/红线预减速 的实际顺序重写，默认关、需上路验（Step2）",
+        "deferred": "已解除：longitudinal_planner.py 的 +38/-2 钩子由 8b49077998（Step2）落地，deferred_hooks 第二条现为 status=ported；默认关，路径行为待下次路试 A/B",
         "evidence": "68 passed (test_lead_stop_depart_policy 27 + test_lead_behavior 41), ruff clean; grep 确认无人 import 新模块 = 默认零影响; libparams_c.so scons -j1 重编 38s 无 LMK, keys 675->676, check_key OK"
       },
       {
@@ -834,10 +834,11 @@
       {
         "from_commit": "51caaa4a3ab32b0da57eabe34f349b89fdc2bcce",
         "what": "longitudinal_planner.py 的 +23 行 LeadFollowPolicyEnabled 阶段",
-        "status": "deferred",
-        "why": "默认关；要按本树阶段顺序重排，且与 4b21c8cfdb 的 stop/depart 钩子在同一段代码，手工合并一次即可",
+        "status": "ported",
+        "ours_commit": "8b49077998",
+        "why": "2026-10-21 已随 Step2 按本树阶段顺序落地（默认关，param LeadFollowPolicyEnabled=0）；探针翻成 symbol_present，钩子以后被重构删掉会立刻 DRIFT",
         "probe": {
-          "kind": "symbol_absent",
+          "kind": "symbol_present",
           "target": "openpilot/selfdrive/controls/lib/longitudinal_planner.py",
           "needle": "LeadFollowPolicyEnabled"
         }
@@ -845,10 +846,11 @@
       {
         "from_commit": "4b21c8cfdbe2912fba0bcccd0268a93ddceea1e8",
         "what": "longitudinal_planner.py 的 +36/-2 行 LeadStopDepartPolicyEnabled 阶段（含 effective_t_follow 计算外提）",
-        "status": "deferred",
-        "why": "默认关；锚点（LeadFollowPolicy 阶段）刚由上一条落地，需按本树 carrot_source/cutin_predecel/红线预减速 的顺序核对后再写",
+        "status": "ported",
+        "ours_commit": "8b49077998",
+        "why": "2026-10-21 已随 Step2 落地（默认关，param LeadStopDepartPolicyEnabled=0；接近段=vision approach caps 在 lead_stop_depart_policy.py 本体，已 byte-identical 搬入 ed7720231c）；探针翻成 symbol_present，防止以后重构把钩子删了没人发现",
         "probe": {
-          "kind": "symbol_absent",
+          "kind": "symbol_present",
           "target": "openpilot/selfdrive/controls/lib/longitudinal_planner.py",
           "needle": "LeadStopDepartPolicyEnabled"
         }
