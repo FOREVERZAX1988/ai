@@ -153,3 +153,40 @@ curl -s http://127.0.0.1:7000/api/push/status
 - 键表语义与 `-O2`/`-O1` 无差别；这里只有一堆 `std::unordered_map` 初始化与文件/zmq I/O。
 - 以后 `params_keys.h` 每加一个键，都仍需「重建 + `systemctl restart comma`」两步；
   少了第二步的表现是**静默**的（新键在所有已跑进程里 `UnknownKeyName`）。
+
+## 2026-10-21 收尾：钉子从 `-O0` 升到 `-O1 -g0`（1.9 GB 是 `-g` 吃的，不是 `-O1`）
+
+上面那节把结论停在「`-O1` 不可复现地安全」，但漏了一个变量：`-O1 -g` 里的峰值主要来自
+**调试信息**，不是优化本身。所以单量了一次去掉 `-g` 的同一 TU（同机、同 `-I`、只改
+`-O`/`-g`，`nice -n 19`，每 200 ms 采 `/proc/<pid>/status` 的 `VmHWM`）：
+
+| flag | clang++ 峰值 VmHWM | 耗时 | 结果 |
+|---|---|---|---|
+| `-O2 -g`（scons 默认） | —（未跑完） | — | `Error -9`，LMK 杀 |
+| `-O1 -g` | 1884940 kB ≈ 1.8 GiB | 68 s | 单跑勉强过，交给 scons 被 LMK 杀 |
+| **`-O1 -g0`** | **369924 kB ≈ 361 MiB** | **149 s** | **exit 0；全程 MemAvailable 最低 1013 MB 未触底** |
+| `-O0 -g`（原钉子） | 261616 kB ≈ 256 MiB | 34 s | 过 |
+
+结论：峰值从 1.8 GiB 掉到 361 MiB —— **5 倍**，那 1.4 GiB 全是 `.debug_*` 段。
+`scons -j1 openpilot/common/libparams_c.so` 用新钉子实跑 2:53 一次过（含 `swaglog.o`
+重编），`/usr/bin/time -v` 报 scons 进程 `Maximum resident set size: 369924 kB`，
+与独立实测**逐 KB 吻合**，无 LMK。
+
+已落 `openpilot/common/SConscript`（只钉 `params.cc` 一个 TU，其余仍 `-O2`）：
+
+```python
+_PINNED_OUT = {"-O0", "-O1", "-O2", "-O3", "-Os", "-g", "-g1", "-g2", "-g3", "-ggdb"}
+_params_env = env.Clone(CCFLAGS=[f for f in env["CCFLAGS"] if f not in _PINNED_OUT] + ["-O1", "-g0"])
+```
+
+两个细节：
+
+- 必须同时剔掉 `-g`（原钉子只剔 `-O2`，`-g` 留了下来，等于「-O0 -g」）。剔除用**精确
+  集合**而不是 `startswith("-g")`，否则会误删 `-gcc-toolchain` 这类 flag。
+- `-O1` 而不是继续 `-O0`：这个库在每个 daemon 的 param 读取路径上（`param_read`），
+  `-O0` 会把 `unordered_map` 查找留在退化路径；`-O1` 只多花 115 s 编译时间（offroad 一次性），
+  ABI 与语义不变。`-g0` 不损失什么：需要栈时按本节配方单独编一份带 `-g` 的临时 `.o` 即可。
+
+验证（本次）：`scons -n --verbose -j1 openpilot/common/params.o` 打印的命令行里只有
+`-O1 -g0`、无 `-O2`/`-g`；`openpilot/common/tests` + `openpilot/sunnypilot/common/tests`
+共 **249 passed / 258 subtests passed**。
