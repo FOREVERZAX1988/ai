@@ -159,3 +159,32 @@ Params().get("CustomKp", return_default=True) -> EXC UnknownKeyName b'CustomKp'
   钩子接上后再跑同一脚本，逐场景对比 depart 时刻/最小间距即可判定有没有改坏。
 - 登记表：items 4→3（余下 982fb613f5 / d81eec5899 两条 eval + 077456330f 那条
   纯登记键，随它们走）。
+
+## 9. Step2：planner 两个 deferred 钩子已落地（默认关）—— 2026-10-21
+
+- 提交：父仓 `8b49077998`（`longitudinal_planner.py` +57、新增
+  `selfdrive/controls/tests/test_longitudinal_policy_hooks.py`）。
+- 形状（与上游 `4b21c8cfdb` 钩子逐段对应，不改结构）：
+  - 插入点 = 最终仲裁 `self.output_a_target = np.clip(output_a_target, ...)` 之后、
+    `apply_signal_prepare`（sunnypilot 红灯预减速）之前 —— 上游注释自己就要求
+    红灯预减速跑在最后，所以两个 shaper 都在它前面。
+  - `effective_t_follow` 统一先算一次（carrot 优先，否则
+    `self.mpc.get_t_follow(personality)`），与上游重构后一致，两段共用。
+  - 开关 `LeadFollowPolicyEnabled` / `LeadStopDepartPolicyEnabled` 各 20 帧刷新
+    一次，`params_keys.h` 默认 `"0"`；关闭时两段都是空操作。
+  - stop/depart 只在 `not force_decel` 时生效，`source` 取
+    `lead1` if 选中的是 lead1 else `lead0`（本树 cruise/e2e 源走 lead0 语义）。
+- 验证（全部离车）：
+  - `test_lead_follow_policy.py` + `test_lead_stop_depart_policy.py`：36 passed
+  - `test_dec_planner_gate.py`（真构造 `LongitudinalPlanner`）：4 passed —— 新增
+    的 `Params()` 与惰性 policy 不破坏构造
+  - 新增 `test_longitudinal_policy_hooks.py`：3 passed（两键必须存在且默认关 +
+    「仲裁 < follow < stop/depart < 红灯预减速」顺序断言，防以后重排/改名）
+  - ruff：All checks passed
+  - `scripts/simulate_lead_stop_depart.py` 重跑 **5/5 PASS，与 §8 基线逐字一致**
+    → 钩子关闭时行为零影响
+- 仍待上路：先单独开 `LeadStopDepartPolicyEnabled` 跑一段，再叠加
+  `LeadFollowPolicyEnabled`；两者同开时 stop/depart 在 follow 之后，就是上游设计
+  的叠加顺序。
+- 已知与本轮无关：`selfdrive/controls/tests/test_leads.py` 是 process replay，
+  离车环境 60s 内跑不完（超时），非本次改动引入。
