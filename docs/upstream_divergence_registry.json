@@ -372,10 +372,10 @@
  ],
  "upstream_pending_port": {
   "about": "上游 test 上已经实现、我们还没移植的提交清单。每条的 probes 是机器可判定的「仍未移植」判据：路径应当不存在 / 符号应当不存在 / 该符号应当还在（因为上游那次是删除）/ 子模块指针应当还不是我们的祖先。检查器 ai/scripts/upstream_divergence_check.py 会逐条验；一旦某条探针失效（= 我们其实已经搬了或上游又改了），它报 DRIFT，提醒回来改这张表。ported=已移植（探针已反转为 DRIFT，条目移出 items 留档）。status: todo=独立可搬 | todo-after=依赖同批其它条目 | eval=体积大或需驾驶者决策 | pointer=子模块指针 | docs=文档，随条目走。",
-  "scope": "upstream/test after 4630b96a77 (2026-10-21); round 12 ported d81eec5899 + d4136d1df0, round 13 ported 927498237f (modeldLagging two tiers) and merged the webui submodule bump 0ec403f435 (parent 94ee509a41); NNFF 63a6f3211b is the only item left",
+  "scope": "upstream/test after 4993c3cf32 (2026-10-21); round 14 ported 26 of the 27 new commits (safe mode entry point, modes gate, tuning-level declarations, weather from Open-Meteo, watchdog sweep, modeld stage timing, two dead-code deletions, import guard, follow-gap type fix) and merged webui ec36718+599fdd0; 0facf5cf71 (agnos boot mirror -> Tencent cnb) is skipped as device-irrelevant; NNFF 63a6f3211b is the only pending item",
   "checked_at": "2026-10-21",
-  "ours_tip": "94ee509a41",
-  "upstream_tip": "1952394252",
+  "ours_tip": "8f7d558c70",
+  "upstream_tip": "4993c3cf32",
   "items": [
    {
     "commit": "63a6f3211b44edb8ba9fd08fdcba3a7c98875b4d",
@@ -390,6 +390,22 @@
       "kind": "path_absent",
       "target": "openpilot/selfdrive/assets/nnff_models",
       "needle": null
+     }
+    ]
+   },
+   {
+    "commit": "0facf5cf71",
+    "subject": "更新boot和system系统包改用腾讯cnb地址",
+    "date": "10-21",
+    "group": "infra/agnos",
+    "status": "skip",
+    "impact": "只改 common/hardware/comma/agnos*.json 的下载地址（comma 设备刷机包）",
+    "next": "本机不是 comma 硬件（SM6450 自研机型），agnos 刷机路径不参与启动；拉了也不会生效，反而不利于以后 rebase，明确不搬",
+    "probes": [
+     {
+      "kind": "symbol_absent",
+      "target": "openpilot/common/hardware/comma/agnos.json",
+      "needle": "cnb.cool"
      }
     ]
    }
@@ -1036,6 +1052,292 @@
     "evidence": "selfdrive/selfdrived/tests 41 passed（上游 6 条 monitor 用例 + 本树 3 条护栏：mild 只许 PERMANENT、severe 两个接管钩子必须在、selfdrived.py 必须仍调用 monitor 且不得残留 modeld_lag_counter）；capnp.load 实测 ordinal 106 / modeldLagging 70",
     "local_fix": "capnp 只改 schema：gen/cpp/log.capnp.h 按先例不重建（它连 @104/@105 都没有），C++ 侧无人写该枚举；mild 档故意不给 SOFT_DISABLE/NO_ENTRY，由护栏测试钉住",
     "expect_diff_after": false
+   },
+   {
+    "commit": "c3926e3885",
+    "subject": "test: stop the mode endpoint tests leaking state into the store",
+    "group": "port-20261021-r14",
+    "ported_at": "2026-10-21",
+    "ours_commit": "57b7474286",
+    "probe_was": "",
+    "evidence": "按上游原补丁 3-way 落地，仅本机分叉处人工解冲突",
+    "local_fix": "",
+    "expect_diff_after": []
+   },
+   {
+    "commit": "dd91852db6",
+    "subject": "test: make the mode endpoint tests independent of device state",
+    "group": "port-20261021-r14",
+    "ported_at": "2026-10-21",
+    "ours_commit": "57b7474286",
+    "probe_was": "",
+    "evidence": "按上游原补丁 3-way 落地，仅本机分叉处人工解冲突",
+    "local_fix": "",
+    "expect_diff_after": []
+   },
+   {
+    "commit": "bda1e2bb27",
+    "subject": "watchdog: sweep heartbeat files whose process is gone",
+    "group": "port-20261021-r14",
+    "ported_at": "2026-10-21",
+    "ours_commit": "57b7474286",
+    "probe_was": "",
+    "evidence": "按上游原补丁 3-way 落地，仅本机分叉处人工解冲突",
+    "local_fix": "",
+    "expect_diff_after": []
+   },
+   {
+    "commit": "30d3ea39ed",
+    "subject": "modeld: per-stage loop timing, p50+p99 summary every 30 s",
+    "group": "port-20261021-r14",
+    "ported_at": "2026-10-21",
+    "ours_commit": "57b7474286",
+    "probe_was": "",
+    "evidence": "按上游原补丁 3-way 落地，仅本机分叉处人工解冲突",
+    "local_fix": "",
+    "expect_diff_after": []
+   },
+   {
+    "commit": "50cf6414ba",
+    "subject": "safety: give Safe Mode an entry point",
+    "group": "port-20261021-r14",
+    "ported_at": "2026-10-21",
+    "ours_commit": "feefceb48a",
+    "probe_was": "",
+    "evidence": "SafeModeError(status) + safe_mode_runtime enter/restore/status + Device 页按钮；合并时 safe_mode_runtime 三处冲突全取上游（本机旧版 _coerce 与上游同义）",
+    "local_fix": "",
+    "expect_diff_after": []
+   },
+   {
+    "commit": "2df5ff11e3",
+    "subject": "safety: write Safe Mode values with the store's own types",
+    "group": "port-20261021-r14",
+    "ported_at": "2026-10-21",
+    "ours_commit": "feefceb48a",
+    "probe_was": "",
+    "evidence": "类型化写入：_coerce 按注册类型转换，JSON 读回不再 str(dict)",
+    "local_fix": "",
+    "expect_diff_after": []
+   },
+   {
+    "commit": "8ba37f6600",
+    "subject": "safety: normalise what the store decodes, not just what it stores",
+    "group": "port-20261021-r14",
+    "ported_at": "2026-10-21",
+    "ours_commit": "feefceb48a",
+    "probe_was": "",
+    "evidence": "按上游原补丁 3-way 落地，仅本机分叉处人工解冲突",
+    "local_fix": "",
+    "expect_diff_after": []
+   },
+   {
+    "commit": "2a8bd05780",
+    "subject": "lint: drop the backup local apply_safe_mode no longer reads",
+    "group": "port-20261021-r14",
+    "ported_at": "2026-10-21",
+    "ours_commit": "feefceb48a",
+    "probe_was": "",
+    "evidence": "按上游原补丁 3-way 落地，仅本机分叉处人工解冲突",
+    "local_fix": "",
+    "expect_diff_after": []
+   },
+   {
+    "commit": "9b47b4da32",
+    "subject": "modes: one gate for every experimental-mode writer",
+    "group": "port-20261021-r14",
+    "ported_at": "2026-10-21",
+    "ours_commit": "666bce23b7",
+    "probe_was": "",
+    "evidence": "按上游原补丁 3-way 落地，仅本机分叉处人工解冲突",
+    "local_fix": "",
+    "expect_diff_after": []
+   },
+   {
+    "commit": "e428c9535a",
+    "subject": "params: declare tuning levels, and let the settings catalog read them",
+    "group": "port-20261021-r14",
+    "ported_at": "2026-10-21",
+    "ours_commit": "050063f37c",
+    "probe_was": "",
+    "evidence": "params_keys.h 冲突按「上游元数据 + 本地保留 AutoNaviRearCameraHoldDistance / LeadAccelResponseTF1-4 / ATCMaxSpeedKph / CarrotCurveSpeedEnabled / CarrotHudInfoEnabled」解决",
+    "local_fix": "",
+    "expect_diff_after": []
+   },
+   {
+    "commit": "047ad36feb",
+    "subject": "params: make the level-1 declaration a rule, not a note",
+    "group": "port-20261021-r14",
+    "ported_at": "2026-10-21",
+    "ours_commit": "050063f37c",
+    "probe_was": "",
+    "evidence": "level_one_gaps() 落进本机 audit_ui_reach（本地另有 NOTES/_NO_UI_NOTE 段，冲突按「本地注释 + 上游规则」合并）",
+    "local_fix": "",
+    "expect_diff_after": []
+   },
+   {
+    "commit": "0a0913f343",
+    "subject": "lint: one string, not two, for the reach failure message",
+    "group": "port-20261021-r14",
+    "ported_at": "2026-10-21",
+    "ours_commit": "050063f37c",
+    "probe_was": "",
+    "evidence": "按上游原补丁 3-way 落地，仅本机分叉处人工解冲突",
+    "local_fix": "",
+    "expect_diff_after": []
+   },
+   {
+    "commit": "0a976b1c6f",
+    "subject": "catalog: stamp the declared tuning depth onto the settings the panel serves",
+    "group": "port-20261021-r14",
+    "ported_at": "2026-10-21",
+    "ours_commit": "050063f37c",
+    "probe_was": "",
+    "evidence": "按上游原补丁 3-way 落地，仅本机分叉处人工解冲突",
+    "local_fix": "",
+    "expect_diff_after": []
+   },
+   {
+    "commit": "fbd6643788",
+    "subject": "params: ShowRadarInfo is a 0-3 level, so declare it one",
+    "group": "port-20261021-r14",
+    "ported_at": "2026-10-21",
+    "ours_commit": "050063f37c",
+    "probe_was": "",
+    "evidence": "ShowRadarInfo 0-3 档；本机无该 UI，仅注册",
+    "local_fix": "",
+    "expect_diff_after": []
+   },
+   {
+    "commit": "72c6200b79",
+    "subject": "params: declare a depth for the four controls the webui now renders",
+    "group": "port-20261021-r14",
+    "ported_at": "2026-10-21",
+    "ours_commit": "050063f37c",
+    "probe_was": "",
+    "evidence": "按上游原补丁 3-way 落地，仅本机分叉处人工解冲突",
+    "local_fix": "",
+    "expect_diff_after": []
+   },
+   {
+    "commit": "41d7c12481",
+    "subject": "catalog: delete carrot_catalog, the parallel catalog nobody read",
+    "group": "port-20261021-r14",
+    "ported_at": "2026-10-21",
+    "ours_commit": "050063f37c",
+    "probe_was": "",
+    "evidence": "carrot_catalog 删除后 test_settings_catalog_metadata 改用实际服务的 catalog（self._by_name）",
+    "local_fix": "",
+    "expect_diff_after": []
+   },
+   {
+    "commit": "6c2db88b86",
+    "subject": "carrot: delete the credentials draft, whose every route already exists",
+    "group": "port-20261021-r14",
+    "ported_at": "2026-10-21",
+    "ours_commit": "050063f37c",
+    "probe_was": "",
+    "evidence": "本机 credentials.py 只差一处 import 路径（..services.params vs ..services.params_typed），无引用，直接删",
+    "local_fix": "",
+    "expect_diff_after": []
+   },
+   {
+    "commit": "e12ae265f6",
+    "subject": "imports: make the two ways this tree broke an import impossible to repeat",
+    "group": "port-20261021-r14",
+    "ported_at": "2026-10-21",
+    "ours_commit": "050063f37c",
+    "probe_was": "",
+    "evidence": "interfaces.py 冲突取上游（引入 seed_mazda_torque_defaults 调用 + 注释）；manager.py 顺带补回 seed_car_defaults_offroad(params) 调用",
+    "local_fix": "",
+    "expect_diff_after": []
+   },
+   {
+    "commit": "3255c6a75b",
+    "subject": "weather: ask Open-Meteo where the car is",
+    "group": "port-20261021-r14",
+    "ported_at": "2026-10-21",
+    "ours_commit": "8f7d558c70",
+    "probe_was": "",
+    "evidence": "weather.py 新增；无网络/无定位/未知码时返回 unknown，不猜",
+    "local_fix": "",
+    "expect_diff_after": []
+   },
+   {
+    "commit": "1e98e8d56b",
+    "subject": "carrot_server: keep WeatherState in step with the weather",
+    "group": "port-20261021-r14",
+    "ported_at": "2026-10-21",
+    "ours_commit": "8f7d558c70",
+    "probe_was": "",
+    "evidence": "按上游原补丁 3-way 落地，仅本机分叉处人工解冲突",
+    "local_fix": "",
+    "expect_diff_after": []
+   },
+   {
+    "commit": "181f6be737",
+    "subject": "carrot ui: give the weather offsets somewhere to be set",
+    "group": "port-20261021-r14",
+    "ported_at": "2026-10-21",
+    "ours_commit": "8f7d558c70",
+    "probe_was": "",
+    "evidence": "carrot_tuning_items 六行（浮动缩放 0.00-3.00）；本机另补 22 条 zh-CHS/CHT 缺译",
+    "local_fix": "",
+    "expect_diff_after": []
+   },
+   {
+    "commit": "4993c3cf32",
+    "subject": "carrot_server: read the auto-detect default the store actually has",
+    "group": "port-20261021-r14",
+    "ported_at": "2026-10-21",
+    "ours_commit": "8f7d558c70",
+    "probe_was": "",
+    "evidence": "未设置的自动探测键按声明默认 ON 读，不再当作 OFF",
+    "local_fix": "",
+    "expect_diff_after": []
+   },
+   {
+    "commit": "4b98f11d59",
+    "subject": "ui: five follow-gap rows could not save, and a guard so the next one cannot ship",
+    "group": "port-20261021-r14",
+    "ported_at": "2026-10-21",
+    "ours_commit": "8f7d558c70",
+    "probe_was": "",
+    "evidence": "DynamicTFollowLC FLOAT->INT（行控件写不进去）；params_keys.h 冲突保留本地 DynamicTFollow FLOAT 行",
+    "local_fix": "",
+    "expect_diff_after": []
+   },
+   {
+    "commit": "e2f98365d6",
+    "subject": "webui: pick up the catalogue depth reading and the four unhidden controls",
+    "group": "port-20261021-r14",
+    "ported_at": "2026-10-21",
+    "ours_commit": "8f7d558c70",
+    "probe_was": "",
+    "evidence": "webui 子模块：本机分叉先落 CustomSR 行（并修回 CRLF，避免整文件冲突），再 merge 上游 ec36718+599fdd0",
+    "local_fix": "",
+    "expect_diff_after": []
+   },
+   {
+    "commit": "1952394252",
+    "subject": "webui: subpanel depth stamping",
+    "group": "port-20261021-r14",
+    "ported_at": "2026-10-21",
+    "ours_commit": "8f7d558c70",
+    "probe_was": "",
+    "evidence": "按上游原补丁 3-way 落地，仅本机分叉处人工解冲突",
+    "local_fix": "",
+    "expect_diff_after": []
+   },
+   {
+    "commit": "58f7e56e89",
+    "subject": "webui: weather adaptation in the carrot cruise panel",
+    "group": "port-20261021-r14",
+    "ported_at": "2026-10-21",
+    "ours_commit": "8f7d558c70",
+    "probe_was": "",
+    "evidence": "按上游原补丁 3-way 落地，仅本机分叉处人工解冲突",
+    "local_fix": "",
+    "expect_diff_after": []
    }
   ],
   "next_batch": {
