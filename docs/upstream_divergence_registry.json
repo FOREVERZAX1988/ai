@@ -426,22 +426,6 @@
         ]
       },
       {
-        "commit": "0ba6c81d0447f1a35a3533c741c4d96cfdb46747",
-        "subject": "ui: dedupe SLA button, align webui-only knobs into big UI, fill zh translations",
-        "date": "10-21",
-        "group": "ui/settings",
-        "status": "todo",
-        "impact": "carrot_tuning_items 增 Rear Camera 一节、去掉重复 SLA 按钮、补 zh-CHS/CHT 翻译",
-        "next": "参数本机已有（carrot 原生），只缺屏上入口与去重",
-        "probes": [
-          {
-            "kind": "symbol_absent",
-            "target": "openpilot/selfdrive/ui/sunnypilot/layouts/settings/carrot_tuning_items.py",
-            "needle": "AutoNaviRearCameraHoldDistance"
-          }
-        ]
-      },
-      {
         "commit": "63a6f3211b44edb8ba9fd08fdcba3a7c98875b4d",
         "subject": "StarPilot port: NNFF lateral neural network feedforward (Twilsonco)",
         "date": "10-21",
@@ -1051,6 +1035,19 @@
         "expect_diff_after": [
           "params_keys.h: ShowRadarInfo 声明本树为 INT，上游为 BOOL（上游那份声明使 2/3 档不可用）",
           "测试断言比口径换成「画出来的字符串列表」（每个标签画两次：shadow + 主体），上游断言的是调用计数"
+        ]
+      },
+      {
+        "commit": "0ba6c81d04",
+        "subject": "ui: dedupe SLA button, align webui-only knobs into big UI, fill zh translations",
+        "group": "port-20261021-r9",
+        "ported_at": "2026-10-21",
+        "ours_commit": "14f2fa83de",
+        "probe_was": "symbol_absent SteerRatioRate in openpilot/selfdrive/ui/sunnypilot/layouts/settings/steering.py",
+        "evidence": "cruise.py 去掉重复的 Speed Limit 条目（items 列表里 sla_settings_button 出现两次，面板上真的画两个）并删掉只被它用到的两行 import；steering.py 新增 SteerRatioRate / CustomSR 两项（纵向/横向解析侧早就在 resolve_vehicle_model_steer_ratio 里读它们，只是屏上没入口）；carrot_tuning_items.py 新增 Rear Camera Hold Distance、Lane Line Curve Speed Gate、ONNX BSD/车道阈值与间隔共 7 项，另修好一处 Lane Guide Blocking 描述的缩进。实测三个 build_*_items() 均能构造（25/36/32 项，headless 字体告警属环境噪声），9 个新键 params_keys.h 早已注册（无需重建库）。ruff：三个文件与 HEAD 逐条一致（无新增，cruise.py 反而少了 1 条 F401）。zh：按 msgid 差集合并上游译文，CHS +110 条、CHT +20 条，重复 msgid 计数与 HEAD 相同（2/3，均为既有）。",
+        "local_fix": "上游 .po 是整段追加（737 行），本树 .po 比上游更大（自有 fork 字符串），整段覆盖会与既有条目撞车，所以改成「只补本树没有的 msgid + 把本树空 msgstr 的补上」的集合差合并。另：上游同一 commit 删掉的两行 import 本树也是死的，一并删。",
+        "expect_diff_after": [
+          "translations/*.po 的条目顺序与上游不同（本树按差集合追加，未重排既有条目）"
         ]
       }
     ],
