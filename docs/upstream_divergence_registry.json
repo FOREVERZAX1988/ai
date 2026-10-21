@@ -26,7 +26,7 @@
    "path": "openpilot/selfdrive/controls/lib/longitudinal_mpc_lib/long_mpc.py",
    "verdict": "mixed",
    "expect_diff": true,
-   "upstream_commit": "f45472b01b",
+   "upstream_commit": "8b52c4eef5",
    "ours_keeps": [
     "t_follow_user_scale() (planner 仍在调用，上游没有)",
     "stop_distance 不可运行时覆盖的注释"
@@ -34,9 +34,13 @@
    "upstream_intent_present": [
     "A_CHANGE_FACTORS = np.interp(",
     "W[4,4] = cost_weights[4] * A_CHANGE_FACTORS[i]",
-    "def t_follow_user_scale("
+    "def t_follow_user_scale(",
+    "ocp.model.con_h_expr_e = constraints",
+    "ocp.cost.zl_e = cost_weights",
+    "ocp.constraints.lh_e = np.zeros(CONSTR_DIM)",
+    "for i in range(N+1):"
    ],
-   "note": "仅顺序与注释差异；A_CHANGE_FACTORS 已在"
+   "note": "仅顺序与注释差异；A_CHANGE_FACTORS 已在，round 18 之后终端级软约束（con_h_expr_e + 终端松弛代价 + N+1 的 Zl 循环）也在。本树另外带 fork 内容（param_read 门控、following profile、lead forecast 钩子）。"
   },
   {
    "path": "openpilot/selfdrive/monitoring/dmonitoringd.py",
@@ -434,10 +438,10 @@
  ],
  "upstream_pending_port": {
   "about": "上游 test 上已经实现、我们还没移植的提交清单。每条的 probes 是机器可判定的「仍未移植」判据：路径应当不存在 / 符号应当不存在 / 该符号应当还在（因为上游那次是删除）/ 子模块指针应当还不是我们的祖先。检查器 ai/scripts/upstream_divergence_check.py 会逐条验；一旦某条探针失效（= 我们其实已经搬了或上游又改了），它报 DRIFT，提醒回来改这张表。ported=已移植（探针已反转为 DRIFT，条目移出 items 留档）。status: todo=独立可搬 | todo-after=依赖同批其它条目 | eval=体积大或需驾驶者决策 | pointer=子模块指针 | docs=文档，随条目走。",
-  "scope": "upstream/test after 5c2498a30e (2026-10-21): round 17 ported the two commits added since round 16 (5c2498a30e controls presentation fixes, d52602e6e6 lead_forecast tests). Nothing left but 0facf5cf71 (agnos mirror, skip: not comma hardware). TRAP kept for the next reader: refs/remotes/mouxan/test is an orphan ref from a deleted remote and is stale; always read refs/remotes/upstream/test after `git fetch upstream test` and confirm with `git ls-remote upstream test`.",
+  "scope": "upstream/test after 8b52c4eef5 (2026-10-21 23:2x): round 18 ported the four commits added since round 17 (8b52c4eef5 MPC terminal soft constraint, fe854a7588 opendbc vl_all clear, 1c4250535e replay-harness import, e17b39201c selfdrived test car module). e17b39201c needed zero work (our file already imported opendbc.car.structs) and fe854a7588 landed in our opendbc fork as 213d3f100 because the new upstream pin d8d5659d05 is not an ancestor of our branch. Nothing left but 0facf5cf71 (agnos mirror, skip: not comma hardware). TRAP kept for the next reader: refs/remotes/mouxan/test is an orphan ref from a deleted remote and is stale; always read refs/remotes/upstream/test after `git fetch upstream test` and confirm with `git ls-remote upstream test`.",
   "checked_at": "2026-10-21",
-  "ours_tip": "33c2cdd8c3",
-  "upstream_tip": "5c2498a30e",
+  "ours_tip": "f6c4684b44",
+  "upstream_tip": "8b52c4eef5",
   "items": [
    {
     "commit": "0facf5cf71",
@@ -1437,6 +1441,52 @@
     "probe_was": "symbol_absent test_forecast.py:import pytest",
     "evidence": "test_forecast 26 passed (upstream 25 cases) + test_planner_hook 3 passed; both already unittest before this round",
     "local_fix": "none needed - our conversion is a superset of upstream's, so no code was taken; recorded so the checker stops reporting it.",
+    "expect_diff_after": []
+   },
+   {
+    "commit": "8b52c4eef53dd95e35de417a2a1614e603c1abf1",
+    "subject": "longitudinal: the MPC terminal stage had no soft constraint at all",
+    "group": "controls/longitudinal_mpc",
+    "ported_at": "2026-10-21",
+    "ours_commit": "f6c4684b44",
+    "probe_was": "symbol_absent long_mpc.py:con_h_expr_e",
+    "evidence": "codegen 54 MB/3.7 s + scons -j1 rebuild (MemAvailable 1.41 GB after); the two new long_constr_h_e_fun* sources are linked. A/B on the rebuilt solver: follow scene bit-identical, slowdown a_sum -400.472811 -> -400.486903 with final gap 5.2276 -> 5.2349 m, approach a_cmd delta <=0.006 m/s^2 with final gap 5.1821 -> 5.1903 m. controls/lib/tests 266 passed + 1 skipped (baseline), sunnypilot/selfdrive/controls 936 passed + 8 failed (same 8 as before the rebuild).",
+    "local_fix": "A generated-code change, so it is not gated by a param: the solver itself is rebuilt. Generated sources are gitignored and regenerate from long_mpc.py, which is why only the two source files are committed.",
+    "expect_diff_after": [
+     "openpilot/selfdrive/controls/lib/longitudinal_mpc_lib/long_mpc.py"
+    ]
+   },
+   {
+    "commit": "fe854a758858d7e5cfed6fb4b7db2ac2f5611338",
+    "subject": "opendbc: bump for the vl_all clear optimization",
+    "group": "opendbc/can",
+    "ported_at": "2026-10-21",
+    "ours_commit": "opendbc 213d3f100 (parent f6c4684b44)",
+    "probe_was": "symbol_absent opendbc/can/parser.py:_updated_lists",
+    "evidence": "can/tests/test_packer_parser.py 17 passed incl. upstream's TestOnlyPopulatedListsClear; can/tests 50 passed + 590 subtests.",
+    "local_fix": "Our opendbc branch already carries upstream 85095af0c content, and the new upstream pin d8d5659d05 descends from it but is not an ancestor of our branch, so the delta was cherry-applied as opendbc 213d3f100 instead of moving the pointer (pointer work stays in the panda/pin todo).",
+    "expect_diff_after": []
+   },
+   {
+    "commit": "1c4250535ef3503a6b10f273057cb094b7867dce",
+    "subject": "test(signal): the planner test reached the harness through a name openpilot/tools swallows",
+    "group": "tools/signal_analysis",
+    "ported_at": "2026-10-21",
+    "ours_commit": "f6c4684b44",
+    "probe_was": "symbol_present tools/signal_analysis/test_signal_assist_planner.py:from tools.signal_analysis.replay_signal_assist",
+    "evidence": "file no longer dies at collection; runs and reports 4 skipped with a real reason (replay_filters has no MyMovingAverage - the harness execs cp's CarrotPlanner shape, this fork has no signal hook).",
+    "local_fix": "Applied verbatim; now byte-identical to upstream.",
+    "expect_diff_after": []
+   },
+   {
+    "commit": "e17b39201ce1c5e40b8e07bd6a8dc27bee1c8b7e",
+    "subject": "selfdrived: the warning-delay tests asked cereal for the wrong car module",
+    "group": "selfdrived/tests",
+    "ported_at": "2026-10-21",
+    "ours_commit": "round 17 (5034cefd01/33c2cdd8c3)",
+    "probe_was": "symbol_present openpilot/selfdrive/selfdrived/tests/test_steering_warning_delay.py:from openpilot.cereal import car",
+    "evidence": "our file was already byte-identical to upstream's post-fix version; zero work this round",
+    "local_fix": "none needed",
     "expect_diff_after": []
    }
   ],
