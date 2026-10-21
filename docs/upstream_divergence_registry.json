@@ -378,22 +378,6 @@
         ]
       },
       {
-        "commit": "dbe9c7c52c8a6734228e16b03cb1dd7cd51a36f0",
-        "subject": "slc: comfort relaxation for sudden limit drops; safe-mode stock semantics",
-        "date": "10-21",
-        "group": "safety/safe_mode",
-        "status": "todo-after",
-        "impact": "sunnypilot/common/safe_mode.py + runtime；longitudinal_planner 接入 safe-mode 语义",
-        "next": "依赖 5ee2c9f618 的参数键",
-        "probes": [
-          {
-            "kind": "path_absent",
-            "target": "openpilot/sunnypilot/selfdrive/controls/lib/speed_limit/lead_drop_relaxation.py",
-            "needle": null
-          }
-        ]
-      },
-      {
         "commit": "63a6f3211b44edb8ba9fd08fdcba3a7c98875b4d",
         "subject": "StarPilot port: NNFF lateral neural network feedforward (Twilsonco)",
         "date": "10-21",
@@ -1042,6 +1026,21 @@
         "evidence": "与本轮一起落地：watchdog.cc 用的是修好后的 `#include \"common/hardware/hw.h\"` + `#include <unistd.h>`，本树 hw.h 确实在 openpilot/common/hardware/hw.h，watchdog.o 编译通过。上游原版写的是 system/hardware/hw.h，那条路径在本树不存在。",
         "local_fix": "",
         "expect_diff_after": []
+      },
+      {
+        "commit": "dbe9c7c52c",
+        "subject": "slc: comfort relaxation for sudden limit drops; safe-mode stock semantics",
+        "group": "port-20261021-r11",
+        "ported_at": "2026-10-21",
+        "ours_commit": "a4ad1c2a1b",
+        "probe_was": "path_absent openpilot/sunnypilot/selfdrive/controls/lib/speed_limit/lead_drop_relaxation.py",
+        "evidence": "新增 lead_drop_relaxation.py（152 行纯逻辑 + 182 行单测，27 条用例）+ planner 在 SLA 状态机之后那 21 行（默认关，事件仍播报真实限速）+ Safe Mode 的 SAFE_MODE_REMOVE_KEYS（转向类「0.0=未设置」键改为删除，不再写占位值）+ 删掉 5 个死键 *Stock + LongitudinalPersonality 注释纠正为 1=标准。库已重建（scons -j1，offroad，MemAvailable 1.43 GB，未触发 LMK）：SlcLeadDropRelaxationEnabled type=BOOL 默认 False，SteerRatioStock/SteerKPStock 实测 UnknownKeyName（真的删掉了）。测试：common+tests 165 passed、speed_limit tests 272 passed、controls 目录 879 passed / 8 failed（同一批 8 条在 HEAD 上是 852 passed / 8 failed，逐条一致，属既有夹具缺口）。UI：「Comfort Speed Limit Drop」开关进 Developer 页 + sp_param_labels 词条。",
+        "local_fix": "上游两处读 get_bool 改为 param_read.read_bool：本机 libparams_c.so 由 params_keys.h 编译，键没进库时 get_bool 抛 UnknownKeyName 会把 plannerd 打死 —— 本轮第一遍跑 controls 测试时正是这个形状（11 条红），改 read_bool 后回到 8 条既有红。另：本树两个 Safe Mode 测试断言 apply 后 SteerRatio==0.0，语义已变成「键被删除」，改成断言 None；test_params_metadata 里那条断言 SteerRatioStock 存在的用例随之删掉。",
+        "expect_diff_after": [
+          "planner 的开关读走 param_read.read_bool（上游直接 get_bool），库过期时降级为 off",
+          "Developer 页多一行「Comfort Speed Limit Drop」开关（上游只有参数键、屏上无入口）",
+          "safe-mode 本地测试断言 SteerRatio 键被删除而非写成 0.0"
+        ]
       }
     ],
     "next_batch": {
