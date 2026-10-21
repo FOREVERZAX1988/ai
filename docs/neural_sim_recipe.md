@@ -6,8 +6,13 @@
 
 ## 依赖落在哪
 
-`/data/.pydeps` —— 与 cv2 / shapely / aiohttp 同一个永久依赖目录，`sys.path` 里本来就有它
-（`python3 -c "import sys;print(sys.path)"` 可见 `/data/.pydeps`），所以**不需要设 PYTHONPATH**。
+`/data/.pydeps` —— 与 cv2 / shapely / aiohttp 同一个永久依赖目录。它本来就在默认的
+`PYTHONPATH` 里（`env | grep PYTHONPATH` → `/data/openpilot:/usr/local/venv/lib/python3.12/site-packages:/data/.pydeps`），
+所以**不需要额外设 PYTHONPATH**。
+
+> 坑：这条路径是靠**环境变量**来的，不是靠 `.pth`。自己 `export PYTHONPATH=...` 等于把它整条覆盖掉
+> ——（`import cereal` / `import google` 会突然 ModuleNotFoundError，看着像装坏了）。要设就把
+> `/data/.pydeps` 一起带上。
 
 | 包 | 版本 | 说明 |
 |---|---|---|
