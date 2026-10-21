@@ -368,31 +368,48 @@
     "merge_lower_limit(current, vision_limit)"
    ],
    "note": "d4136d1df0 的规则与合并逻辑逐字节搬了；本树只把三个 Vision* 门控改成 param_read。原因实测过：libparams_c.so 还没编进这三个键时，裸 get_bool 抛 UnknownKeyName，speed_limit 测试目录 35 条红、plannerd 起来就死。改 param_read 后 135 绿。谁把这里改回 get_bool，那 35 条会再红一次。"
+  },
+  {
+   "path": "openpilot/selfdrive/controls/controlsd.py",
+   "verdict": "ours",
+   "expect_diff": true,
+   "upstream_commit": "63a6f3211b",
+   "ours_keeps": [
+    "NNFFMode > 0 builds LatControlNNFF, else LatControlTorque",
+    "getattr(self.LaC, 'extension', None): NNFF has no extension object",
+    "live params go to update_torque_parameters or update_live_torque_params, whichever exists",
+    "nnff_mode re-read once a second so the Developer row applies without a restart"
+   ],
+   "upstream_intent_present": [
+    "if nnff_mode > 0:",
+    "self.LaC.attach_sm(self.sm)",
+    "self.LaC.update_live_delay(lat_delay)"
+   ],
+   "note": "Upstream's own file has none of the fork's per-frame extension hooks, so a verbatim take would delete them; a take that keeps them but drops the getattr guard raises AttributeError on the first active frame (test_nnff_integration pins both)."
+  },
+  {
+   "path": "openpilot/selfdrive/controls/lib/nnff_variables.py",
+   "verdict": "mixed",
+   "expect_diff": true,
+   "upstream_commit": "63a6f3211b",
+   "ours_keeps": [
+    "nnff_supported() imports nnff_model.get_nn_model_path, not the later neural_network_feedforward rename"
+   ],
+   "upstream_intent_present": [
+    "FORK_SUBSTITUTES",
+    "def get_nnff_substitutes",
+    "NNFF_MODELS_PATH"
+   ],
+   "note": "Upstream's import target only exists after a later commit; importing it here raised ImportError, so the function would have looked present and never returned a verdict."
   }
  ],
  "upstream_pending_port": {
   "about": "上游 test 上已经实现、我们还没移植的提交清单。每条的 probes 是机器可判定的「仍未移植」判据：路径应当不存在 / 符号应当不存在 / 该符号应当还在（因为上游那次是删除）/ 子模块指针应当还不是我们的祖先。检查器 ai/scripts/upstream_divergence_check.py 会逐条验；一旦某条探针失效（= 我们其实已经搬了或上游又改了），它报 DRIFT，提醒回来改这张表。ported=已移植（探针已反转为 DRIFT，条目移出 items 留档）。status: todo=独立可搬 | todo-after=依赖同批其它条目 | eval=体积大或需驾驶者决策 | pointer=子模块指针 | docs=文档，随条目走。",
-  "scope": "upstream/test after 4993c3cf32 (2026-10-21): one commit, 1b36f1ad36, ported in round 15 (lead-forecast wrapper forwards *args and reads lead_index, plus an ast-based contract guard). TRAP: refs/remotes/mouxan/test is an orphan ref from a deleted remote and is stale (tip 5f2ae96a64, 2026-10-17); always read refs/remotes/upstream/test after `git fetch upstream test` and confirm with `git ls-remote upstream test`. NNFF 63a6f3211b stays the only pending item.",
+  "scope": "upstream/test after 1b36f1ad36 (2026-10-21): round 16 ported the last feature, 63a6f3211b NNFF. Nothing left but 0facf5cf71 (agnos mirror, skip: not comma hardware). TRAP kept for the next reader: refs/remotes/mouxan/test is an orphan ref from a deleted remote and is stale (5f2ae96a64, 2026-10-17); always read refs/remotes/upstream/test after `git fetch upstream test` and confirm with `git ls-remote upstream test`.",
   "checked_at": "2026-10-21",
-  "ours_tip": "c313a42a96",
+  "ours_tip": "853cc6f936",
   "upstream_tip": "1b36f1ad36",
   "items": [
-   {
-    "commit": "63a6f3211b44edb8ba9fd08fdcba3a7c98875b4d",
-    "subject": "StarPilot port: NNFF lateral neural network feedforward (Twilsonco)",
-    "date": "10-21",
-    "group": "lateral/nnff",
-    "status": "eval",
-    "impact": "127 个文件（125 个车型 nnff_models JSON）+ latcontrol 侧推理，体积与延迟都需要驾驶者拍板",
-    "next": "模型资产要单独推（LFS/分块）；Macan 无对应用户群体，先评估",
-    "probes": [
-     {
-      "kind": "path_absent",
-      "target": "openpilot/selfdrive/assets/nnff_models",
-      "needle": null
-     }
-    ]
-   },
    {
     "commit": "0facf5cf71",
     "subject": "更新boot和system系统包改用腾讯cnb地址",
@@ -1349,6 +1366,24 @@
     "evidence": "整文件取上游：forecast.py blob 0cd5421b14 与上游逐字节一致；新增 test_lead_forecast_process_lead.py（ast 读两侧、不 import）4/4 OK；闭环 SCC + lead policy 49 passed；ruff 绿；同日后补：lead_forecast/tests/ 由 pytest-only 转 stdlib unittest（父仓 7e7516b3b3）——上游那 28 个测试此前在任何能跑的地方都没跑过（车机无 pytest、依赖拉 msgq），现已 unittest/pytest 双绿 29 个，并加护栏禁止同级 test_*.py 再 import pytest",
     "local_fix": "无（本机那三行 **kwargs 本地补丁被上游超集取代，不保留两套）",
     "expect_diff_after": []
+   },
+   {
+    "commit": "63a6f3211b44edb8ba9fd08fdcba3a7c98875b4d",
+    "subject": "StarPilot port: NNFF lateral neural network feedforward (Twilsonco)",
+    "group": "lateral/nnff",
+    "ported_at": "2026-10-21",
+    "ours_commit": "853cc6f936",
+    "probe_was": "path_absent openpilot/selfdrive/assets/nnff_models",
+    "evidence": "test_latcontrol_nnff 17/17 (upstream, unmodified) + test_nnff_integration 7/7; controls/lib 259 -> 266 passed, 1 skipped unchanged; sunnypilot controls/lib 344 passed",
+    "local_fix": "Three, all forced by this tree: nnff_supported() read controls/lib/neural_network_feedforward (a later upstream rename), now nnff_model; the controller carries no extension object, so controlsd and controls_lateral_zp.dispatch_speed_bins reach it through getattr(..., 'extension', None); live params reach update_live_torque_params, which upstream defines and never calls.",
+    "expect_diff_after": [
+     "openpilot/selfdrive/controls/controlsd.py",
+     "openpilot/selfdrive/controls/lib/nnff_variables.py",
+     "openpilot/sunnypilot/selfdrive/controls/controls_lateral_zp.py",
+     "openpilot/sunnypilot/carrot/feature_support.py",
+     "openpilot/selfdrive/ui/sunnypilot/layouts/settings/developer.py",
+     "openpilot/common/params_keys.h"
+    ]
    }
   ],
   "next_batch": {

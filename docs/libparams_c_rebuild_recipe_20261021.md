@@ -190,3 +190,27 @@ _params_env = env.Clone(CCFLAGS=[f for f in env["CCFLAGS"] if f not in _PINNED_O
 验证（本次）：`scons -n --verbose -j1 openpilot/common/params.o` 打印的命令行里只有
 `-O1 -g0`、无 `-O2`/`-g`；`openpilot/common/tests` + `openpilot/sunnypilot/common/tests`
 共 **249 passed / 258 subtests passed**。
+
+## 追加实测（2026-10-21 round 16，注册 NNFFMode 时）
+
+同样单目标、同样 `-O1 -g0` pin（`ac4bc9fe07`），但这次开工前 `MemAvailable` 只有 **1337 MB**
+（上文 361 MB 那次是 1.9 GB 充裕情形）：
+
+```
+scons -j1 openpilot/common/libparams_c.so
+  Elapsed 2:31.90   Maximum resident set size 368940 KB  = 368.9 MB
+  exit 0，无 LMK 记录
+```
+
+两点结论：
+
+1. 峰值在 361–369 MB 之间（同一 TU，keys 数 671 → 731），量化判据可以用 **VmHWM < 500 MB**。
+2. 存活条件不用「offroad MemAvailable > 1.9 GB」这么严：**1337 MB 也活**。建议判据放宽到
+   `MemAvailable > 1.2 GB`，并把「1.9 GB」只当作历史记录而不是门槛。
+3. 重建后自检（读私有副本，别读 checkout 里那份）：
+
+```bash
+python3 -c "from openpilot.common.params import Params; p=Params(); \
+  ks={k.decode() for k in p.all_keys()}; print(len(ks), 'NNFFMode' in ks, p.get_type('NNFFMode'))"
+# 731 True 2      # 2 = INT
+```
