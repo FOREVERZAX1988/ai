@@ -372,10 +372,10 @@
  ],
  "upstream_pending_port": {
   "about": "上游 test 上已经实现、我们还没移植的提交清单。每条的 probes 是机器可判定的「仍未移植」判据：路径应当不存在 / 符号应当不存在 / 该符号应当还在（因为上游那次是删除）/ 子模块指针应当还不是我们的祖先。检查器 ai/scripts/upstream_divergence_check.py 会逐条验；一旦某条探针失效（= 我们其实已经搬了或上游又改了），它报 DRIFT，提醒回来改这张表。ported=已移植（探针已反转为 DRIFT，条目移出 items 留档）。status: todo=独立可搬 | todo-after=依赖同批其它条目 | eval=体积大或需驾驶者决策 | pointer=子模块指针 | docs=文档，随条目走。",
-  "scope": "upstream/test after 4630b96a77 (2026-10-21); the vision speed-limit pair d81eec5899 + d4136d1df0 is ported (round 12), NNFF 63a6f3211b is the only item left",
+  "scope": "upstream/test after 4630b96a77 (2026-10-21); round 12 ported d81eec5899 + d4136d1df0, round 13 ported 927498237f (modeldLagging two tiers) and merged the webui submodule bump 0ec403f435 (parent 94ee509a41); NNFF 63a6f3211b is the only item left",
   "checked_at": "2026-10-21",
-  "ours_tip": "541d96a3d7",
-  "upstream_tip": "4630b96a77",
+  "ours_tip": "94ee509a41",
+  "upstream_tip": "1952394252",
   "items": [
    {
     "commit": "63a6f3211b44edb8ba9fd08fdcba3a7c98875b4d",
@@ -390,22 +390,6 @@
       "kind": "path_absent",
       "target": "openpilot/selfdrive/assets/nnff_models",
       "needle": null
-     }
-    ]
-   },
-   {
-    "commit": "927498237ff367b2117dce8ef86793109e63a71b",
-    "subject": "selfdrived: split modeldLagging into mild (informational) and severe (takeover) tiers",
-    "date": "10-21",
-    "group": "selfdrived/alerts",
-    "status": "todo",
-    "impact": "cereal/log.capnp 新增 OnroadEvent.modeldLaggingMild @106，selfdrived 侧按 mild/severe 分档告警；只搬 capnp 会多一个没人写的枚举",
-    "next": "与 selfdrived 侧一起搬。这是 phase 1 里 log.capnp 那条 FAIL 的来源（上游 4630b96a77 之后的重基线，4630b96a77..72c6200b79 共 19 提交）",
-    "probes": [
-     {
-      "kind": "symbol_absent",
-      "target": "openpilot/cereal/log.capnp",
-      "needle": "modeldLaggingMild"
      }
     ]
    }
@@ -1041,6 +1025,17 @@
      "Developer 页多一行「Comfort Speed Limit Drop」开关（上游只有参数键、屏上无入口）",
      "safe-mode 本地测试断言 SteerRatio 键被删除而非写成 0.0"
     ]
+   },
+   {
+    "commit": "927498237ff367b2117dce8ef86793109e63a71b",
+    "subject": "selfdrived: split modeldLagging into mild (informational) and severe (takeover) tiers",
+    "group": "selfdrived/alerts",
+    "ported_at": "2026-10-21",
+    "ours_commit": "2bfba26c93",
+    "probe_was": "symbol_absent openpilot/cereal/log.capnp:modeldLaggingMild",
+    "evidence": "selfdrive/selfdrived/tests 41 passed（上游 6 条 monitor 用例 + 本树 3 条护栏：mild 只许 PERMANENT、severe 两个接管钩子必须在、selfdrived.py 必须仍调用 monitor 且不得残留 modeld_lag_counter）；capnp.load 实测 ordinal 106 / modeldLagging 70",
+    "local_fix": "capnp 只改 schema：gen/cpp/log.capnp.h 按先例不重建（它连 @104/@105 都没有），C++ 侧无人写该枚举；mild 档故意不给 SOFT_DISABLE/NO_ENTRY，由护栏测试钉住",
+    "expect_diff_after": false
    }
   ],
   "next_batch": {
