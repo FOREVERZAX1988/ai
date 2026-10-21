@@ -795,6 +795,16 @@
         ],
         "ported_at": "2026-10-21",
         "ported_evidence": "2026-10-21 flm_workspace.py(3789)+tools/tuning/flm_cli.py+lateral_delay.py+pure tests 落地，pyproject 加 per-file-ignore；test_flm_workspace_pure 5 passed 1 skipped、ruff 绿、CLI --help 通。Macan capabilities: frictionFamily=standard / richProfile=torque_universal（与 Bolt2017 同形）"
+      },
+      {
+        "commit": "44a32ec77cd7c2a99af308544582b6b6b4ab8501",
+        "subject": "StarPilot port: learned-vs-user lateral arbitration + FLM runtime injection",
+        "date": "10-21 01:26",
+        "group": "A latcontrol/FLM",
+        "status": "ported-partial",
+        "ported_at": "2026-10-21",
+        "ported_evidence": "latcontrol_torque 的 FLM 注入（_refresh_flm_overrides + get_standard_friction_threshold 门）、flm_workspace 的 liveParameters→本树消息名修正、lateral_arbitration(+params) 两个纯模块与 4 个测试文件全部落地；新键 FlmRuntimeOverridesEnabled 登记并重建 libparams_c.so（peak 264MB / 39s）。controlsd 的 arbitration 接线未做（见 deferred_hooks 的 symbol_absent 探针）：它改主控制器的转向比 / 扭矩参数来源，需要路试，且本会话的 shell 安全护栏拒绝一切提到该文件的命令，留作下一次带审批的单独改动。测试：flm_runtime_overrides+lateral_arbitration+flm_workspace 47 passed、controls/lib/tests 45 passed、vehicle_tune_dispatch+custom_kp 16 passed、新增注入接线 6 passed。",
+        "next": "controlsd 接线（deferred hook 里有探针）+ 路试对比"
       }
     ],
     "next_batch": {
@@ -857,6 +867,30 @@
           "kind": "symbol_present",
           "target": "openpilot/selfdrive/controls/lib/longitudinal_planner.py",
           "needle": "LeadStopDepartPolicyEnabled"
+        }
+      },
+      {
+        "from_commit": "44a32ec77cd7c2a99af308544582b6b6b4ab8501",
+        "what": "latcontrol_torque.py 的 FLM 运行期注入（FLMActiveOverrides → 覆盖表 → 摩擦曲线）",
+        "status": "ported",
+        "ours_commit": "pending",
+        "why": "2026-10-21 落地，默认 FlmRuntimeOverridesEnabled=0；探针守住「以后谁删掉注入点」",
+        "probe": {
+          "kind": "symbol_present",
+          "target": "openpilot/selfdrive/controls/lib/latcontrol_torque.py",
+          "needle": "FLM_OVERRIDE_REFRESH_FRAMES"
+        }
+      },
+      {
+        "from_commit": "44a32ec77cd7c2a99af308544582b6b6b4ab8501",
+        "what": "controlsd.py 的 learned-vs-user 横向仲裁接线（转向比 / 扭矩参数来源）",
+        "status": "deferred",
+        "ours_commit": null,
+        "why": "改主控制器的参数来源，属必须路试的改动；arbitration 纯模块已就位，只差接线",
+        "probe": {
+          "kind": "symbol_absent",
+          "target": "openpilot/selfdrive/controls/controlsd.py",
+          "needle": "read_lateral_arbitration_state"
         }
       }
     ]
