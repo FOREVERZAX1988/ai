@@ -356,10 +356,10 @@
   ],
   "upstream_pending_port": {
     "about": "上游 test 上已经实现、我们还没移植的提交清单。每条的 probes 是机器可判定的「仍未移植」判据：路径应当不存在 / 符号应当不存在 / 该符号应当还在（因为上游那次是删除）/ 子模块指针应当还不是我们的祖先。检查器 ai/scripts/upstream_divergence_check.py 会逐条验；一旦某条探针失效（= 我们其实已经搬了或上游又改了），它报 DRIFT，提醒回来改这张表。ported=已移植（探针已反转为 DRIFT，条目移出 items 留档）。status: todo=独立可搬 | todo-after=依赖同批其它条目 | eval=体积大或需驾驶者决策 | pointer=子模块指针 | docs=文档，随条目走。",
-    "scope": "upstream/test 59efe220e6..817f4a78c2（2026-10-20 17:30 +0800，35 个提交）",
+    "scope": "upstream/test 817f4a78c2..4630b96a77 (2026-10-21, 20 commits) + 遗留 d81eec5899",
     "checked_at": "2026-10-21",
     "ours_tip": "PENDING",
-    "upstream_tip": "817f4a78c2",
+    "upstream_tip": "4630b96a77",
     "items": [
       {
         "commit": "d81eec58999ff32d2acf51e3976419fd0bcd01a9",
@@ -373,6 +373,182 @@
           {
             "kind": "path_absent",
             "target": "openpilot/sunnypilot/system/speed_limit_vision.py",
+            "needle": null
+          }
+        ]
+      },
+      {
+        "commit": "7fd88d270b5fdc4a2433d0ec3e727bf7bc417a9a",
+        "subject": "safety: add a process watchdog and a trustworthy vehicle capability probe",
+        "date": "10-21",
+        "group": "safety/watchdog",
+        "status": "todo",
+        "impact": "新增 common/watchdog.{cc,h,py} + SConscript 目标；探活进程级健康并给出车辆能力探测",
+        "next": "C++ 侧新目标，需要自己的编译条目；与 aab6ed90f8（hw.h 路径修正）一起搬",
+        "probes": [
+          {
+            "kind": "path_absent",
+            "target": "openpilot/common/watchdog.cc",
+            "needle": null
+          }
+        ]
+      },
+      {
+        "commit": "aab6ed90f825a75a10d48253bc8cc6209119094f",
+        "subject": "fix(common): include the real hw.h path in watchdog.cc",
+        "date": "10-21",
+        "group": "safety/watchdog",
+        "status": "todo-after",
+        "impact": "watchdog.cc 的一行 include 修正",
+        "next": "随 7fd88d270b 一起搬，不单独动",
+        "probes": [
+          {
+            "kind": "path_absent",
+            "target": "openpilot/common/watchdog.h",
+            "needle": null
+          }
+        ]
+      },
+      {
+        "commit": "5ee2c9f6185edb173b8d3beededefa63e6cdc3d6",
+        "subject": "safety: add Safe Mode and the parameter metadata it needs",
+        "date": "10-21",
+        "group": "safety/safe_mode",
+        "status": "todo-after",
+        "impact": "params_keys.h +SafeMode/+SafeModeBackup/+Steer*Stock；params.cc/params.h/params.py 增加元数据接口",
+        "next": "依赖 7fd88d270b 的 watchdog；改 params.cc 需要重建 libparams_c.so（-O0 钉住，单目标 -j1 已实测通过）",
+        "probes": [
+          {
+            "kind": "symbol_absent",
+            "target": "openpilot/common/params_keys.h",
+            "needle": "SafeModeBackup"
+          }
+        ]
+      },
+      {
+        "commit": "dbe9c7c52c8a6734228e16b03cb1dd7cd51a36f0",
+        "subject": "slc: comfort relaxation for sudden limit drops; safe-mode stock semantics",
+        "date": "10-21",
+        "group": "safety/safe_mode",
+        "status": "todo-after",
+        "impact": "sunnypilot/common/safe_mode.py + runtime；longitudinal_planner 接入 safe-mode 语义",
+        "next": "依赖 5ee2c9f618 的参数键",
+        "probes": [
+          {
+            "kind": "path_absent",
+            "target": "openpilot/sunnypilot/common/safe_mode.py",
+            "needle": null
+          }
+        ]
+      },
+      {
+        "commit": "25112d67f8614c049ff7bb18ff7097ed1b3765d6",
+        "subject": "modes: longitudinal mode state skeleton with a transactional write path",
+        "date": "10-21",
+        "group": "modes",
+        "status": "todo",
+        "impact": "sunnypilot/common/mode_state.py + runtime + carrot server params 端点",
+        "next": "独立可搬；纯状态机，默认无行为变化",
+        "probes": [
+          {
+            "kind": "path_absent",
+            "target": "openpilot/sunnypilot/common/mode_state.py",
+            "needle": null
+          }
+        ]
+      },
+      {
+        "commit": "a30b14cdabd880b18c97a94413cdaf522831febb",
+        "subject": "safety: borrow StarPilot's guards for params, comm issues and stale alerts",
+        "date": "10-21",
+        "group": "safety/guards",
+        "status": "todo",
+        "impact": "sunnypilot/common/safety_guards.py + selfdrived/carrot server 接入",
+        "next": "独立可搬；守卫默认只记录不动作，需要在屏上灰显上限",
+        "probes": [
+          {
+            "kind": "path_absent",
+            "target": "openpilot/sunnypilot/common/safety_guards.py",
+            "needle": null
+          }
+        ]
+      },
+      {
+        "commit": "4630b96a776aecff106e439b19dcad05705ba454",
+        "subject": "models: local size ledger so the picker can see what is on disk",
+        "date": "10-21",
+        "group": "models",
+        "status": "todo",
+        "impact": "sunnypilot/models/model_sizes.py + model picker 显示已下载体积",
+        "next": "独立可搬，纯 UI/查询",
+        "probes": [
+          {
+            "kind": "path_absent",
+            "target": "openpilot/sunnypilot/models/model_sizes.py",
+            "needle": null
+          }
+        ]
+      },
+      {
+        "commit": "93b695da88dfd6be9e5f632e8a24a0bf23222524",
+        "subject": "ui: radar point overlay levels - restore carrot ShowRadarInfo scale",
+        "date": "10-21",
+        "group": "ui/radar",
+        "status": "todo",
+        "impact": "radar_points.py 按 carrot 的 ShowRadarInfo 0-3 档裁剪叠加信息 + zh 翻译",
+        "next": "本树完全没有 ShowRadarInfo；独立可搬，默认 0=关",
+        "probes": [
+          {
+            "kind": "symbol_absent",
+            "target": "openpilot/selfdrive/ui/sunnypilot/onroad/radar_points.py",
+            "needle": "radar_info_level"
+          }
+        ]
+      },
+      {
+        "commit": "0ba6c81d0447f1a35a3533c741c4d96cfdb46747",
+        "subject": "ui: dedupe SLA button, align webui-only knobs into big UI, fill zh translations",
+        "date": "10-21",
+        "group": "ui/settings",
+        "status": "todo",
+        "impact": "carrot_tuning_items 增 Rear Camera 一节、去掉重复 SLA 按钮、补 zh-CHS/CHT 翻译",
+        "next": "参数本机已有（carrot 原生），只缺屏上入口与去重",
+        "probes": [
+          {
+            "kind": "symbol_absent",
+            "target": "openpilot/selfdrive/ui/sunnypilot/layouts/settings/carrot_tuning_items.py",
+            "needle": "AutoNaviRearCameraHoldDistance"
+          }
+        ]
+      },
+      {
+        "commit": "63a6f3211b44edb8ba9fd08fdcba3a7c98875b4d",
+        "subject": "StarPilot port: NNFF lateral neural network feedforward (Twilsonco)",
+        "date": "10-21",
+        "group": "lateral/nnff",
+        "status": "eval",
+        "impact": "127 个文件（125 个车型 nnff_models JSON）+ latcontrol 侧推理，体积与延迟都需要驾驶者拍板",
+        "next": "模型资产要单独推（LFS/分块）；Macan 无对应用户群体，先评估",
+        "probes": [
+          {
+            "kind": "path_absent",
+            "target": "openpilot/selfdrive/assets/nnff_models",
+            "needle": null
+          }
+        ]
+      },
+      {
+        "commit": "d4136d1df063a49aa8a653a8afe5a45dcf58b7e0",
+        "subject": "StarPilot port: feed the detected vision limit into the speed-limit resolver",
+        "date": "10-21",
+        "group": "speed_limit_vision",
+        "status": "todo-after",
+        "impact": "speed_limit_resolver 接入 vision_limit.py 的结果 + tests",
+        "next": "依赖 d81eec5899（视觉限速 daemon）先落地",
+        "probes": [
+          {
+            "kind": "path_absent",
+            "target": "openpilot/sunnypilot/selfdrive/controls/lib/speed_limit/vision_limit.py",
             "needle": null
           }
         ]
@@ -805,6 +981,94 @@
         "ported_at": "2026-10-21",
         "ported_evidence": "latcontrol_torque 的 FLM 注入（_refresh_flm_overrides + get_standard_friction_threshold 门）、flm_workspace 的 liveParameters→本树消息名修正、lateral_arbitration(+params) 两个纯模块与 4 个测试文件全部落地；新键 FlmRuntimeOverridesEnabled 登记并重建 libparams_c.so（peak 264MB / 39s）。controlsd 的 arbitration 接线未做（见 deferred_hooks 的 symbol_absent 探针）：它改主控制器的转向比 / 扭矩参数来源，需要路试，且本会话的 shell 安全护栏拒绝一切提到该文件的命令，留作下一次带审批的单独改动。测试：flm_runtime_overrides+lateral_arbitration+flm_workspace 47 passed、controls/lib/tests 45 passed、vehicle_tune_dispatch+custom_kp 16 passed、新增注入接线 6 passed。",
         "next": "controlsd 接线（deferred hook 里有探针）+ 路试对比"
+      },
+      {
+        "commit": "d924d11b9b",
+        "subject": "StarPilot port: adjacent-lane stopped-vehicle detector (logic layer)",
+        "group": "port-20261021",
+        "ported_at": "2026-10-21",
+        "ours_commit": "e91a2ae78c",
+        "probe_was": "port_merged",
+        "evidence": "test_adjacent_stop_detector.py 19 passed；纯记账，控制路径还没消费",
+        "local_fix": "",
+        "expect_diff_after": []
+      },
+      {
+        "commit": "c3ab2803e5",
+        "subject": "StarPilot port: longcontrol stopping-release hysteresis + creep guard",
+        "group": "port-20261021",
+        "ported_at": "2026-10-21",
+        "ours_commit": "5f7c828a0b",
+        "probe_was": "port_merged",
+        "evidence": "test_longcontrol_stop_release.py 20 passed；两个键默认 0，门控经 param_read",
+        "local_fix": "",
+        "expect_diff_after": []
+      },
+      {
+        "commit": "ff32ddccf8",
+        "subject": "StarPilot port: vision lane-centering curvature correction",
+        "group": "port-20261021",
+        "ported_at": "2026-10-21",
+        "ours_commit": "07e7d8f2c7",
+        "probe_was": "port_merged",
+        "evidence": "test_lane_centering.py 18 passed；LaneCenteringEnabled 默认 0",
+        "local_fix": "",
+        "expect_diff_after": []
+      },
+      {
+        "commit": "265c29a27d",
+        "subject": "StarPilot port: curve-speed self-learning (Bayesian comfort lateral accel)",
+        "group": "port-20261021",
+        "ported_at": "2026-10-21",
+        "ours_commit": "a8479ebdb9",
+        "probe_was": "port_merged",
+        "evidence": "test_curve_speed_learning.py 21 passed；SCC 1 failed/1 error 与 stash 前一致（既有 carStateSP 夹具缺口）",
+        "local_fix": "",
+        "expect_diff_after": []
+      },
+      {
+        "commit": "045e473a33",
+        "subject": "StarPilot port: uncertainty panic gate, duplicate-lead guard, model lead trajectory",
+        "group": "port-20261021",
+        "ported_at": "2026-10-21",
+        "ours_commit": "a1a8260a31",
+        "probe_was": "port_merged",
+        "evidence": "三个测试文件 68 passed；controls/lib 全套 191 passed / 1 skipped",
+        "local_fix": "",
+        "expect_diff_after": []
+      },
+      {
+        "commit": "da20eaaab4",
+        "subject": "StarPilot port: speed-dependent following profiles",
+        "group": "port-20261021",
+        "ported_at": "2026-10-21",
+        "ours_commit": "5f7c4e8301",
+        "probe_was": "port_merged",
+        "evidence": "controls/lib 217 passed / 1 skipped；long_mpc 保留本树 get_t_follow 实现",
+        "local_fix": "",
+        "expect_diff_after": []
+      },
+      {
+        "commit": "725bfb210d",
+        "subject": "StarPilot port: weather-conditioned driving offsets",
+        "group": "port-20261021",
+        "ported_at": "2026-10-21",
+        "ours_commit": "7795423183",
+        "probe_was": "port_merged",
+        "evidence": "controls/lib + SCC + lead_forecast 301 passed / 1 skipped",
+        "local_fix": "",
+        "expect_diff_after": []
+      },
+      {
+        "commit": "2d9c586376",
+        "subject": "fix: survive an unregistered parameter key instead of killing the daemon",
+        "group": "port-20261021",
+        "ported_at": "2026-10-21",
+        "ours_commit": "eafa58890d",
+        "probe_was": "port_merged",
+        "evidence": "param_read.py 与其单测先落（eafa58890d），六个调用点在各功能移植时直接写成 param_read",
+        "local_fix": "",
+        "expect_diff_after": []
       }
     ],
     "next_batch": {
