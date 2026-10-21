@@ -410,22 +410,6 @@
     ]
    },
    {
-    "commit": "5ee2c9f6185edb173b8d3beededefa63e6cdc3d6",
-    "subject": "safety: add Safe Mode and the parameter metadata it needs",
-    "date": "10-21",
-    "group": "safety/safe_mode",
-    "status": "partial",
-    "impact": "安全模式：safe_mode.py / safe_mode_runtime.py / 7 个键已落（2960c6b25e）；C++ 元数据（stock_value / tuning_level / settings_tier + get_stock_value 绑定）与主循环接入未做",
-    "next": "① params.h/params.cc/params_c.cc/params.py 的元数据接口 + 重编 .so；② 主循环每 SAFE_MODE_ENFORCE_FRAMES 帧强制回保守值那 7 行；在 ② 落地前 SafeMode 键是惰性的（默认 0，无行为变化）；Python 层所有元数据读取都自带 try/except，缺绑定只会\"不动这个参数\"",
-    "probes": [
-     {
-      "kind": "symbol_absent",
-      "target": "openpilot/common/params.h",
-      "needle": "get_stock_value"
-     }
-    ]
-   },
-   {
     "commit": "dbe9c7c52c8a6734228e16b03cb1dd7cd51a36f0",
     "subject": "slc: comfort relaxation for sudden limit drops; safe-mode stock semantics",
     "date": "10-21",
@@ -1059,6 +1043,20 @@
     "evidence": "test_safety_guards.py + test_chunked_download.py 28 passed；sunnypilot/common/tests + models/tests 256 passed / 2 skipped；守卫实测：行驶中写横向参数被拒、写 IsMetric 放行",
     "local_fix": "守卫只包服务端写入口，学习器直写 Params 的路径不受影响",
     "expect_diff_after": []
+   },
+   {
+    "commit": "5ee2c9f618",
+    "subject": "safety: add Safe Mode and the parameter metadata it needs",
+    "group": "port-20261021-r6",
+    "ported_at": "2026-10-21",
+    "ours_commit": "825ba3d932",
+    "probe_was": "symbol_absent get_stock_value in openpilot/common/params.h",
+    "evidence": "真库实测 730 键、params_get_stock/params_get_tuning_level/params_get_settings_tier 三绑定在位、tuning_level/settings_tier 可读；隔离 Params 目录端到端 1.53/1/True → apply → 0.0/0/False（备份 23 条）→ 再次 apply 幂等 False → restore → 1.53/1/True 且备份清空；sunnypilot/common/tests + common/tests 183 passed / 258 subtests passed；ruff 全绿；库重建 scons -j1 44.8 s 未触发 LMK",
+    "local_fix": "上游用 Params 替身写单测，替身收字符串；真 Params.put 严格类型，四处不匹配全被 try/except 吞掉：(1) 字符串目标写 BOOL/INT/FLOAT 键 python2cpp 抛 TypeError → _put 返回 False，一个键都没被强制；(2) _default 用 get(return_default=True)，键设过时返回存储值，safe_value 的默认值回落分支拿到要替换的值；(3) _get 把 JSON 备份 str(dict) 成 Python repr，json.loads 失败 → 解析成「无备份」→ restore 永远无效；(4) BOOL 读成 \"True\"/\"False\" 永不等于目标 \"0\"/\"1\" → 每强制周期重写 15 个键。修法：_put 前按 get_type 做 _coerce、_default 改 get_default_value、_get 对 dict/list 原样返回并 bool 渲染成 1/0",
+    "expect_diff_after": [
+     "safe_mode_runtime._default 走 get_default_value()，上游仍走 get(return_default=True)",
+     "NNFFMode / VisionSpeedLimitEnabled / VisionSpeedLimitLowLimitFilter 三个受管键本树未注册（63a6f3211b、d81eec5899 仍 eval）；test_params_metadata.py 用显式豁免集双向断言盯着，移植完必须回来删"
+    ]
    }
   ],
   "next_batch": {
