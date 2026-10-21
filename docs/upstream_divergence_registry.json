@@ -426,22 +426,6 @@
         ]
       },
       {
-        "commit": "93b695da88dfd6be9e5f632e8a24a0bf23222524",
-        "subject": "ui: radar point overlay levels - restore carrot ShowRadarInfo scale",
-        "date": "10-21",
-        "group": "ui/radar",
-        "status": "todo",
-        "impact": "radar_points.py 按 carrot 的 ShowRadarInfo 0-3 档裁剪叠加信息 + zh 翻译",
-        "next": "本树完全没有 ShowRadarInfo；独立可搬，默认 0=关",
-        "probes": [
-          {
-            "kind": "symbol_absent",
-            "target": "openpilot/selfdrive/ui/sunnypilot/onroad/radar_points.py",
-            "needle": "radar_info_level"
-          }
-        ]
-      },
-      {
         "commit": "0ba6c81d0447f1a35a3533c741c4d96cfdb46747",
         "subject": "ui: dedupe SLA button, align webui-only knobs into big UI, fill zh translations",
         "date": "10-21",
@@ -1053,6 +1037,20 @@
         "local_fix": "上游 models.py 的 model_info import 行在本树不成立（本树 active_source/standin_model 也来自 model_info，上游从 accelerator_link 取），所以没走 git cherry-pick，按本机 import 块手工并：新增 local_model_note 一个符号、_bundle_to_node 的接线点与上游逐字一致。",
         "expect_diff_after": [
           "layouts/settings/models.py 的 model_info import 列表本树更长（active_source / standin_model 在本树同源），非行为差异"
+        ]
+      },
+      {
+        "commit": "93b695da88",
+        "subject": "ui: radar point overlay levels - restore carrot ShowRadarInfo scale",
+        "group": "port-20261021-r8",
+        "ported_at": "2026-10-21",
+        "ours_commit": "234e672843",
+        "probe_was": "symbol_absent radar_info_level in openpilot/selfdrive/ui/sunnypilot/onroad/radar_points.py",
+        "evidence": "radar_points.py 按 level 剪枝（1=只速度框、2=+横向/距离、3=+静止 *）、visuals.py 布尔开关换成 4 档 multiple_button_item_sp、ui_state._read_radar_info_level 一次性迁移 CarrotRadarPointsEnabled→level 2 后清掉布尔。测试 14 passed（radar_points 12 + radar_display 2）；UI 测试目录 141 passed / 1 failed（test_raylib_ui 在整目录顺序下 HEAD 同样失败，与本轮无关）。libparams_c.so 已重建（scons -j1，offroad，MemAvailable 1.48 GB，未触发 LMK），新库实测 ShowRadarInfo type=2(INT)、put_int/get_int 0..3 全部往返一致。",
+        "local_fix": "上游把 ShowRadarInfo 声明为 BOOL 却当 0..3 档位用，本树改成 INT：BOOL 下 get() 用 `v == b'1'` 归一，2/3 读回 True/False；put_int() 在 PYTHON_2_CPP 里没有 (int, BOOL) 这一项，写盘前就抛 TypeError —— 也就是点一下档位按钮就会炸，且 2/3 档永远存不进去（又一个「静默 no-op」形状）。carrot 自己的 carrot_settings*.json 里这个键就是 min 0 / max 3，INT 才是它本来的类型；改类型后 carrot web 侧 broker 的 snapshot 也从 'True'/'False' 变成 '0'..'3'。顺带修了 radar_points 测试夹具：_point() 缺 radar_display 用于过滤的 vLead/yvRel、假 Vector2 返回 tuple 导致 _draw_text 取 .x 崩，这两条让 test_moving_point_draws_vector_then_box / test_slow_point_is_a_star 在 HEAD 一直是红的（画不出东西，断言从没真正跑过）。",
+        "expect_diff_after": [
+          "params_keys.h: ShowRadarInfo 声明本树为 INT，上游为 BOOL（上游那份声明使 2/3 档不可用）",
+          "测试断言比口径换成「画出来的字符串列表」（每个标签画两次：shadow + 主体），上游断言的是调用计数"
         ]
       }
     ],
