@@ -55,6 +55,15 @@ tuning_level / settings_tier 全部可读（0 / 1）
 修好后真机路径（隔离 Params 目录实测）：`1.53/1/True` → apply → `0.0/0/False`，备份 23 条 →
 再次 apply 返回 False（幂等）→ restore → `1.53/1/True`，备份清空。
 
+## 一处刻意的分歧：绑定不硬绑
+
+上游在 import `common/params.py` 时用 `getattr(lib, name)` 硬绑这三个符号。库比代码旧（正是本机
+前两周的状态）时那是 **`ImportError` → 所有 import Params 的 daemon 一起起不来**，与这套代码
+自己写的「库不认识就当作没有这个参数」完全相反。本树改成 `_bind_optional()`：缺符号只 warning，
+`get_stock_value()` 返回 None、`get_tuning_level()` 返回 0、`get_settings_tier()` 返回 1。
+「库过期」这件事交给 `test_params_metadata.py` 对真库断言 + 一条显式的降级用例来抓，而不是用
+整机起不来的方式抓。
+
 ## 新增两道防线（这次事故的形状：替身全绿、真库全哑）
 
 | 文件 | 作用 |

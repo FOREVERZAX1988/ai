@@ -1049,10 +1049,10 @@
     "subject": "safety: add Safe Mode and the parameter metadata it needs",
     "group": "port-20261021-r6",
     "ported_at": "2026-10-21",
-    "ours_commit": "825ba3d932",
+    "ours_commit": "1c035ddbae",
     "probe_was": "symbol_absent get_stock_value in openpilot/common/params.h",
     "evidence": "真库实测 730 键、params_get_stock/params_get_tuning_level/params_get_settings_tier 三绑定在位、tuning_level/settings_tier 可读；隔离 Params 目录端到端 1.53/1/True → apply → 0.0/0/False（备份 23 条）→ 再次 apply 幂等 False → restore → 1.53/1/True 且备份清空；sunnypilot/common/tests + common/tests 183 passed / 258 subtests passed；ruff 全绿；库重建 scons -j1 44.8 s 未触发 LMK",
-    "local_fix": "上游用 Params 替身写单测，替身收字符串；真 Params.put 严格类型，四处不匹配全被 try/except 吞掉：(1) 字符串目标写 BOOL/INT/FLOAT 键 python2cpp 抛 TypeError → _put 返回 False，一个键都没被强制；(2) _default 用 get(return_default=True)，键设过时返回存储值，safe_value 的默认值回落分支拿到要替换的值；(3) _get 把 JSON 备份 str(dict) 成 Python repr，json.loads 失败 → 解析成「无备份」→ restore 永远无效；(4) BOOL 读成 \"True\"/\"False\" 永不等于目标 \"0\"/\"1\" → 每强制周期重写 15 个键。修法：_put 前按 get_type 做 _coerce、_default 改 get_default_value、_get 对 dict/list 原样返回并 bool 渲染成 1/0",
+    "local_fix": "上游用 Params 替身写单测，替身收字符串；真 Params.put 严格类型，四处不匹配全被 try/except 吞掉：(1) 字符串目标写 BOOL/INT/FLOAT 键 python2cpp 抛 TypeError → _put 返回 False，一个键都没被强制；(2) _default 用 get(return_default=True)，键设过时返回存储值，safe_value 的默认值回落分支拿到要替换的值；(3) _get 把 JSON 备份 str(dict) 成 Python repr，json.loads 失败 → 解析成「无备份」→ restore 永远无效；(4) BOOL 读成 \"True\"/\"False\" 永不等于目标 \"0\"/\"1\" → 每强制周期重写 15 个键。修法：_put 前按 get_type 做 _coerce、_default 改 get_default_value、_get 对 dict/list 原样返回并 bool 渲染成 1/0；另：三个 C 绑定改为 _bind_optional（上游硬绑，库过期会 ImportError 打掉所有 daemon），缺符号降级为「没有元数据」，由真库断言 + 降级用例盯着",
     "expect_diff_after": [
      "safe_mode_runtime._default 走 get_default_value()，上游仍走 get(return_default=True)",
      "NNFFMode / VisionSpeedLimitEnabled / VisionSpeedLimitLowLimitFilter 三个受管键本树未注册（63a6f3211b、d81eec5899 仍 eval）；test_params_metadata.py 用显式豁免集双向断言盯着，移植完必须回来删"
