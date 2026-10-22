@@ -9,7 +9,9 @@ Measures three things the driver asked for, from two independent sources:
   frame N ...` lines (frame-id cadence, warp/send ms, server gpu/queue/total ms),
   the periodic `jetlink: stages frames ...` aggregate (p50/p95/max per stage) and
   the periodic `jetlink: trips frames N over ... held H pipelined P span_s S ...`
-  aggregate (frames held = given up on, i.e. the link's real losses).
+  aggregate. In that aggregate `held` counts frames whose *reply was late*, so
+  the previous model output had to be held over (it is a latency event, not a
+  dropped frame); `pipelined` counts frames that never waited at all.
 
 Frame interval variance is computed from consecutive sampled frame ids:
 `interval_ms = 1000 / ((id2 - id1) / (t2 - t1))`. The sample rate of those lines
@@ -41,6 +43,8 @@ _wall = time.clock_gettime
 CLOCK_REALTIME = time.CLOCK_REALTIME
 
 LOG_GLOB = "/data/log/swaglog.*"
+# written by jetlink/comma/wifi.py on every discovery/dial: "<host>:<port>:<monotonic>"
+PEER_FILE = "/data/.jetlink_wifi_peer"
 FRAME_RE = re.compile(
   r"jetlink: frame (?P<frame>\d+) warp (?P<warp>[\d.]+) data (?P<data>[\d.]+) send (?P<send>[\d.]+) "
   + r"wait (?P<wait>[\d.]+) ms.*?server gpu (?P<gpu>[\d.]+) queue (?P<queue>[\d.]+) total (?P<total>[\d.]+) ms"
@@ -76,10 +80,25 @@ def _stats(values):
           "stdev": round(statistics.pstdev(values), 3)}
 
 
-def sample_sockets():
-  """One `ss -tni` read of the jetlink sockets: queue + tcp info per socket."""
+def peer_from_file():
+  """The app Wi-Fi discovery last picked, as "<host>:<port>:<monotonic>"."""
   try:
-    out = subprocess.run(["ss", "-tni", "state", "established", "( sport = :5090 )"],
+    host, port, _ts = open(PEER_FILE).read().strip().split(":")
+    return host, int(port)
+  except Exception:
+    return None, None
+
+
+def sample_sockets(host=None, port=None):
+  """One `ss -tni` read of the jetlink sockets: queue + tcp info per socket."""
+  if port is None:
+    host, port = peer_from_file()
+  # The frames ride the TCP connection this device opened to the app's port, so
+  # select on the destination port and then keep only that host: a socket to a
+  # second device would otherwise be averaged into the same jitter series.
+  sock_filter = f"( dport = :{port} )" if port else "( sport = :5090 )"
+  try:
+    out = subprocess.run(["ss", "-tni", "state", "established", sock_filter],
                          capture_output=True, text=True, timeout=5).stdout
   except Exception as e:
     return {"error": str(e), "sockets": []}
@@ -108,7 +127,9 @@ def sample_sockets():
       cur = {"recv_q": int(parts[0]), "send_q": int(parts[1]),
              "local": parts[2], "peer": parts[3]}
       socks.append(cur)
-  return {"sockets": socks}
+  if host:
+    socks = [x for x in socks if x["peer"].rsplit(":", 1)[0] == host]
+  return {"sockets": socks, "peer": f"{host}:{port}" if port else None}
 
 
 def scan_logs(t0, t1):
@@ -191,15 +212,24 @@ def _proc_snapshot():
 
 
 def _max_temp():
-  best = None
-  for z in glob.glob("/sys/class/thermal/thermal_zone*/temp"):
+  """Hottest real sensor. The `-usr` zones are the silicon's own sensors; the
+  `lmh-dcvs-*` zones live in the same class but publish the LMH throttle floor
+  (a constant 75.0 on this device), so a plain max over every zone would report
+  75 °C on an idle unit and make the thermal check meaningless."""
+  usr, any_zone = [], []
+  for zone in sorted(glob.glob("/sys/class/thermal/thermal_zone*")):
     try:
-      v = int(open(z).read().strip()) / 1000.0
+      name = open(f"{zone}/type").read().strip()
+      v = int(open(f"{zone}/temp").read().strip()) / 1000.0
     except Exception:
       continue
-    if 0 < v < 150 and (best is None or v > best):
-      best = v
-  return best
+    if not 0 < v < 150:
+      continue
+    any_zone.append(v)
+    if name.endswith("-usr"):
+      usr.append(v)
+  pool = usr or any_zone
+  return max(pool) if pool else None
 
 
 def cpu_series(samples):
@@ -266,18 +296,114 @@ def scan_events(t0, t1):
   return counts, hits
 
 
+def _fmt(st, unit=""):
+  if not st:
+    return "—"
+  return f"{st['mean']}{unit} (p50 {st['p50']}, p95 {st['p95']}, max {st['max']}, n={st['n']})"
+
+
+def render_markdown(r):
+  """The archived one-pager: what the link did, and whether it passed."""
+  k, a, d, w, tl = r["kernel"], r["app"], r["device"], r["window"], r["timeline"]
+  L = [f"# jetlink 稳定性报表 — {w['started_at']}", "",
+       f"- 窗口：{w['started_at']} 起 **{w['duration_s']} s**（label: `{r.get('label') or '-'}`）",
+       f"- 链路：设备 → Jetlink App `{k.get('peer')}`（行车预览 + 手机侧大模型在线）",
+       f"- 内核采样 {k.get('samples')} 次；看到的 socket：{', '.join(k.get('sockets_seen') or ['—'])}",
+       f"- 设备：CPU busy {_fmt(d.get('cpu_busy_pct'), '%')}；最高温 {_fmt(d.get('max_temp_c'), ' °C')}", "",
+       "## 1. 内核侧（TCP，1 Hz）", "",
+       "| 指标 | 值 |", "| --- | --- |",
+       f"| Send-Q 非零秒数 | {k.get('send_q_nonzero_seconds')} / {k.get('samples')} |",
+       f"| Send-Q | {_fmt(k.get('send_q_total'), ' B')} |",
+       f"| Send-Q > 5 KB 采样点 | {len(tl.get('send_q_spikes') or [])} |"]
+  for peer, pr in (k.get("per_peer") or {}).items():
+    L += [f"| RTT（{peer}） | {_fmt(pr.get('rtt_ms'), ' ms')} |",
+          f"| RTT 逐秒步进（抖动） | {_fmt(pr.get('rtt_step_ms'), ' ms')} |",
+          f"| RTTVAR（内核抖动估计） | {_fmt(pr.get('rttvar_ms'), ' ms')} |",
+          f"| 吞吐 | {pr.get('send_mbps')} Mbps，{pr.get('acked_mb')} MB |",
+          f"| 重传 | {pr.get('retrans')} |"]
+
+  L += ["", "## 2. 应用侧（帧节拍）", "",
+        "| 指标 | 值 |", "| --- | --- |",
+        f"| 采样到 frame 行 | {a.get('frame_lines')} 条（frame {a.get('frame_id_first')} → {a.get('frame_id_last')}） |",
+        f"| 帧率 | {a.get('fps_est')} fps |",
+        f"| 帧间隔 | {_fmt(a.get('interval_ms'), ' ms')} |",
+        f"| warp | {_fmt(a.get('warp_ms'), ' ms')} |",
+        f"| send | {_fmt(a.get('send_ms'), ' ms')} |",
+        f"| server queue | {_fmt(a.get('server_queue_ms'), ' ms')} |",
+        f"| server total | {_fmt(a.get('server_total_ms'), ' ms')} |",
+        f"| stage tick 间隔 | {_fmt(a.get('stage_tick_gap_ms'), ' ms')} |",
+        f"| stage tick fps | {_fmt(a.get('stage_tick_fps'))} |",
+        f"| 帧路径停顿（>1.5 s） | {len(a.get('stalls') or [])} 次 |",
+        f"| 单帧 hiccup（send>10 ms 或 server>45 ms） | {len(a.get('hiccups') or [])} 条 |"]
+  if a.get("stalls"):
+    L += ["", "停顿明细："]
+    L += [f"- {s['at']} 断 {s['gap_s']} s，约丢 {s['frames_skipped']} 帧" for s in a["stalls"]]
+  trips = a.get("trips") or []
+  if trips:
+    L += ["", "trips 聚合（`held` = 回复迟到、只能沿用上一帧输出的帧；`over` = 超 20 Hz 整帧预算的帧）：", "",
+          "| frames | over | held | pipelined | span s | p50 ms | p99 ms | max ms | server ms |",
+          "| --- | --- | --- | --- | --- | --- | --- | --- | --- |"]
+    for t in trips:
+      keys = ("frames", "over", "held", "pipe", "span", "p50", "p99", "max", "server")
+      L.append("| " + " | ".join(str(t.get(k)) for k in keys) + " |")
+
+  L += ["", "## 3. 事件", ""]
+  ev = r["events"]["counts"]
+  L += ["| 事件 | 次数 |", "| --- | --- |"]
+  L += [f"| {name} | {n} |" for name, n in ev.items()]
+  if r["events"].get("hits"):
+    L += ["", "命中样例："] + [f"- {h['at']} `{h['kind']}` {h['msg']}" for h in r["events"]["hits"]]
+
+  # the last trips line is the widest window the host itself kept: the share of
+  # frames whose reply came too late is the link's own verdict on itself
+  last_held = None
+  if trips and trips[-1].get("frames"):
+    last_held = 100.0 * (trips[-1].get("held") or 0) / trips[-1]["frames"]
+  iv = a.get("interval_ms") or {}
+  sd = a.get("send_ms") or {}
+  tt = a.get("server_total_ms") or {}
+  temps = d.get("max_temp_c") or {}
+  checks = [
+    ("帧率稳定在 20 fps", a.get("fps_est") is not None and 19.0 <= a["fps_est"] <= 21.0),
+    ("帧间隔 p95 < 60 ms", (iv.get("p95") or 0) < 60),
+    ("send p95 < 10 ms", (sd.get("p95") or 0) < 10),
+    ("server total p95 < 45 ms", (tt.get("p95") or 0) < 45),
+    ("无帧路径停顿", not a.get("stalls")),
+    ("无丢帧事件", not ev.get("lost_frames")),
+    ("无连续 hold 放弃（demote）", not ev.get("hold_gave_up") and not ev.get("demote")),
+    ("迟回复帧占比 < 2%", (last_held or 0.0) < 2.0),
+    ("无断链 / 重连", not ev.get("link_abandoned") and not ev.get("reconnect")),
+    ("设备未过热降频（<75 °C）", (temps.get("max") or 0) < 75),
+  ]
+  L += ["", "## 4. 判定", "", "| 检查项 | 结果 |", "| --- | --- |"]
+  L += [f"| {name} | {'PASS' if ok else 'FAIL'} |" for name, ok in checks]
+  if last_held is not None:
+    L += ["", f"（trip 聚合里迟回复帧占比 {last_held:.2f}%）"]
+  L += ["", f"**总体：{'PASS' if all(ok for _, ok in checks) else 'FAIL'}**", ""]
+  return "\n".join(L)
+
+
 def main() -> int:
   ap = argparse.ArgumentParser()
   ap.add_argument("--duration", type=float, default=60.0)
   ap.add_argument("--interval", type=float, default=1.0)
   ap.add_argument("--no-write", action="store_true")
   ap.add_argument("--label", default="")
+  ap.add_argument("--peer", default="", help="host:port override for the capture")
   args = ap.parse_args()
+
+  host, port = peer_from_file()
+  if args.peer:
+    _h, _, _p = args.peer.partition(":")
+    host, port = _h or host, int(_p) if _p else port
+  if not port:
+    print("warning: no jetlink peer (no --peer, no " + PEER_FILE + "); falling back to sport :5090",
+          file=sys.stderr)
 
   t0 = _wall(CLOCK_REALTIME)
   samples = []
   while _wall(CLOCK_REALTIME) - t0 < args.duration:
-    s = sample_sockets()
+    s = sample_sockets(host, port)
     s["t"] = _wall(CLOCK_REALTIME)
     s["cpu"] = _proc_snapshot()
     s["temp_c"] = _max_temp()
@@ -377,6 +503,7 @@ def main() -> int:
                "started_at": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(t0))},
     "kernel": {
       "samples": len(samples),
+      "peer": f"{host}:{port}" if port else None,
       "sockets_seen": sorted({x["peer"] for s in samples for x in s.get("sockets", [])}),
       "send_q_total": _stats(send_q),
       "send_q_nonzero_seconds": sum(1 for v in send_q if v > 0),
@@ -410,7 +537,11 @@ def main() -> int:
     jpath = f"artifacts/jetlink_stability_{ts}.json"
     with open(jpath, "w") as fh:
       json.dump(report, fh, indent=2, ensure_ascii=False)
-    print(f"\nwrote {jpath}", file=sys.stderr)
+    mpath = f"ai/docs/jetlink_stability_{ts}.md"
+    os.makedirs(os.path.dirname(mpath), exist_ok=True)
+    with open(mpath, "w") as fh:
+      fh.write(render_markdown(report))
+    print(f"\nwrote {jpath}\nwrote {mpath}", file=sys.stderr)
   return 0
 
 
