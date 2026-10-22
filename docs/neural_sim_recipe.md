@@ -41,16 +41,26 @@ python3 -c "import onnx, onnxruntime, numpy; print(onnx.__version__, onnxruntime
 ## 跑仿真
 
 ```sh
+bash ai/scripts/ensure_sim_assets.sh                  # 先备好替身权重（见下）
 cd /data/openpilot
 python3 tools/signal_analysis/sim_neural_on_c3.py     # 1.7 s，每阶段一行 JSON
 ```
 
-替身权重在 `/data/tmp/sub_detector.onnx`、`/data/tmp/sub_classifier.onnx`（各几十 KB），
-丢了就重生成：
+替身权重（各几十 KB）真正的家在 **`/data/.sim_assets/`**（持久盘，与 `.pydeps` 同一块）；
+仿真脚本里**写死**读 `/data/tmp/sub_*.onnx`，而 `/data/tmp` 是擦屁股纸 —— **重启就空**。
+2026-10-22 08:10 手动重启后仿真就是这么挂的：
+`FileNotFoundError: [Errno 2] No such file or directory: '/data/tmp/sub_detector.onnx'`。
+所以先跑 `ai/scripts/ensure_sim_assets.sh`：它只把持久副本拷进 `/data/tmp`，
+持久副本也不在时才重生成。重生成命令**必须带两个输出路径**，裸跑会
+`IndexError: list index out of range`（本文件早先的版本在这里是错的）：
 
 ```sh
-python3 tools/signal_analysis/make_substitute_models.py
+python3 tools/signal_analysis/make_substitute_models.py \
+  /data/.sim_assets/sub_detector.onnx /data/.sim_assets/sub_classifier.onnx
 ```
+
+重生成是确定性的（实测两次 sha256 逐字节相同：detector `4eabb8a3…`、classifier `3f2e7578…`），
+所以 `NeuralSignal` 的 sha256 pin 不会因为重生成而失配。
 
 **为什么是替身**：真权重不公开；`make_substitute_models.py` 按 wrapper 期望的
 name/shape/rank 输出常量张量。除 sha256 pin（只在仿真里被 patch）外，NV12 裁剪、letterbox 416、
