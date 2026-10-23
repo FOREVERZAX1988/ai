@@ -54,7 +54,13 @@ opendbc 子模块冲突的处理：上游该批要求 pin 到 8c12b1236，但其
 ## 5. 既有红（本轮实测确认，非本轮引入）
 
 - `test_auto_update.py::test_git_pull_reports_actual_update_and_records_pull_time`：`auto_update` 无 `_notify_cwp`（上游测试 pin 了上游 cwp 钩子）。
+- `test_carrot_navi_no_aiohttp`（2 例）：子进程里 `ModuleNotFoundError: No module named 'openpilot'` —— 该用例文件本轮未动，是「subprocess 必须带 PYTHONPATH=/data/openpilot」的环境口径，与既有 absolute-import 同源红一族。
 - `sunnylink test_settings_changes`：`settings_ui.json` 的 cruise>carrot_navigation 条目缺 key/widget；TorqueControlTune 仍带静态 options。**把 HEAD 版 json 抽到 /tmp 跑同一 validator 输出逐字符相同**。
+
+### 本轮修掉的一条半移植红
+
+`test_v_asm_parked_gate::StatusContractTest`（2 例）在 2fe4acf5dc 之后红：`VASMService` 新增 `bsd_enabled`，而测试 helper 绕过 `__init__` 造对象。运行期代码保持严格（不改 `getattr` 兜底），在 helper 里显式补 `service.bsd_enabled = False` 并写注释 → 19 passed。
+`sunnypilot/carrot/tests` 全量：**840 passed / 2 failed（均为上面那条 navi 环境红）**。
 
 ## 6. 路试前建议
 
