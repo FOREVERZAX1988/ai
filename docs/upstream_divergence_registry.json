@@ -642,15 +642,13 @@
         "impact": "test_capnp_contract_guard 盲区 split 字段钉在 @75-79（修掉 cp @95-99 造成的 ordinal 空洞）",
         "probes": [
           {
-            "kind": "path_absent",
-            "target": "openpilot/sunnypilot/carrot/tests/test_capnp_contract_guard.py"
+            "kind": "symbol_absent",
+            "target": "opendbc_repo/opendbc/car/car.capnp",
+            "needle": "leftBlindspotOem"
           }
         ],
-        "blocked_by": [
-          "2fe4acf5dc",
-          "opendbc-pin-52ab0722"
-        ],
-        "note": "该用例文件本身由 2fe4acf5dc 新建；它钉的字段由 opendbc 52ab0722 引入，本树 opendbc pin 里 car.capnp 还没有 split 字段，三条一起动"
+        "blocked_by": "67ffbe9f03",
+        "note": "守卫文件 test_capnp_contract_guard.py 已随 2fe4acf5dc 落地（本轮实测 CAR_STATE_LAST_ORDINAL=74）；本条把 blindspot 拆分字段钉到 @75-79，字段由 67ffbe9f03 引入 → blocked_by。届时本树 CarState 尾部是 @74，可直接 @75-79 append（上游注释里的 @95-99 是他们自己 CarState 的尾部）。"
       },
       {
         "commit": "ee23033248",
@@ -666,20 +664,6 @@
           }
         ],
         "note": "最终 pin 是 52ab0722（4 条领先本树 61f4cc848）；本树 opendbc 与上游非直系（282 条本地独占），不能快进，要单独评估"
-      },
-      {
-        "commit": "9410aec458",
-        "subject": "更新memory（AGENTS-memory.md 28 行）",
-        "group": "docs",
-        "status": "no-port",
-        "impact": "只动上游内部 AGENTS-memory.md（28 行）",
-        "probes": [
-          {
-            "kind": "path_absent",
-            "target": "AGENTS-memory.md"
-          }
-        ],
-        "note": "我们是 ai/ 体系，不携带该文件；故意不搬"
       },
       {
         "commit": "564e8e93c8",
@@ -2165,6 +2149,13 @@
         "impact": "上游把 test 分支 squash 并进 zoompilot 的 develop（1687 文件）。对我们是空操作：其内容 2e36dcdd71 已经是 HEAD 的祖先，而 upstream/test 并不含它。",
         "next": "不整搬；dev 分支特性确实需要时单独挑。本条不再计入「未移植」。",
         "upstream_commit_body": "over eleven port shapes."
+      },
+      {
+        "commit": "9410aec458",
+        "subject": "更新memory（AGENTS-memory.md 28 行）",
+        "why": "它只是 AGENTS-memory.md 的 28 行追加；该文件已随 2fe4acf5dc（本树 587cb39ebc）整份落地，探针 path_absent AGENTS-memory.md 由 OK 翻 DRIFT。",
+        "evidence": "ls AGENTS-memory.md 存在（由 2fe4acf5dc 新建）；registry 探针 state 变化即为证伪信号",
+        "next": "不再计入未移植；后续 AGENTS-memory 的增量按内容看，不按 hash 搬。"
       }
     ],
     "unported_unprobed_note": "已清空：13 条全部转成可判定条目，见 items。"
