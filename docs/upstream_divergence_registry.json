@@ -487,10 +487,10 @@
  ],
  "upstream_pending_port": {
   "about": "上游 test 上已经实现、我们还没移植的提交清单。每条的 probes 是机器可判定的「仍未移植」判据：路径应当不存在 / 符号应当不存在 / 该符号应当还在（因为上游那次是删除）/ 子模块指针应当还不是我们的祖先。检查器 ai/scripts/upstream_divergence_check.py 会逐条验；一旦某条探针失效（= 我们其实已经搬了或上游又改了），它报 DRIFT，提醒回来改这张表。ported=已移植（探针已反转为 DRIFT，条目移出 items 留档）。status: todo=独立可搬 | todo-after=依赖同批其它条目 | eval=体积大或需驾驶者决策 | pointer=子模块指针 | docs=文档，随条目走。",
-  "scope": "upstream/test 2026-10-23 15:37 = 1e97bf13a9。上次登记时是 8e51f886d9（「上游 11 条」那批），此后上游又前进 7 条（ad617598df..1e97bf13a9，全是 wheel_controls / xiaoge / capnp 测试方向）。items 里放机器可判定的探针；unported_unprobed 是已登记但还没写探针的条目（checker 不检查，避免假装绿）。TRAP 仍在：只读 refs/remotes/upstream/test，并用 `git ls-remote upstream refs/heads/test` 复核。",
+  "scope": "upstream/test 2026-10-23 17:35 = 684178cb51。上一版 scope 是 1e97bf13a9，此后上游又前进 7 条（b5061ca8c4..684178cb51）。本轮：4 条已 cherry-pick 落地（b5061ca8c4/8a7e93181d/4c4c654fef/b82043d2a7）＋1 条本地回退 pin；3 条不搬（4ff945e764 依赖未移植的 system_monitor、e3cf1856c9 只动 AGENTS-memory+opendbc 指针、684178cb51 section average-speed 动 SDI/巡航控制链→路试后再评）。TRAP 仍在：只读 refs/remotes/upstream/test，并用 `git ls-remote upstream refs/heads/test` 交叉核对（本 remote 的 refspec 会更新它，但别只看 FETCH_HEAD）。",
   "checked_at": "2026-10-23",
-  "ours_tip": "46b709561b(+本轮未提交改动)",
-  "upstream_tip": "1e97bf13a9",
+  "ours_tip": "259f499503(sync/upstream-1023)",
+  "upstream_tip": "684178cb51",
   "items": [
    {
     "commit": "eeb028a58",
@@ -1734,6 +1734,38 @@
     "ours_commit": "46b709561b",
     "date": "10-23",
     "note": "2026-10-23 现场 cherry-pick（父仓文件与上游 parent 逐字节一致，零冲突）；新增 test_speed_limit_vision_services.py 3 条全绿"
+   },
+   {
+    "commit": "b5061ca8c4",
+    "subject": "launch: fix ensure_params_build parallelism — nproc returns 1 early in boot",
+    "group": "launch/boot",
+    "ported_at": "2026-10-23",
+    "ours_commit": "0d6fc24ea4",
+    "note": "AGNOS 早期 nproc 返 1 → scons -j1 几分钟；改 grep -c ^processor /proc/cpuinfo + 失败时 tail 日志。仅当 libparams_c.so 缺失才触发（设备上该 .so 在，15:57 构建）。bash -n 通过。"
+   },
+   {
+    "commit": "8a7e93181d",
+    "subject": "test(carrot): fix cross-module Params pollution and a flaky mode-write race",
+    "group": "carrot/test",
+    "ported_at": "2026-10-23",
+    "ours_commit": "ba96418ec9",
+    "note": "test_carrot_server_params 跨模块 Params 污染修复；已同时回退它顺带抬高的 OnnxBsdThreshold pin（见 known_issues）。"
+   },
+   {
+    "commit": "4c4c654fef",
+    "subject": "test(server): add missing tests/__init__.py so unittest discover picks up server tests",
+    "group": "carrot/test",
+    "ported_at": "2026-10-23",
+    "ours_commit": "5567678adb",
+    "note": "空文件，让 unittest discover 收进 server 测试。"
+   },
+   {
+    "commit": "b82043d2a7",
+    "subject": "test: align two stale pins with today's appends",
+    "group": "carrot/test",
+    "ported_at": "2026-10-23",
+    "ours_commit": "4c4e086183",
+    "note": "test_carrot_man/test_lane_change_gap 的陈旧 pin 对齐。"
    }
   ],
   "next_batch": {
@@ -1830,6 +1862,11 @@
     "suspect": "跨模块 sys.modules['openpilot.common.params'] 桩污染（同文件 _FakeParams 注释已记录同类问题）",
     "status": "open",
     "not_blocking": "本批三个提交都不在该用例的路径上"
+   },
+   {
+    "what": "部分移植的连带红：上游测试 pin 依赖其同批功能默认值",
+    "observed": "cherry-pick 8a7e93181d 后 test_carrot_man::test_imported_params_present_in_defaults 红：45 != 94 (OnnxBsdThreshold)。94 来自未移植的 67ffbe9f03+fa32bf598b（cp 三类 BSD）",
+    "fix": "只回退该 pin 到本地值 45 并写注释指向依赖提交（本树 4c4c654fef 后的那次 fix(test) 提交）；其余改动保留。193 passed"
    }
   ],
   "resolved": [
@@ -1947,8 +1984,39 @@
     "group": "infra/upstream-housekeeping",
     "status": "docs",
     "why_no_probe": "1687 文件的合并提交，是上游自己的 rebase 基座，不逐条搬"
+   },
+   {
+    "commit": "684178cb51",
+    "subject": "feat(carrot): section average-speed control on the SDI chain",
+    "group": "controls/speed_limit",
+    "status": "deferred-post-roadtest",
+    "why_no_probe": "14 文件 +536 行，12/14 文件与本地已改文件重叠（SDI 链/巡航速度档），路试前不动控制链"
+   },
+   {
+    "commit": "4ff945e764",
+    "subject": "test(carrot): replace module eviction with a config.Params rebind; immune time patch",
+    "group": "carrot/test",
+    "status": "blocked",
+    "why_no_probe": "改的是 test_system_monitor.py —— 依赖 8e51f886d9(/api/system_monitor) 尚未移植；直接 cherry-pick 必 DU 冲突（已实测）"
+   },
+   {
+    "commit": "e3cf1856c9",
+    "subject": "更新（AGENTS-memory.md + opendbc_repo 指针）",
+    "group": "submodule/pointer",
+    "status": "skip",
+    "why_no_probe": "只加上游 agent memory 文件并抬 opendbc_repo 指针；本树不用 AGENTS-memory.md，opendbc 指针属我们自己的 fork 线，盲目跟会覆盖本地 opendbc 提交"
    }
-  ]
+  ],
+  "merge_policy": {
+   "about": "上游 test 现在不能整支 merge，只能逐条 cherry-pick。别每轮重新试一遍 merge。",
+   "measured_at": "2026-10-23",
+   "evidence": "merge-base=632b0b0beb；上游 tip 684178cb51 的首条提交 564e8e93c8「merge: pull the test branch onto zoompilot's develop」是**单亲**提交（parents 只有 632b0b0beb），一口气带入 1687 文件 / +428034 −9998；我们侧 768 提交、1866 文件。`git merge-tree HEAD upstream/test` 实测 323 个文件冲突，含 cruise.py / long_mpc.py / controlsd_ext.py / card.py / radard.py / custom.capnp / params_keys.h 等控制链与 schema。",
+   "how_to": "git cherry-pick -x <sha> 逐条；先看 files/overlap（git show --name-only 与该文件是否在 diff MB..HEAD 里）判断可行性；依赖未移植功能的 test-only 提交会 DU 冲突 → 干脆留到父功能一起搬。",
+   "never_merge": [
+    "564e8e93c8",
+    "2e36dcdd71"
+   ]
+  }
  },
  "upstream_same_red": {
   "about": "两条都是「上游自己也是红的」——在本树复现时不要当成本地回归重开。判据：涉及文件与 upstream/test 逐字节一致，或用 upstream/test 的同一份源码跑同一断言同样红。",
