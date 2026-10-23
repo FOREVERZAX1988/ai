@@ -17,20 +17,6 @@
    ]
   },
   {
-   "path": "openpilot/sunnypilot/carrot/server/tests/test_web_push.py",
-   "status": "full-revert",
-   "gone": [
-    "TestPwaInstallability",
-    "_FakeParams",
-    "_push_app",
-    "_state",
-    "test_legacy_json_file_is_imported_once_then_renamed",
-    "test_manifest_icon_size_matches_the_file_we_serve",
-    "test_pwa_assets_are_served_and_the_panel_links_them",
-    "test_status_hands_out_a_stable_vapid_key_and_subscriptions_round_trip"
-   ]
-  },
-  {
    "path": "openpilot/sunnypilot/modeld_v2/helpers.py",
    "status": "full-revert",
    "gone": [
@@ -49,25 +35,6 @@
     "_FakeFlag",
     "_FakeMsg",
     "_FakeSm"
-   ]
-  },
-  {
-   "path": "openpilot/sunnypilot/carrot/server/services/web_push.py",
-   "status": "full-revert",
-   "gone": [
-    "_migrate_legacy_file",
-    "_params",
-    "load_state",
-    "save_state"
-   ]
-  },
-  {
-   "path": "openpilot/selfdrive/pandad/pandad.py",
-   "status": "full-revert",
-   "gone": [
-    "H7_HW_TYPES",
-    "is_h7_panda_hw",
-    "should_launch_cpp_directly"
    ]
   },
   {
@@ -106,17 +73,10 @@
    ]
   },
   {
-   "path": "openpilot/sunnypilot/carrot/server/config.py",
+   "path": "openpilot/selfdrive/selfdrived/tests/test_modeld_lag.py",
    "status": "full-revert",
    "gone": [
-    "CARROT_WEB_PUSH_PATH"
-   ]
-  },
-  {
-   "path": "openpilot/sunnypilot/carrot/server/features/push.py",
-   "status": "full-revert",
-   "gone": [
-    "handle_page"
+    "TestMildTierWiring"
    ]
   },
   {
@@ -145,14 +105,6 @@
    ]
   },
   {
-   "path": "openpilot/selfdrive/car/tests/test_vcruise_pcm_set_speed.py",
-   "status": "partial",
-   "gone": [
-    "TestMacanFusionSetSpeed",
-    "_make_macan_helper"
-   ]
-  },
-  {
    "path": "openpilot/selfdrive/ui/tests/test_radar_points.py",
    "status": "partial",
    "gone": [
@@ -169,14 +121,6 @@
    ]
   },
   {
-   "path": "openpilot/sunnypilot/common/tests/test_safe_mode.py",
-   "status": "full-revert",
-   "gone": [
-    "TestKeysAreRegistered",
-    "_declared_keys"
-   ]
-  },
-  {
    "path": "openpilot/sunnypilot/selfdrive/controls/lib/tests/test_longitudinal_planner.py",
    "status": "full-revert",
    "gone": [
@@ -189,20 +133,6 @@
    "status": "partial",
    "gone": [
     "t_acc_off_cluster_speed_is_unset"
-   ]
-  },
-  {
-   "path": "openpilot/selfdrive/selfdrived/tests/test_modeld_lag.py",
-   "status": "full-revert",
-   "gone": [
-    "TestMildTierWiring"
-   ]
-  },
-  {
-   "path": "openpilot/sunnypilot/carrot/tests/audit_ui_reach.py",
-   "status": "full-revert",
-   "gone": [
-    "EXTRA_CONTROL_PARAMS"
    ]
   },
   {
@@ -239,25 +169,9 @@
    "gone": [
     "TestRunnerContract"
    ]
-  },
-  {
-   "path": "openpilot/sunnypilot/selfdrive/controls/lib/tests/test_vehicle_tune_dispatch.py",
-   "status": "full-revert",
-   "gone": [
-    "TestMacanStaysStock"
-   ]
   }
  ],
  "refs": {
-  "CARROT_WEB_PUSH_PATH": [
-   ""
-  ],
-  "TestPwaInstallability": [
-   ""
-  ],
-  "_params": [
-   ""
-  ],
   "warp_path": [
    ""
   ],
@@ -282,16 +196,16 @@
   "CARROT_SERVICES": [
    ""
   ],
-  "handle_page": [
-   ""
-  ],
-  "H7_HW_TYPES": [
-   ""
-  ],
   "bind_http_server": [
    ""
   ],
   "dump_oob": [
+   ""
+  ],
+  "_patch_ops_serialization": [
+   ""
+  ],
+  "TestMildTierWiring": [
    ""
   ],
   "_bind": [
@@ -306,9 +220,6 @@
   "child_path": [
    ""
   ],
-  "_state": [
-   ""
-  ],
   "tearDownModule": [
    ""
   ],
@@ -316,9 +227,6 @@
    ""
   ],
   "_FakeMsg": [
-   ""
-  ],
-  "_FakeParams": [
    ""
   ],
   "_failed": [
