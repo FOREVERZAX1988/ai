@@ -20,7 +20,8 @@
     "encoder = hevc_venus.make_encoder if hevc_venus.available() else None",
     "hevc_encoder=encoder"
    ],
-   "note": "HEVC 接线只有一套（第 225/231/235 行），不存在两套并存"
+   "note": "HEVC 接线只有一套（第 225/231/235 行），不存在两套并存\n2026-10-23 HEVC 接线落地：Adapter 现继承 jetlink 的 Stock，ModelFace 不再在本文件直接构造，故以 Adapter.model_face() override + dataclasses.replace 叠上 hevc_encoder；没有 Venus 的机器 available() 为 False → None，保持原来的 frame carrier。设备实测 available=True、face.hevc_encoder=make_encoder。",
+   "restored_at": "2026-10-23"
   },
   {
    "path": "openpilot/selfdrive/controls/lib/longitudinal_mpc_lib/long_mpc.py",
@@ -54,12 +55,13 @@
     "soft_hold_pause_eligible(sm, time.monotonic(), demo_mode)",
     "soft_hold_state_packet(DM, valid=valid)"
    ],
-   "note": "上游两支都要求 DM.always_on；我们两支都不要求。policy.py 内部仍用 always_on 决定告警，故差异只在「关掉 AlwaysOnDM 时策略是否继续跑」。待驾驶者 A/B"
+   "note": "上游两支都要求 DM.always_on；我们两支都不要求。policy.py 内部仍用 always_on 决定告警，故差异只在「关掉 AlwaysOnDM 时策略是否继续跑」。待驾驶者 A/B\n2026-10-23 回贴：merge 2e36dcdd71 把「两支都不门控 DM.always_on」冲掉（文件一度与上游逐字节一致 → phase 1 报 WARN）。已按 737d01516d 恢复为 if demo_mode… / elif valid…，上游新增的 soft_hold 早退块原样保留；test_monitoring 29 passed。",
+   "restored_at": "2026-10-23"
   },
   {
    "path": "openpilot/sunnypilot/carrot/radar/radard_dpath.py",
-   "verdict": "ours",
-   "expect_diff": true,
+   "verdict": "upstream",
+   "expect_diff": false,
    "upstream_commit": "f45472b01b",
    "ours_keeps": [
     "_LEAD_FIELD_ALIASES / _assign_lead 的注释更准确（log.capnp=present vs custom.capnp=status）"
@@ -68,7 +70,8 @@
     "self.radar_state = log.RadarState.new_message()",
     "radar_msg = messaging.new_message(\"radarState\")"
    ],
-   "note": "纯注释差异，无行为差异"
+   "note": "纯注释差异，无行为差异\n2026-10-23 证伪：此处登记的差异其实只是注释（_LEAD_FIELD_ALIASES 那条注释至今仍在）。上游把「复用 builder」改成逐帧重建之后，我们那条旧注释描述的是已不存在的代码，照抄反而误导，故不再保留分叉：expect_diff 改 False，文件与上游逐字节一致。",
+   "restored_at": "2026-10-23"
   },
   {
    "path": "openpilot/sunnypilot/selfdrive/controls/lib/stopping_controller.py",
@@ -86,7 +89,8 @@
     "END_PLAN_MIN",
     "END_REQUEST = END_HI"
    ],
-   "note": "上游 END_SOFT_RATE=0.4 的哲学是「入口全程 <0.5 m/s^3，乘客感觉不到第二次刹车」；我们原本 1.0（本车实测调参），2026-10-20 驾驶者决定先跟随上游 → 已改成 0.4（8b426e4572），体感/停车点留待下次路试，不合适就一行改回 1.0。本文件其余两处分叉（无前车不切深、stopping 期也 latch）仍待 A/B，故 expect_diff 仍为 true。"
+   "note": "上游 END_SOFT_RATE=0.4 的哲学是「入口全程 <0.5 m/s^3，乘客感觉不到第二次刹车」；我们原本 1.0（本车实测调参），2026-10-20 驾驶者决定先跟随上游 → 已改成 0.4（8b426e4572），体感/停车点留待下次路试，不合适就一行改回 1.0。本文件其余两处分叉（无前车不切深、stopping 期也 latch）仍待 A/B，故 expect_diff 仍为 true。\n2026-10-23 回贴：10-22 重排（7399ffe498）把 ours_keeps 第 2/3 条冲成上游语义，文件一度只剩注释差异，而 phase 1 仍报 OK（探针只认字符串，不认语义）。已恢复：①无前车时曲线封顶（target = line）；②latch 不限 pid 态。与上游 diff 重新含真代码；test_stopping_controller 28 passed。",
+   "restored_at": "2026-10-23"
   },
   {
    "path": "openpilot/selfdrive/controls/tests/test_longcontrol.py",
@@ -99,8 +103,9 @@
    "upstream_intent_present": [
     "LongControlSP.stopping_decel_rate"
    ],
-   "note": "上游 tip 的这条测试自己就挂：test_stopping_decel_rate_is_smooth_while_rolling 断言 stopping_decel_rate(0.1)==0.3，而同一提交里的 numpy.interp 曲线给 0.07（我们换上上游三文件跑 1 failed / 18 passed）。不要整体搬上游这个文件 2026-10-23 复测：test_stopping_decel_rate_is_smooth_while_rolling 仍是 assert 0.07 == 0.3（上游断言与自己那条 numpy.interp 曲线互相矛盾），1 failed / 18 passed —— 上游同源红。",
-   "upstream_same_red": true
+   "note": "上游 tip 的这条测试自己就挂：test_stopping_decel_rate_is_smooth_while_rolling 断言 stopping_decel_rate(0.1)==0.3，而同一提交里的 numpy.interp 曲线给 0.07（我们换上上游三文件跑 1 failed / 18 passed）。不要整体搬上游这个文件 2026-10-23 复测：test_stopping_decel_rate_is_smooth_while_rolling 仍是 assert 0.07 == 0.3（上游断言与自己那条 numpy.interp 曲线互相矛盾），1 failed / 18 passed —— 上游同源红。\n2026-10-23 回贴：merge 冲掉了本文件自己的断言版本，上游那版在此树必红（assert 0.07 == 0.3）。已从 8b426e4572 整份回贴（单调性 + 顶部与上游同值 + 无前车不切深），并同时回贴 stopping_controller 的两条语义。test_longcontrol 19 passed / 4 subtests。",
+   "upstream_same_red": true,
+   "restored_at": "2026-10-23"
   },
   {
    "path": "openpilot/selfdrive/car/cruise.py",
