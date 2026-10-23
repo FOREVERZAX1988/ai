@@ -123,19 +123,16 @@
     },
     {
       "path": "openpilot/sunnypilot/selfdrive/controls/lib/tests/test_longitudinal_planner.py",
-      "verdict": "ours",
-      "expect_diff": true,
+      "verdict": "upstream",
+      "expect_diff": false,
       "upstream_commit": "279ad6f0c6",
-      "ours_keeps": [
-        "_StubScc(.vision/.map) 与 _carrot_is_a_competing_target() 源码扫描守卫",
-        "targets 断言保留在本地候选表"
-      ],
+      "ours_keeps": [],
       "upstream_intent_present": [
-        "assert planner.source != LongitudinalPlanSource.carrot",
-        "assert not self._carrot_is_a_competing_target()",
-        "planner.targets[LongitudinalPlanSource.carrot][0]"
+        "assert LongitudinalPlanSource.carrot not in planner.targets",
+        "assert planner.targets[LongitudinalPlanSource.carrot][0] == 5.0",
+        "assert planner.targets[LongitudinalPlanSource.carrot][0] == 30.0"
       ],
-      "note": "我们版本是超集，43 passed"
+      "note": "2026-10-23 实测：本树该文件与 upstream/test 逐字节一致（git diff 为空）。旧登记的三条 upstream_intent_present（assert planner.source != LongitudinalPlanSource.carrot / assert not self._carrot_is_a_competing_target() / _StubScc(.vision/.map) 扫描守卫）在两个树里都不存在 —— `grep -rn _carrot_is_a_competing_target openpilot/` 与 `git grep ... upstream/test` 均无命中，是从未落地的设想被写成了「我们保留的差异」，导致每次同步都红在这条上。已按真实断言重写并改为 expect_diff=false。"
     },
     {
       "path": "openpilot/sunnypilot/carrot/tests/test_signal_assist_runtime.py",
@@ -487,7 +484,8 @@
       "upstream_intent_present": [
         "def test_every_absolute_import_has_a_published_root"
       ],
-      "note": "2026-10-23 实测红：test_every_absolute_import_has_a_published_root 报 3 处 `from cereal import ...` —— sunnypilot/system/speed_limit_vision.py:374、sunnypilot/selfdrive/ui/beepd.py:8、selfdrive/controls/tests/test_lead_data_field_map.py:16。三份文件与上游逐字节一致（git diff upstream/test 为空），本仓只有 openpilot.cereal 这个根、没有顶层 cereal，所以上游同源红。**连带后果**：文件本身在设备上也 import 不了 —— beepd（Lite 蜂鸣器）与 speed_limit_vision 的 use_runtime 分支（视觉限速 daemon）都起不来。要修就是改 import 根（本地分叉），不修就登记成已知红，别当本地回归。"
+      "note": "2026-10-23 实测红：test_every_absolute_import_has_a_published_root 报 3 处 `from cereal import ...` —— sunnypilot/system/speed_limit_vision.py:374、sunnypilot/selfdrive/ui/beepd.py:8、selfdrive/controls/tests/test_lead_data_field_map.py:16。三份文件与上游逐字节一致（git diff upstream/test 为空），本仓只有 openpilot.cereal 这个根、没有顶层 cereal，所以上游同源红。**连带后果**：文件本身在设备上也 import 不了 —— beepd（Lite 蜂鸣器）与 speed_limit_vision 的 use_runtime 分支（视觉限速 daemon）都起不来。要修就是改 import 根（本地分叉），不修就登记成已知红，别当本地回归。  [2026-10-23] 登记修正：该文件上游根本没有（upstream/test 无此路径），所以它是 local-only，不是「上游有而我们改了」。checker 已支持 local_only 分支，不再报 MISSING。",
+      "local_only": true
     },
     {
       "path": "openpilot/system/ui/lib/application.py",
@@ -506,9 +504,9 @@
   ],
   "upstream_pending_port": {
     "about": "上游 test 上已经实现、我们还没移植的提交清单。每条的 probes 是机器可判定的「仍未移植」判据：路径应当不存在 / 符号应当不存在 / 该符号应当还在（因为上游那次是删除）/ 子模块指针应当还不是我们的祖先。检查器 ai/scripts/upstream_divergence_check.py 会逐条验；一旦某条探针失效（= 我们其实已经搬了或上游又改了），它报 DRIFT，提醒回来改这张表。ported=已移植（探针已反转为 DRIFT，条目移出 items 留档）。status: todo=独立可搬 | todo-after=依赖同批其它条目 | eval=体积大或需驾驶者决策 | pointer=子模块指针 | docs=文档，随条目走。",
-    "scope": "upstream/test 2026-10-23 17:35 = 684178cb51。上一版 scope 是 1e97bf13a9，此后上游又前进 7 条（b5061ca8c4..684178cb51）。本轮：4 条已 cherry-pick 落地（b5061ca8c4/8a7e93181d/4c4c654fef/b82043d2a7）＋1 条本地回退 pin；2 条不搬（4ff945e764 依赖未移植的 system_monitor、e3cf1856c9 只动 AGENTS-memory+opendbc 指针）＋684178cb51 section average-speed 已按驾驶者拍板于 21:5x 落地(c0b3171e66)，从 unported 移入 ported。TRAP 仍在：只读 refs/remotes/upstream/test，并用 `git ls-remote upstream refs/heads/test` 交叉核对（本 remote 的 refspec 会更新它，但别只看 FETCH_HEAD）。",
+    "scope": "upstream/test 2026-10-23 17:35 = 684178cb51（git ls-remote 交叉核对一致，无新提交）。本轮把 HEAD..upstream/test 的 25 条逐条落账：6 条已等价落地（684178cb51→c0b3171e66、4c4c654fef→5567678adb、8a7e93181d→ba96418ec9、b82043d2a7→4c4e086183、b5061ca8c4→0d6fc24ea4、b660e1416c→46b709561b）、6 条本就带探针、13 条 unported_unprobed 本轮全部补上 path/symbol 探针（现 19 条 items 全可机器判定）。2e36dcdd71 被证伪（已在 HEAD 历史内）移入 merged_in。25 = 6 + 6 + 13。",
     "checked_at": "2026-10-23",
-    "ours_tip": "c0b3171e66(sync/upstream-1024)",
+    "ours_tip": "8510e6da28(sync/upstream-1024)",
     "upstream_tip": "684178cb51",
     "items": [
       {
@@ -525,17 +523,8 @@
             "target": "panda",
             "needle": "eeb028a58a97bd93c59b7656f88cd49c878d2fd0"
           }
-        ]
-      },
-      {
-        "commit": "2e36dcdd71",
-        "subject": "merge: pull the test branch onto zoompilot's develop",
-        "date": "10-22",
-        "group": "infra/upstream-housekeeping",
-        "status": "docs",
-        "impact": "上游把 test（含我们已搬过去的内容，如 tools/signal_analysis/*、tools/tuning/flm_cli.py）squash 并进 zoompilot 的 develop，一次 1687 文件/428k 行。对我们新增内容≈0（我们树里本来就有），多出来的基本是 develop 独有的 zoompilot 分支内容，不属于 test 线该搬的东西",
-        "next": "不整搬；只在后续某个 develop 特性确实需要时单独挑",
-        "probes": []
+        ],
+        "note": "gitlink 由 upstream merge 564e8e93c8 带入，所以在 HEAD..upstream/test 的提交清单里看不到单独一条；判定只能靠子模块祖先关系（本树 panda@d84b110fc）"
       },
       {
         "commit": "29174dca73",
@@ -626,6 +615,234 @@
             "target": "openpilot/sunnypilot/system/wheel_controls/tests/test_wheel_controls.py"
           }
         ]
+      },
+      {
+        "commit": "2fe4acf5dc",
+        "subject": "feat(carrot): port cp P0-P2 batch — UI diagnostics, coasting gating, cereal fields, web throttling",
+        "group": "carrot/batch",
+        "status": "eval",
+        "impact": "38 文件 1814 行：UI 诊断/render_diagnostics、coasting 门控、cereal 字段 OnnxBsdEnabled、web 节流、scons cache lock",
+        "probes": [
+          {
+            "kind": "path_absent",
+            "target": "openpilot/common/scons_cache_lock.py"
+          },
+          {
+            "kind": "path_absent",
+            "target": "openpilot/selfdrive/ui/render_diagnostics.py"
+          },
+          {
+            "kind": "symbol_absent",
+            "target": "openpilot/common/params_keys.h",
+            "needle": "OnnxBsdEnabled"
+          }
+        ],
+        "note": "搬它必须连带 29bfad171c（SConstruct SyntaxError 修复）否则 boot 期 scons 直接死"
+      },
+      {
+        "commit": "fa32bf598b",
+        "subject": "fix(vasm,signal): close BSD refresh race, clear stale results on toggle, cache observation bytes",
+        "group": "carrot/xiaoge",
+        "status": "todo-after",
+        "impact": "v_asm_server 的 settings_refresh_lock/bsd_generation 生命周期串行化 + v_asm_inference load() 预清 net + signal_assist_runtime 观测字节缓存",
+        "probes": [
+          {
+            "kind": "symbol_absent",
+            "target": "openpilot/sunnypilot/carrot/xiaoge/v_asm_server.py",
+            "needle": "settings_refresh_lock"
+          },
+          {
+            "kind": "symbol_absent",
+            "target": "openpilot/sunnypilot/carrot/xiaoge/v_asm_server.py",
+            "needle": "bsd_generation"
+          }
+        ],
+        "blocked_by": [
+          "2fe4acf5dc"
+        ]
+      },
+      {
+        "commit": "2dc4d8de39",
+        "subject": "feat(alerts): e2e standstill chimes while cruise engaged (E2EAlertsWhenEngaged)",
+        "group": "alerts/ui",
+        "status": "todo",
+        "impact": "E2EAlertsWhenEngaged：巡航激活时的静止提示音，params + settings_ui.json + visuals 两处 + e2e_alerts_helper 测试",
+        "probes": [
+          {
+            "kind": "symbol_absent",
+            "target": "openpilot/common/params_keys.h",
+            "needle": "E2EAlertsWhenEngaged"
+          },
+          {
+            "kind": "path_absent",
+            "target": "openpilot/sunnypilot/selfdrive/controls/lib/tests/test_e2e_alerts_helper.py"
+          }
+        ]
+      },
+      {
+        "commit": "f1751249ae",
+        "subject": "docs(xiaoge): why the two YOLO detectors coexist ...",
+        "group": "carrot/xiaoge",
+        "status": "docs",
+        "impact": "纯注释：解释两套 YOLO 检测器为何共存、YOLO timeout 为何对齐盲区窗口",
+        "probes": [
+          {
+            "kind": "symbol_absent",
+            "target": "openpilot/sunnypilot/carrot/xiaoge/xiaoge_vision.py",
+            "needle": "Same value as the blind-spot window on purpose"
+          }
+        ],
+        "blocked_by": [
+          "7ed16d83a6"
+        ]
+      },
+      {
+        "commit": "67ffbe9f03",
+        "subject": "xiaoge: adopt cp's three-class BSD classifier with dual-side continuous monitoring",
+        "group": "carrot/xiaoge",
+        "status": "eval",
+        "impact": "采用 cp 三分类 BSD 分类器 + 双侧连续监控，OnnxBsdThreshold 默认 45 -> 94；540 行，需驾驶者决定三分类语义",
+        "probes": [
+          {
+            "kind": "path_absent",
+            "target": "openpilot/sunnypilot/carrot/tests/test_xiaoge_bsd_semantics.py"
+          },
+          {
+            "kind": "symbol_absent",
+            "target": "openpilot/common/params_keys.h",
+            "needle": "\"OnnxBsdThreshold\", {PERSISTENT | BACKUP, INT, \"94\""
+          }
+        ],
+        "blocked_by": [
+          "2fe4acf5dc"
+        ]
+      },
+      {
+        "commit": "29bfad171c",
+        "subject": "fix(build): repair SConstruct syntax - except clause merged onto the try body line",
+        "group": "build",
+        "status": "todo-after",
+        "impact": "单行 SConstruct 修复：2fe4acf5d 把 except 子句并进 try 体同一行，每次 scons 都 SyntaxError（设备显示 sunnypilot failed to build）",
+        "probes": [
+          {
+            "kind": "symbol_absent",
+            "target": "SConstruct",
+            "needle": "scons_cache_lock"
+          }
+        ],
+        "blocked_by": [
+          "2fe4acf5dc"
+        ],
+        "note": "本树 SConstruct 现在还没有 cache-lock 段，所以这条是「不为空」的：它只能随 2fe4acf5dc 一起进，且必须取修复后的断行版本"
+      },
+      {
+        "commit": "1c162bcae3",
+        "subject": "fix(mpc): jerk_channels import path - module lives under sunnypilot/, not selfdrive/",
+        "group": "controls/mpc",
+        "status": "todo-after",
+        "impact": "一行 import 修正：jerk_channels 在 sunnypilot/.../longitudinal_mpc_lib/，29174dca7 却从 openpilot.selfdrive... 导入，acados 生成期直接崩",
+        "probes": [
+          {
+            "kind": "symbol_absent",
+            "target": "openpilot/selfdrive/controls/lib/longitudinal_mpc_lib/long_mpc.py",
+            "needle": "jerk_channels"
+          }
+        ],
+        "blocked_by": [
+          "29174dca73"
+        ],
+        "note": "搬 29174dca73 时直接采用修正后的 sunnypilot 路径，不要先搬错的再修"
+      },
+      {
+        "commit": "1e97bf13a9",
+        "subject": "test(capnp): pin blindspot split fields at @75-79 after ordinal-hole fix",
+        "group": "cereal/test",
+        "status": "todo-after",
+        "impact": "test_capnp_contract_guard 盲区 split 字段钉在 @75-79（修掉 cp @95-99 造成的 ordinal 空洞）",
+        "probes": [
+          {
+            "kind": "path_absent",
+            "target": "openpilot/sunnypilot/carrot/tests/test_capnp_contract_guard.py"
+          }
+        ],
+        "blocked_by": [
+          "2fe4acf5dc",
+          "opendbc-pin-52ab0722"
+        ],
+        "note": "该用例文件本身由 2fe4acf5dc 新建；它钉的字段由 opendbc 52ab0722 引入，本树 opendbc pin 里 car.capnp 还没有 split 字段，三条一起动"
+      },
+      {
+        "commit": "ee23033248",
+        "subject": "更新（AGENTS-memory + opendbc 指针）",
+        "group": "submodule/pointer",
+        "status": "pointer",
+        "impact": "AGENTS-memory.md + opendbc 指针；本轮上游把 opendbc 推到 a8b81c552（含 vCluRatio/speedLimitDistance/logCarrot 字段）",
+        "probes": [
+          {
+            "kind": "submodule_not_ancestor",
+            "target": "opendbc_repo",
+            "needle": "52ab072204b58be9ad8f540a5b2bb5003a2f3afe"
+          }
+        ],
+        "note": "最终 pin 是 52ab0722（4 条领先本树 61f4cc848）；本树 opendbc 与上游非直系（282 条本地独占），不能快进，要单独评估"
+      },
+      {
+        "commit": "9410aec458",
+        "subject": "更新memory（AGENTS-memory.md 28 行）",
+        "group": "docs",
+        "status": "no-port",
+        "impact": "只动上游内部 AGENTS-memory.md（28 行）",
+        "probes": [
+          {
+            "kind": "path_absent",
+            "target": "AGENTS-memory.md"
+          }
+        ],
+        "note": "我们是 ai/ 体系，不携带该文件；故意不搬"
+      },
+      {
+        "commit": "564e8e93c8",
+        "subject": "merge: pull the test branch onto zoompilot's develop",
+        "group": "infra/upstream-housekeeping",
+        "status": "no-port",
+        "impact": "上游自己的 rebase 基座合并提交（1687 文件），实际只承载 panda / opendbc 两个指针",
+        "probes": [],
+        "note": "不逐条搬；其效果等于 eeb028a58(panda) + ee23033248(opendbc) 两个指针条目，分别由那两条判定"
+      },
+      {
+        "commit": "4ff945e764",
+        "subject": "test(carrot): replace module eviction with a config.Params rebind; immune time patch",
+        "group": "carrot/test",
+        "status": "todo-after",
+        "impact": "测试侧：模块淘汰改为 config.Params 重新绑定、避开时间补丁；改 test_system_monitor.py + test_carrot_man.py",
+        "probes": [
+          {
+            "kind": "path_absent",
+            "target": "openpilot/sunnypilot/carrot/server/tests/test_system_monitor.py"
+          }
+        ],
+        "blocked_by": [
+          "8e51f886d9"
+        ],
+        "note": "test_system_monitor.py 由 8e51f886d9 新建；test_carrot_man.py 本树已存在，可独立先改"
+      },
+      {
+        "commit": "e3cf1856c9",
+        "subject": "更新（AGENTS-memory.md + opendbc_repo 指针）",
+        "group": "submodule/pointer",
+        "status": "no-port",
+        "impact": "AGENTS-memory.md + opendbc 指针（与 ee23033248 同一目标 pin 52ab0722）",
+        "probes": [
+          {
+            "kind": "submodule_not_ancestor",
+            "target": "opendbc_repo",
+            "needle": "52ab072204b58be9ad8f540a5b2bb5003a2f3afe"
+          }
+        ],
+        "blocked_by": [
+          "ee23033248"
+        ],
+        "note": "内容为空壳（只有文档+指针）；指针判定随 ee23033248 走"
       }
     ],
     "ported": [
@@ -1970,99 +2187,7 @@
         "resolved_why": "jetlink cross-fork API(_update_active_json) 已随子模块指针在树里，探针翻成 symbol_present 前先移出 items"
       }
     ],
-    "unported_unprobed": [
-      {
-        "commit": "2fe4acf5dc",
-        "subject": "feat(carrot): port cp P0-P2 batch — UI diagnostics, coasting gating, cereal fields, web throttling",
-        "group": "carrot/batch",
-        "status": "eval",
-        "why_no_probe": "38 文件 1814 行、跨 UI/控制/cereal，无法用单点探针判定；搬之前需要逐文件评估"
-      },
-      {
-        "commit": "fa32bf598b",
-        "subject": "fix(vasm,signal): close BSD refresh race, clear stale results on toggle, cache observation bytes",
-        "group": "carrot/xiaoge",
-        "status": "todo-after",
-        "why_no_probe": "改的都是 v_asm_* 既有文件，探针只能靠新增符号，等与 2fe4acf5dc 一起搬"
-      },
-      {
-        "commit": "2dc4d8de39",
-        "subject": "feat(alerts): e2e standstill chimes while cruise engaged (E2EAlertsWhenEngaged)",
-        "group": "alerts/ui",
-        "status": "todo",
-        "why_no_probe": "settings_ui.json 三处目录项 + 10 文件；探针可后续补"
-      },
-      {
-        "commit": "f1751249ae",
-        "subject": "docs(xiaoge): why the two YOLO detectors coexist ...",
-        "group": "carrot/xiaoge",
-        "status": "docs",
-        "why_no_probe": "纯注释，随 7ed16d83a6 走"
-      },
-      {
-        "commit": "67ffbe9f03",
-        "subject": "xiaoge: adopt cp's three-class BSD classifier with dual-side continuous monitoring",
-        "group": "carrot/xiaoge",
-        "status": "eval",
-        "why_no_probe": "540 行、与盲区分类器语义相关，需要驾驶者决策是否采用三分类"
-      },
-      {
-        "commit": "29bfad171c",
-        "subject": "fix(build): repair SConstruct syntax - except clause merged onto the try body line",
-        "group": "build",
-        "status": "todo",
-        "why_no_probe": "单行 SConstruct 修复，但要先确认本树 SConstruct 是否是同一份（不同则跳过）"
-      },
-      {
-        "commit": "1c162bcae3",
-        "subject": "fix(mpc): jerk_channels import path - module lives under sunnypilot/, not selfdrive/",
-        "group": "controls/mpc",
-        "status": "todo",
-        "why_no_probe": "一行 import 修正，与本树 long_mpc 分叉相关，路试后核对"
-      },
-      {
-        "commit": "1e97bf13a9",
-        "subject": "test(capnp): pin blindspot split fields at @75-79 after ordinal-hole fix",
-        "group": "cereal/test",
-        "status": "eval",
-        "why_no_probe": "改 test_capnp_contract_guard 的字段号断言；本树 capnp 已 upstream 化，需先确认 @75-79 是否已成立"
-      },
-      {
-        "commit": "ee23033248",
-        "subject": "更新（AGENTS-memory + opendbc 指针）",
-        "group": "submodule/pointer",
-        "status": "pointer",
-        "why_no_probe": "子模块指针，需要单独确认 opendbc 那条指针是什么"
-      },
-      {
-        "commit": "9410aec458",
-        "subject": "更新memory（AGENTS-memory.md 28 行）",
-        "group": "docs",
-        "status": "docs",
-        "why_no_probe": "纯上游内部记忆文档，与我们的 ai/ 体系不同，不搬"
-      },
-      {
-        "commit": "564e8e93c8",
-        "subject": "merge: pull the test branch onto zoompilot's develop",
-        "group": "infra/upstream-housekeeping",
-        "status": "docs",
-        "why_no_probe": "1687 文件的合并提交，是上游自己的 rebase 基座，不逐条搬"
-      },
-      {
-        "commit": "4ff945e764",
-        "subject": "test(carrot): replace module eviction with a config.Params rebind; immune time patch",
-        "group": "carrot/test",
-        "status": "blocked",
-        "why_no_probe": "改的是 test_system_monitor.py —— 依赖 8e51f886d9(/api/system_monitor) 尚未移植；直接 cherry-pick 必 DU 冲突（已实测）"
-      },
-      {
-        "commit": "e3cf1856c9",
-        "subject": "更新（AGENTS-memory.md + opendbc_repo 指针）",
-        "group": "submodule/pointer",
-        "status": "skip",
-        "why_no_probe": "只加上游 agent memory 文件并抬 opendbc_repo 指针；本树不用 AGENTS-memory.md，opendbc 指针属我们自己的 fork 线，盲目跟会覆盖本地 opendbc 提交"
-      }
-    ],
+    "unported_unprobed": [],
     "merge_policy": {
       "about": "上游 test 现在不能整支 merge，只能逐条 cherry-pick。别每轮重新试一遍 merge。",
       "measured_at": "2026-10-23",
@@ -2072,7 +2197,19 @@
         "564e8e93c8",
         "2e36dcdd71"
       ]
-    }
+    },
+    "merged_in": [
+      {
+        "commit": "2e36dcdd71",
+        "subject": "merge: pull the test branch onto zoompilot's develop",
+        "why": "registry 把它登记成未移植，但 git merge-base --is-ancestor 2e36dcdd71 HEAD = YES（它已经在我们的历史里），上游 upstream/test 反而不含它。登记失效，移到 merged_in。",
+        "evidence": "git merge-base --is-ancestor 2e36dcdd71 HEAD -> 0 ; --is-ancestor 2e36dcdd71 upstream/test -> 1",
+        "impact": "上游把 test 分支 squash 并进 zoompilot 的 develop（1687 文件）。对我们是空操作：其内容 2e36dcdd71 已经是 HEAD 的祖先，而 upstream/test 并不含它。",
+        "next": "不整搬；dev 分支特性确实需要时单独挑。本条不再计入「未移植」。",
+        "upstream_commit_body": "over eleven port shapes."
+      }
+    ],
+    "unported_unprobed_note": "已清空：13 条全部转成可判定条目，见 items。"
   },
   "upstream_same_red": {
     "about": "两条都是「上游自己也是红的」——在本树复现时不要当成本地回归重开。判据：涉及文件与 upstream/test 逐字节一致，或用 upstream/test 的同一份源码跑同一断言同样红。",

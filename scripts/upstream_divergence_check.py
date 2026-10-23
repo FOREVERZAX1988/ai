@@ -128,6 +128,21 @@ def phase_entries(args, registry: dict) -> tuple[list[dict], int]:
     path = entry["path"]
     if args.only and args.only not in path:
       continue
+    if entry.get("local_only"):
+      # 本树独有的文件（上游没有对应物）。拿 upstream_text 比会把 MISSING 当失败，
+      # 于是每次同步都被当成「上游删了/我们丢了」——实际是结构差异。
+      mine = ours_text(args.side, path)
+      up = upstream_text(args.ref, path)
+      if mine is None:
+        rows.append({"path": path, "verdict": entry.get("verdict"), "state": "FAIL", "detail": "local-only file missing in our tree"})
+        failures += 1
+      elif up is not None:
+        rows.append({"path": path, "verdict": entry.get("verdict"), "state": "OK",
+                     "detail": "local-only, but upstream now has a file here too -- re-audit"})
+      else:
+        rows.append({"path": path, "verdict": entry.get("verdict"), "state": "OK",
+                     "detail": "local-only, no upstream counterpart (as recorded)"})
+      continue
     up, mine = upstream_text(args.ref, path), ours_text(args.side, path)
     if up is None or mine is None:
       rows.append({"path": path, "state": "MISSING", "detail": f"upstream={up is not None} ours={mine is not None}"})

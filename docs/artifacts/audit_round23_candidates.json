@@ -1,0 +1,476 @@
+{
+ "present": 10,
+ "sub": [
+  "75b5926f4fa0b066054dea7624b119893f10aca3",
+  "dc67c91b8f5e110d7d1f7c80bce375fe12fa2ea9",
+  "a9f0d6c3addaeb9f83cd05650a7ce2c6490cace0",
+  "eb236a1d9ee8b6bd441eb871286433bdf3f449a6",
+  "8c9c0028b9dba09e1097773078109a45306bd7fd",
+  "2bf8f8897893469be9fa6d83c7f022dc66ae392d",
+  "004201679122e44aca409f878a925783501d2ed8",
+  "f2c0de09d5f30121aa8ef41563a12735219b7f4b"
+ ],
+ "groups": {
+  "C_ui": [
+   {
+    "sha": "8e8deb1a8e",
+    "subj": "feat(mici): on-road information pager and lead-chevron fix",
+    "files": [
+     "openpilot/selfdrive/ui/mici/layouts/main.py",
+     "openpilot/selfdrive/ui/mici/onroad/model_renderer.py",
+     "openpilot/selfdrive/ui/sunnypilot/mici/layouts/main.py",
+     "openpilot/selfdrive/ui/sunnypilot/mici/layouts/onroad.py",
+     "openpilot/selfdrive/ui/sunnypilot/mici/layouts/onroad_info_panel.py",
+     "openpilot/selfdrive/ui/sunnypilot/mici/onroad/augmented_road_view.py",
+     "openpilot/selfdrive/ui/sunnypilot/mici/tests/test_scroller_sp.py",
+     "openpilot/selfdrive/ui/sunnypilot/mici/widgets/scroll_panel_sp.py",
+     "openpilot/selfdrive/ui/sunnypilot/mici/widgets/scroller_sp.py",
+     "openpilot/selfdrive/ui/ui.py",
+     "openpilot/system/ui/lib/scroll_panel2.py",
+     "openpilot/system/ui/widgets/scroller.py"
+    ]
+   },
+   {
+    "sha": "f20d9ea5e6",
+    "subj": "chestnut: show icon with mads engagement (#1980)",
+    "files": [
+     "openpilot/selfdrive/ui/sunnypilot/mici/onroad/hud_renderer.py"
+    ]
+   }
+  ],
+  "A_controls": [
+   {
+    "sha": "dae2359988",
+    "subj": "fix(scc): curve target release and tightening",
+    "files": [
+     "openpilot/sunnypilot/selfdrive/controls/lib/smart_cruise_control/tests/test_vision_controller.py",
+     "openpilot/sunnypilot/selfdrive/controls/lib/smart_cruise_control/tests/test_vision_controller_closed_loop.py",
+     "openpilot/sunnypilot/selfdrive/controls/lib/smart_cruise_control/vision_controller.py"
+    ]
+   },
+   {
+    "sha": "e9cee08620",
+    "subj": "deacel",
+    "files": [
+     "openpilot/selfdrive/controls/lib/longitudinal_planner.py",
+     "openpilot/sunnypilot/selfdrive/controls/lib/accel_controller/accel_controller.py",
+     "openpilot/sunnypilot/selfdrive/controls/lib/longitudinal_planner.py"
+    ]
+   },
+   {
+    "sha": "d5a507b1e6",
+    "subj": "eco mode w rpm deacel, cost and ref",
+    "files": [
+     "openpilot/cereal/custom.capnp",
+     "openpilot/selfdrive/controls/lib/longitudinal_planner.py",
+     "openpilot/sunnypilot/selfdrive/controls/lib/accel_controller/accel_controller.py",
+     "openpilot/sunnypilot/selfdrive/controls/lib/accel_controller/tests/test_accel_controller.py",
+     "openpilot/sunnypilot/selfdrive/controls/lib/accel_controller/tests/test_accel_controller_closed_loop.py",
+     "openpilot/sunnypilot/selfdrive/controls/lib/longitudinal_planner.py"
+    ]
+   },
+   {
+    "sha": "37d69fd5b4",
+    "subj": "tuning",
+    "files": [
+     "openpilot/selfdrive/controls/lib/longitudinal_planner.py",
+     "openpilot/sunnypilot/selfdrive/controls/lib/accel_controller/accel_controller.py",
+     "openpilot/sunnypilot/selfdrive/controls/lib/longitudinal_planner.py"
+    ]
+   },
+   {
+    "sha": "20bb311770",
+    "subj": "controls: decouple RELC from BSM blocking, allow nudge override",
+    "files": [
+     "openpilot/selfdrive/controls/lib/desire_helper.py",
+     "openpilot/sunnypilot/selfdrive/controls/lib/auto_lane_change.py",
+     "openpilot/sunnypilot/selfdrive/controls/lib/relc.py",
+     "openpilot/sunnypilot/selfdrive/controls/lib/tests/test_auto_lane_change.py",
+     "openpilot/sunnypilot/selfdrive/controls/lib/tests/test_lane_turn_desire.py"
+    ]
+   },
+   {
+    "sha": "0fb99e80e2",
+    "subj": "Update longitudinal_planner.py",
+    "files": [
+     "openpilot/sunnypilot/selfdrive/controls/lib/longitudinal_planner.py"
+    ]
+   },
+   {
+    "sha": "860aec5351",
+    "subj": "feat(stopping_controller): refine end request logic and adjust acceleration parameters",
+    "files": [
+     "opendbc_repo",
+     "openpilot/sunnypilot/selfdrive/controls/lib/stopping_controller.py"
+    ]
+   },
+   {
+    "sha": "81d46a39df",
+    "subj": "rr",
+    "files": [
+     "openpilot/sunnypilot/selfdrive/controls/lib/stopping_controller.py"
+    ]
+   },
+   {
+    "sha": "05459e9c12",
+    "subj": "car tests: skip the virtual cruise button tests when opendbc lacks them",
+    "files": [
+     "openpilot/sunnypilot/selfdrive/car/tests/test_custom_cruise.py"
+    ]
+   }
+  ],
+  "D_other": [
+   {
+    "sha": "dee2112634",
+    "subj": "feat(toyota): TSS2 longitudinal, blind-spot, hybrid hold and diagnostics",
+    "files": [
+     ".gitmodules",
+     "opendbc_repo",
+     "openpilot/common/params_keys.h",
+     "openpilot/selfdrive/car/card.py",
+     "openpilot/selfdrive/car/cruise.py",
+     "openpilot/selfdrive/ui/sunnypilot/layouts/settings/cruise.py",
+     "openpilot/selfdrive/ui/sunnypilot/layouts/settings/vehicle/brands/toyota.py",
+     "openpilot/sunnypilot/selfdrive/car/intelligent_cruise_button_management/controller.py",
+     "openpilot/sunnypilot/selfdrive/car/interfaces.py",
+     "openpilot/sunnypilot/selfdrive/car/tests/test_custom_cruise.py",
+     "openpilot/sunnypilot/sunnylink/settings_ui.json",
+     "openpilot/sunnypilot/sunnylink/settings_ui_src/pages/vehicle.yaml",
+     "openpilot/sunnypilot/sunnylink/tests/test_capabilities.py",
+     "openpilot/sunnypilot/sunnylink/tests/test_settings_changes.py",
+     "openpilot/sunnypilot/sunnylink/tests/test_settings_schema.py"
+    ]
+   },
+   {
+    "sha": "c8cfb5e862",
+    "subj": "feat(long): acceleration profiles simple",
+    "files": [
+     "openpilot/cereal/custom.capnp",
+     "openpilot/common/params_keys.h",
+     "openpilot/common/tests/test_params.py",
+     "openpilot/selfdrive/controls/lib/longitudinal_planner.py",
+     "openpilot/selfdrive/test/longitudinal_maneuvers/plant.py",
+     "openpilot/selfdrive/ui/layouts/settings/toggles.py",
+     "openpilot/selfdrive/ui/mici/layouts/settings/toggles.py",
+     "openpilot/selfdrive/ui/mici/widgets/button.py",
+     "openpilot/sunnypilot/selfdrive/controls/lib/accel_controller/__init__.py",
+     "openpilot/sunnypilot/selfdrive/controls/lib/accel_controller/accel_controller.py",
+     "openpilot/sunnypilot/selfdrive/controls/lib/accel_controller/tests/__init__.py",
+     "openpilot/sunnypilot/selfdrive/controls/lib/accel_controller/tests/test_accel_controller.py",
+     "openpilot/sunnypilot/selfdrive/controls/lib/accel_controller/tests/test_accel_controller_closed_loop.py",
+     "openpilot/sunnypilot/selfdrive/controls/lib/longitudinal_planner.py",
+     "openpilot/sunnypilot/selfdrive/test/__init__.py",
+     "openpilot/sunnypilot/selfdrive/test/longitudinal_maneuvers/__init__.py",
+     "openpilot/sunnypilot/selfdrive/test/longitudinal_maneuvers/plant.py",
+     "openpilot/sunnypilot/selfdrive/test/longitudinal_maneuvers/tests/__init__.py",
+     "openpilot/sunnypilot/selfdrive/test/longitudinal_maneuvers/tests/test_dec_maneuvers.py",
+     "openpilot/sunnypilot/selfdrive/test/longitudinal_maneuvers/tests/test_plant_sp.py",
+     "openpilot/sunnypilot/sunnylink/settings_ui.json",
+     "openpilot/sunnypilot/sunnylink/settings_ui_src/pages/cruise.yaml",
+     "openpilot/sunnypilot/sunnylink/tests/test_settings_schema.py"
+    ]
+   },
+   {
+    "sha": "d9dea37c76",
+    "subj": "feat(sunnypilot): add the stopping controller, the eco lead boost and per-feature Params toggles",
+    "files": [
+     "openpilot/common/params_keys.h",
+     "openpilot/selfdrive/controls/controlsd.py",
+     "openpilot/sunnypilot/selfdrive/car/interfaces.py",
+     "openpilot/sunnypilot/selfdrive/controls/controlsd_ext.py",
+     "openpilot/sunnypilot/selfdrive/controls/lib/accel_controller/accel_controller.py",
+     "openpilot/sunnypilot/selfdrive/controls/lib/accel_controller/tests/test_accel_controller.py",
+     "openpilot/sunnypilot/selfdrive/controls/lib/accel_controller/tests/test_eco_lead_boost.py",
+     "openpilot/sunnypilot/selfdrive/controls/lib/longitudinal_planner.py",
+     "openpilot/sunnypilot/selfdrive/controls/lib/stopping_controller.py",
+     "openpilot/sunnypilot/selfdrive/controls/lib/tests/test_stopping_controller.py",
+     "openpilot/sunnypilot/sunnylink/settings_ui.json",
+     "openpilot/sunnypilot/sunnylink/settings_ui_src/pages/toggles.yaml",
+     "openpilot/sunnypilot/sunnylink/settings_ui_src/pages/vehicle.yaml"
+    ]
+   },
+   {
+    "sha": "1344824746",
+    "subj": "modeld_v2: shes deeeeeep",
+    "files": [
+     ".github/workflows/build-default-models.yaml",
+     ".github/workflows/download-hf-model/action.yml",
+     ".github/workflows/sunnypilot-build-model.yaml",
+     ".github/workflows/sunnypilot-build-prebuilt.yaml",
+     ".github/workflows/test_models.yml",
+     "openpilot/sunnypilot/modeld_v2/compile_modeld.py",
+     "openpilot/sunnypilot/modeld_v2/compile_modeld_v2.py",
+     "openpilot/sunnypilot/modeld_v2/helpers.py",
+     "openpilot/sunnypilot/modeld_v2/modeld.py",
+     "openpilot/sunnypilot/modeld_v2/plain_artifact_compiler.py",
+     "openpilot/sunnypilot/modeld_v2/tests/helpers.py",
+     "openpilot/sunnypilot/modeld_v2/tests/test_combined_pkl_loader.py",
+     "openpilot/sunnypilot/modeld_v2/tests/test_compile_modeld.py",
+     "openpilot/sunnypilot/modeld_v2/tests/test_fallback.py",
+     "openpilot/sunnypilot/modeld_v2/tests/test_models.py",
+     "openpilot/sunnypilot/models/fetcher.py",
+     "openpilot/sunnypilot/models/helpers.py",
+     "openpilot/sunnypilot/models/manager.py",
+     "openpilot/sunnypilot/models/tests/test_manager_download.py",
+     "release/ci/model_generator.py",
+     "release/ci/upload_default_model.py"
+    ]
+   },
+   {
+    "sha": "bd27f3b54f",
+    "subj": "offroad proc for cache warmup",
+    "files": [
+     "openpilot/sunnypilot/modeld_v2/helpers.py",
+     "openpilot/sunnypilot/modeld_v2/plain_artifact_compiler.py",
+     "openpilot/sunnypilot/modeld_v2/warmup.py",
+     "openpilot/system/manager/process_config.py"
+    ]
+   },
+   {
+    "sha": "e6e5b1c165",
+    "subj": "bump tg to upstream tg/tg:master. no rebuild needed",
+    "files": [
+     ".github/workflows/sunnypilot-build-model.yaml",
+     "openpilot/selfdrive/modeld/SConscript",
+     "openpilot/selfdrive/modeld/helpers.py",
+     "openpilot/selfdrive/modeld/modeld.py",
+     "openpilot/sunnypilot/modeld_v2/compile_modeld.py",
+     "openpilot/sunnypilot/modeld_v2/compile_modeld_v2.py",
+     "openpilot/sunnypilot/modeld_v2/helpers.py",
+     "openpilot/sunnypilot/modeld_v2/model_adapters.py",
+     "openpilot/sunnypilot/modeld_v2/modeld.py",
+     "openpilot/sunnypilot/modeld_v2/plain_artifact_compiler.py",
+     "tinygrad_repo"
+    ]
+   },
+   {
+    "sha": "2f6e2560ea",
+    "subj": "modeld_v2: create a compiled pkl -> gpu kernel artifact converter",
+    "files": [
+     ".github/workflows/build-chestnut-caches.yaml",
+     ".github/workflows/build-single-tinygrad-model.yaml",
+     ".github/workflows/sunnypilot-build-model.yaml",
+     "openpilot/selfdrive/modeld/dmonitoringmodeld.py",
+     "openpilot/selfdrive/modeld/helpers.py",
+     "openpilot/selfdrive/modeld/modeld.py",
+     "openpilot/sunnypilot/modeld_v2/convert_upstream_pkl.py",
+     "openpilot/sunnypilot/modeld_v2/helpers.py",
+     "openpilot/sunnypilot/modeld_v2/plain_artifact_compiler.py",
+     "openpilot/sunnypilot/modeld_v2/warmup.py",
+     "openpilot/sunnypilot/models/manager.py",
+     "release/ci/build_chestnut_caches.py",
+     "tinygrad_repo"
+    ]
+   },
+   {
+    "sha": "023ef9419a",
+    "subj": "one packed contiguous buffer submit",
+    "files": [
+     ".github/workflows/build-chestnut-caches.yaml",
+     ".github/workflows/build-single-tinygrad-model.yaml",
+     ".github/workflows/compile-warp-kernels.yaml",
+     "openpilot/sunnypilot/modeld_v2/compile_warp.py",
+     "openpilot/sunnypilot/modeld_v2/frame_fusion.py",
+     "openpilot/sunnypilot/modeld_v2/helpers.py",
+     "openpilot/sunnypilot/modeld_v2/model_adapters.py",
+     "openpilot/sunnypilot/modeld_v2/modeld.py",
+     "openpilot/sunnypilot/modeld_v2/models/big_driving_warp_1344x760_tinygrad.pkl",
+     "openpilot/sunnypilot/modeld_v2/models/big_driving_warp_1928x1208_tinygrad.pkl",
+     "openpilot/sunnypilot/modeld_v2/models/driving_warp_1344x760_tinygrad.pkl",
+     "openpilot/sunnypilot/modeld_v2/models/driving_warp_1928x1208_tinygrad.pkl",
+     "openpilot/sunnypilot/modeld_v2/warmup.py",
+     "openpilot/sunnypilot/models/manager.py",
+     "release/ci/build_chestnut_caches.py"
+    ]
+   },
+   {
+    "sha": "033ba0d973",
+    "subj": "pkl warmup",
+    "files": [
+     ".github/workflows/sunnypilot-build-model.yaml",
+     "openpilot/sunnypilot/modeld_v2/warmup.py"
+    ]
+   },
+   {
+    "sha": "5ec0c02195",
+    "subj": "Sunset Dynamic Experimental Mode (DEC) (#2056)",
+    "files": [
+     "openpilot/cereal/custom.capnp",
+     "openpilot/common/params_keys.h",
+     "openpilot/selfdrive/car/card.py",
+     "openpilot/selfdrive/car/cruise.py",
+     "openpilot/selfdrive/car/tests/test_cruise_speed.py",
+     "openpilot/selfdrive/controls/lib/longitudinal_planner.py",
+     "openpilot/selfdrive/ui/sunnypilot/layouts/settings/cruise.py",
+     "openpilot/selfdrive/ui/sunnypilot/ui_state.py",
+     "openpilot/sunnypilot/selfdrive/car/interfaces.py",
+     "openpilot/sunnypilot/selfdrive/car/tests/test_custom_cruise.py",
+     "openpilot/sunnypilot/selfdrive/controls/lib/dec/__init__.py",
+     "openpilot/sunnypilot/selfdrive/controls/lib/dec/constants.py",
+     "openpilot/sunnypilot/selfdrive/controls/lib/dec/dec.py",
+     "openpilot/sunnypilot/selfdrive/controls/lib/dec/tests/__init__.py",
+     "openpilot/sunnypilot/selfdrive/controls/lib/dec/tests/test_dec_planner_gate.py",
+     "openpilot/sunnypilot/selfdrive/controls/lib/dec/tests/test_dynamic_controller.py",
+     "openpilot/sunnypilot/selfdrive/controls/lib/longitudinal_planner.py",
+     "openpilot/sunnypilot/sunnylink/docs/README.md",
+     "openpilot/sunnypilot/sunnylink/settings_ui.json",
+     "openpilot/sunnypilot/sunnylink/settings_ui_src/pages/cruise.yaml",
+     "openpilot/sunnypilot/sunnylink/tests/test_settings_changes.py"
+    ]
+   },
+   {
+    "sha": "27c132984d",
+    "subj": "bug: fix duplicate MADS no-entry alerts (#1949)",
+    "files": [
+     "openpilot/selfdrive/selfdrived/selfdrived.py"
+    ]
+   },
+   {
+    "sha": "58bcdc0215",
+    "subj": "models: restore the chunked download path the merge broke",
+    "files": [
+     "openpilot/sunnypilot/models/manager.py"
+    ]
+   },
+   {
+    "sha": "9e002fb2dc",
+    "subj": "curve learning: surface the state on the web settings page",
+    "files": [
+     "openpilot/selfdrive/controls/lib/curve_speed_learning.py",
+     "openpilot/selfdrive/controls/lib/tests/test_curve_speed_learning.py",
+     "openpilot/sunnypilot/carrot/tests/test_web_curve_learning_status.py",
+     "openpilot/sunnypilot/carrot/web_interface.py",
+     "openpilot/sunnypilot/carrot/web_settings.py"
+    ]
+   }
+  ],
+  "B_modeld": [
+   {
+    "sha": "f7c65f7d6a",
+    "subj": "lint",
+    "files": [
+     "openpilot/sunnypilot/modeld_v2/helpers.py",
+     "openpilot/sunnypilot/modeld_v2/warmup.py"
+    ]
+   },
+   {
+    "sha": "be51bc793d",
+    "subj": "5ms speed up on qcom",
+    "files": [
+     "openpilot/sunnypilot/modeld_v2/compile_modeld.py"
+    ]
+   },
+   {
+    "sha": "bc064e892f",
+    "subj": "standin for chestnut linear_compile",
+    "files": [
+     "openpilot/sunnypilot/modeld_v2/helpers.py"
+    ]
+   },
+   {
+    "sha": "b4c3a19db1",
+    "subj": "skip out on op modules",
+    "files": [
+     "openpilot/sunnypilot/modeld_v2/tests/test_models.py"
+    ]
+   },
+   {
+    "sha": "9f3a2607ee",
+    "subj": "dedup chestnutty",
+    "files": [
+     "openpilot/sunnypilot/modeld_v2/compile_modeld.py",
+     "openpilot/sunnypilot/modeld_v2/helpers.py",
+     "openpilot/sunnypilot/modeld_v2/plain_artifact_compiler.py"
+    ]
+   },
+   {
+    "sha": "f3f7296776",
+    "subj": "stream chunks for big models to save oom",
+    "files": [
+     "openpilot/sunnypilot/modeld_v2/helpers.py",
+     "openpilot/sunnypilot/modeld_v2/plain_artifact_compiler.py"
+    ]
+   },
+   {
+    "sha": "5acb9d2c8e",
+    "subj": "whoops",
+    "files": [
+     "openpilot/sunnypilot/modeld_v2/helpers.py"
+    ]
+   },
+   {
+    "sha": "0414843e2f",
+    "subj": "method() persistent_load",
+    "files": [
+     "openpilot/selfdrive/modeld/helpers.py"
+    ]
+   },
+   {
+    "sha": "f4996a0529",
+    "subj": "lint",
+    "files": [
+     "openpilot/selfdrive/modeld/helpers.py"
+    ]
+   },
+   {
+    "sha": "374659bf43",
+    "subj": "exec",
+    "files": [
+     "openpilot/sunnypilot/modeld_v2/convert_upstream_pkl.py"
+    ]
+   },
+   {
+    "sha": "5823cf4f84",
+    "subj": "lowers chestnut loading to 3ms faster than stock",
+    "files": [
+     "openpilot/sunnypilot/modeld_v2/helpers.py"
+    ]
+   },
+   {
+    "sha": "43cbdc65cd",
+    "subj": "more",
+    "files": [
+     "openpilot/sunnypilot/modeld_v2/helpers.py"
+    ]
+   },
+   {
+    "sha": "eb7a6fc0f8",
+    "subj": "converter fix",
+    "files": [
+     "openpilot/sunnypilot/modeld_v2/compile_modeld.py",
+     "openpilot/sunnypilot/modeld_v2/convert_upstream_pkl.py",
+     "openpilot/sunnypilot/modeld_v2/helpers.py"
+    ]
+   },
+   {
+    "sha": "86f2e7b255",
+    "subj": "fw fetch to kernel",
+    "files": [
+     "openpilot/sunnypilot/modeld_v2/helpers.py"
+    ]
+   },
+   {
+    "sha": "45bfd88e7e",
+    "subj": "no more fw fetching just use decompress",
+    "files": [
+     "openpilot/sunnypilot/modeld_v2/helpers.py"
+    ]
+   },
+   {
+    "sha": "e6d035b639",
+    "subj": "fix ci",
+    "files": [
+     "openpilot/sunnypilot/modeld_v2/tests/helpers.py",
+     "openpilot/sunnypilot/modeld_v2/tests/test_fallback.py"
+    ]
+   },
+   {
+    "sha": "84fda467b5",
+    "subj": "caught on new icm comparison tool",
+    "files": [
+     "openpilot/sunnypilot/modeld_v2/model_adapters.py"
+    ]
+   }
+  ]
+ }
+}
