@@ -542,51 +542,6 @@
         ]
       },
       {
-        "commit": "2e60e286ac",
-        "subject": "feat(carrot): executable favorite slots - one-tap toggle/cycle/value actions",
-        "date": "10-23",
-        "group": "carrot/web",
-        "status": "todo",
-        "impact": "setting_favorites.py +25、新增 test_favorite_slots.py，纯 carrot 服务层，不碰控制链",
-        "next": "可直接搬（与 8e51f886d9 的 /api/system_monitor 同批 carrot 服务）",
-        "probes": [
-          {
-            "kind": "path_absent",
-            "target": "openpilot/sunnypilot/carrot/server/tests/test_favorite_slots.py"
-          }
-        ]
-      },
-      {
-        "commit": "8e51f886d9",
-        "subject": "feat(carrot): /api/system_monitor - read-only process/CPU snapshot for remote support",
-        "date": "10-23",
-        "group": "carrot/web",
-        "status": "todo",
-        "impact": "新增 system_monitor.py + 169 行测试，只读接口，零控制链",
-        "next": "可直接搬；搬完这条就是上次「上游 11 条」里最后一条 carrot 服务",
-        "probes": [
-          {
-            "kind": "path_absent",
-            "target": "openpilot/sunnypilot/carrot/server/services/system_monitor.py"
-          }
-        ]
-      },
-      {
-        "commit": "ad617598df",
-        "subject": "feat(wheel_controls): generic USB/BT input layer - zero new params, zero compiled artifacts",
-        "date": "10-23",
-        "group": "input",
-        "status": "eval",
-        "impact": "10 文件 +1433 行，新增 sunnypilot/system/wheel_controls/ + process_config 注册。方向盘按键输入层，会碰 manager 进程表",
-        "next": "路试后再评估：本车 Macan 原厂按键走 CAN，不需要 USB/BT 输入层；先只记录不搬",
-        "probes": [
-          {
-            "kind": "path_absent",
-            "target": "openpilot/sunnypilot/system/wheel_controls/wheel_controlsd.py"
-          }
-        ]
-      },
-      {
         "commit": "7ed16d83a6",
         "subject": "feat(xiaoge): YOLO obstacle head — inference, server wiring, carStateSP digest (M1-M3)",
         "date": "10-23",
@@ -600,44 +555,6 @@
             "target": "openpilot/sunnypilot/carrot/xiaoge/yolo_inference.py"
           }
         ]
-      },
-      {
-        "commit": "5af396b880",
-        "subject": "test(wheel_controls): make unknown-keycode fallback independent of the optional inputs package",
-        "date": "10-23",
-        "group": "input",
-        "status": "todo-after",
-        "impact": "只改 wheel_controls 测试，依赖 ad617598df",
-        "next": "跟 ad617598df 同批",
-        "probes": [
-          {
-            "kind": "path_absent",
-            "target": "openpilot/sunnypilot/system/wheel_controls/tests/test_wheel_controls.py"
-          }
-        ]
-      },
-      {
-        "commit": "2fe4acf5dc",
-        "subject": "feat(carrot): port cp P0-P2 batch — UI diagnostics, coasting gating, cereal fields, web throttling",
-        "group": "carrot/batch",
-        "status": "eval",
-        "impact": "38 文件 1814 行：UI 诊断/render_diagnostics、coasting 门控、cereal 字段 OnnxBsdEnabled、web 节流、scons cache lock",
-        "probes": [
-          {
-            "kind": "path_absent",
-            "target": "openpilot/common/scons_cache_lock.py"
-          },
-          {
-            "kind": "path_absent",
-            "target": "openpilot/selfdrive/ui/render_diagnostics.py"
-          },
-          {
-            "kind": "symbol_absent",
-            "target": "openpilot/common/params_keys.h",
-            "needle": "OnnxBsdEnabled"
-          }
-        ],
-        "note": "搬它必须连带 29bfad171c（SConstruct SyntaxError 修复）否则 boot 期 scons 直接死"
       },
       {
         "commit": "fa32bf598b",
@@ -659,24 +576,6 @@
         ],
         "blocked_by": [
           "2fe4acf5dc"
-        ]
-      },
-      {
-        "commit": "2dc4d8de39",
-        "subject": "feat(alerts): e2e standstill chimes while cruise engaged (E2EAlertsWhenEngaged)",
-        "group": "alerts/ui",
-        "status": "todo",
-        "impact": "E2EAlertsWhenEngaged：巡航激活时的静止提示音，params + settings_ui.json + visuals 两处 + e2e_alerts_helper 测试",
-        "probes": [
-          {
-            "kind": "symbol_absent",
-            "target": "openpilot/common/params_keys.h",
-            "needle": "E2EAlertsWhenEngaged"
-          },
-          {
-            "kind": "path_absent",
-            "target": "openpilot/sunnypilot/selfdrive/controls/lib/tests/test_e2e_alerts_helper.py"
-          }
         ]
       },
       {
@@ -716,24 +615,6 @@
         "blocked_by": [
           "2fe4acf5dc"
         ]
-      },
-      {
-        "commit": "29bfad171c",
-        "subject": "fix(build): repair SConstruct syntax - except clause merged onto the try body line",
-        "group": "build",
-        "status": "todo-after",
-        "impact": "单行 SConstruct 修复：2fe4acf5d 把 except 子句并进 try 体同一行，每次 scons 都 SyntaxError（设备显示 sunnypilot failed to build）",
-        "probes": [
-          {
-            "kind": "symbol_absent",
-            "target": "SConstruct",
-            "needle": "scons_cache_lock"
-          }
-        ],
-        "blocked_by": [
-          "2fe4acf5dc"
-        ],
-        "note": "本树 SConstruct 现在还没有 cache-lock 段，所以这条是「不为空」的：它只能随 2fe4acf5dc 一起进，且必须取修复后的断行版本"
       },
       {
         "commit": "1c162bcae3",
@@ -808,23 +689,6 @@
         "impact": "上游自己的 rebase 基座合并提交（1687 文件），实际只承载 panda / opendbc 两个指针",
         "probes": [],
         "note": "不逐条搬；其效果等于 eeb028a58(panda) + ee23033248(opendbc) 两个指针条目，分别由那两条判定"
-      },
-      {
-        "commit": "4ff945e764",
-        "subject": "test(carrot): replace module eviction with a config.Params rebind; immune time patch",
-        "group": "carrot/test",
-        "status": "todo-after",
-        "impact": "测试侧：模块淘汰改为 config.Params 重新绑定、避开时间补丁；改 test_system_monitor.py + test_carrot_man.py",
-        "probes": [
-          {
-            "kind": "path_absent",
-            "target": "openpilot/sunnypilot/carrot/server/tests/test_system_monitor.py"
-          }
-        ],
-        "blocked_by": [
-          "8e51f886d9"
-        ],
-        "note": "test_system_monitor.py 由 8e51f886d9 新建；test_carrot_man.py 本树已存在，可独立先改"
       },
       {
         "commit": "e3cf1856c9",
@@ -2024,6 +1888,87 @@
           "openpilot/common/params_keys.h",
           "openpilot/selfdrive/ui/sunnypilot/layouts/settings/carrot_tuning_items.py"
         ]
+      },
+      {
+        "commit": "8e51f886d9",
+        "subject": "feat(carrot): /api/system_monitor - read-only process/CPU snapshot for remote support",
+        "group": "carrot/web",
+        "ported_at": "2026-10-23",
+        "ours_commit": "85f2fab905",
+        "probe_was": "path_absent openpilot/sunnypilot/carrot/server/services/system_monitor.py",
+        "evidence": "cherry-pick 零冲突（3 文件：services/system_monitor.py + tests/test_system_monitor.py + features/system.py 路由注册）。pytest test_system_monitor.py 7 passed；ruff 全过；本机实跑两次采样：sampleSeconds 1.99 / cpuPercent 26.1 / 6 核明细 / mem usedMiB 1692.2 / storage 23.7GiB of 29.4GiB / 571 进程 / top3 ai.aid 4.8% —— 口径是 /proc delta，设备上直接可用。",
+        "next_after": "4ff945e764（test_carrot_man 的 config.Params rebind 测试）依赖本条新建的 test_system_monitor.py，现在可搬。"
+      },
+      {
+        "commit": "4ff945e764",
+        "subject": "test(carrot): replace module eviction with a config.Params rebind; immune time patch",
+        "group": "carrot/test",
+        "ported_at": "2026-10-23",
+        "ours_commit": "a7efcc5615",
+        "probe_was": "path_absent openpilot/sunnypilot/carrot/server/tests/test_system_monitor.py（依赖 8e51f886d9 新建的文件）",
+        "evidence": "cherry-pick 自动合并（test_carrot_man.py 21+/7-，test_system_monitor.py 跟随上游 rebind 7+/1-）；pytest test_carrot_man + test_system_monitor 159 passed。",
+        "note": "上游用 config.Params rebind 替掉模块驱逐，顺带免疫时间补丁；与本树 carrot_man 的 Params 生命周期一致，无需本地改写。"
+      },
+      {
+        "commit": "2e60e286ac",
+        "subject": "feat(carrot): executable favorite slots - one-tap toggle/cycle/value actions",
+        "group": "carrot/web",
+        "ported_at": "2026-10-23",
+        "probe_was": "[{\"kind\": \"path_absent\", \"target\": \"openpilot/sunnypilot/carrot/server/tests/test_favorite_slots.py\"}]",
+        "ours_commit": "72378d540c",
+        "evidence": "cherry-pick 零冲突（4 文件：services/favorite_slots.py 新增 + services/features.setting_favorites + tests/test_favorite_slots.py）。ruff 全过；pytest sunnypilot/carrot/server/tests 157 passed / 48 skipped（唯一红 test_auto_update 为既有红，见 known_issues）。",
+        "note": "上游「可执行收藏槽位」：一键切换/循环/取值，零新 param。"
+      },
+      {
+        "commit": "2dc4d8de39",
+        "subject": "feat(alerts): e2e standstill chimes while cruise engaged (E2EAlertsWhenEngaged)",
+        "group": "alerts/ui",
+        "ported_at": "2026-10-23",
+        "probe_was": "[{\"kind\": \"symbol_absent\", \"target\": \"openpilot/common/params_keys.h\", \"needle\": \"E2EAlertsWhenEngaged\"}, {\"kind\": \"path_absent\", \"target\": \"openpilot/sunnypilot/selfdrive/controls/lib/tests/test_e2e_alerts_helper.py\"}]",
+        "ours_commit": "dbf14ed4ae",
+        "evidence": "cherry-pick 自动合并（10 文件：params_keys.h +E2EAlertsWhenEngaged、e2e_alerts_helper.py 消费者、visuals.py/mici 设置项、sp_param_labels 中英标签、settings_ui.json + settings_ui_src/pages/visuals.yaml 同步）。pytest test_e2e_alerts_helper 3 passed；common/tests/test_params_metadata 6 passed；params_keys.h 无新增重复键；settings_ui.json 与 yaml 改动逐条对应。",
+        "note": "不抬 OnnxBsdThreshold、不动 BSD；该红与 67ffbe9f03 的 pin 无关。"
+      },
+      {
+        "commit": "ad617598df",
+        "subject": "feat(wheel_controls): generic USB/BT input layer - zero new params, zero compiled artifacts",
+        "group": "input",
+        "ported_at": "2026-10-23",
+        "probe_was": "[{\"kind\": \"path_absent\", \"target\": \"openpilot/sunnypilot/system/wheel_controls/wheel_controlsd.py\"}]",
+        "ours_commit": "5de73c5eb8",
+        "evidence": "cherry-pick 自动合并（10 文件 1433 行：system/wheel_controls/{store,wheel_controlsd}.py + manager process_config 挂 wheel_controlsd(COMMA_HARDWARE, always_run, restart_if_crash) + server features/services/tests + app.py 注册）。ruff 全过（本地去掉一个未启用的 noqa:S310）；pytest wheel_controls 26 passed。",
+        "note": "零新 param、零编译产物；配置层 opt-in（wheel_controls.json），与 carrot_bluetooth 共用 /dev/input 需注意同节点勿双映射（上游注释已记）。"
+      },
+      {
+        "commit": "5af396b880",
+        "subject": "test(wheel_controls): make unknown-keycode fallback independent of the optional inputs package",
+        "group": "input",
+        "ported_at": "2026-10-23",
+        "probe_was": "[{\"kind\": \"path_absent\", \"target\": \"openpilot/sunnypilot/system/wheel_controls/tests/test_wheel_controls.py\"}]",
+        "ours_commit": "b45d4872a9",
+        "evidence": "设备上确实装了 inputs 包 → 42 解析成 KEY_LEFTSHIFT，上游这条正是为此改成 patch KEY_NAMES。应用后 wheel_controls 全部 27 passed（含 carrot server 的 service 测试）。",
+        "note": "依赖 ad617598df 新建的测试文件，故紧随其后。"
+      },
+      {
+        "commit": "2fe4acf5dc",
+        "subject": "feat(carrot): port cp P0-P2 batch — UI diagnostics, coasting gating, cereal fields, web throttling",
+        "group": "carrot/batch",
+        "ported_at": "2026-10-23",
+        "probe_was": "[{\"kind\": \"path_absent\", \"target\": \"openpilot/common/scons_cache_lock.py\"}, {\"kind\": \"path_absent\", \"target\": \"openpilot/selfdrive/ui/render_diagnostics.py\"}, {\"kind\": \"symbol_absent\", \"target\": \"openpilot/common/params_keys.h\", \"needle\": \"OnnxBsdEnabled\"}]",
+        "ours_commit": "587cb39ebc",
+        "evidence": "cherry-pick 自动合并，唯一冲突是 opendbc 子模块（上游要 8c12b1236，其父 a3c88c85e『适配c3』是 BYD+hyundai 大改，本 fork 无此 2 提交且已分叉 282 提交）→ 只在 opendbc 里单独 cherry-pick 8c12b1236（CarState radarInput @71 之后 append @72 vCluRatio / @73 speedLimitDistance / @74 logCarrot + interfaces.py 派生），子模块 capnp compile rc=0，指针记为本 fork 合并提交 b9e3f0060。",
+        "evidence2": "测试：test_scons_cache_lock / test_radar_geometry_constants / test_signal_enabled_since / test_xiaoge_onnx_lifecycle / test_raw_relay_poll_schedule 13 passed；params_keys.h 新增 OnnxBsdEnabled 无重复键；longitudinal_planner 的 _coasting_vetoed 与本 fork 的 MpcPlanSource/output_should_stop/dec/lane_change 符号逐一 grep 在位；py_compile 通过。",
+        "note": "OnnxBsdEnabled 是编译期参数 → 部署前必须重建 libparams_c.so（已在做 scons 全量）；cereal 需按新 car.capnp 重新生成。coasting veto 只减刹车、不加速度，属安全方向。"
+      },
+      {
+        "commit": "29bfad171c",
+        "subject": "fix(build): repair SConstruct syntax - except clause merged onto the try body line",
+        "group": "build",
+        "ported_at": "2026-10-23",
+        "probe_was": "[{\"kind\": \"symbol_absent\", \"target\": \"SConstruct\", \"needle\": \"scons_cache_lock\"}]",
+        "ours_commit": "3c93ed9fb6",
+        "evidence": "紧随 2fe4acf5dc：该批把 scons_cache_lock 软接进 SConstruct 时把 except 并到了 try 体行（SConstruct:248 SyntaxError）；本条修好，`compile(SConstruct)` 通过。",
+        "note": "依赖 2fe4acf5dc 的 scons_cache_lock.py，故先搬父批再搬本条。"
       }
     ],
     "next_batch": {
@@ -2147,6 +2092,19 @@
         ],
         "guard_todo": "把 upstream_divergence_check.py phase 1 从 registry 登记的 31 个文件扩到 git diff <pre-rebase> --name-only 的全集，让重排吞改动在检查器里直接红，而不是等测试红。",
         "evidence": "carrot/tests + speed_limit + test_vision_limit_threshold_row = 975 passed；audit_ui_reach 19/19 有 UI 入口"
+      },
+      {
+        "what": "既有红：sunnypilot/carrot/server/tests/test_auto_update.py::test_git_pull_reports_actual_update_and_records_pull_time",
+        "observed": "AttributeError: module auto_update 没有 _notify_cwp（上游测试 pin 了上游的 cwp 通知钩子）",
+        "verdict": "本地分叉既有红，与本轮 3 个 cherry-pick 无交集（改动文件不重叠）",
+        "status": "open"
+      },
+      {
+        "what": "既有红：sunnypilot/sunnylink/tests/test_settings_changes.py::TestValidator::test_validator_accepts_real_json",
+        "observed": "validator: 面板 cruise > 段 carrot_navigation 的条目缺 key/widget；另 3 例红为 TorqueControlTune 仍带静态 options / TorqueControlTuneBig 缺失（上游要求由 latcontrol_torque_versions.json 生成）",
+        "evidence": "把 HEAD 版 settings_ui.json 抽到 /tmp 再跑同一 validator，输出逐字符相同（8 通过 2 失败），确认是既有红",
+        "verdict": "既有红，非本轮引入",
+        "status": "open"
       }
     ],
     "resolved": [
