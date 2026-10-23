@@ -1889,6 +1889,28 @@
     "what": "部分移植的连带红：上游测试 pin 依赖其同批功能默认值",
     "observed": "cherry-pick 8a7e93181d 后 test_carrot_man::test_imported_params_present_in_defaults 红：45 != 94 (OnnxBsdThreshold)。94 来自未移植的 67ffbe9f03+fa32bf598b（cp 三类 BSD）",
     "fix": "只回退该 pin 到本地值 45 并写注释指向依赖提交（本树 4c4c654fef 后的那次 fix(test) 提交）；其余改动保留。193 passed"
+   },
+   {
+    "id": "rebase-loss-20261022",
+    "found_at": "2026-10-23",
+    "what": "10-22 的「以上游 test 9e002fb2 为底重排」(7399ffe498 及同批 2e36dcdd71/d54a20b452/0e3df03d1a) 在多个文件上直接取上游版本，整段吞掉本地改动，同时保留了本地测试 → 树里看着绿、车机上静默降级。",
+    "identified": [
+     "xiaoge/v_asm_server.py: parked_gate/PARKED_SPEED_MPS/sm_lock/inferenceGate 全丢（停车照跑 ONNX，实测全机 24% CPU）",
+     "carrot/tests/audit_param_consistency.py: parse_param_types 丢失，test_param_types ImportError",
+     "carrot_tuning_items.py: 22 行设置控件丢失（含 14 个控制路径开关）+ ui_enabled 门控，audit_ui_reach 5/14 → 回贴后 19/0",
+     "web_settings.py: 单双引号扫描 + bytes→str 归一丢失（8088 面板分页全丢）"
+    ],
+    "restored_in": [
+     "a80a486de2",
+     "6769d3796b"
+    ],
+    "doc": "docs/rebase_loss_audit_20261023.md",
+    "still_open": [
+     "WARN 待证伪/回贴: selfdrive/monitoring/dmonitoringd.py, sunnypilot/carrot/radar/radard_dpath.py, selfdrive/controls/tests/test_longcontrol.py",
+     "FAIL 属上游新意图未并入: sunnypilot/jetlink_adapter/__init__.py (hevc_venus), sunnypilot/selfdrive/controls/lib/tests/test_longitudinal_planner.py"
+    ],
+    "guard_todo": "把 upstream_divergence_check.py phase 1 从 registry 登记的 31 个文件扩到 git diff <pre-rebase> --name-only 的全集，让重排吞改动在检查器里直接红，而不是等测试红。",
+    "evidence": "carrot/tests + speed_limit + test_vision_limit_threshold_row = 975 passed；audit_ui_reach 19/19 有 UI 入口"
    }
   ],
   "resolved": [
