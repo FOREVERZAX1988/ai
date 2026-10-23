@@ -1,0 +1,331 @@
+{
+ "crash": [
+  {
+   "path": "openpilot/sunnypilot/jetlink_adapter/__init__.py",
+   "status": "partial",
+   "gone": [
+    "OWNER_LOG",
+    "_api",
+    "_bind",
+    "_failed",
+    "_guarded",
+    "_log_failure",
+    "lossless_warp_path",
+    "request_shutdown",
+    "shutdown_pending",
+    "warp_path"
+   ]
+  },
+  {
+   "path": "openpilot/sunnypilot/carrot/server/tests/test_web_push.py",
+   "status": "full-revert",
+   "gone": [
+    "TestPwaInstallability",
+    "_FakeParams",
+    "_push_app",
+    "_state",
+    "test_legacy_json_file_is_imported_once_then_renamed",
+    "test_manifest_icon_size_matches_the_file_we_serve",
+    "test_pwa_assets_are_served_and_the_panel_links_them",
+    "test_status_hands_out_a_stable_vapid_key_and_subscriptions_round_trip"
+   ]
+  },
+  {
+   "path": "openpilot/sunnypilot/modeld_v2/helpers.py",
+   "status": "full-revert",
+   "gone": [
+    "DynamicTinygradUnpickler",
+    "_dynamic_factory",
+    "_pad_args",
+    "dump_oob",
+    "load_oob"
+   ]
+  },
+  {
+   "path": "openpilot/selfdrive/ui/tests/carrot_tuning_render_smoke.py",
+   "status": "partial",
+   "gone": [
+    "_AnyCallChain",
+    "_FakeFlag",
+    "_FakeMsg",
+    "_FakeSm"
+   ]
+  },
+  {
+   "path": "openpilot/sunnypilot/carrot/server/services/web_push.py",
+   "status": "full-revert",
+   "gone": [
+    "_migrate_legacy_file",
+    "_params",
+    "load_state",
+    "save_state"
+   ]
+  },
+  {
+   "path": "openpilot/selfdrive/pandad/pandad.py",
+   "status": "full-revert",
+   "gone": [
+    "H7_HW_TYPES",
+    "is_h7_panda_hw",
+    "should_launch_cpp_directly"
+   ]
+  },
+  {
+   "path": "openpilot/sunnypilot/carrot/carrot_man.py",
+   "status": "partial",
+   "gone": [
+    "CARROT_PUBLISHED_SERVICES",
+    "CARROT_SERVICES",
+    "_enable_fault_diagnostics"
+   ]
+  },
+  {
+   "path": "openpilot/sunnypilot/modeld_v2/compile_modeld.py",
+   "status": "full-revert",
+   "gone": [
+    "_patch_ops_serialization",
+    "_patch_tinygrad_fetch_fw",
+    "read_file_chunked_to_disk"
+   ]
+  },
+  {
+   "path": "openpilot/sunnypilot/selfdrive/controls/lib/tests/test_carrot_longitudinal_source.py",
+   "status": "full-revert",
+   "gone": [
+    "_drop_stubs",
+    "_install_stub",
+    "tearDownModule"
+   ]
+  },
+  {
+   "path": "openpilot/sunnypilot/jetlink_adapter/tests/test_warp_build.py",
+   "status": "full-revert",
+   "gone": [
+    "child_path",
+    "run_build_command"
+   ]
+  },
+  {
+   "path": "openpilot/sunnypilot/carrot/server/config.py",
+   "status": "full-revert",
+   "gone": [
+    "CARROT_WEB_PUSH_PATH"
+   ]
+  },
+  {
+   "path": "openpilot/sunnypilot/carrot/server/features/push.py",
+   "status": "full-revert",
+   "gone": [
+    "handle_page"
+   ]
+  },
+  {
+   "path": "openpilot/sunnypilot/carrot/tests/test_gps_sources.py",
+   "status": "full-revert",
+   "gone": [
+    "_serv_importable"
+   ]
+  },
+  {
+   "path": "openpilot/sunnypilot/carrot/xiaoge/v_asm_server.py",
+   "status": "partial",
+   "gone": [
+    "bind_http_server"
+   ]
+  }
+ ],
+ "dead": [
+  {
+   "path": "openpilot/sunnypilot/carrot/server/tests/test_device_setting_groups.py",
+   "status": "full-revert",
+   "gone": [
+    "_base_owner_by_name",
+    "test_a_section_never_restates_a_base_param",
+    "test_no_parameter_appears_in_two_device_groups"
+   ]
+  },
+  {
+   "path": "openpilot/selfdrive/car/tests/test_vcruise_pcm_set_speed.py",
+   "status": "partial",
+   "gone": [
+    "TestMacanFusionSetSpeed",
+    "_make_macan_helper"
+   ]
+  },
+  {
+   "path": "openpilot/selfdrive/ui/tests/test_radar_points.py",
+   "status": "partial",
+   "gone": [
+    "SPEED_TEXT",
+    "TestShowRadarInfoKey"
+   ]
+  },
+  {
+   "path": "openpilot/sunnypilot/carrot/tests/test_carrot_man.py",
+   "status": "partial",
+   "gone": [
+    "TestCarrotManSharedMsgqSafety",
+    "_OverlapDetectingPubMaster"
+   ]
+  },
+  {
+   "path": "openpilot/sunnypilot/common/tests/test_safe_mode.py",
+   "status": "full-revert",
+   "gone": [
+    "TestKeysAreRegistered",
+    "_declared_keys"
+   ]
+  },
+  {
+   "path": "openpilot/sunnypilot/selfdrive/controls/lib/tests/test_longitudinal_planner.py",
+   "status": "full-revert",
+   "gone": [
+    "_StubScc",
+    "_StubSccTarget"
+   ]
+  },
+  {
+   "path": "openpilot/selfdrive/car/tests/vcruise_carrot_onroad_sim.py",
+   "status": "partial",
+   "gone": [
+    "t_acc_off_cluster_speed_is_unset"
+   ]
+  },
+  {
+   "path": "openpilot/selfdrive/selfdrived/tests/test_modeld_lag.py",
+   "status": "full-revert",
+   "gone": [
+    "TestMildTierWiring"
+   ]
+  },
+  {
+   "path": "openpilot/sunnypilot/carrot/tests/audit_ui_reach.py",
+   "status": "full-revert",
+   "gone": [
+    "EXTRA_CONTROL_PARAMS"
+   ]
+  },
+  {
+   "path": "openpilot/sunnypilot/carrot/tests/test_carrot_controls.py",
+   "status": "full-revert",
+   "gone": [
+    "_params_get"
+   ]
+  },
+  {
+   "path": "openpilot/sunnypilot/jetlink_adapter/tests/test_tinygrad.py",
+   "status": "full-revert",
+   "gone": [
+    "TestPrepareReset"
+   ]
+  },
+  {
+   "path": "openpilot/sunnypilot/modeld_v2/tests/test_compile_modeld.py",
+   "status": "full-revert",
+   "gone": [
+    "TestReadFileChunkedToDisk"
+   ]
+  },
+  {
+   "path": "openpilot/sunnypilot/modeld_v2/tests/test_models.py",
+   "status": "full-revert",
+   "gone": [
+    "TestLegacyModels"
+   ]
+  },
+  {
+   "path": "openpilot/sunnypilot/selfdrive/controls/lib/lead_forecast/tests/test_forecast.py",
+   "status": "full-revert",
+   "gone": [
+    "TestRunnerContract"
+   ]
+  },
+  {
+   "path": "openpilot/sunnypilot/selfdrive/controls/lib/tests/test_vehicle_tune_dispatch.py",
+   "status": "full-revert",
+   "gone": [
+    "TestMacanStaysStock"
+   ]
+  }
+ ],
+ "refs": {
+  "CARROT_WEB_PUSH_PATH": [
+   ""
+  ],
+  "TestPwaInstallability": [
+   ""
+  ],
+  "_params": [
+   ""
+  ],
+  "warp_path": [
+   ""
+  ],
+  "_guarded": [
+   ""
+  ],
+  "request_shutdown": [
+   ""
+  ],
+  "_api": [
+   ""
+  ],
+  "OWNER_LOG": [
+   ""
+  ],
+  "_patch_tinygrad_fetch_fw": [
+   ""
+  ],
+  "_pad_args": [
+   ""
+  ],
+  "CARROT_SERVICES": [
+   ""
+  ],
+  "handle_page": [
+   ""
+  ],
+  "H7_HW_TYPES": [
+   ""
+  ],
+  "bind_http_server": [
+   ""
+  ],
+  "dump_oob": [
+   ""
+  ],
+  "_bind": [
+   ""
+  ],
+  "load_oob": [
+   ""
+  ],
+  "read_file_chunked_to_disk": [
+   ""
+  ],
+  "child_path": [
+   ""
+  ],
+  "_state": [
+   ""
+  ],
+  "tearDownModule": [
+   ""
+  ],
+  "_FakeSm": [
+   ""
+  ],
+  "_FakeMsg": [
+   ""
+  ],
+  "_FakeParams": [
+   ""
+  ],
+  "_failed": [
+   ""
+  ],
+  "_serv_importable": [
+   ""
+  ]
+ }
+}
