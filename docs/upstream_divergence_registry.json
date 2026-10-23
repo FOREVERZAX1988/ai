@@ -2089,6 +2089,14 @@
         "evidence": "把 HEAD 版 settings_ui.json 抽到 /tmp 再跑同一 validator，输出逐字符相同（8 通过 2 失败），确认是既有红",
         "verdict": "既有红，非本轮引入",
         "status": "open"
+      },
+      {
+        "id": "manager-fork-caches-sys-modules-20261023",
+        "found_at": "2026-10-23",
+        "what": "manager.py 以 fork 方式拉起子进程，子进程 importlib.import_module() 会命中 manager 启动时缓存进 sys.modules 的旧模块。改动 openpilot/common/*.py 后若只重启单个子进程（如 pkill ui），UI 会 ImportError crash-loop（ui is dead with 1），因为磁盘上是新代码、内存里是旧模块。",
+        "observed": "pkill 掉 UI 后 manager 反复 'starting python openpilot.selfdrive.ui.ui' → 'ui is dead with 1'，traceback: cannot import name 'get_online_cores' from 'openpilot.common.realtime'",
+        "rule": "改 common/ 下的模块后，必须重启整个 manager（等效于重启设备）；不要只重启单个进程就判定修复无效",
+        "not_a_code_bug": "磁盘文件正确，纯进程内缓存问题"
       }
     ],
     "resolved": [
@@ -2189,6 +2197,16 @@
         "why": "上游把 heartbeat 往前记 3600 s，CLOCK_BOOTTIME 从开机算，uptime<1h 时为负",
         "verdict": "upstream-same-red-window",
         "note": "uptime>1h 时 19 条全绿；看到这条先看 uptime"
+      },
+      {
+        "test": "runtime: 自加硬件的 UI 核位（非用例，真机行为）",
+        "what": "openpilot/selfdrive/ui/ui.py 的 resolve_ui_cores() + openpilot/common/realtime.py 的 set_core_affinity()",
+        "observed": "UI 开机 config_realtime_process(0, ...) 把自身掩码收窄成 {0}；resolve_ui_cores() 用 get_available_cores()（=本进程掩码）判断核可用性 → 恒返回 [] → 回绑分支全程 no-op，UI 永远留在 core0；set_core_affinity() 又用同一掩码做 online 过滤，即使目标正确也绑不过去。实测 target 20fps / 实测 8~17fps（FPS dropped below 20）。",
+        "why": "打补丁前 ui.py 与 realtime.py 的 blob 与 upstream/test 完全相同（e543febf07e9 / d0002a1ce790），上游同源缺陷，不是本地回归",
+        "verdict": "upstream-same-defect",
+        "evidence": "git rev-parse HEAD:openpilot/selfdrive/ui/ui.py == git rev-parse upstream/test:openpilot/selfdrive/ui/ui.py（补丁前）",
+        "fixed_locally": "126d466638 fix(ui): re-pin from the kernel online set, not the process mask",
+        "note": "复现判据：把自身掩码收窄成 {0} 后，old_resolve()->[] 而 new resolve->[4]。core_ctl 会按负载开关 cpu4/5，故 4/5 在离线/在线两种状态间摆动属正常"
       }
     ]
   }
