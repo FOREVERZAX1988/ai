@@ -487,9 +487,9 @@
  ],
  "upstream_pending_port": {
   "about": "上游 test 上已经实现、我们还没移植的提交清单。每条的 probes 是机器可判定的「仍未移植」判据：路径应当不存在 / 符号应当不存在 / 该符号应当还在（因为上游那次是删除）/ 子模块指针应当还不是我们的祖先。检查器 ai/scripts/upstream_divergence_check.py 会逐条验；一旦某条探针失效（= 我们其实已经搬了或上游又改了），它报 DRIFT，提醒回来改这张表。ported=已移植（探针已反转为 DRIFT，条目移出 items 留档）。status: todo=独立可搬 | todo-after=依赖同批其它条目 | eval=体积大或需驾驶者决策 | pointer=子模块指针 | docs=文档，随条目走。",
-  "scope": "upstream/test 2026-10-23 17:35 = 684178cb51。上一版 scope 是 1e97bf13a9，此后上游又前进 7 条（b5061ca8c4..684178cb51）。本轮：4 条已 cherry-pick 落地（b5061ca8c4/8a7e93181d/4c4c654fef/b82043d2a7）＋1 条本地回退 pin；3 条不搬（4ff945e764 依赖未移植的 system_monitor、e3cf1856c9 只动 AGENTS-memory+opendbc 指针、684178cb51 section average-speed 动 SDI/巡航控制链→路试后再评）。TRAP 仍在：只读 refs/remotes/upstream/test，并用 `git ls-remote upstream refs/heads/test` 交叉核对（本 remote 的 refspec 会更新它，但别只看 FETCH_HEAD）。",
+  "scope": "upstream/test 2026-10-23 17:35 = 684178cb51。上一版 scope 是 1e97bf13a9，此后上游又前进 7 条（b5061ca8c4..684178cb51）。本轮：4 条已 cherry-pick 落地（b5061ca8c4/8a7e93181d/4c4c654fef/b82043d2a7）＋1 条本地回退 pin；2 条不搬（4ff945e764 依赖未移植的 system_monitor、e3cf1856c9 只动 AGENTS-memory+opendbc 指针）＋684178cb51 section average-speed 已按驾驶者拍板于 21:5x 落地(c0b3171e66)，从 unported 移入 ported。TRAP 仍在：只读 refs/remotes/upstream/test，并用 `git ls-remote upstream refs/heads/test` 交叉核对（本 remote 的 refspec 会更新它，但别只看 FETCH_HEAD）。",
   "checked_at": "2026-10-23",
-  "ours_tip": "259f499503(sync/upstream-1023)",
+  "ours_tip": "c0b3171e66(sync/upstream-1024)",
   "upstream_tip": "684178cb51",
   "items": [
    {
@@ -1766,6 +1766,28 @@
     "ported_at": "2026-10-23",
     "ours_commit": "4c4e086183",
     "note": "test_carrot_man/test_lane_change_gap 的陈旧 pin 对齐。"
+   },
+   {
+    "commit": "684178cb5120224613db43355841f5207e9d59a4",
+    "subject": "feat(carrot): section average-speed control on the SDI chain",
+    "group": "controls/speed_limit",
+    "ported_at": "2026-10-23",
+    "ours_commit": "c0b3171e66",
+    "probe_was": "path_absent openpilot/sunnypilot/carrot/section_average.py / symbol_absent CarrotManSP.xSectionLimitKph / param_absent VehicleNaviSectionAvgControl",
+    "evidence": "test_section_average + test_speed_limit_resolver 55 passed；test_carrot_man 152 passed；libparams_c.so 重建后 strings 含 VehicleNaviSectionAvgControl/Margin；cereal/gen/cpp/custom.capnp.h 已生成 getXSectionLimitKph；pycapnp 运行期 schema 可见 xSectionActive/LimitKph/AllowanceKph",
+    "local_fix": "上游从 Hyundai 原厂导航 CAN(0x4B4) 取区间状态；本树改走 carrot SDI 链(nSdiType=4 + nSdiBlockType=2, blockSpeed 为区间限速) 与 CarrotServ.total_distance 轮速积分，不需要车厂 CAN 配合。capnp 字段号顺延 @76-78（本地 @75 已占用）。SLA resolver 里只降不升、distance=0 立即生效。",
+    "deferred_note": "原登记为 deferred-post-roadtest；2026-10-23 驾驶者拍板「带上这条，一起测试，有问题一起修」，路试前落地。",
+    "expect_diff_after": [
+     "openpilot/sunnypilot/carrot/section_average.py",
+     "openpilot/sunnypilot/carrot/carrot_serv.py",
+     "openpilot/sunnypilot/carrot/carrot_man.py",
+     "openpilot/sunnypilot/carrot/config.py",
+     "openpilot/sunnypilot/carrot/nav_params.json",
+     "openpilot/sunnypilot/selfdrive/controls/lib/speed_limit/speed_limit_resolver.py",
+     "openpilot/cereal/custom.capnp",
+     "openpilot/common/params_keys.h",
+     "openpilot/selfdrive/ui/sunnypilot/layouts/settings/carrot_tuning_items.py"
+    ]
    }
   ],
   "next_batch": {
@@ -1984,13 +2006,6 @@
     "group": "infra/upstream-housekeeping",
     "status": "docs",
     "why_no_probe": "1687 文件的合并提交，是上游自己的 rebase 基座，不逐条搬"
-   },
-   {
-    "commit": "684178cb51",
-    "subject": "feat(carrot): section average-speed control on the SDI chain",
-    "group": "controls/speed_limit",
-    "status": "deferred-post-roadtest",
-    "why_no_probe": "14 文件 +536 行，12/14 文件与本地已改文件重叠（SDI 链/巡航速度档），路试前不动控制链"
    },
    {
     "commit": "4ff945e764",
