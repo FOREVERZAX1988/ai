@@ -28,40 +28,12 @@
    ]
   },
   {
-   "path": "openpilot/selfdrive/ui/tests/carrot_tuning_render_smoke.py",
-   "status": "partial",
-   "gone": [
-    "_AnyCallChain",
-    "_FakeFlag",
-    "_FakeMsg",
-    "_FakeSm"
-   ]
-  },
-  {
-   "path": "openpilot/sunnypilot/carrot/carrot_man.py",
-   "status": "partial",
-   "gone": [
-    "CARROT_PUBLISHED_SERVICES",
-    "CARROT_SERVICES",
-    "_enable_fault_diagnostics"
-   ]
-  },
-  {
    "path": "openpilot/sunnypilot/modeld_v2/compile_modeld.py",
    "status": "full-revert",
    "gone": [
     "_patch_ops_serialization",
     "_patch_tinygrad_fetch_fw",
     "read_file_chunked_to_disk"
-   ]
-  },
-  {
-   "path": "openpilot/sunnypilot/selfdrive/controls/lib/tests/test_carrot_longitudinal_source.py",
-   "status": "full-revert",
-   "gone": [
-    "_drop_stubs",
-    "_install_stub",
-    "tearDownModule"
    ]
   },
   {
@@ -73,20 +45,6 @@
    ]
   },
   {
-   "path": "openpilot/selfdrive/selfdrived/tests/test_modeld_lag.py",
-   "status": "full-revert",
-   "gone": [
-    "TestMildTierWiring"
-   ]
-  },
-  {
-   "path": "openpilot/sunnypilot/carrot/tests/test_gps_sources.py",
-   "status": "full-revert",
-   "gone": [
-    "_serv_importable"
-   ]
-  },
-  {
    "path": "openpilot/sunnypilot/carrot/xiaoge/v_asm_server.py",
    "status": "partial",
    "gone": [
@@ -95,53 +53,6 @@
   }
  ],
  "dead": [
-  {
-   "path": "openpilot/sunnypilot/carrot/server/tests/test_device_setting_groups.py",
-   "status": "full-revert",
-   "gone": [
-    "_base_owner_by_name",
-    "test_a_section_never_restates_a_base_param",
-    "test_no_parameter_appears_in_two_device_groups"
-   ]
-  },
-  {
-   "path": "openpilot/selfdrive/ui/tests/test_radar_points.py",
-   "status": "partial",
-   "gone": [
-    "SPEED_TEXT",
-    "TestShowRadarInfoKey"
-   ]
-  },
-  {
-   "path": "openpilot/sunnypilot/carrot/tests/test_carrot_man.py",
-   "status": "partial",
-   "gone": [
-    "TestCarrotManSharedMsgqSafety",
-    "_OverlapDetectingPubMaster"
-   ]
-  },
-  {
-   "path": "openpilot/sunnypilot/selfdrive/controls/lib/tests/test_longitudinal_planner.py",
-   "status": "full-revert",
-   "gone": [
-    "_StubScc",
-    "_StubSccTarget"
-   ]
-  },
-  {
-   "path": "openpilot/selfdrive/car/tests/vcruise_carrot_onroad_sim.py",
-   "status": "partial",
-   "gone": [
-    "t_acc_off_cluster_speed_is_unset"
-   ]
-  },
-  {
-   "path": "openpilot/sunnypilot/carrot/tests/test_carrot_controls.py",
-   "status": "full-revert",
-   "gone": [
-    "_params_get"
-   ]
-  },
   {
    "path": "openpilot/sunnypilot/jetlink_adapter/tests/test_tinygrad.py",
    "status": "full-revert",
@@ -161,13 +72,6 @@
    "status": "full-revert",
    "gone": [
     "TestLegacyModels"
-   ]
-  },
-  {
-   "path": "openpilot/sunnypilot/selfdrive/controls/lib/lead_forecast/tests/test_forecast.py",
-   "status": "full-revert",
-   "gone": [
-    "TestRunnerContract"
    ]
   }
  ],
@@ -193,9 +97,6 @@
   "_pad_args": [
    ""
   ],
-  "CARROT_SERVICES": [
-   ""
-  ],
   "bind_http_server": [
    ""
   ],
@@ -203,9 +104,6 @@
    ""
   ],
   "_patch_ops_serialization": [
-   ""
-  ],
-  "TestMildTierWiring": [
    ""
   ],
   "_bind": [
@@ -220,19 +118,7 @@
   "child_path": [
    ""
   ],
-  "tearDownModule": [
-   ""
-  ],
-  "_FakeSm": [
-   ""
-  ],
-  "_FakeMsg": [
-   ""
-  ],
   "_failed": [
-   ""
-  ],
-  "_serv_importable": [
    ""
   ]
  }
