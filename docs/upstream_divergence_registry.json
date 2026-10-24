@@ -2,7 +2,7 @@
   "about": "For each file where upstream mouxangithub/openpilot test and our sp-macan-test differ on purpose. `verdict`: ours = our version wins on rebase; mixed = upstream intent is already inside ours, we additionally carry fork content; pending-ab = our version wins for now, driver A/B outstanding. `expect_diff`: true means the file MUST still differ from upstream after a rebase (if it does not, our patch was silently dropped). `upstream` = byte-identical to upstream again after a port (no fork content left), so a rebase takes the upstream file verbatim.",
   "upstream": "https://github.com/mouxangithub/openpilot",
   "upstream_ref": "upstream/test",
-  "audited_at": "2026-10-23",
+  "audited_at": "2026-10-24",
   "base_commit": "09ffdf60",
   "entries": [
     {
@@ -25,13 +25,10 @@
     },
     {
       "path": "openpilot/selfdrive/controls/lib/longitudinal_mpc_lib/long_mpc.py",
-      "verdict": "mixed",
-      "expect_diff": true,
-      "upstream_commit": "8b52c4eef5",
-      "ours_keeps": [
-        "t_follow_user_scale() (planner 仍在调用，上游没有)",
-        "stop_distance 不可运行时覆盖的注释"
-      ],
+      "verdict": "upstream",
+      "expect_diff": false,
+      "upstream_commit": "29174dca73",
+      "ours_keeps": [],
       "upstream_intent_present": [
         "A_CHANGE_FACTORS = np.interp(",
         "W[4,4] = cost_weights[4] * A_CHANGE_FACTORS[i]",
@@ -41,7 +38,7 @@
         "ocp.constraints.lh_e = np.zeros(CONSTR_DIM)",
         "for i in range(N+1):"
       ],
-      "note": "仅顺序与注释差异；A_CHANGE_FACTORS 已在，round 18 之后终端级软约束（con_h_expr_e + 终端松弛代价 + N+1 的 Zl 循环）也在。本树另外带 fork 内容（param_read 门控、following profile、lead forecast 钩子）。"
+      "note": "2026-10-24 实测：与 upstream/test 逐字节一致。本地 fork 曾在里面加过 param_read 门控 / following profile / lead forecast 钩子，这些已被上游吸收（现两树都各有 param_read 1 处、following_profile 7 处）；29174dca73 落地时按上游原文搬，逐行核对删除行里没有任何本地叉（无 carrot/macan/flm/param_read 相关删除）→ 「patch lost」警告是旧的 expect_diff=true 失效，不是丢件。"
     },
     {
       "path": "openpilot/selfdrive/monitoring/dmonitoringd.py",
@@ -123,16 +120,19 @@
     },
     {
       "path": "openpilot/sunnypilot/selfdrive/controls/lib/tests/test_longitudinal_planner.py",
-      "verdict": "upstream",
-      "expect_diff": false,
+      "verdict": "mixed",
+      "expect_diff": true,
       "upstream_commit": "279ad6f0c6",
-      "ours_keeps": [],
+      "ours_keeps": [
+        "_carrot_is_a_competing_target() helper 断言替代上游的单行式 `LongitudinalPlanSource.carrot not in planner.targets`",
+        "_StubSccTarget 让替身暴露 vision/map 两半的 v/a 目标（上游 alignment 后目标挂在下半对象上）"
+      ],
       "upstream_intent_present": [
-        "assert LongitudinalPlanSource.carrot not in planner.targets",
+        "assert not self._carrot_is_a_competing_target()",
         "assert planner.targets[LongitudinalPlanSource.carrot][0] == 5.0",
         "assert planner.targets[LongitudinalPlanSource.carrot][0] == 30.0"
       ],
-      "note": "2026-10-23 实测：本树该文件与 upstream/test 逐字节一致（git diff 为空）。旧登记的三条 upstream_intent_present（assert planner.source != LongitudinalPlanSource.carrot / assert not self._carrot_is_a_competing_target() / _StubScc(.vision/.map) 扫描守卫）在两个树里都不存在 —— `grep -rn _carrot_is_a_competing_target openpilot/` 与 `git grep ... upstream/test` 均无命中，是从未落地的设想被写成了「我们保留的差异」，导致每次同步都红在这条上。已按真实断言重写并改为 expect_diff=false。"
+      "note": "2026-10-24 实测：+57/-5，确实与上游不同 —— 上游用单行 membership 断言，本树用 _carrot_is_a_competing_target() helper（同一语义，便于给失败信息带上 targets 快照），并多一个 _StubSccTarget。round 24 当时登记成 expect_diff=false 是因为那时本树确实与上游逐字节一致（属同源红），后续这批测试替身回补后重新分叉，故改回 expect_diff=true 并按本树真实断言重写 upstream_intent_present。"
     },
     {
       "path": "openpilot/sunnypilot/carrot/tests/test_signal_assist_runtime.py",
@@ -177,18 +177,16 @@
     },
     {
       "path": "openpilot/sunnypilot/carrot/carrot_functions.py",
-      "verdict": "mixed",
-      "expect_diff": true,
+      "verdict": "upstream",
+      "expect_diff": false,
       "upstream_commit": "0429a86b67",
-      "ours_keeps": [
-        "get_mode 的引号注解（本树既有，ruff UP037 会提示，未动）"
-      ],
+      "ours_keeps": [],
       "upstream_intent_present": [
         "_retire_departed_signal_stop",
         "_signal_stop_owned",
         "departed_signal_stop(v_ego)"
       ],
-      "note": "末级输出门只释放信号 veto，不动 MPC/模型障碍/前车已经要求的制动"
+      "note": "2026-10-24 实测：与 upstream/test 逐字节一致（上游同样带 _retire_departed_signal_stop / _signal_stop_owned / departed_signal_stop；旧的「引号注解」差异也已随上游格式化消失）。"
     },
     {
       "path": "openpilot/system/proclogd.py",
@@ -299,16 +297,15 @@
     {
       "path": "openpilot/sunnypilot/carrot/server/tests/test_auto_update.py",
       "verdict": "ours",
-      "expect_diff": false,
+      "expect_diff": true,
       "upstream_commit": "4f4256c37b",
       "ours_keeps": [
-        "删掉 _notify_cwp monkeypatch 与 notify 期望（上游漏改，会 AttributeError）"
+        "删掉 _notify_cwp monkeypatch 与 notify 期望（上游 4f4256c37b 把 CWP 死代码删了，pull 不再记录 notify 步）"
       ],
       "upstream_intent_present": [
         "_run_git_pull"
       ],
-      "note": "2026-10-23 实测：本树该文件已与上游逐字节一致，而 test_git_pull_reports_actual_update_and_records_pull_time monkeypatch 的 _notify_cwp 在**上游自己的** auto_update.py 里也不存在（上游 test=1 处引用 / 上游 service=0 处定义），所以这是上游同源红，不是本地回归。1 failed / 24 passed 里就这一条。修法只能等上游补 _notify_cwp 实现（或在本地 service 里补一个空实现）。",
-      "upstream_same_red": true
+      "note": "2026-10-24 实测：-3/+5。上游 4f4256c37b 删掉 CWP phone-home 后，本树跟着把 monkeypatch 与 notify 期望一起删了（留注释说明为什么只剩 alert/time 两步）。原「上游同源红（_notify_cwp AttributeError）」已随上游删除该路径消失，故 upstream_same_red 标记摘掉。"
     },
     {
       "path": "openpilot/selfdrive/controls/radard.py",
@@ -363,19 +360,16 @@
     },
     {
       "path": "openpilot/sunnypilot/selfdrive/controls/lib/speed_limit/speed_limit_resolver.py",
-      "verdict": "mixed",
-      "expect_diff": true,
+      "verdict": "upstream",
+      "expect_diff": false,
       "upstream_commit": "d4136d1df0",
-      "ours_keeps": [
-        "视觉限速的三个门控读走 openpilot.sunnypilot.common.param_read.read_bool / read_float，而不是 Params.get_bool",
-        "update_params() 里每 PARAMS_UPDATE_PERIOD 重读一次 VisionSpeedLimitEnabled（上游只在 __init__ 读一次）"
-      ],
+      "ours_keeps": [],
       "upstream_intent_present": [
         "from openpilot.sunnypilot.selfdrive.controls.lib.speed_limit.vision_limit import",
         "self.mem_params = Params(\"/dev/shm/params\")",
         "merge_lower_limit(current, vision_limit)"
       ],
-      "note": "d4136d1df0 的规则与合并逻辑逐字节搬了；本树只把三个 Vision* 门控改成 param_read。原因实测过：libparams_c.so 还没编进这三个键时，裸 get_bool 抛 UnknownKeyName，speed_limit 测试目录 35 条红、plannerd 起来就死。改 param_read 后 135 绿。谁把这里改回 get_bool，那 35 条会再红一次。"
+      "note": "2026-10-24 实测：与 upstream/test 逐字节一致 —— 上游现在同样走 param_read 读 Vision* 门控、同样在 update_params() 里周期重读 VisionSpeedLimitEnabled，本树当时的两个 fork 点已被吸收。「改回裸 get_bool 会红 35 条」的结论仍然有效：上游也是 param_read。"
     },
     {
       "path": "openpilot/selfdrive/controls/controlsd.py",
