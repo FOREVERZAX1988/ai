@@ -505,8 +505,8 @@
   "upstream_pending_port": {
     "about": "上游 test 上已经实现、我们还没移植的提交清单。每条的 probes 是机器可判定的「仍未移植」判据：路径应当不存在 / 符号应当不存在 / 该符号应当还在（因为上游那次是删除）/ 子模块指针应当还不是我们的祖先。检查器 ai/scripts/upstream_divergence_check.py 会逐条验；一旦某条探针失效（= 我们其实已经搬了或上游又改了），它报 DRIFT，提醒回来改这张表。ported=已移植（探针已反转为 DRIFT，条目移出 items 留档）。status: todo=独立可搬 | todo-after=依赖同批其它条目 | eval=体积大或需驾驶者决策 | pointer=子模块指针 | docs=文档，随条目走。",
     "scope": "upstream/test 2026-10-23 17:35 = 684178cb51（git ls-remote 交叉核对一致，无新提交）。本轮把 HEAD..upstream/test 的 25 条逐条落账：6 条已等价落地（684178cb51→c0b3171e66、4c4c654fef→5567678adb、8a7e93181d→ba96418ec9、b82043d2a7→4c4e086183、b5061ca8c4→0d6fc24ea4、b660e1416c→46b709561b）、6 条本就带探针、13 条 unported_unprobed 本轮全部补上 path/symbol 探针（现 19 条 items 全可机器判定）。2e36dcdd71 被证伪（已在 HEAD 历史内）移入 merged_in。25 = 6 + 6 + 13。",
-    "checked_at": "2026-10-24 11:5x +0800",
-    "ours_tip": "8510e6da28(sync/upstream-1024)",
+    "checked_at": "2026-10-24 13:2x +0800",
+    "ours_tip": "3e7e32c614",
     "upstream_tip": "684178cb51",
     "items": [
       {
@@ -539,28 +539,6 @@
             "kind": "path_absent",
             "target": "openpilot/sunnypilot/carrot/xiaoge/yolo_inference.py"
           }
-        ]
-      },
-      {
-        "commit": "fa32bf598b",
-        "subject": "fix(vasm,signal): close BSD refresh race, clear stale results on toggle, cache observation bytes",
-        "group": "carrot/xiaoge",
-        "status": "todo-after",
-        "impact": "v_asm_server 的 settings_refresh_lock/bsd_generation 生命周期串行化 + v_asm_inference load() 预清 net + signal_assist_runtime 观测字节缓存",
-        "probes": [
-          {
-            "kind": "symbol_absent",
-            "target": "openpilot/sunnypilot/carrot/xiaoge/v_asm_server.py",
-            "needle": "settings_refresh_lock"
-          },
-          {
-            "kind": "symbol_absent",
-            "target": "openpilot/sunnypilot/carrot/xiaoge/v_asm_server.py",
-            "needle": "bsd_generation"
-          }
-        ],
-        "blocked_by": [
-          "2fe4acf5dc"
         ]
       },
       {
@@ -1950,6 +1928,24 @@
         "local_fix": "没有先搬错的再修：29174dca73 落地时直接写成 openpilot.sunnypilot.selfdrive.controls.lib.longitudinal_mpc_lib.jerk_channels",
         "expect_diff_after": [
           "openpilot/selfdrive/controls/lib/longitudinal_mpc_lib/long_mpc.py"
+        ]
+      },
+      {
+        "commit": "fa32bf598b8cc217157744d06cec7af9d85495ee",
+        "subject": "fix(vasm,signal): close BSD refresh race, clear stale results on toggle, cache observation bytes",
+        "group": "carrot/xiaoge",
+        "ported_at": "2026-10-24",
+        "ours_commit": "3e7e32c614",
+        "probe_was": "symbol_absent v_asm_server.py:settings_refresh_lock / bsd_generation",
+        "evidence": "carrot/tests 853 passed / 6 skipped（移植前 851 passed / 2 failed）；test_xiaoge_onnx_lifecycle 10 passed；test_v_asm_parked_gate 19 passed；两文件 ruff clean",
+        "local_fix": "补丁 5 文件 git apply -3 全干净；三处本地适配=(1) TestSettingsRefreshLifecycle 的 cv2 替身改覆盖+tearDownClass 还原（本树 v_asm_server import 期 cv2.setNumThreads(1)，兄弟用例泄漏的最小替身会让模块 import 失败）(2) test_v_asm_parked_gate._status_service 补 settings_refresh_lock/bsd_generation（helper 绕过 __init__）(3) v_asm_server 的 parked gate + sm_lock 81 行本地叉原样保留，补丁三处 hunk 都在别的区域",
+        "expect_diff_after": [
+          "openpilot/sunnypilot/carrot/xiaoge/v_asm_server.py",
+          "openpilot/sunnypilot/carrot/xiaoge/v_asm_inference.py",
+          "openpilot/sunnypilot/carrot/signal_assist_runtime.py",
+          "openpilot/sunnypilot/carrot/tests/test_xiaoge_onnx_lifecycle.py",
+          "openpilot/sunnypilot/carrot/tests/test_signal_enabled_since.py",
+          "openpilot/sunnypilot/carrot/tests/test_v_asm_parked_gate.py"
         ]
       }
     ],
