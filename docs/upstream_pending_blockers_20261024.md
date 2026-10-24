@@ -59,3 +59,22 @@ checker 现在把 phase 2 分成「可搬 / 被阻塞 / DRIFT」三堆，并对�
 | 父仓远端 `origin/sp-macan-test3` | `b37b818cdf`（一致，已推完） |
 | `origin/sync/upstream-1024` | **不存在**（本地分支从未建远端同名分支；远端只有 `sync/upstream-1019`） |
 | ai 子模块 | 分支 `sp-macan-test2`，本文与 checker 改动随指针 bump 一起推 |
+
+---
+
+## 补记（2026-10-24 晚）：8 条 → 2 条
+
+上表是当天的中途快照。之后同一批里 6 条已落地，只剩 2 条：
+
+| 原 # | 上游提交 | 现状 | 依据 |
+|---|---|---|---|
+| 1 | `eeb028a58` panda 指针 | **仍待**（唯一真活儿） | `git cherry -v HEAD eeb028a58` = 20 条 `+`；三方合并 7 处冲突（`board/drivers/drivers.h`、`board/stm32f4/stm32f4_config.h` 内容冲突；`board/jungle/main.c`、`scripts/check_fw_size.py`、`tests/hitl/1..3_*.py` 上游删/本树改）。风险面 = UART 移除 + certs 挪 `crypto/` + ctypes + comma-deps 换代，动的是控车链路，必须专门一轮 + 固件能编出来 + 上车验 |
+| 2 | `ee23033248` opendbc 指针 | **已解除**：内容等价 | 见 `opendbc_pin_content_equal_20261024.md`（三方合并净改动 0） |
+| 3 | `e3cf1856c9` 空壳（同 pin） | **已解除**：随 #2 | 同上 |
+| 4 | `7ed16d83a6` YOLO 障碍物头 | 已落地 | `d15084b2e9` |
+| 5 | `67ffbe9f03` 三分类 BSD | 已落地 | `9d128aaa2b` |
+| 6 | `f1751249ae` 两套 YOLO docs | 已落地 | `ff2fc0eaec` |
+| 7 | `1e97bf13a9` capnp 契约守卫 | 已落地 | `1c5f093394`（钉 @75-79） |
+| 8 | `564e8e93c8` 基座合并 | **no-port**，无内容可搬 | 只承载 panda/opendbc 两个指针 |
+
+复跑：`python3 ai/scripts/upstream_divergence_check.py --pending-only` → `2/2 still unported（可搬 0 · 被阻塞 2 · DRIFT 0）`。

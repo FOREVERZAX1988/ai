@@ -498,8 +498,8 @@
   ],
   "upstream_pending_port": {
     "about": "上游 test 上已经实现、我们还没移植的提交清单。每条的 probes 是机器可判定的「仍未移植」判据：路径应当不存在 / 符号应当不存在 / 该符号应当还在（因为上游那次是删除）/ 子模块指针应当还不是我们的祖先。检查器 ai/scripts/upstream_divergence_check.py 会逐条验；一旦某条探针失效（= 我们其实已经搬了或上游又改了），它报 DRIFT，提醒回来改这张表。ported=已移植（探针已反转为 DRIFT，条目移出 items 留档）。status: todo=独立可搬 | todo-after=依赖同批其它条目 | eval=体积大或需驾驶者决策 | pointer=子模块指针 | docs=文档，随条目走。",
-    "scope": "upstream/test 2026-10-23 17:35 = 684178cb51（git ls-remote 交叉核对一致，无新提交）。本轮把 HEAD..upstream/test 的 25 条逐条落账：6 条已等价落地（684178cb51→c0b3171e66、4c4c654fef→5567678adb、8a7e93181d→ba96418ec9、b82043d2a7→4c4e086183、b5061ca8c4→0d6fc24ea4、b660e1416c→46b709561b）、6 条本就带探针、13 条 unported_unprobed 本轮全部补上 path/symbol 探针（现 19 条 items 全可机器判定）。2e36dcdd71 被证伪（已在 HEAD 历史内）移入 merged_in。25 = 6 + 6 + 13。",
-    "checked_at": "2026-10-24（三分类 BSD + 契约守卫 @75-79 落地后）",
+    "scope": "upstream/test 2026-10-23 17:35 = 684178cb51（git ls-remote 交叉核对一致，无新提交）。本轮把 HEAD..upstream/test 的 25 条逐条落账：6 条已等价落地（684178cb51→c0b3171e66、4c4c654fef→5567678adb、8a7e93181d→ba96418ec9、b82043d2a7→4c4e086183、b5061ca8c4→0d6fc24ea4、b660e1416c→46b709561b）、6 条本就带探针、13 条 unported_unprobed 本轮全部补上 path/symbol 探针（现 19 条 items 全可机器判定）。2e36dcdd71 被证伪（已在 HEAD 历史内）移入 merged_in。25 = 6 + 6 + 13。；本轮（opendbc pin 复核）：对 52ab0722 做三方合并，工作树净改动 0 ⇒ ee23033248 / e3cf1856c9 判为内容等价，移入 merged_in。剩下 2 条：panda 指针（eeb028a58，20 条真补丁、7 处冲突，需专门一轮）+ 1 条无内容可搬的基座合并。",
+    "checked_at": "2026-10-24（opendbc pin 判为内容等价后）",
     "ours_tip": "1c5f093394",
     "upstream_tip": "684178cb51",
     "items": [
@@ -525,25 +525,6 @@
         }
       },
       {
-        "commit": "ee23033248",
-        "subject": "更新（AGENTS-memory + opendbc 指针）",
-        "group": "submodule/pointer",
-        "status": "pointer",
-        "impact": "AGENTS-memory.md + opendbc 指针；本轮上游把 opendbc 推到 a8b81c552（含 vCluRatio/speedLimitDistance/logCarrot 字段）",
-        "probes": [
-          {
-            "kind": "submodule_not_ancestor",
-            "target": "opendbc_repo",
-            "needle": "52ab072204b58be9ad8f540a5b2bb5003a2f3afe"
-          }
-        ],
-        "note": "最终 pin 是 52ab0722（4 条领先本树 61f4cc848）；本树 opendbc 与上游非直系（282 条本地独占），不能快进，要单独评估",
-        "blocked_by": {
-          "kind": "submodule-pin",
-          "reason": "opendbc b9e3f006 -> 52ab0722（含 vCluRatio/speedLimitDistance/logCarrot 字段），子模块指针只能上车验证后动"
-        }
-      },
-      {
         "commit": "564e8e93c8",
         "subject": "merge: pull the test branch onto zoompilot's develop",
         "group": "infra/upstream-housekeeping",
@@ -555,25 +536,6 @@
           "kind": "no-port",
           "reason": "上游自己的 rebase 基座合并提交（1687 文件），只承载 panda/opendbc 两个指针，无自有内容可搬"
         }
-      },
-      {
-        "commit": "e3cf1856c9",
-        "subject": "更新（AGENTS-memory.md + opendbc_repo 指针）",
-        "group": "submodule/pointer",
-        "status": "no-port",
-        "impact": "AGENTS-memory.md + opendbc 指针（与 ee23033248 同一目标 pin 52ab0722）",
-        "probes": [
-          {
-            "kind": "submodule_not_ancestor",
-            "target": "opendbc_repo",
-            "needle": "52ab072204b58be9ad8f540a5b2bb5003a2f3afe"
-          }
-        ],
-        "blocked_by": {
-          "kind": "submodule-pin",
-          "reason": "空壳提交（AGENTS-memory + 指针），目标 pin 同 ee23033248，随它走"
-        },
-        "note": "内容为空壳（只有文档+指针）；指针判定随 ee23033248 走"
       }
     ],
     "ported": [
@@ -2171,6 +2133,22 @@
         "why": "它只是 AGENTS-memory.md 的 28 行追加；该文件已随 2fe4acf5dc（本树 587cb39ebc）整份落地，探针 path_absent AGENTS-memory.md 由 OK 翻 DRIFT。",
         "evidence": "ls AGENTS-memory.md 存在（由 2fe4acf5dc 新建）；registry 探针 state 变化即为证伪信号",
         "next": "不再计入未移植；后续 AGENTS-memory 的增量按内容看，不按 hash 搬。"
+      },
+      {
+        "commit": "ee23033248",
+        "subject": "更新（AGENTS-memory + opendbc 指针）",
+        "why": "登记表按「opendbc 子模块指针不是本树祖先」判未移植，但 2026-10-24 实做三方合并（本树 opendbc 2abfa684 + 上游 pin 52ab0722）后 **工作树净改动为 0**，即该 pin 的全部内容本树早已逐字节等价存在，只是历史不同源。指针本身不能快进（本树 opendbc 领先 284 条独占提交），也不需要——没有内容差可搬。",
+        "evidence": "git worktree add /data/tmp/odb-pin HEAD; git merge --no-ff --no-commit 52ab0722 → 仅 car.capnp 自动合并把 @62-74 段重复了一份（两侧都插同一块，git 各自插一次），回退该文件后 `git status --porcelain` 为空、`git diff --stat HEAD` 为空 ⇒ 树等价。car.capnp 的 CarState 顶层字段集当前与 pin 完全一致（70 字段、max @79、无重复 ordinal）；本树 2abfa684「car: CarState 追加盲区来源拆分字段 @75-79」同时承载了 pin 的 a8b81c552（加字段）+ 52ab0722（ordinal 落在 @75-79 而非 cp 的 @95-99），所以 `git cherry` 仍报这 2 条未打（patch-id 不同），但内容等价。",
+        "impact": "不改 opendbc 指针：换了指针反而要把「284 条独占提交 + 不通源历史」塞进一次 rebase，收益为 0。",
+        "next": "后续上游若再动 opendbc pin，先跑同一条「三方合并看净改动」判据，净改动 0 就继续留在 merged_in，别再当待办。"
+      },
+      {
+        "commit": "e3cf1856c9",
+        "subject": "更新（AGENTS-memory.md + opendbc_repo 指针）",
+        "why": "登记表按「opendbc 子模块指针不是本树祖先」判未移植，但 2026-10-24 实做三方合并（本树 opendbc 2abfa684 + 上游 pin 52ab0722）后 **工作树净改动为 0**，即该 pin 的全部内容本树早已逐字节等价存在，只是历史不同源。指针本身不能快进（本树 opendbc 领先 284 条独占提交），也不需要——没有内容差可搬。",
+        "evidence": "git worktree add /data/tmp/odb-pin HEAD; git merge --no-ff --no-commit 52ab0722 → 仅 car.capnp 自动合并把 @62-74 段重复了一份（两侧都插同一块，git 各自插一次），回退该文件后 `git status --porcelain` 为空、`git diff --stat HEAD` 为空 ⇒ 树等价。car.capnp 的 CarState 顶层字段集当前与 pin 完全一致（70 字段、max @79、无重复 ordinal）；本树 2abfa684「car: CarState 追加盲区来源拆分字段 @75-79」同时承载了 pin 的 a8b81c552（加字段）+ 52ab0722（ordinal 落在 @75-79 而非 cp 的 @95-99），所以 `git cherry` 仍报这 2 条未打（patch-id 不同），但内容等价。",
+        "impact": "不改 opendbc 指针：换了指针反而要把「284 条独占提交 + 不通源历史」塞进一次 rebase，收益为 0。",
+        "next": "后续上游若再动 opendbc pin，先跑同一条「三方合并看净改动」判据，净改动 0 就继续留在 merged_in，别再当待办。"
       }
     ],
     "unported_unprobed_note": "已清空：13 条全部转成可判定条目，见 items。",
