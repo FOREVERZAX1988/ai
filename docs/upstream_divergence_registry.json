@@ -518,7 +518,11 @@
             "needle": "eeb028a58a97bd93c59b7656f88cd49c878d2fd0"
           }
         ],
-        "note": "gitlink 由 upstream merge 564e8e93c8 带入，所以在 HEAD..upstream/test 的提交清单里看不到单独一条；判定只能靠子模块祖先关系（本树 panda@d84b110fc）"
+        "note": "gitlink 由 upstream merge 564e8e93c8 带入，所以在 HEAD..upstream/test 的提交清单里看不到单独一条；判定只能靠子模块祖先关系（本树 panda@d84b110fc）",
+        "blocked_by": {
+          "kind": "driver-decision",
+          "reason": "panda d84b110fc -> eeb028a58 含 safety/UART 结构变化；既有纪律是 tizi 设备 panda 保持不动，需驾驶者拍板 + 上车验证一轮"
+        }
       },
       {
         "commit": "7ed16d83a6",
@@ -533,7 +537,11 @@
             "kind": "path_absent",
             "target": "openpilot/sunnypilot/carrot/xiaoge/yolo_inference.py"
           }
-        ]
+        ],
+        "blocked_by": {
+          "kind": "driver-decision",
+          "reason": "新增 YOLO 障碍物头（yolo_inference.py 345 行 + xiaoge_vision 接线 + carStateSP 字段 + 模型资产）：要不要这条路是产品决策"
+        }
       },
       {
         "commit": "f1751249ae",
@@ -548,9 +556,11 @@
             "needle": "Same value as the blind-spot window on purpose"
           }
         ],
-        "blocked_by": [
-          "7ed16d83a6"
-        ]
+        "blocked_by": {
+          "kind": "dependency",
+          "ref": "7ed16d83a6",
+          "reason": "纯注释，解释两套 YOLO 检测器为何共存并把 timeout 对齐盲区窗口；本树 openpilot/sunnypilot/carrot/xiaoge/ 只有 V-ASM 一套检测器（无 yolo_inference.py），注释的对象不存在，单独搬过来是无主注释"
+        }
       },
       {
         "commit": "67ffbe9f03",
@@ -569,9 +579,10 @@
             "needle": "\"OnnxBsdThreshold\", {PERSISTENT | BACKUP, INT, \"94\""
           }
         ],
-        "blocked_by": [
-          "2fe4acf5dc"
-        ]
+        "blocked_by": {
+          "kind": "driver-decision",
+          "reason": "cp 三分类 BSD 分类器 + 双侧连续监控，OnnxBsdThreshold 默认 45 -> 94 改的是盲区语义，需驾驶者定"
+        }
       },
       {
         "commit": "1e97bf13a9",
@@ -586,7 +597,11 @@
             "needle": "leftBlindspotOem"
           }
         ],
-        "blocked_by": "67ffbe9f03",
+        "blocked_by": {
+          "kind": "dependency",
+          "ref": "ee23033248",
+          "reason": "该用例钉的 leftBlindspotOem/rightBlindspotOem 由 opendbc 52ab0722 引入；本树 opendbc b9e3f006 的 car.capnp 里没有这些字段（实测 grep 为空），测试无处可钉"
+        },
         "note": "守卫文件 test_capnp_contract_guard.py 已随 2fe4acf5dc 落地（本轮实测 CAR_STATE_LAST_ORDINAL=74）；本条把 blindspot 拆分字段钉到 @75-79，字段由 67ffbe9f03 引入 → blocked_by。届时本树 CarState 尾部是 @74，可直接 @75-79 append（上游注释里的 @95-99 是他们自己 CarState 的尾部）。"
       },
       {
@@ -602,7 +617,11 @@
             "needle": "52ab072204b58be9ad8f540a5b2bb5003a2f3afe"
           }
         ],
-        "note": "最终 pin 是 52ab0722（4 条领先本树 61f4cc848）；本树 opendbc 与上游非直系（282 条本地独占），不能快进，要单独评估"
+        "note": "最终 pin 是 52ab0722（4 条领先本树 61f4cc848）；本树 opendbc 与上游非直系（282 条本地独占），不能快进，要单独评估",
+        "blocked_by": {
+          "kind": "submodule-pin",
+          "reason": "opendbc b9e3f006 -> 52ab0722（含 vCluRatio/speedLimitDistance/logCarrot 字段），子模块指针只能上车验证后动"
+        }
       },
       {
         "commit": "564e8e93c8",
@@ -611,7 +630,11 @@
         "status": "no-port",
         "impact": "上游自己的 rebase 基座合并提交（1687 文件），实际只承载 panda / opendbc 两个指针",
         "probes": [],
-        "note": "不逐条搬；其效果等于 eeb028a58(panda) + ee23033248(opendbc) 两个指针条目，分别由那两条判定"
+        "note": "不逐条搬；其效果等于 eeb028a58(panda) + ee23033248(opendbc) 两个指针条目，分别由那两条判定",
+        "blocked_by": {
+          "kind": "no-port",
+          "reason": "上游自己的 rebase 基座合并提交（1687 文件），只承载 panda/opendbc 两个指针，无自有内容可搬"
+        }
       },
       {
         "commit": "e3cf1856c9",
@@ -626,9 +649,10 @@
             "needle": "52ab072204b58be9ad8f540a5b2bb5003a2f3afe"
           }
         ],
-        "blocked_by": [
-          "ee23033248"
-        ],
+        "blocked_by": {
+          "kind": "submodule-pin",
+          "reason": "空壳提交（AGENTS-memory + 指针），目标 pin 同 ee23033248，随它走"
+        },
         "note": "内容为空壳（只有文档+指针）；指针判定随 ee23033248 走"
       }
     ],

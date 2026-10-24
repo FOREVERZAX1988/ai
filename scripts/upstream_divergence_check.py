@@ -28,6 +28,18 @@ Phase 2 -- `upstream_pending_port.items` (upstream work we have NOT ported):
   A probe that no longer holds means we already ported it (or upstream moved):
   that is DRIFT -- go update the registry instead of trusting the list.
 
+  Every item may also carry `blocked_by` = {kind, reason, ref?}. A probe that
+  still holds only proves "not ported"; it says nothing about "portable today".
+  Without the annotation the count ("11 条待搬") reads as 11 units of work when
+  in fact most of them are waiting on a driver decision or a submodule pin:
+    driver-decision  product call / needs a test drive before it can move
+    submodule-pin    only moves together with a submodule pointer bump
+    dependency       needs another item of this table first (ref = its commit)
+    no-port          upstream housekeeping commit, nothing of ours to port
+  Phase 2 therefore separates "可搬" from "被阻塞", and a malformed annotation
+  is a FAIL: an open dependency chain (ref item has no blocker of its own) means
+  the list is stale, not pending.
+
 Usage:
   python3 ai/scripts/upstream_divergence_check.py                    # HEAD vs upstream/test
   python3 ai/scripts/upstream_divergence_check.py --ref upstream/test --side worktree
@@ -164,9 +176,54 @@ def phase_entries(args, registry: dict) -> tuple[list[dict], int]:
   return rows, failures
 
 
-def phase_pending(registry: dict) -> tuple[list[dict], int]:
+BLOCKER_KINDS = {
+  "driver-decision": "等驾驶者拍板（产品语义 / 上车才敢定）",
+  "submodule-pin": "子模块指针，上车验证后才能动",
+  "dependency": "依赖本表另一条未移植条目",
+  "no-port": "上游自有 housekeeping，无内容可搬",
+}
+
+
+def check_blockers(items: list[dict]) -> list[str]:
+  """blocked_by 必须自洽，否则「还有 N 条待搬」这个数字会一直虚高。
+
+  - kind 必须在 BLOCKER_KINDS 里；
+  - dependency 必须带 ref，ref 要指向本表里真实存在的条目，且那条自己也必须
+    带 blocked_by —— 否则依赖链是断的（它已经无阻塞了，这条也该能搬了）；
+  - 其余 kind 不能带 ref，避免复制粘贴留下过期的 ref。
+  """
+  by_prefix: dict[str, dict] = {}
+  for item in items:
+    commit = (item.get("commit") or "")[:10]
+    if commit:
+      by_prefix[commit] = item
+  bad: list[str] = []
+  for item in items:
+    commit = (item.get("commit") or "")[:10]
+    blocker = item.get("blocked_by") or {}
+    if not blocker:
+      continue
+    kind = blocker.get("kind")
+    if kind not in BLOCKER_KINDS:
+      bad.append(f"{commit}: unknown blocked_by.kind {kind!r} (allowed: {', '.join(sorted(BLOCKER_KINDS))})")
+      continue
+    ref = (blocker.get("ref") or "")[:10]
+    if kind == "dependency":
+      if not ref:
+        bad.append(f"{commit}: blocked_by.kind=dependency without ref")
+      elif ref not in by_prefix:
+        bad.append(f"{commit}: blocked_by.ref {ref} is not an item of this table")
+      elif not (by_prefix[ref].get("blocked_by") or {}):
+        bad.append(f"{commit}: blocked_by.ref {ref} carries no blocker of its own (dependency chain is open)")
+    elif ref:
+      bad.append(f"{commit}: blocked_by.kind={kind} must not carry ref={ref}")
+  return bad
+
+
+def phase_pending(registry: dict) -> tuple[list[dict], list[str], int]:
   section = registry.get("upstream_pending_port") or {}
   items = section.get("items", [])
+  annotations = check_blockers(items)
   rows, failures, skipped = [], 0, 0
   for item in items:
     bad, notes = [], []
@@ -177,6 +234,7 @@ def phase_pending(registry: dict) -> tuple[list[dict], int]:
       elif state == "SKIP":
         skipped += 1
         notes.append(detail)
+    blocker = item.get("blocked_by") or {}
     state = "DRIFT" if bad else "OK"
     failures += bool(bad)
     rows.append({
@@ -184,9 +242,11 @@ def phase_pending(registry: dict) -> tuple[list[dict], int]:
       "subject": item.get("subject", ""),
       "status": item.get("status", ""),
       "state": state,
+      "blocked_by": blocker.get("kind", ""),
+      "blocked_reason": blocker.get("reason", ""),
       "detail": " | ".join(bad) if bad else "; ".join(notes),
     })
-  return rows, failures
+  return rows, annotations, failures
 
 
 def phase_deferred_hooks(registry: dict) -> tuple[list[dict], int]:
@@ -249,19 +309,20 @@ def main() -> int:
       fetch_state = "WARN"
       found = "; ".join(specs) or "none"
       fetch_detail = f"remote.upstream.fetch lacks refs/heads/* (found: {found}) -- git fetch can miss branches; use --fix-fetch"
-  entries, pending, hooks, failures = [], [], [], 0
+  entries, pending, pending_annotations, hooks, failures = [], [], [], [], 0
   failures += fetch_state == "WARN"
   if not args.pending_only:
     entries, f1 = phase_entries(args, registry)
     failures += f1
   if not args.entries_only:
-    pending, f2 = phase_pending(registry)
+    pending, pending_annotations, f2 = phase_pending(registry)
     hooks, f3 = phase_deferred_hooks(registry)
-    failures += f2 + f3
+    failures += f2 + f3 + bool(pending_annotations)
 
   if args.json:
     print(json.dumps({"ref": args.ref, "side": args.side, "fetch": {"state": fetch_state, "detail": fetch_detail},
-                      "entries": entries, "pending": pending, "deferred_hooks": hooks},
+                      "entries": entries, "pending": pending, "pending_annotations": pending_annotations,
+                      "deferred_hooks": hooks},
                      ensure_ascii=False, indent=2))
     return 0 if failures == 0 else 1
 
@@ -276,13 +337,33 @@ def main() -> int:
       if r["state"] != "OK":
         print(f"            {r['detail']}")
     print(f"    => {sum(r['state'] == 'OK' for r in entries)}/{len(entries)} as expected")
-  if pending:
+  if pending or pending_annotations:
     print("  [phase 2] 上游已实现、我们未移植")
-    for r in pending:
-      print(f"    {r['state']:7s} {r['commit']} {r['status']:10s} {r['subject'][:70]}")
-      if r["state"] != "OK" or r["detail"]:
-        print(f"            {r['detail']}")
-    print(f"    => {sum(r['state'] == 'OK' for r in pending)}/{len(pending)} still unported as recorded")
+    ready = [r for r in pending if r["state"] == "OK" and not r["blocked_by"]]
+    blocked = [r for r in pending if r["state"] == "OK" and r["blocked_by"]]
+    drifted = [r for r in pending if r["state"] != "OK"]
+    if ready:
+      print("    -- 可搬（今天就能动手）--")
+      for r in ready:
+        print(f"    OK      {r['commit']} {r['status']:10s} {r['subject'][:70]}")
+    if blocked:
+      print("    -- 被阻塞（先决条件写在下面）--")
+      for r in blocked:
+        print(f"    OK      {r['commit']} {r['status']:10s} [{r['blocked_by']}] {r['subject'][:60]}")
+        if r["blocked_reason"]:
+          print(f"            {r['blocked_reason'][:220]}")
+    if drifted:
+      print("    -- DRIFT（探针失效，回去改登记表）--")
+      for r in drifted:
+        print(f"    DRIFT   {r['commit']} {r['status']:10s} {r['subject'][:60]}")
+        if r["detail"]:
+          print(f"            {r['detail']}")
+    if pending_annotations:
+      print("    -- blocked_by 注释不自洽 --")
+      for msg in pending_annotations:
+        print(f"    FAIL    {msg}")
+    total = len(ready) + len(blocked)
+    print(f"    => {total}/{len(pending)} still unported as recorded（可搬 {len(ready)} · 被阻塞 {len(blocked)} · DRIFT {len(drifted)}）")
   if hooks:
     print("  [phase 3] 已推迟钩子（status 与探针必须自洽）")
     for r in hooks:
