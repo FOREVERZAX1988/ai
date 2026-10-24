@@ -505,7 +505,7 @@
   "upstream_pending_port": {
     "about": "上游 test 上已经实现、我们还没移植的提交清单。每条的 probes 是机器可判定的「仍未移植」判据：路径应当不存在 / 符号应当不存在 / 该符号应当还在（因为上游那次是删除）/ 子模块指针应当还不是我们的祖先。检查器 ai/scripts/upstream_divergence_check.py 会逐条验；一旦某条探针失效（= 我们其实已经搬了或上游又改了），它报 DRIFT，提醒回来改这张表。ported=已移植（探针已反转为 DRIFT，条目移出 items 留档）。status: todo=独立可搬 | todo-after=依赖同批其它条目 | eval=体积大或需驾驶者决策 | pointer=子模块指针 | docs=文档，随条目走。",
     "scope": "upstream/test 2026-10-23 17:35 = 684178cb51（git ls-remote 交叉核对一致，无新提交）。本轮把 HEAD..upstream/test 的 25 条逐条落账：6 条已等价落地（684178cb51→c0b3171e66、4c4c654fef→5567678adb、8a7e93181d→ba96418ec9、b82043d2a7→4c4e086183、b5061ca8c4→0d6fc24ea4、b660e1416c→46b709561b）、6 条本就带探针、13 条 unported_unprobed 本轮全部补上 path/symbol 探针（现 19 条 items 全可机器判定）。2e36dcdd71 被证伪（已在 HEAD 历史内）移入 merged_in。25 = 6 + 6 + 13。",
-    "checked_at": "2026-10-23",
+    "checked_at": "2026-10-24 11:5x +0800",
     "ours_tip": "8510e6da28(sync/upstream-1024)",
     "upstream_tip": "684178cb51",
     "items": [
@@ -525,21 +525,6 @@
           }
         ],
         "note": "gitlink 由 upstream merge 564e8e93c8 带入，所以在 HEAD..upstream/test 的提交清单里看不到单独一条；判定只能靠子模块祖先关系（本树 panda@d84b110fc）"
-      },
-      {
-        "commit": "29174dca73",
-        "subject": "feat(speed_limit,mpc,dec): tiered offsets, three-channel jerk, DEC triggers, direction confirm",
-        "date": "10-23",
-        "group": "controls/speed_limit",
-        "status": "eval",
-        "impact": "20 文件 +1351 行：speed_limit/tiered_offset.py 新增、MPC 三通道 jerk、DEC 触发、方向确认。动纵向与 MPC —— 路试后才敢并",
-        "next": "路试后单独一轮：先只搬 tiered_offset.py 与它的测试（默认关），MPC/DEC 那半和我们的 relc/stopping 分叉重叠，需要手工 rebase",
-        "probes": [
-          {
-            "kind": "path_absent",
-            "target": "openpilot/sunnypilot/selfdrive/controls/lib/speed_limit/tiered_offset.py"
-          }
-        ]
       },
       {
         "commit": "7ed16d83a6",
@@ -615,24 +600,6 @@
         "blocked_by": [
           "2fe4acf5dc"
         ]
-      },
-      {
-        "commit": "1c162bcae3",
-        "subject": "fix(mpc): jerk_channels import path - module lives under sunnypilot/, not selfdrive/",
-        "group": "controls/mpc",
-        "status": "todo-after",
-        "impact": "一行 import 修正：jerk_channels 在 sunnypilot/.../longitudinal_mpc_lib/，29174dca7 却从 openpilot.selfdrive... 导入，acados 生成期直接崩",
-        "probes": [
-          {
-            "kind": "symbol_absent",
-            "target": "openpilot/selfdrive/controls/lib/longitudinal_mpc_lib/long_mpc.py",
-            "needle": "jerk_channels"
-          }
-        ],
-        "blocked_by": [
-          "29174dca73"
-        ],
-        "note": "搬 29174dca73 时直接采用修正后的 sunnypilot 路径，不要先搬错的再修"
       },
       {
         "commit": "1e97bf13a9",
@@ -1953,6 +1920,37 @@
         "ours_commit": "3c93ed9fb6",
         "evidence": "紧随 2fe4acf5dc：该批把 scons_cache_lock 软接进 SConstruct 时把 except 并到了 try 体行（SConstruct:248 SyntaxError）；本条修好，`compile(SConstruct)` 通过。",
         "note": "依赖 2fe4acf5dc 的 scons_cache_lock.py，故先搬父批再搬本条。"
+      },
+      {
+        "commit": "29174dca7338393131b740bd0b07cb56e376422b",
+        "subject": "feat(speed_limit,mpc,dec): tiered offsets, three-channel jerk, DEC triggers, direction confirm",
+        "group": "controls/speed_limit",
+        "ported_at": "2026-10-24",
+        "ours_commit": "5bf895c65d",
+        "probe_was": "path_absent openpilot/sunnypilot/selfdrive/controls/lib/speed_limit/tiered_offset.py",
+        "evidence": "jerk_channels/tiered_offset/triggers/confirm_direction 新增测试 76 passed；speed_limit+dec+longitudinal_mpc_lib 235 passed；carrot/tests 848 passed/6 skipped；alpha 面板 test_tizi_settings 5 passed；libparams_c.so 已重建（26 个新键 strings 在）",
+        "local_fix": "① 1c162bcae3 的 import 修正一并折进来——否则 acados 生成期死在 import；② dec 测试的 MockParams 补 get(key, return_default=True)；③ test_tizi_settings 的开关清单钉上 5 个 DEC 触发键。全部新键默认值 = 移植前行为（触发全开/偏移 0/jerk 因子 1.0）。",
+        "expect_diff_after": [
+          "openpilot/common/params_keys.h",
+          "openpilot/selfdrive/controls/lib/longitudinal_mpc_lib/long_mpc.py",
+          "openpilot/sunnypilot/selfdrive/controls/lib/speed_limit/tiered_offset.py",
+          "openpilot/sunnypilot/selfdrive/controls/lib/longitudinal_mpc_lib/jerk_channels.py",
+          "openpilot/sunnypilot/selfdrive/controls/lib/dec/triggers.py",
+          "openpilot/sunnypilot/selfdrive/controls/lib/speed_limit/confirm_direction.py"
+        ]
+      },
+      {
+        "commit": "1c162bcae376f58ae94703ff50fc8cae65bde4df",
+        "subject": "fix(mpc): jerk_channels import path - module lives under sunnypilot/, not selfdrive/",
+        "group": "controls/mpc",
+        "ported_at": "2026-10-24",
+        "ours_commit": "5bf895c65d",
+        "probe_was": "symbol_absent openpilot/selfdrive/controls/lib/longitudinal_mpc_lib/long_mpc.py:jerk_channels",
+        "evidence": "long_mpc 导入成功（先前该 import 指向不存在的 openpilot/selfdrive/... 路径，acados_ocp_long.json 生成期即崩）",
+        "local_fix": "没有先搬错的再修：29174dca73 落地时直接写成 openpilot.sunnypilot.selfdrive.controls.lib.longitudinal_mpc_lib.jerk_channels",
+        "expect_diff_after": [
+          "openpilot/selfdrive/controls/lib/longitudinal_mpc_lib/long_mpc.py"
+        ]
       }
     ],
     "next_batch": {
