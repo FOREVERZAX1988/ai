@@ -74,21 +74,64 @@ ImportError: cannot import name 'get_online_cores' from 'openpilot.common.realti
 
 ```bash
 p=$(pgrep -f 'selfdrive[.]ui[.]ui' | head -1)
-grep Cpus_allowed_list /proc/$p/status    # 期望：大核在线时为大核号，而不是 0
+grep Cpus_allowed_list /proc/$p/status    # 期望：4（4 离线时为 5；4/5 都离线时落 0-3 属预期，见 §7.3）
 chrt -p $p                                # 期望：与改动前一致（本轮未动调度策略）
 grep 'FPS dropped' /data/log/swaglog.*    # 期望：仅有开机首分钟的少量告警
 ```
 
-## 7. 未决项（需驾驶者拍板，本轮刻意不动）
+## 7. 决策记录（2026-10-24 定案）—— 原「未决项」已闭环
 
-1. **`UI_CORES=(5,4)` 与控制链撞核**：core5 上是 `card`(CTRL_HIGH 53) +
-   `plannerd`/`radard`(CTRL_LOW 51)，而 UI 也是 53。改优先序 `(4,5)`（core4 只有
-   `radarcan` 51）在争用上更安全，但这是**控制路径相关的核位决策**，按本仓纪律
-   要驾驶者拍板 + 上车验证，不顺手改。
-2. **`selfdrive/ui/carrot_ui_sched.ensure_ui_sched_other()` 已移植但无人调用**（死代码）：
-   它的契约是把 UI 主线程从 RT 降为 `SCHED_OTHER`，防止 UI 抢占 locationd/sensord。
-   本轮查过日志**没有** locationd/paramsd 被饿死的证据（无 loop-time/lagging 告警），
-   因此不在路试前盲改调度策略；若后续出现 locationd 抖动，优先接线这个函数。
-3. `set_core_affinity()` 与 `get_available_cores()` 的语义混淆只修了调用点与过滤点，
-   没有改 `get_available_cores()` 本身（它按 docstring 就该报告本进程掩码），
-   以免牵动 modeld 等既有 `config_realtime_process()` 调用点。
+### 7.0 实测 RT 核位图
+
+`grep -rn config_realtime_process --include=*.py openpilot/` 量到的当前分配：
+
+| 核 | RT 使用者（FIFO 优先级） |
+|---|---|
+| 4 | `radarcan` 51 —— 只有它 |
+| 5 | `card` 53、`plannerd` 51、`radard` 51、`radard_dpath` 51 |
+| 6 | `selfdrived` 53、`controlsd` 53、`dmonitoringmodeld` 5 |
+| 7 | `modeld` / `modeld_v2` 54 |
+| 0-3 | `locationd`/`paramsd`/`lagd`/`calibrationd`/`torqued`/`dmonitoringd` 全为 5；`sensord` 绑 1 |
+
+`/sys/devices/system/cpu/online` 重启后空闲态实测 = `0-3,6-7`：**core4/5 常态离线**。
+core_ctl 只把 6/7 留在大核在线集里（`active_cpus=2` / `max_cpus=4` / `min_cpus=1`）。
+
+> 旧分析里「`card`/`selfdrived`/`controlsd` 全绑 core4」是历史状态，已被上游拆开，
+> 不能再拿它当核位决策依据（本条纠正过一次误判）。
+
+### 7.1 `UI_CORES` → `(4,5)`（本轮已改，待上车验证）
+
+- 旧 `(5,4)` 让 UI 优先落 core5，而 core5 上正是 `card`：**同核 + 同 FIFO 53 + 分时轮转**，
+  UI 的整屏渲染是唯一能让 `card` 抖一下的邻居。
+- core4 的 RT 邻居只有 `radarcan`（51，且是可选角雷达路径），争用代价低一个量级。
+- 为了让优先序可测，`common/realtime.py` 新增纯函数
+  `pick_online_core(preference, online=None)`，`ui.py` 的 `resolve_ui_cores()` 改为调用它。
+  新增 4 条单测（含「4/5 都不在线 → 返回 `[]`，由调用方回退」），
+  `common/tests/test_realtime.py` = **16 passed**，ruff 干净。
+- 生效条件同 §5：`ui.py` 与 `common/realtime.py` 都会被 manager 缓存，**必须整栈重启**。
+
+### 7.2 `ensure_ui_sched_other()`：定案「保留但不接线」
+
+- 已在文件头加 `NOT WIRED` 注释（含决策日期与本文位置），避免下一轮又被当成
+  「忘接线的回归」重开一遍。
+- 不接线的理由：把 UI 从 FIFO 53 降到 `SCHED_OTHER`，等于用**已修好的帧率**去换
+  一个**没测到的饿死**。日志里没有 locationd/paramsd 的 loop-time 或 `Lagging` 证据，
+  本轮不动调度策略。
+- 它是第一顺位的备用杠杆：若路试出现 locationd lag，按 §7.3 的判断顺序第一个动它。
+
+### 7.3 仍然开着的唯一一项（留给路试判据，本轮刻意不动）
+
+core4/5 离线（常态）时 UI 落 0-3，与 locationd/paramsd（同核、FIFO 5）共存；UI 是 53，
+会抢在它们前面。这条因果只能靠路试判据决定往哪边走：
+
+| 路试观测 | 结论 | 动作 |
+|---|---|---|
+| 出现 `locationd` loop-time / `Lagging` | UI 抢了定位 | 接线 §7.2，把 UI 降 `SCHED_OTHER` |
+| 无此告警、但 UI 帧率仍掉 | 问题是「大核没常在线」 | 改 core_ctl（`active_cpus`/`not_preferred`）让 core4 常在线，单独评估 |
+| 两者都没有 | 本议题关闭 | 只保留记录 |
+
+### 7.4 上一轮遗留的一条（不变）
+
+`set_core_affinity()` 与 `get_available_cores()` 的语义混淆只修了调用点与过滤点，
+没有改 `get_available_cores()` 本身（它按 docstring 就该报告本进程掩码），
+以免牵动 `modeld` 等既有 `config_realtime_process()` 调用点。
