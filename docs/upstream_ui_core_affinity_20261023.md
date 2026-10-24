@@ -135,3 +135,24 @@ core4/5 离线（常态）时 UI 落 0-3，与 locationd/paramsd（同核、FIFO
 `set_core_affinity()` 与 `get_available_cores()` 的语义混淆只修了调用点与过滤点，
 没有改 `get_available_cores()` 本身（它按 docstring 就该报告本进程掩码），
 以免牵动 `modeld` 等既有 `config_realtime_process()` 调用点。
+
+## 8. 重启后验收（2026-10-24 13:18，uptime 1:47）
+
+整栈重启后实测（§5 的生效条件已满足，不是单进程重启）：
+
+| 观测 | 期望（§6） | 实测 | 判定 |
+|---|---|---|---|
+| UI 进程 | 活着 | pid 73596 `openpilot.selfdrive.ui.ui`，SCHED_FIFO 53 | OK（调度策略未动） |
+| `Cpus_allowed_list` | 不再是 `0` | **`0-3,5-7`**（改动前恒为 `0`） | 根因已修：掩码不再被收窄成单核 |
+| 内核 online | — | `0-3,6-7`（core4 与 core5 均离线） | §7.3 场景 |
+| `FPS dropped` | 仅开机首分钟少量 | 当前 swaglog 计数 **0** | 空闲态无掉帧告警 |
+| `locationd` loop-time / `Lagging` | 无 | `grep` 为空 | 未见 UI 抢定位 |
+
+回归用例：`openpilot/common/tests/test_realtime.py` **16 passed**；
+`realtime.py` / `ui.py` / `carrot_ui_sched.py` ruff clean。
+
+**结论与边界**：§7.1 的 `UI_CORES → (4,5)` 与 `pick_online_core()` 改动**机制层面验收通过**——
+进程首次不再被钉死在 core0。但上表是**offroad 空闲态**观测，`FPS` 目标 20 的成立要靠渲染负载，
+所以 §7.3 那张判据表的「两者都没有 → 议题关闭」**还不能据此结案**，仍欠一轮实车路试：
+路试里若 UI 帧率稳住且无 locationd 告警，才按第一行/第三行判；若 core4/5 长期离线导致掉帧，
+走「改 core_ctl 让 core4 常在线」那一行（`ensure_ui_sched_other()` 保持 §7.2 的不接线定案）。
