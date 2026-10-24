@@ -499,8 +499,8 @@
   "upstream_pending_port": {
     "about": "上游 test 上已经实现、我们还没移植的提交清单。每条的 probes 是机器可判定的「仍未移植」判据：路径应当不存在 / 符号应当不存在 / 该符号应当还在（因为上游那次是删除）/ 子模块指针应当还不是我们的祖先。检查器 ai/scripts/upstream_divergence_check.py 会逐条验；一旦某条探针失效（= 我们其实已经搬了或上游又改了），它报 DRIFT，提醒回来改这张表。ported=已移植（探针已反转为 DRIFT，条目移出 items 留档）。status: todo=独立可搬 | todo-after=依赖同批其它条目 | eval=体积大或需驾驶者决策 | pointer=子模块指针 | docs=文档，随条目走。",
     "scope": "upstream/test 2026-10-23 17:35 = 684178cb51（git ls-remote 交叉核对一致，无新提交）。本轮把 HEAD..upstream/test 的 25 条逐条落账：6 条已等价落地（684178cb51→c0b3171e66、4c4c654fef→5567678adb、8a7e93181d→ba96418ec9、b82043d2a7→4c4e086183、b5061ca8c4→0d6fc24ea4、b660e1416c→46b709561b）、6 条本就带探针、13 条 unported_unprobed 本轮全部补上 path/symbol 探针（现 19 条 items 全可机器判定）。2e36dcdd71 被证伪（已在 HEAD 历史内）移入 merged_in。25 = 6 + 6 + 13。",
-    "checked_at": "2026-10-24 13:2x +0800",
-    "ours_tip": "3e7e32c614",
+    "checked_at": "2026-10-24（YOLO 障碍物头 + 并存注释落地后）",
+    "ours_tip": "ff2fc0eaec",
     "upstream_tip": "684178cb51",
     "items": [
       {
@@ -522,44 +522,6 @@
         "blocked_by": {
           "kind": "driver-decision",
           "reason": "panda d84b110fc -> eeb028a58 含 safety/UART 结构变化；既有纪律是 tizi 设备 panda 保持不动，需驾驶者拍板 + 上车验证一轮"
-        }
-      },
-      {
-        "commit": "7ed16d83a6",
-        "subject": "feat(xiaoge): YOLO obstacle head — inference, server wiring, carStateSP digest (M1-M3)",
-        "date": "10-23",
-        "group": "carrot/xiaoge",
-        "status": "eval",
-        "impact": "新增 yolo_inference.py 345 行 + xiaoge_vision 接线 + carStateSP 字段；体积大且要模型文件",
-        "next": "等驾驶者决定要不要 YOLO 障碍物头；搬之前先确认模型资产与 QCOM/CPU 后端",
-        "probes": [
-          {
-            "kind": "path_absent",
-            "target": "openpilot/sunnypilot/carrot/xiaoge/yolo_inference.py"
-          }
-        ],
-        "blocked_by": {
-          "kind": "driver-decision",
-          "reason": "新增 YOLO 障碍物头（yolo_inference.py 345 行 + xiaoge_vision 接线 + carStateSP 字段 + 模型资产）：要不要这条路是产品决策"
-        }
-      },
-      {
-        "commit": "f1751249ae",
-        "subject": "docs(xiaoge): why the two YOLO detectors coexist ...",
-        "group": "carrot/xiaoge",
-        "status": "docs",
-        "impact": "纯注释：解释两套 YOLO 检测器为何共存、YOLO timeout 为何对齐盲区窗口",
-        "probes": [
-          {
-            "kind": "symbol_absent",
-            "target": "openpilot/sunnypilot/carrot/xiaoge/xiaoge_vision.py",
-            "needle": "Same value as the blind-spot window on purpose"
-          }
-        ],
-        "blocked_by": {
-          "kind": "dependency",
-          "ref": "7ed16d83a6",
-          "reason": "纯注释，解释两套 YOLO 检测器为何共存并把 timeout 对齐盲区窗口；本树 openpilot/sunnypilot/carrot/xiaoge/ 只有 V-ASM 一套检测器（无 yolo_inference.py），注释的对象不存在，单独搬过来是无主注释"
         }
       },
       {
@@ -1965,6 +1927,32 @@
           "openpilot/sunnypilot/carrot/tests/test_signal_enabled_since.py",
           "openpilot/sunnypilot/carrot/tests/test_v_asm_parked_gate.py"
         ]
+      },
+      {
+        "commit": "7ed16d83a6e1efedbf638ab420c683e8ed351133",
+        "subject": "feat(xiaoge): YOLO obstacle head — inference, server wiring, carStateSP digest (M1-M3)",
+        "group": "carrot/xiaoge",
+        "ported_at": "2026-10-24",
+        "ours_commit": "d15084b2e9",
+        "probe_was": "path_absent openpilot/sunnypilot/carrot/xiaoge/yolo_inference.py",
+        "evidence": "carrot/tests 873 passed / 6 skipped（移植前同基线）；xiaoge 相关 6 文件 56 passed；test_capnp_contract_guard 6 passed（新增 @12-16 不撞号）；py_compile v_asm_server.py OK；设备实测（C3, cv2.dnn CPU, cv2.setNumThreads(1)）yolov8n-192 加载 0.29s、推理中位 128.6 ms/帧（92-130，首帧 301 ms 预热）",
+        "local_fix": "上游补丁 9 文件只有 v_asm_server.py 一处语义冲突：上游把 run_road_camera 的单个 lane 守卫换成「门控内分别决定两个头」并让 Y 平面拷贝回到无条件执行，但缺本树 2026-10-22 实测加的驻车门控。收口=保留 infer_active 门控（两个头都不判 due）+ 只在真有头到期时建 Y 平面 + backpressure 交给 _lane_interval_for/_yolo_interval_for；test_v_asm_parked_gate 断言按新结构重写（更严）并在 _status_service stub 补齐 yolo_enabled/yolo/yolo_tracker/vasm_inference_lock/last_yolo_*",
+        "expect_diff_after": [
+          "openpilot/sunnypilot/carrot/xiaoge/v_asm_server.py",
+          "openpilot/sunnypilot/carrot/tests/test_v_asm_parked_gate.py"
+        ],
+        "followup": "YoloObstacleEnabled 是新编译期键，需重建 libparams_c.so（ai/docs/libparams_c_rebuild_recipe_20261021.md）；未重建前 read_param_int 兜底 0，静默不生效不崩。YOLO 实际加载/推理耗时待 onroad 验证。CPU 账：YOLO_INTERVAL_SECONDS=0.25 且背压系数 1.15 → 有效节拍仍是 250 ms，128 ms/帧 ≈ 常驻半个核，行车时还要叠加 lane 模型，开启前应在 onroad 下量 controls/modeld 是否被拖慢；libparams_c.so 已于 2026-10-24 13:43 重建，check_key(YoloObstacleEnabled)=True/INT，未知键仍抛 UnknownKeyName，但已在跑的进程持有旧 mmap，需重启 comma 服务（或下次点火开机）才认新键"
+      },
+      {
+        "commit": "f1751249ae711c2ed0a88a0bbb8be51f9a178de7",
+        "subject": "docs(xiaoge): why the two YOLO detectors coexist ...",
+        "group": "carrot/xiaoge",
+        "ported_at": "2026-10-24",
+        "ours_commit": "ff2fc0eaec",
+        "probe_was": "symbol_absent xiaoge_vision.py:Same value as the blind-spot window on purpose",
+        "evidence": "cherry-pick -n 零冲突，+11 行全为注释；其依赖 7ed16d83a6 已落地故注释对象存在",
+        "local_fix": "无本地适配",
+        "expect_diff_after": []
       }
     ],
     "next_batch": {
