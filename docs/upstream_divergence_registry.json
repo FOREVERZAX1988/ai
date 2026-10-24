@@ -499,8 +499,8 @@
   "upstream_pending_port": {
     "about": "上游 test 上已经实现、我们还没移植的提交清单。每条的 probes 是机器可判定的「仍未移植」判据：路径应当不存在 / 符号应当不存在 / 该符号应当还在（因为上游那次是删除）/ 子模块指针应当还不是我们的祖先。检查器 ai/scripts/upstream_divergence_check.py 会逐条验；一旦某条探针失效（= 我们其实已经搬了或上游又改了），它报 DRIFT，提醒回来改这张表。ported=已移植（探针已反转为 DRIFT，条目移出 items 留档）。status: todo=独立可搬 | todo-after=依赖同批其它条目 | eval=体积大或需驾驶者决策 | pointer=子模块指针 | docs=文档，随条目走。",
     "scope": "upstream/test 2026-10-23 17:35 = 684178cb51（git ls-remote 交叉核对一致，无新提交）。本轮把 HEAD..upstream/test 的 25 条逐条落账：6 条已等价落地（684178cb51→c0b3171e66、4c4c654fef→5567678adb、8a7e93181d→ba96418ec9、b82043d2a7→4c4e086183、b5061ca8c4→0d6fc24ea4、b660e1416c→46b709561b）、6 条本就带探针、13 条 unported_unprobed 本轮全部补上 path/symbol 探针（现 19 条 items 全可机器判定）。2e36dcdd71 被证伪（已在 HEAD 历史内）移入 merged_in。25 = 6 + 6 + 13。",
-    "checked_at": "2026-10-24（YOLO 障碍物头 + 并存注释落地后）",
-    "ours_tip": "ff2fc0eaec",
+    "checked_at": "2026-10-24（三分类 BSD + 契约守卫 @75-79 落地后）",
+    "ours_tip": "1c5f093394",
     "upstream_tip": "684178cb51",
     "items": [
       {
@@ -518,53 +518,11 @@
             "needle": "eeb028a58a97bd93c59b7656f88cd49c878d2fd0"
           }
         ],
-        "note": "gitlink 由 upstream merge 564e8e93c8 带入，所以在 HEAD..upstream/test 的提交清单里看不到单独一条；判定只能靠子模块祖先关系（本树 panda@d84b110fc）",
+        "note": "与 BSD 批解耦：本轮只做 xiaoge/opendbc，panda 指针留作独立一轮（风险面是 safety/UART，失败会直接影响控车）",
         "blocked_by": {
           "kind": "driver-decision",
-          "reason": "panda d84b110fc -> eeb028a58 含 safety/UART 结构变化；既有纪律是 tizi 设备 panda 保持不动，需驾驶者拍板 + 上车验证一轮"
+          "reason": "panda 指针 eeb028a58 含 21 条 commaai/panda master 同步（UART 移除、certs 挪 crypto/、safety 结构变化）。纪律：tizi 设备上 panda 保持不动；真要换必须单独一轮上车验（失败面 = 控车）"
         }
-      },
-      {
-        "commit": "67ffbe9f03",
-        "subject": "xiaoge: adopt cp's three-class BSD classifier with dual-side continuous monitoring",
-        "group": "carrot/xiaoge",
-        "status": "eval",
-        "impact": "采用 cp 三分类 BSD 分类器 + 双侧连续监控，OnnxBsdThreshold 默认 45 -> 94；540 行，需驾驶者决定三分类语义",
-        "probes": [
-          {
-            "kind": "path_absent",
-            "target": "openpilot/sunnypilot/carrot/tests/test_xiaoge_bsd_semantics.py"
-          },
-          {
-            "kind": "symbol_absent",
-            "target": "openpilot/common/params_keys.h",
-            "needle": "\"OnnxBsdThreshold\", {PERSISTENT | BACKUP, INT, \"94\""
-          }
-        ],
-        "blocked_by": {
-          "kind": "driver-decision",
-          "reason": "cp 三分类 BSD 分类器 + 双侧连续监控，OnnxBsdThreshold 默认 45 -> 94 改的是盲区语义，需驾驶者定"
-        }
-      },
-      {
-        "commit": "1e97bf13a9",
-        "subject": "test(capnp): pin blindspot split fields at @75-79 after ordinal-hole fix",
-        "group": "cereal/test",
-        "status": "todo-after",
-        "impact": "test_capnp_contract_guard 盲区 split 字段钉在 @75-79（修掉 cp @95-99 造成的 ordinal 空洞）",
-        "probes": [
-          {
-            "kind": "symbol_absent",
-            "target": "opendbc_repo/opendbc/car/car.capnp",
-            "needle": "leftBlindspotOem"
-          }
-        ],
-        "blocked_by": {
-          "kind": "dependency",
-          "ref": "ee23033248",
-          "reason": "该用例钉的 leftBlindspotOem/rightBlindspotOem 由 opendbc 52ab0722 引入；本树 opendbc b9e3f006 的 car.capnp 里没有这些字段（实测 grep 为空），测试无处可钉"
-        },
-        "note": "守卫文件 test_capnp_contract_guard.py 已随 2fe4acf5dc 落地（本轮实测 CAR_STATE_LAST_ORDINAL=74）；本条把 blindspot 拆分字段钉到 @75-79，字段由 67ffbe9f03 引入 → blocked_by。届时本树 CarState 尾部是 @74，可直接 @75-79 append（上游注释里的 @95-99 是他们自己 CarState 的尾部）。"
       },
       {
         "commit": "ee23033248",
@@ -592,7 +550,7 @@
         "status": "no-port",
         "impact": "上游自己的 rebase 基座合并提交（1687 文件），实际只承载 panda / opendbc 两个指针",
         "probes": [],
-        "note": "不逐条搬；其效果等于 eeb028a58(panda) + ee23033248(opendbc) 两个指针条目，分别由那两条判定",
+        "note": "上游自己的 rebase 基座合并（1687 文件），实际只承载 panda/opendbc 两个指针；指针内容已按上面两条裁决处理，本提交永远不搬",
         "blocked_by": {
           "kind": "no-port",
           "reason": "上游自己的 rebase 基座合并提交（1687 文件），只承载 panda/opendbc 两个指针，无自有内容可搬"
@@ -1953,6 +1911,33 @@
         "evidence": "cherry-pick -n 零冲突，+11 行全为注释；其依赖 7ed16d83a6 已落地故注释对象存在",
         "local_fix": "无本地适配",
         "expect_diff_after": []
+      },
+      {
+        "commit": "67ffbe9f03",
+        "subject": "xiaoge: adopt cp's three-class BSD classifier with dual-side continuous monitoring",
+        "group": "carrot/xiaoge",
+        "ported_at": "2026-10-24",
+        "ours_commit": "9d128aaa2b",
+        "probe_was": "path_absent openpilot/sunnypilot/carrot/tests/test_xiaoge_bsd_semantics.py ; symbol_absent params_keys.h OnnxBsdThreshold 94",
+        "evidence": "78 passed（pytest -k 'xiaoge or yolo or asm or capnp or blindspot'）；运行时 messaging.new_message('carState') 带新字段（无需 scons 重编，schema 运行期 load）",
+        "local_fix": "① v_asm_server.py 三处冲突：保留本地 parked_gate/_update_inference_gate（驻车关推理），status() 并列 gate/inferenceGate；_update_vasm_gate 用上游双门语义但 sm 访问仍在 sm_lock 内；_lane_change_gate 整段退役。② upstream 的 _bare_gate_service 缺 sm_lock（绕过 __init__ 造对象），补上。③ test_v_asm_parked_gate 的 LaneChangeGateTest 换成 DualSideGateTest（旧门已不存在），_status_service 补 updatedMonoTimeNanosBySide。④ opendbc 侧 CarState 追加 @75-79（cp 的 @95-99 抄不过来）。",
+        "expect_diff_after": [
+          "openpilot/sunnypilot/carrot/xiaoge/v_asm_server.py",
+          "openpilot/sunnypilot/carrot/tests/test_v_asm_parked_gate.py",
+          "openpilot/sunnypilot/carrot/tests/test_xiaoge_bsd_semantics.py",
+          "opendbc_repo"
+        ]
+      },
+      {
+        "commit": "1e97bf13a9",
+        "subject": "test(capnp): pin blindspot split fields at @75-79 after ordinal-hole fix",
+        "group": "cereal/test",
+        "ported_at": "2026-10-24",
+        "ours_commit": "1c5f093394",
+        "probe_was": "symbol_absent opendbc_repo/opendbc/car/car.capnp leftBlindspotOem",
+        "evidence": "test_capnp_contract_guard.py 6 passed（CAR_STATE_LAST_ORDINAL=79）",
+        "local_fix": "无需改动，逐字命中：本树 CarState 尾也是 @74，@75-79 append 与上游结论一致。",
+        "expect_diff_after": []
       }
     ],
     "next_batch": {
@@ -2135,6 +2120,28 @@
         ],
         "resolved_on": "2026-10-23",
         "resolved_why": "jetlink cross-fork API(_update_active_json) 已随子模块指针在树里，探针翻成 symbol_present 前先移出 items"
+      },
+      {
+        "commit": "ee23033248",
+        "subject": "更新（AGENTS-memory + opendbc 指针）",
+        "date": "10-23",
+        "group": "submodule/pointer",
+        "status": "skip",
+        "impact": "把上游 fork 的 opendbc 指到 a8b81c552（含 vCluRatio/speedLimitDistance/logCarrot 字段）",
+        "next": "指针型提交，搬了等于把整棵 opendbc 换成上游 fork 状态；内容层面我们早已在自己的 fork 分支里落地（b9e3f0060 'expose vCluRatio, speedLimitDistance and logCarrot'）",
+        "resolved_on": "2026-10-24",
+        "resolved_why": "内容等价：三个字段我们的 opendbc 分支已有；本轮又从 52ab0722 取出盲区拆分字段手工 append 到我们分支（2abfa684c），不必也不该整棵替换"
+      },
+      {
+        "commit": "e3cf1856c9",
+        "subject": "更新（AGENTS-memory.md + opendbc_repo 指针）",
+        "date": "10-23",
+        "group": "submodule/pointer",
+        "status": "skip",
+        "impact": "与 ee23033248 同一目标 pin 52ab0722",
+        "next": "52ab0722 里与本树相关的只有盲区拆分字段，已按 67ffbe9f03/1e97bf13a9 两条手工搬进我们 fork（2abfa684c）；其余是上游分支自身状态",
+        "resolved_on": "2026-10-24",
+        "resolved_why": "内容已落地，指针不搬"
       }
     ],
     "unported_unprobed": [],
@@ -2166,7 +2173,8 @@
         "next": "不再计入未移植；后续 AGENTS-memory 的增量按内容看，不按 hash 搬。"
       }
     ],
-    "unported_unprobed_note": "已清空：13 条全部转成可判定条目，见 items。"
+    "unported_unprobed_note": "已清空：13 条全部转成可判定条目，见 items。",
+    "items_count": 4
   },
   "upstream_same_red": {
     "about": "两条都是「上游自己也是红的」——在本树复现时不要当成本地回归重开。判据：涉及文件与 upstream/test 逐字节一致，或用 upstream/test 的同一份源码跑同一断言同样红。",
