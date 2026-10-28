@@ -36,16 +36,37 @@ from __future__ import annotations
 import argparse
 import ast
 import os
+import platform
 import re
 import subprocess
 import sys
 import time
+import os
 from pathlib import Path
 
-OPENPILOT_ROOT = Path("/data/openpilot")
+# 默认用脚本自身位置反推仓库根（ai/tools/x.py → 上两级）。设备上路径本来就是
+# /data/openpilot，parents[2] 与硬编码等价；开发机上则不会再因为「忘了 export
+# OPENPILOT_ROOT」把 B1 报成「缺少 /data/openpilot/.../modeld」的假失败。
+OPENPILOT_ROOT = Path(os.environ.get("OPENPILOT_ROOT") or Path(__file__).resolve().parents[2])
+
+# 子模块（opendbc / msgq / tinygrad …）必须可 import：A2 要拉 openpilot.common.params，
+# B1 要拉 modeld 的编译模块，缺路径时它们以 ModuleNotFoundError 报成「原生键表 ABI 失败」
+# 这类假失败——看上去像代码坏了，其实只是没 export PYTHONPATH。
+# 本进程补 sys.path，同时补 PYTHONPATH 供各检查起的子进程继承。
+_SUBMODULES = ("opendbc_repo", "msgq_repo", "tinygrad_repo", "rednose_repo", "teleoprtc_repo")
+_SUBMODULE_PATHS = [OPENPILOT_ROOT / d for d in _SUBMODULES]
+for _p in reversed([OPENPILOT_ROOT, *_SUBMODULE_PATHS]):
+  if str(_p) not in sys.path:
+    sys.path.insert(0, str(_p))
+_prev_pythonpath = os.environ.get("PYTHONPATH", "")
+os.environ["PYTHONPATH"] = os.pathsep.join(
+  [str(OPENPILOT_ROOT), *map(str, _SUBMODULE_PATHS), *([_prev_pythonpath] if _prev_pythonpath else [])])
+
 COMMON_DIR = OPENPILOT_ROOT / "openpilot" / "common"
 PARAMS_KEYS_H = COMMON_DIR / "params_keys.h"
-PARAMS_SO = COMMON_DIR / "libparams_c.so"
+# macOS builds the same target as a dylib (scons picks the suffix), so look for both.
+PARAMS_SO = next((p for p in (COMMON_DIR / "libparams_c.so", COMMON_DIR / "libparams_c.dylib") if p.exists()),
+                 COMMON_DIR / "libparams_c.so")
 NATIVE_MODELD = OPENPILOT_ROOT / "openpilot" / "sunnypilot" / "modeld_v2" / "modeld"
 STOCK_PKL = OPENPILOT_ROOT / "openpilot" / "selfdrive" / "modeld" / "models" / "driving_tinygrad.pkl"
 CRASH_DIR = Path("/data/community/crashes")
@@ -305,7 +326,7 @@ def check_model_artifacts() -> str | None:
 MODEL_LOAD_SNIPPET = r'''
 import resource, sys
 lim = int(sys.argv[1]); resource.setrlimit(resource.RLIMIT_AS, (lim, lim))
-sys.path.insert(0, "/data/openpilot"); sys.path.insert(0, "/data/openpilot/opendbc_repo")
+sys.path.insert(0, str(OPENPILOT_ROOT)); sys.path.insert(0, str(OPENPILOT_ROOT / "opendbc_repo"))
 from openpilot.common.file_chunker import open_file_chunked
 from openpilot.sunnypilot.modeld_v2.helpers import load_oob
 from openpilot.sunnypilot.modeld_v2.compile_modeld import derive_frame_skip, make_split_input_queues, make_supercombo_input_queues
@@ -403,6 +424,14 @@ def _running() -> dict[str, list[int]]:
 
 
 def check_runtime() -> None:
+  # /proc 是 Linux 的 procfs。macOS 开发机上没有它，os.listdir 会抛
+  # FileNotFoundError 把整个预检脚本的退出码变成 1 —— 于是前面全是 PASS，
+  # 调用方（sim_test_macan.py）却报「预检失败」，把这个检查项变成噪音。
+  # 进程存活与崩溃只能看设备，这里显式跳过而不是假装通过。
+  if not os.path.isdir("/proc"):
+    record(SKIP, "C1 运行时链（进程 / 崩溃）", f"当前平台无 /proc（{platform.system()}），该链只在设备上可跑")
+    return
+
   procs = _running()
   missing = [n for n in ("manager", "webuid") if not procs[n]]
   if missing:

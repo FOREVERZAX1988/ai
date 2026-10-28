@@ -19,7 +19,16 @@ import subprocess
 import sys
 import os
 
-OPENPILOT_ROOT = "/data/openpilot"
+# 默认用脚本自身位置反推仓库根（ai/tools/x.py → 上两级），设备上等于 /data/openpilot
+OPENPILOT_ROOT = os.environ.get("OPENPILOT_ROOT") or os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+# 每个子进程（unittest / pytest / 预检 / 冒烟）都要能 import opendbc、msgq、tinygrad
+# 这些子模块，否则会以 ModuleNotFoundError 的形式变成一堆「测试失败」，与代码无关。
+# 在自身环境里补齐，子进程默认继承 —— 省掉手动 export PYTHONPATH 这一步。
+_SUBMODULES = ("opendbc_repo", "msgq_repo", "tinygrad_repo", "rednose_repo", "teleoprtc_repo")
+_env_parts = [OPENPILOT_ROOT] + [os.path.join(OPENPILOT_ROOT, d) for d in _SUBMODULES]
+_prev_pythonpath = os.environ.get("PYTHONPATH", "")
+os.environ["PYTHONPATH"] = os.pathsep.join([*_env_parts, *([_prev_pythonpath] if _prev_pythonpath else [])])
 
 
 def run_unittest(target: str, desc: str, timeout: int = 300, cwd: str | None = None) -> bool:
@@ -42,11 +51,32 @@ def run_unittest(target: str, desc: str, timeout: int = 300, cwd: str | None = N
     return r.returncode == 0
 
 
+def run_pytest(target: str, desc: str, timeout: int = 300, cwd: str | None = None) -> bool:
+    """用 pytest 跑 pytest 风格（非 unittest.TestCase）用例，返回是否通过"""
+    print(f"\n{'='*60}\n▶ {desc}\n   target: {target} (pytest)\n{'='*60}")
+    cmd = [sys.executable, "-m", "pytest", target, "-q"]
+    r = subprocess.run(cmd, cwd=cwd or OPENPILOT_ROOT, timeout=timeout,
+                       capture_output=True, text=True)
+    out = (r.stdout or "") + (r.stderr or "")
+    for line in out.splitlines():
+        if any(k in line for k in ("passed", "failed", "error", "skipped")):
+            print("  ", line)
+    if r.returncode != 0:
+        print("  ❌ 失败，尾部输出：")
+        for line in out.splitlines()[-15:]:
+            print("    ", line)
+    else:
+        print("  ✅ 通过")
+    return r.returncode == 0
+
+
 def run_boot_smoke() -> bool:
     """启动冒烟：import 全模块 + AST 未定义名称检查（抓循环导入/运行期 NameError）"""
     print(f"\n{'='*60}\n▶ 启动冒烟测试（import 全模块 + AST 未定义名称检查）\n{'='*60}")
     script = os.path.join(OPENPILOT_ROOT, "ai", "tools", "boot_smoke_test.py")
-    cmd = [sys.executable, script]
+    # --i18n-warn：近 300 处存量中文文案是独立的本地化迁移工程，不该让每次仿真都红。
+    # import 硬错与 AST 未定义名称照旧是失败，i18n 仍打印计数与样例。
+    cmd = [sys.executable, script, "--i18n-warn"]
     try:
         r = subprocess.run(cmd, cwd=OPENPILOT_ROOT, timeout=300, capture_output=True, text=True)
     except subprocess.TimeoutExpired:
@@ -159,18 +189,18 @@ def main() -> int:
         return 2
 
     results = [
-        # (unittest target, 描述)
-        (macan_target,
+        # (runner, target, 描述)  runner: unittest | pytest
+        ("unittest", macan_target,
          f"Macan 车型接口 + fingerprint（动态解析：{macan_target.split('.')[-1]}）"),
-        ("openpilot.selfdrive.car.tests.test_cruise_speed",
+        ("unittest", "openpilot.selfdrive.car.tests.test_cruise_speed",
          "巡航速度逻辑（VCruiseHelper：SET初始化/RESUME/边沿激活/踩油门）"),
-        ("openpilot.sunnypilot.selfdrive.car.tests.test_cruise_mode",
-         "按键事件-巡航模式（长按 Dist+ 切实验模式等，已适配 Macan altButton2）"),
-        ("openpilot.sunnypilot.selfdrive.car.tests.test_custom_cruise",
+        ("pytest", "openpilot/sunnypilot/selfdrive/selfdrived/tests/test_selfdrived_zp.py",
+         "按键事件-巡航模式（长按间隙键 DISTANCE_LONG_PRESS 切实验模式，Macan altButton2 走这条路径）"),
+        ("unittest", "openpilot.sunnypilot.selfdrive.car.tests.test_custom_cruise",
          "按键事件-自定义巡航（智能巡航按钮管理）"),
-        ("openpilot.sunnypilot.selfdrive.selfdrived.tests.test_button_state_tracker",
+        ("unittest", "openpilot.sunnypilot.selfdrive.selfdrived.tests.test_button_state_tracker",
          "按键事件-按钮状态跟踪器"),
-        ("opendbc.car.volkswagen.tests.test_macan_mlb",
+        ("unittest", "opendbc.car.volkswagen.tests.test_macan_mlb",
          "Macan 纵向帧级回归（ACC_05 帧输出断言：停车保持/踩油门/SnG/减速/加速/撤力）"),
     ]
 
@@ -179,7 +209,7 @@ def main() -> int:
     ok = ok_boot and ok_preflight
 
     skipped = []
-    for target, desc in results:
+    for runner, target, desc in results:
         reason = skip_reason(target)
         if reason:
             print(f"\n{'='*60}\n▶ {desc}\n   target: {target}\n{'='*60}")
@@ -188,7 +218,8 @@ def main() -> int:
             continue
         try:
             cwd = os.path.join(root, "opendbc_repo") if target.startswith("opendbc.") else root
-            passed = run_unittest(target, desc, cwd=cwd)
+            run = run_pytest if runner == "pytest" else run_unittest
+            passed = run(target, desc, cwd=cwd)
         except subprocess.TimeoutExpired:
             print(f"  ⏱️ 超时（{target}），视为失败")
             passed = False

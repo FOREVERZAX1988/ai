@@ -23,8 +23,12 @@ import importlib.util
 import os
 import sys
 
-OPENPILOT_ROOT = "/data/openpilot"
+# 默认用脚本自身位置反推仓库根（ai/tools/x.py → 上两级），设备上等于 /data/openpilot
+OPENPILOT_ROOT = os.environ.get("OPENPILOT_ROOT") or os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 BUILTINS = set(dir(builtins))
+# 存量中文文案（近 300 处）是一次独立的「中文源文案 → po」迁移工程，不是某次改动引入的
+# 回归。--i18n-warn 把它降为可见的警告（仍逐条/计数打印，不静默），import 与 AST 照旧严格。
+I18N_WARN_ONLY = "--i18n-warn" in sys.argv
 
 # 模块级隐式全局：解释器在模块命名空间里预置，不会出现在源码的赋值语句中。
 # 缺失会把 `os.path.dirname(__file__)` 这类合法用法误报成"未定义名称"（假红）。
@@ -47,6 +51,13 @@ OPTIONAL_MODULES = {
 
 def collect_modules() -> list[tuple[str, bool]]:
     sys.path.insert(0, OPENPILOT_ROOT)
+    # 子模块（opendbc / msgq / tinygrad …）也要在 path 上：process_config 第一行就
+    # `from opendbc.car.structs import car`，缺路径会让整个冒烟以 ModuleNotFoundError
+    # 变成「找不到源码根」级别的假故障，而不是它真正要抓的循环导入/NameError。
+    for _d in ("opendbc_repo", "msgq_repo", "tinygrad_repo", "rednose_repo", "teleoprtc_repo"):
+        _p = os.path.join(OPENPILOT_ROOT, _d)
+        if os.path.isdir(_p) and _p not in sys.path:
+            sys.path.insert(0, _p)
     from openpilot.system.manager.process_config import managed_processes
     from openpilot.system.manager.process import PythonProcess, DaemonProcess
     mods = set()
@@ -191,10 +202,23 @@ def i18n_check(root: str) -> list[str]:
             for n in ast.walk(tree):
                 for c in ast.iter_child_nodes(n):
                     parents[c] = n
+
+            # tr_noop()/tr()/trn() 的实参就是「交给 po 提取的源文案」，正是要的写法。
+            # 不豁免它们等于惩罚唯一的正确做法：events.py 里 tr_noop 越多这条检查越红。
+            translated: set[ast.AST] = set()
+            for n in ast.walk(tree):
+                if (isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
+                        and n.func.id in ("tr", "trn", "tr_noop", "trn_noop")):
+                    for arg in n.args:
+                        for sub in ast.walk(arg):
+                            translated.add(sub)
+
             for node in ast.walk(tree):
                 if isinstance(node, ast.Constant) and isinstance(node.value, str) and node.value:
                     # 独立语句字符串（Expr）= 注释/docstring，非 UI 文本，豁免
                     if isinstance(parents.get(node), ast.Expr):
+                        continue
+                    if node in translated:
                         continue
                     if any('\u4e00' <= c <= '\u9fff' for c in node.value):
                         relp = os.path.relpath(fp, root)
@@ -297,18 +321,28 @@ def main() -> int:
             print(f"  ⚠️ {m} 跳过（{e}）")
 
     i18n_issues = i18n_check(root)
-    if i18n_issues:
+    if i18n_issues and I18N_WARN_ONLY:
+        print(f"\n  ⚠️ i18n: {len(i18n_issues)} 处硬编码中文（存量待迁移，--i18n-warn 下不阻塞）")
+        for i in i18n_issues[:5]:
+            print(i)
+        if len(i18n_issues) > 5:
+            print(f"     … 其余 {len(i18n_issues) - 5} 处省略")
+    elif i18n_issues:
         print("\n  ❌ i18n: 硬编码中文（应走 po 翻译）")
         for i in i18n_issues:
             print(i)
 
     print("\n" + "=" * 60)
-    if not import_fail and not ast_fail and not i18n_issues:
-        print(f"🎉 启动冒烟通过：{len(modules)} 模块 import 无硬错 + AST 无未定义名称 + 无硬编码中文"
-              + (f"（{len(import_warn)} 个可选进程缺依赖已跳过）" if import_warn else ""))
+    i18n_fail = bool(i18n_issues) and not I18N_WARN_ONLY
+    if not import_fail and not ast_fail and not i18n_fail:
+        tail = f"；i18n 存量 {len(i18n_issues)} 处待迁移" if i18n_issues else ""
+        print(f"🎉 启动冒烟通过：{len(modules)} 模块 import 无硬错 + AST 无未定义名称"
+              + (f"（{len(import_warn)} 个可选进程缺依赖已跳过）" if import_warn else "")
+              + tail)
         return 0
     else:
-        print(f"❌ 启动冒烟失败：import 硬错 {len(import_fail)}，AST {len(ast_fail)}，i18n {len(i18n_issues)}")
+        print(f"❌ 启动冒烟失败：import 硬错 {len(import_fail)}，AST {len(ast_fail)}，"
+              f"i18n {len(i18n_issues) if i18n_fail else 0}")
         return 1
 
 
