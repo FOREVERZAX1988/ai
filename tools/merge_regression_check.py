@@ -231,5 +231,26 @@ def main() -> int:
   return 0
 
 
+@check("A14 agnos: agnos_init 里 --verify 必须排在 stock 跳过分支之前",
+       "stock 分支先 return 的话，另一槽明明已刷好也不会切槽，只能去 WebUI 手动点一次。"
+       "2026-10-29 的 mici 就卡在这：/VERSION=19.9、system_b=20.2-carrot-bt2 早已校验"
+       "通过，开机却始终不 swap")
+def _agnos_verify_order():
+  s = code_only(text("launch_chffrplus.sh"))
+  m = re.search(r"^agnos_init\(\)\s*\{", s, re.M)
+  assert m, "找不到 agnos_init() 定义"
+  body = s[m.end():]
+  end = re.search(r"^\}", body, re.M)   # 顶格 } = 函数结束
+  body = body[:end.start()] if end else body
+
+  i_verify = body.find("--verify")
+  assert i_verify >= 0, "agnos_init 里没有 --verify 调用：另一槽就绪也不会切槽"
+  i_skip = body.find("AGNOS_SKIP_STOCK_FLASH")
+  assert i_skip >= 0, "找不到 stock 跳过分支的开关 AGNOS_SKIP_STOCK_FLASH"
+  assert i_verify < i_skip, (
+    "--verify 被排到了 stock 跳过分支之后：stock 设备上另一槽即使已就绪也不会"
+    "切槽，只能去 WebUI 手动点。把 --verify + reboot 提到跳过分支之前")
+
+
 if __name__ == "__main__":
   sys.exit(main())
