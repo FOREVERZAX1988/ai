@@ -298,5 +298,28 @@ def _settings_panels_render():
   if "PASSED" not in out:
     raise AssertionError(f"冒烟测试没跑起来（exit={r.returncode}）：\n     " + "\n     ".join(out.strip().splitlines()[-4:]))
 
+
+@check("A17 ui: 设置面板引用的图标必须真的在 selfdrive/assets 里",
+       "tizi 的 Toggles 面板给 Experimental Mode 行设 experimental.png / experimental_white.png，"
+       "而这两个图早在图标搬去 sunnypilot/selfdrive/assets 时就不在 selfdrive/assets/icons 了。"
+       "表现是打开该面板每次都在日志里刷 FILEIO Failed to open file + failed to load asset，"
+       "那一行没有图标（2026-10-30 的 .79）")
+def _settings_icons_exist():
+  assets = ROOT / "openpilot/selfdrive/assets"
+
+  def resolves(lit: str) -> Path:
+    # ListItemSP.set_icon() 会给裸名字加 icons/ 前缀；settings.py 的 icon= 是相对 assets 的路径
+    return Path(os.path.normpath(assets / (lit if "/" in lit else f"icons/{lit}")))
+
+  missing = []
+  toggles = code_only(text("openpilot/selfdrive/ui/layouts/settings/toggles.py"))
+  for name in set(re.findall(r'"([\w.-]+\.png)"', toggles)):
+    if not resolves(name).exists():
+      missing.append(f"toggles.py: {name}")
+  for lit in set(re.findall(r'icon="([^"]+\.png)"', text("openpilot/selfdrive/ui/sunnypilot/layouts/settings/settings.py"))):
+    if not resolves(lit).exists():
+      missing.append(f"settings.py: {lit}")
+  assert not missing, "图标不在 selfdrive/assets 下，面板会画不出来：\n     " + "\n     ".join(sorted(missing))
+
 if __name__ == "__main__":
   sys.exit(main())
