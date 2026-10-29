@@ -272,5 +272,31 @@ def _mici_jetlink_modes():
     f"link_toggle_options() 又把 {dropped} 滤掉了：取 hires panel 少列模式 -> 存着的值读回成 off")
 
 
+
+@check("A16 ui: 每个设置面板都要能真的打开并渲染一遍",
+       "AlphaLongitudinalToggles.update_state() 引用 __init__ 已不再创建的 _dec_toggle："
+       "解冲突时 DEC 主开关的创建被上游的删除提交带走，引用留下了。"
+       "现象是手指一点进 设置 → Cruise，整个 UI 抛 AttributeError 重启"
+       "（2026-10-30 的 .79）。单看某个 layout 的渲染测试抓不到，"
+       "必须走真实 SettingsLayout 逐面板 show_event + render")
+def _settings_panels_render():
+  import subprocess
+
+  script = ROOT / "openpilot/selfdrive/ui/tests/settings_panels_render_smoke.py"
+  assert script.exists(), f"找不到面板渲染冒烟测试: {script}"
+  env = dict(os.environ)
+  env["PYTHONPATH"] = os.pathsep.join(str(ROOT / p) for p in (".", "opendbc_repo", "msgq_repo", "rednose_repo"))
+  try:
+    r = subprocess.run([sys.executable, str(script)], cwd=ROOT, env=env,
+                       capture_output=True, text=True, timeout=300)
+  except subprocess.TimeoutExpired:
+    raise AssertionError("面板渲染冒烟测试超时（300s）")
+  out = r.stdout + r.stderr
+  if "FAILED" in out:
+    bad = [l.strip() for l in out.splitlines() if l.strip().startswith(("FAIL", "- panel", "- ")) and "panel" in l]
+    raise AssertionError("面板渲染失败，点进去就会崩 UI：\n     " + "\n     ".join(bad[:4] or out.strip().splitlines()[-4:]))
+  if "PASSED" not in out:
+    raise AssertionError(f"冒烟测试没跑起来（exit={r.returncode}）：\n     " + "\n     ".join(out.strip().splitlines()[-4:]))
+
 if __name__ == "__main__":
   sys.exit(main())
