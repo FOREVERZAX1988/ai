@@ -144,6 +144,16 @@ def check_params_build() -> bool:
     return False
   so_m, keys_m = PARAMS_SO.stat().st_mtime, PARAMS_KEYS_H.stat().st_mtime
   if so_m < keys_m:
+    # 本机没有 scons 就重建不了；而 PC 上跑的是 Python params，native lib 只有
+    # 设备上的 native 进程才用。这种情况下报 FAIL 只会制造噪音 —— 真正需要它
+    # 生效的地方（设备首次启动）由 launch_chffrplus.sh 的 ensure_params_build 兜。
+    import shutil
+    if shutil.which("scons") is None:
+      record(SKIP, "A1 params 构建新鲜度",
+             f"{PARAMS_SO.name} 比 params_keys.h 旧 {(keys_m - so_m) / 3600:.1f}h，"
+             "但本机没有 scons 无法重建；PC 上仿真走 Python params，"
+             "native 键表 ABI 只在设备上生效（设备侧由 ensure_params_build 按 mtime 重编）")
+      return False
     record(FAIL, "A1 params 构建新鲜度",
            "libparams_c.so 比 params_keys.h 旧 +%.1fh → 合并新增的键在 .so 里不存在，"
            "card 会抛 UnknownKeyName 导致 sunnypilot Unavailable（重编：launch_chffrplus.sh ensure_params_build）"
@@ -164,6 +174,13 @@ def check_native_key_abi(keys: set[str]) -> None:
     return
   if params_mod.lib is None:
     record(WARN, "A2 原生键表 ABI", "native lib 未加载（mock 模式）→ 键表 ABI 无法校验")
+    return
+  # 和 A1 同理：本机没有 scons 就意味着这个 lib 修不了，PC 上也不影响仿真。
+  import shutil
+  if shutil.which("scons") is None and PARAMS_KEYS_H.is_file() and PARAMS_SO.is_file() \
+     and PARAMS_SO.stat().st_mtime < PARAMS_KEYS_H.stat().st_mtime:
+    record(SKIP, "A2 原生键表 ABI",
+           "lib 比键表旧且本机无 scons，不校验（PC 上 native 键表不参与仿真）")
     return
   try:
     p = params_mod.Params()
