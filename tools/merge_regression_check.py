@@ -174,6 +174,36 @@ def _jetlink_qnn():
   assert "qnn_library_dir" in s or "qn" in s.lower(), "Bridge.swift 与 QNN 无关了？请人工确认"
 
 
+# ── 13. 脚本执行位：git mode 错了就是 126，manager 每秒重启一次 ────────────────
+@check("A13 perms: modeld 包装链路与 8 个脚本保持 100755",
+       "2026-10-26 22:16-22:28 全部 9 段行程 modeld 从未运行：移植把 modeld.py 从 100755 改成 "
+       "100644，包装脚本 exec 时 bash 返回 126。后果是 cameraState/liveCalibration 全缺，"
+       "calibrationd 拿不到 cameraOdometry，校准进度恒 0（600/600 帧都是「校准进行中：0%」）")
+def _exec_bits():
+  import subprocess
+  files = [
+    "openpilot/common/hardware/comma/agnos.py",
+    "openpilot/selfdrive/controls/radard.py",
+    "openpilot/selfdrive/monitoring/dmonitoringd.py",
+    "openpilot/selfdrive/pandad/pandad.py",
+    "openpilot/selfdrive/selfdrived/events.py",
+    "openpilot/selfdrive/selfdrived/selfdrived.py",
+    "openpilot/selfdrive/ui/ui.py",
+    "openpilot/sunnypilot/modeld_v2/modeld.py",
+  ]
+  out = subprocess.run(["git", "ls-files", "-s", "--", *files], cwd=str(ROOT),
+                       capture_output=True, text=True).stdout
+  seen = {}
+  for line in out.splitlines():
+    meta, path = line.split("\t", 1)
+    seen[path] = meta.split()[0]
+  bad = [(f, seen.get(f, "未跟踪")) for f in files if seen.get(f) != "100755"]
+  assert not bad, f"这些文件不是 100755（exec 时装会 126）：{bad}"
+  # 包装脚本本身也必须是可执行的，否则连 126 都到不了，直接 EACCES
+  wrapper = ROOT / "openpilot/sunnypilot/modeld_v2/modeld"
+  assert wrapper.is_file() and os.access(wrapper, os.X_OK), "modeld 包装脚本不存在或不可执行"
+
+
 def main() -> int:
   print(f"仓库根: {ROOT}")
   print("=" * 72)

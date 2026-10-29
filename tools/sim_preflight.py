@@ -324,38 +324,63 @@ def check_model_artifacts() -> str | None:
 
 
 MODEL_LOAD_SNIPPET = r'''
-import resource, sys
-lim = int(sys.argv[1]); resource.setrlimit(resource.RLIMIT_AS, (lim, lim))
-sys.path.insert(0, str(OPENPILOT_ROOT)); sys.path.insert(0, str(OPENPILOT_ROOT / "opendbc_repo"))
-from openpilot.common.file_chunker import open_file_chunked
-from openpilot.sunnypilot.modeld_v2.helpers import load_oob
-from openpilot.sunnypilot.modeld_v2.compile_modeld import derive_frame_skip, make_split_input_queues, make_supercombo_input_queues
+import os, resource, sys
+# 内存护栏：目的是「别把设备 OOM 打挂」，不是被测对象。所以限不住就算了，
+# 绝不能让 setrlimit 自己抛异常变成 FAIL —— macOS 上 RLIMIT_AS 的硬上限比我们要设的
+# 小，直接 setrlimit(lim, lim) 会 "ValueError: current limit exceeds maximum limit"。
+lim = int(sys.argv[1])
+try:
+    _soft, _hard = resource.getrlimit(resource.RLIMIT_AS)
+    if _hard != resource.RLIM_INFINITY:
+        lim = min(lim, _hard)
+    resource.setrlimit(resource.RLIMIT_AS, (lim, _hard))
+except (ValueError, OSError) as e:
+    print(f"RLIMIT_AS 未设（{type(e).__name__}: {e}），继续")
+
+# 这个片段是独立进程里的 python -c，拿不到主脚本的变量。父进程已把 cwd 设成仓库根，
+# 子模块（opendbc/msgq/tinygrad…）也不是本仓的包，都要显式上 path。
+ROOT = os.getcwd()
+for _p in (os.path.join(ROOT, d) for d in
+           ("opendbc_repo", "msgq_repo", "tinygrad_repo", "rednose_repo", "teleoprtc_repo")):
+    if os.path.isdir(_p):
+        sys.path.insert(0, _p)
+sys.path.insert(0, ROOT)
+
+# 走 modeld 的真实加载路径（modeld.py::_init_combined）：load_model + fused_with_warp
+# + get_model_adapter。以前这里调的是 load_oob / derive_frame_skip / make_*_input_queues，
+# 那几个符号早就不在那些模块里了 —— 说明这段冒烟从改名那天起就没跑通过，
+# 而它默认是跳过的，所以坏了很久没人发现。
+from openpilot.common.hardware import COMMA_HARDWARE
+from openpilot.sunnypilot.modeld_v2.helpers import load_model
+from openpilot.sunnypilot.modeld_v2.frame_fusion import fused_with_warp
+from openpilot.sunnypilot.modeld_v2.model_adapters import get_model_adapter
+
 pkl = sys.argv[2]
-jits = load_oob(open_file_chunked(pkl))
-metadata = jits["metadata"]
-dev = "CPU"
-if "run_model" in jits or "model" in metadata:
-    mm = metadata.get("model", metadata)
-    shapes = mm["input_shapes"]
-    fs = derive_frame_skip({}, shapes)
-    if "run_model" in jits:
-        from openpilot.selfdrive.modeld.compile_modeld import make_input_queues, nv12_copy_size
-        from openpilot.system.camerad.cameras.nv12_info import get_nv12_info
-        info = get_nv12_info(1928, 1208)
-        make_input_queues(shapes, fs, device=dev, frame_copy_size=nv12_copy_size(*info[:3]))
-        path = "run_model+make_input_queues"
-    else:
-        make_supercombo_input_queues(shapes, fs, device=dev)
-        path = "supercombo+make_supercombo_input_queues"
-else:
-    vision = metadata["vision"]
-    policy_keys = [k for k in metadata if k not in ("vision", "warp_dev")]
-    first = metadata[policy_keys[0]]
-    fs = derive_frame_skip(vision["input_shapes"], first["input_shapes"])
-    make_split_input_queues(vision["input_shapes"], first["input_shapes"], fs, device=dev)
-    path = "split+make_split_input_queues"
-print("LOADED jits=%s path=%s" % (",".join(sorted(jits)), path))
+CAM_W, CAM_H = 1928, 1208
+DEV = "CPU"          # PC 上没有 QCOM/AMD，adapter 会挑 CPU 那条分支
+jits = load_model(pkl, extend=fused_with_warp(CAM_W, CAM_H, False))
+adapter = get_model_adapter(jits, CAM_W, CAM_H, DEV, DEV, DEV, False)
+print("LOADED jits=%s type=%s vision_inputs=%d policy_keys=%d comma_hw=%s" % (
+    ",".join(sorted(jits)), adapter._combined_model_type,
+    len(adapter._vision_input_names), len(adapter._policy_keys), COMMA_HARDWARE))
 '''
+
+
+def _existing_chunks(pkl: str) -> list[str]:
+  """pkl 可能是原文件，也可能被 file_chunker 切成 <name>.chunkNNofMM + .chunkmanifest。
+
+  open_file_chunked() 认这两种形态，但它返回的是流；这里只要「实际占空间的文件」来估内存。
+  历史：以前这里 import 了一个根本不存在的 get_existing_chunks，于是 --model-load 一跑就
+  ImportError —— 而它默认是跳过的，所以这个冒烟从来没真正执行过，坏在那里也没人发现。
+  """
+  from openpilot.common.file_chunker import get_chunk_name, get_manifest_path
+  if os.path.isfile(pkl):
+    return [pkl]
+  manifest = get_manifest_path(pkl)
+  if os.path.isfile(manifest):
+    num_chunks = int(Path(manifest).read_text().strip())
+    return [get_chunk_name(pkl, i, num_chunks) for i in range(num_chunks)]
+  return []
 
 
 def check_model_load(pkl: str | None, force: bool) -> None:
@@ -363,9 +388,26 @@ def check_model_load(pkl: str | None, force: bool) -> None:
   if pkl is None:
     record(SKIP, "B2 模型反序列化冒烟", "无 driving pkl，跳过")
     return
-  from openpilot.common.file_chunker import get_existing_chunks
+  chunks = _existing_chunks(pkl)
+  if not chunks:
+    record(SKIP, "B2 模型反序列化冒烟", f"{pkl} 既不是文件也没有分片清单，跳过")
+    return
+  # modeld_v2 只吃 compile_modeld.py 编出来的 bundle（文件头是 MAGIC）。
+  # openpilot/selfdrive/modeld/models/driving_tinygrad.pkl 是 **stock modeld** 的老格式，
+  # 拿它喂 load_model 必然 "not a plain tinygrad model" —— 那是样本选错，不是模型坏了。
+  # 设备上 modeld_v2 的模型来自 model bundle，落在 Paths.model_root() 下。
+  from openpilot.sunnypilot.modeld_v2.helpers import MAGIC
+  with open(chunks[0], "rb") as f:
+    is_bundle = f.read(len(MAGIC)) == MAGIC
+  if not is_bundle:
+    record(SKIP, "B2 模型反序列化冒烟",
+           f"{os.path.basename(pkl)} 是 stock modeld 的旧格式（非 bundle）；"
+           "modeld_v2 的模型由 model bundle 下发到 "
+           f"{Path('~/.comma/media/0/models').expanduser()} 这类目录，"
+           "PC 上没下载 bundle 时无从验证，到设备上跑才有意义")
+    return
   avail_kb = mem_available_kb()
-  size_mb = sum(os.path.getsize(p) for p in get_existing_chunks(pkl)) / 1e6
+  size_mb = sum(os.path.getsize(p) for p in chunks) / 1e6
   need_kb = int(size_mb * 1024 * 4)          # 经验：峰值 ≈ 4× pkl 体积
   budget_kb = min(int(avail_kb * 0.6), max(need_kb, 1_200_000))
   if not force and avail_kb < need_kb:
