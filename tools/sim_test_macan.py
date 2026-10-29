@@ -121,6 +121,33 @@ def run_preflight() -> bool:
     return r.returncode == 0
 
 
+def run_merge_checks() -> bool:
+    """合并回归清单：上游改契约造成的那类「静默断链」定点复核。
+
+    行为仿真照不到这些：常量换成函数、模块搬家、消息不再发布、键没登记 ——
+    症状是 import 炸 / NameError / UnknownKeyName，跟车型逻辑一点关系没有，
+    但会以「某个模块失败」的形式散落在冒烟日志里。逐条断言比在海量输出里翻找直接。
+    清单本身在 ai/tools/merge_regression_check.py，每项都记着当时的现象。
+    """
+    print(f"\n{'='*60}\n▶ 合并回归清单（上游重构导致的静默断链定点复核）\n{'='*60}")
+    script = os.path.join(OPENPILOT_ROOT, "ai", "tools", "merge_regression_check.py")
+    try:
+        r = subprocess.run([sys.executable, script], cwd=OPENPILOT_ROOT,
+                           timeout=180, capture_output=True, text=True)
+    except subprocess.TimeoutExpired:
+        print("  ⏱️ 合并回归清单超时，视为失败")
+        return False
+    out = (r.stdout or "") + (r.stderr or "")
+    for line in out.splitlines():
+        if any(k in line for k in ("✅ A", "❌", "结果：", "🎉")):
+            print("  ", line.strip())
+    if r.returncode != 0:
+        print("  ❌ 合并回归清单有失败项")
+    else:
+        print("  ✅ 合并回归清单通过")
+    return r.returncode == 0
+
+
 MACAN_INTERFACE_SUFFIX = "_PORSCHE_MACAN_MK1"
 
 
@@ -206,7 +233,8 @@ def main() -> int:
 
     ok_boot = run_boot_smoke()
     ok_preflight = run_preflight()
-    ok = ok_boot and ok_preflight
+    ok_merge = run_merge_checks()
+    ok = ok_boot and ok_preflight and ok_merge
 
     skipped = []
     for runner, target, desc in results:
