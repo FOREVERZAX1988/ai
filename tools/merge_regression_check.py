@@ -252,5 +252,25 @@ def _agnos_verify_order():
     "切槽，只能去 WebUI 手动点。把 --verify + reboot 提到跳过分支之前")
 
 
+@check("A15 jetlink: mici 面板必须把 MODES 的每个模式都列出来",
+       "面板只列 off/usb/ios 时，参数里存着的 wifi 匹配不上任何一项，控件按 0 读回，"
+       "屏幕上显示 off 而链路其实是 Wi-Fi，再点一下还会把它覆盖成 usb。"
+       "2026-10-30 在 mici 上发现：TestTheWifiMode 只断言了 LINK_MODE_LABELS 有 "
+       "wifi 这个词，没断言面板真的给了这个选项，所以一直通过")
+def _mici_jetlink_modes():
+  p = "openpilot/selfdrive/ui/sunnypilot/mici/layouts/models.py"
+  s = code_only(text(p))
+  assert "link_toggle_options()" in s, f"{p} 不再调用 link_toggle_options()：模式的列表又以内联方式写了"
+  m = re.search(r"^def link_toggle_options\(\).*?:\n(.*?)(?=^\S|\Z)", s, re.M | re.S)
+  assert m, "找不到 link_toggle_options() 定义"
+  fn = m.group(1)
+  assert re.search(r'MODES\s*\]\s*,|for m in MODES', fn), (
+    "link_toggle_options() 不再按 MODES 全量生成：少列一个模式就会让存着的那个值读回成 off")
+  # 负向：任何形式的「把某个模式滤掉」都会重新引入这个 bug
+  dropped = re.findall(r'if m != "(\w+)"|\bm not in \(', fn)
+  assert not dropped, (
+    f"link_toggle_options() 又把 {dropped} 滤掉了：取 hires panel 少列模式 -> 存着的值读回成 off")
+
+
 if __name__ == "__main__":
   sys.exit(main())
