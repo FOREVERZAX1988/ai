@@ -350,5 +350,25 @@ def _ruff_undefined_names():
   assert not bad, "以下位置引用了不存在的名字（读取即 NameError）：\n     " + "\n     ".join(bad[:10])
 
 
+@check("A19 i18n: 蓝牙扫描按钮的 Stop 必须译成「停止」，不是「停车」",
+       "bluetooth_settings.py:446 是扫描按钮：正在扫描时显示 tr(\"Stop\")，本意是"
+       "「停止扫描」。上游把它译成「停车」（parking），语义完全不对。"
+       "2026-10-31 实测：59d5f19501 时还是「停止」，合完 da9fe91aee 被上游覆盖回「停车」——"
+       "因为 po 随上游一起重新生成、merge_po 只在 msgstr 为空时才填，上游翻错就会一直盖过我们。"
+       "修法见 ai/tools/zh_overrides.py（合并上游之后跑一次）")
+def _stop_translation():
+  bad = {"app_zh-CHS.po": ("停车",), "app_zh-CHT.po": ("停車",)}
+  for name, wrong in bad.items():
+    p = f"openpilot/selfdrive/ui/translations/{name}"
+    s = text(p)
+    m = re.search(r'^msgid "Stop"\nmsgstr "([^"]*)"', s, re.M)
+    assert m, f"{p}: 找不到 msgid \"Stop\" 条目（条目被删或换行格式变了）"
+    val = m.group(1)
+    assert val and val not in wrong, (
+      f"{p}: Stop 译成了 {val!r}。蓝牙扫描按钮的本意是「停止扫描」，应为「停止」。"
+      f"跑 ai/tools/zh_overrides.py 修，并把该 msgid 记进它的 OVERRIDES")
+    assert "停" in val and "止" in val, f"{p}: Stop 的译文 {val!r} 看起来不是「停止」"
+
+
 if __name__ == "__main__":
   sys.exit(main())
