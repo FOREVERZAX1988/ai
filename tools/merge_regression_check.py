@@ -321,5 +321,34 @@ def _settings_icons_exist():
       missing.append(f"settings.py: {lit}")
   assert not missing, "图标不在 selfdrive/assets 下，面板会画不出来：\n     " + "\n     ".join(sorted(missing))
 
+
+@check("A18 lint: 仓库里不许有未定义名称（ruff F821）",
+       "解冲突时两侧的版本变量都被留下，引用的一侧已被删掉，读取即 NameError —— "
+       "2026-10-30 一轮跑下来抓到三处：plant.py 的 SubMaster 字典里 vehicleParameters "
+       "给了两次（第二次引用 vehicle_parameters，冲突时该分支就没了，17 个巡航仿真用例报错）；"
+       "replay_events.py 把类体别名写在了 def 之前（类体自上而下求值，import 直接炸）；"
+       "web_settings.py 用了 json 却没 import。三者都不是某个模块的用例能覆盖的，"
+       "只有跨文件静态扫描能一次性捞出来。ruff 缺失时跳过（本机/设备没装仍要能跑门槛）")
+def _ruff_undefined_names():
+  import subprocess
+
+  try:
+    r = subprocess.run([sys.executable, "-m", "ruff", "--version"],
+                       capture_output=True, text=True, timeout=60)
+  except (OSError, subprocess.TimeoutExpired):
+    return  # 没有 ruff：门槛其它项照旧要过
+  if r.returncode != 0:
+    return
+
+  # --isolated 绕开仓库 pyproject 里可能与本检查意见不一致的规则集，只看 pyflakes 的 F821
+  r = subprocess.run(
+    [sys.executable, "-m", "ruff", "check", "--select", "F821", "--isolated",
+     "--no-cache", "--output-format=concise", "openpilot/"],
+    cwd=ROOT, capture_output=True, text=True, timeout=600)
+  bad = [l for l in (r.stdout or "").splitlines()
+         if l.strip() and "F821" in l and not l.startswith("warning:")]
+  assert not bad, "以下位置引用了不存在的名字（读取即 NameError）：\n     " + "\n     ".join(bad[:10])
+
+
 if __name__ == "__main__":
   sys.exit(main())
