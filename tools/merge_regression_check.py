@@ -106,13 +106,15 @@ def _param_keys():
 
 
 # ── 6. alert 文案要能被 potools 提取（f-string 拼出来的抓不到） ─────────────────
-@check("A6 i18n: 实验模式切换提示用两条 tr_noop 静态串",
-       "f\"实验模式已{'开启' if ... else '关闭'}\" 提取器只能看到碎片，非中文 UI 永远显示源文案")
+@check("A6 i18n: chill/实验模式切换提示用两条 tr_noop 静态串",
+       "f\"Chill 模式已{'关闭' if ...}\": 提取器只能看到碎片，非中文 UI 永远显示源文案")
 def _alert_tr_noop():
   s = code_only(text("openpilot/sunnypilot/selfdrive/selfdrived/events.py"))
-  assert 'tr_noop("实验模式已开启")' in s and 'tr_noop("实验模式已关闭")' in s, \
-    "events.py 的实验模式提示没有拆成两条 tr_noop"
-  assert 'f"实验模式已{' not in s, "还在用 f-string 拼 alert 文案"
+  # 2026-11-01: the zp chill rework replaced the experimental-mode switch with legacy chill,
+  # so the alert text is now "Chill 模式已开启/关闭" — still two static tr_noop literals.
+  assert 'tr_noop("Chill 模式已开启")' in s and 'tr_noop("Chill 模式已关闭")' in s, \
+    "events.py 的 chill 提示没有拆成两条 tr_noop"
+  assert 'f"Chill 模式已{' not in s, "还在用 f-string 拼 alert 文案"
 
 
 # ── 7. 测试要断言 callback 的真实契约（源文案），不是 po 里的英文 ───────────────
@@ -120,7 +122,7 @@ def _alert_tr_noop():
        "上游测试断言 'Experimental Off'，该串全仓不存在（翻译在 alert_renderer 的 tr() 里做），必红")
 def _alert_test():
   s = code_only(text("openpilot/sunnypilot/selfdrive/selfdrived/tests/test_selfdrived_zp.py"))
-  assert "实验模式已关闭" in s, "测试没断言源文案"
+  assert "Chill 模式已关闭" in s, "测试没断言源文案"
   assert "Experimental Off" not in s, "测试仍在断言英文串"
 
 
