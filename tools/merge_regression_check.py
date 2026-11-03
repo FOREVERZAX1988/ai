@@ -121,9 +121,13 @@ def _alert_tr_noop():
 @check("A7 test: selfdrived 的 alert 断言的是源文案",
        "上游测试断言 'Experimental Off'，该串全仓不存在（翻译在 alert_renderer 的 tr() 里做），必红")
 def _alert_test():
-  s = code_only(text("openpilot/sunnypilot/selfdrive/selfdrived/tests/test_selfdrived_zp.py"))
-  assert "Chill 模式已关闭" in s, "测试没断言源文案"
-  assert "Experimental Off" not in s, "测试仍在断言英文串"
+  # Check the source, not the test: upstream rewrote test_selfdrived_zp.py for Set Speed
+  # Assist (2026-11-02) and no longer asserts this string, but the i18n contract lives in
+  # events.py regardless -- potools needs two static literals, never a composed f-string.
+  s = code_only(text("openpilot/sunnypilot/selfdrive/selfdrived/events.py"))
+  assert 'tr_noop("Chill 模式已关闭")' in s, "events.py 没把提示拆成两条静态串"
+  assert 'tr_noop("Chill 模式已开启")' in s, "events.py 没把提示拆成两条静态串"
+  assert 'f"Chill 模式已{' not in s, "还在用 f-string 拼 alert 文案"
 
 
 # ── 8. 测试之间不能靠 sys.modules stub 互相污染 ────────────────────────────────
@@ -370,6 +374,30 @@ def _stop_translation():
       f"{p}: Stop 译成了 {val!r}。蓝牙扫描按钮的本意是「停止扫描」，应为「停止」。"
       f"跑 ai/tools/zh_overrides.py 修，并把该 msgid 记进它的 OVERRIDES")
     assert "停" in val and "止" in val, f"{p}: Stop 的译文 {val!r} 看起来不是「停止」"
+
+
+# ── 20. opendbc 的 car.capnp 不许有重复字段 ───────────────────────────────────
+@check("A20 capnp: opendbc CarState 不许有重复字段名/序号",
+       "上游合并时会把 @62-@74 那 13 个字段（pcmCruiseGap..logCarrot）的整块插两遍，"
+       "capnp 直接拒绝编译：'pcmCruiseGap is already defined in this scope'。2026-11-02 至 03 "
+       "连续三轮出现，每次都是设备上 scons 才炸 —— 本地门槛不编译 capnp，所以补一道静态检查。")
+def _capnp_duplicate_fields():
+  from collections import Counter
+  body = text("opendbc_repo/opendbc/car/car.capnp")
+  start = body.index("struct CarState {")
+  depth, end = 0, len(body) - 1
+  for i in range(start, len(body)):
+    depth += (body[i] == '{') - (body[i] == '}')
+    if depth == 0 and i > start:
+      end = i
+      break
+  fields = re.findall(r'^  (\w+) @(\d+)\s*:', body[start:end + 1], re.M)
+  names = Counter(name for name, _ in fields)
+  nums = Counter(num for _, num in fields)
+  dup_names = sorted(k for k, v in names.items() if v > 1)
+  dup_nums = sorted(k for k, v in nums.items() if v > 1)
+  assert not dup_names, f"CarState 有重复字段名（capnp 会拒绝编译）：{dup_names}"
+  assert not dup_nums, f"CarState 有重复字段序号：{dup_nums}"
 
 
 if __name__ == "__main__":
