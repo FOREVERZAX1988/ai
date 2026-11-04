@@ -174,14 +174,105 @@ ZH_CHS = {
   "{} s": "{} s",
 }
 
-# Traditional Chinese - convert key terms
-ZH_CHT = {k: v.replace("软件", "軟體").replace("设置", "設定").replace("启用", "啟用")
+# --- 2026-11 merge sweep: When to Steer / Set Speed Assist / accel boost / confidence ball ---
+ZH_CHS.update({
+  # Set Speed Assist (cruise)
+  "Drive toward your set speed and following distance whenever the driving model holds back. The model still makes every slowdown. The onroad button and a long press of the distance button switch it too.":
+    "只要驾驶模型有所保留，就朝设定车速和跟车距离行驶。模型仍会执行每一次减速。道路按钮和长按车距键也可以切换此功能。",
+  "The driving model often cruises below your set speed and follows farther back.\nThis drives toward them whenever the model holds back.\nThe model still makes every slowdown.\nLong press home or hold the distance button to switch it.":
+    "驾驶模型常低于设定车速巡航且跟车更远。\n只要模型有所保留，就朝设定车速和跟车距离行驶。\n模型仍会执行每一次减速。\n长按主屏键或按住车距键切换。",
+  # Acceleration Boost
+  "Acceleration Boost": "加速助力",
+  "Adds a small push on top of sunnypilot's own acceleration, stronger in Aggressive and gentler in Relaxed. Eases off in curves and when sunnypilot slows or stops. Never goes past your set speed, and lead-car following still comes first.":
+    "在 sunnypilot 自身加速度之上叠加小幅助推，激进个性下更强、放松个性下更柔和。过弯以及减速、停车时会自动收力。永远不会超过你的设定车速，跟车避撞仍然优先。",
+  # Lane Center Assist
+  "Adds a gentle nudge toward lane center on top of the model's own steering, stronger when lane lines are clear. Yields around obstacles. The blue line and the gauge under the torque bar show the strength and direction of correction. The developer UI shows the exact adjustment in cm. Not available with the Default model.":
+    "在模型自身转向的基础上轻微向车道中心修正，车道线清晰时修正更强。遇到障碍物会让行。蓝线和扭矩条下方的仪表显示修正的强度和方向。开发者界面以厘米显示精确调整量。默认模型下不可用。",
+  "Alpha. Nudges the car toward the middle of the lane.\nStronger when the lane lines are clear. Yields around obstacles.\nThe blue line shows the strength and direction of correction.\nDebug UI shows the exact adjustment in cm.":
+    "Alpha。将车辆轻微引向车道中间。\n车道线清晰时更强，遇到障碍物会让行。\n蓝线显示修正的强度和方向。\n调试界面以厘米显示精确调整量。",
+  # When to Steer (MADS rename)
+  "When to Steer": "转向时机",
+  "when to steer": "转向时机",
+  "This car supports only some When to Steer settings.": "此车型仅支持部分转向时机设置。",
+  "This car supports all When to Steer settings.": "此车型支持全部转向时机设置。",
+  "Steer Without Cruise": "无巡航转向",
+  "steer without cruise": "无巡航转向",
+  "Steer When Cruise On": "巡航开启时转向",
+  "steer when cruise on": "巡航开启时转向",
+  "Steer When Cruise Set": "巡航设定时转向",
+  "steer when cruise set": "巡航设定时转向",
+  "Turning cruise on with its on/off button also turns steering on. Cars without a lane keep button need this on to steer.":
+    "用巡航开/关键开启巡航时，转向也会一并开启。没有车道保持按键的车需要开启此项才能转向。",
+  "Turning cruise on with its on/off button also turns steering on.\nCars without a lane keep button need this on to steer.":
+    "用巡航开/关键开启巡航时，转向也会一并开启。\n没有车道保持按键的车需要开启此项才能转向。",
+  "Setting or resuming a cruise speed also turns steering on. Steering then stays on until you switch it off or turn off the car.":
+    "设定或恢复巡航车速时也会开启转向，转向将保持开启，直到你手动关闭或熄火。",
+  "Setting or resuming a cruise speed also turns steering on.\nSteering then stays on until you switch it off or turn off the car.":
+    "设定或恢复巡航车速时也会开启转向。\n转向将保持开启，直到你手动关闭或熄火。",
+  "The wheel's TJA button becomes the only steering switch. The MRCC button then only controls cruise. Turn on only if your car has the button.":
+    "方向盘 TJA 按键成为唯一的转向开关，MRCC 按键只控制巡航。仅当你的车有该按键时才开启。",
+  "The wheel's TJA button becomes the only steering switch.\nThe MRCC button then only controls cruise.\nTurn on only if your car has the button.":
+    "方向盘 TJA 按键成为唯一的转向开关。\nMRCC 按键只控制巡航。\n仅当你的车有该按键时才开启。",
+  "tied to cruise": "跟随巡航",
+  "cruise on": "巡航开启",
+  "cruise set": "巡航设定",
+  "Remain": "保持",
+  "Remain: steering stays on.": "保持：转向继续生效。",
+  "Pause: steering pauses and resumes when you let go.": "暂停：转向暂停，松开刹车后恢复。",
+  "Disengage: steering turns off.": "退出：转向关闭。",
+  "What steering does when you press the brake.": "踩刹车时转向的动作。",
+  "Steering on Brake": "刹车时转向",
+  "brake: remain": "刹车：保持",
+  "brake: pause": "刹车：暂停",
+  "brake: off": "刹车：关闭",
+  # Steering delay / blinker turn / camera offset
+  "Live learns your car's steering response time as you drive, the stock openpilot experience. A number is a fixed software delay instead. Default is Live.":
+    "Live 会在行驶中实时学习你车的转向响应时间，即原版 openpilot 体验。填数字则改为固定软件延迟。默认 Live。",
+  "Live learns how long your car takes to respond to steering, as stock openpilot does.\nA number is a fixed software delay instead. Default is live.":
+    "像原版 openpilot 一样，Live 实时学习车辆转向响应时间。\n填数字则改为固定软件延迟。默认 Live。",
+  "With your blinker on at or below this speed, the car plans a turn in that direction at the nearest drivable path. This prevents situations (like at red lights) where the car might plan the wrong turn direction. Default is 19 mph.":
+    "转向灯开启且车速不高于此值时，车辆会按最近可行驶路径朝该方向规划转弯，避免（如红灯前）规划错转弯方向。默认 19 mph（约 30 km/h）。",
+  "With the blinker on below this speed, plans the turn that way.\nStops the car picking the wrong turn at a red light.":
+    "转向灯开启且低于此车速时，按该方向规划转弯。\n避免红灯前选错转弯方向。",
+  "With a big model, the small model steers below this speed. It is steadier when slow. Default is 11 mph (18 km/h). Not available with the Default model.":
+    "使用大模型时，低于此车速由小模型转向，低速时更稳定。默认 11 mph（18 km/h）。默认模型下不可用。",
+  "With a big model, the small model steers below this speed. It is steadier when slow.\nDefault is 11 mph (18 km/h). Not with the Default model.":
+    "使用大模型时，低于此车速由小模型转向，低速更稳定。\n默认 11 mph（18 km/h）。默认模型不支持。",
+  "Shifts where the model thinks the camera sits.\nPositive moves the car left, negative right.":
+    "调整模型认为摄像头所在的位置。\n正值让车辆偏左，负值偏右。",
+  # Confidence Ball
+  "Confidence Ball": "置信球",
+  "Shows the model's confidence as a ball on your side of the screen, as on the comma 4: higher is more confident, and while engaged it is green, then yellow, then red as confidence drops.":
+    "在屏幕上你所在的一侧以球体显示模型的置信度，与 comma 4 相同：位置越高越有信心，接管状态下置信度从高到低依次为绿色、黄色、红色。",
+  # misc
+  "Nothing to clear": "无可清除内容",
+  "SCAN": "扫描",
+  "Save failed": "保存失败",
+  # previously-left-empty entries
+  "{} ALERT": "{} 警告",
+  "{} minute ago": "{} 分钟前",
+  "{} hour ago": "{} 小时前",
+  "{} day ago": "{} 天前",
+})
+
+# Traditional Chinese - convert key terms, then full s2twp conversion via opencc
+# (falls back to the term chain alone when opencc is unavailable)
+try:
+  from opencc import OpenCC as _OpenCC
+  _S2TWP = _OpenCC("s2twp")
+except ImportError:
+  _S2TWP = None
+
+def _to_cht(text: str) -> str:
+  text = (text.replace("软件", "軟體").replace("设置", "設定").replace("启用", "啟用")
           .replace("禁用", "停用").replace("车辆", "車輛").replace("驾驶", "駕駛")
           .replace("纵向", "縱向").replace("横向", "橫向").replace("实验", "實驗")
           .replace("显示", "顯示").replace("启动", "啟動").replace("关闭", "關閉")
           .replace("连接", "連線").replace("训练", "訓練").replace("模型", "模型")
-          .replace("片段", "片段").replace("充电器", "充電器").replace("驾驶", "駕駛")
-          for k, v in ZH_CHS.items()}
+          .replace("片段", "片段").replace("充电器", "充電器").replace("驾驶", "駕駛"))
+  return _S2TWP.convert(text) if _S2TWP is not None else text
+
+ZH_CHT = {k: _to_cht(v) for k, v in ZH_CHS.items()}
 
 # Manual CHT overrides for better quality
 ZH_CHT.update({
