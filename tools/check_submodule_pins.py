@@ -19,8 +19,12 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from pathlib import Path
 
-ROOT = "/Users/zzz/Desktop/workspace/openpilot"
+# 仓库根按本文件位置推（ai/tools/<this>.py -> 上两级），不要写死主机路径：
+# 这个检查恰恰最该在设备上跑（pin 不可达会让设备的更新永久失败），而设备上
+# 路径是 /data/openpilot，写死 /Users/... 会直接 FileNotFoundError。
+ROOT = str(Path(__file__).resolve().parents[2])
 
 
 def git(*args, cwd=ROOT, check=True, timeout=120):
