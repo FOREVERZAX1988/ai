@@ -45,5 +45,33 @@ cd /data/openpilot
 git submodule status
 git -C panda ls-remote origin sp-macan-re          # 与 submodule status 的哈希比对
 git -C opendbc_repo log --oneline -1
-python3 -c "from opendbc.car.toyota.carstate import get_virtual_cruise_button" || echo "opendbc pin 缺该 SP API（预期）"
+/usr/local/venv/bin/python -c "from opendbc.car.toyota.carstate import get_virtual_cruise_button" || echo "opendbc pin 缺该 SP API（预期）"
 ```
+
+> 设备上不要用 `/usr/bin/python3` 判断依赖，那是系统 Python；运行环境是
+> `/usr/local/venv/bin/python`。
+
+---
+
+## 4. 复核（2026-11-08，上游 129 提交合并后）
+
+上文第 1、2 节的哈希是 2026-10-02 的历史快照，不是当前值；每轮上游合并子模块 pin 都会变。
+本轮合并（`dc548d8f0`）后的实测：
+
+| 项 | 当前值 |
+|---|---|
+| `opendbc_repo` | `4223e8a3`（`sp-macan-1029`：我方 Macan/VW 30 文件改动 + 上游 `8370c432` 纯历史合并） |
+| `panda` | `948072db8e`（4 个固件产物随树携带，变砖红线通过） |
+| `msgq_repo` | `3eeae59a77`（URL 改为 `zoompilot/msgq`，构建改用 nanobind） |
+
+* **Toyota API 仍缺**：在 `4223e8a3` 上
+  `from opendbc.car.toyota.carstate import get_virtual_cruise_button` 仍抛 `ImportError`
+  → `test_custom_cruise` 的 SKIP 判定继续成立，与本次合并无关。
+  `ai/tools/sim_test_macan.py` 的 `skip_reason()` 每轮动态探测、不写死哈希；
+  一旦上游补齐该 API，用例会自动恢复执行。
+* **10 个子模块 pin 全部可从 `.gitmodules` 声明 URL 拉取**
+  （`ai/tools/check_submodule_pins.py`，`PIN_EXIT=0`）。
+  设备 `.79` 的 `msgq_repo` remote 曾仍指向旧的 `sunnypilot/msgq`，已对齐到
+  `zoompilot/msgq`（保留 gh-proxy 前缀）并验证 fetch 成功。
+* 设备 VW safety 测试需带 `SAFETY_NO_SANITIZERS=1`（AGNOS 工具链缺 UBSan runtime，
+  失败发生在 `setUp` 加载 `libsafety.so`，非代码回归）。
