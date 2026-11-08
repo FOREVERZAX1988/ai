@@ -486,5 +486,18 @@ def _xiaoge_vision_param_registered():
     "CarrotXiaogeVisionEnabled 未在 params_keys.h 登记，写入会被拒绝、vision 永不启动"
 
 
+@check("A25 xiaoge: startup gate 不许用 engageable 把停车会话挡在外面",
+       "2026-11-08 Macan：gate 要求 selfdriveState.engageable，而 P 档恒 False，"
+       "manager 的 shouldBeRunning 一直 False，xiaoge_data 整场不进进程集，"
+       "v_asm_server 不启动、customReservedRawData0 不发布，停车看预览时永远没有物体框。"
+       "onroad 已由 started 保证，safety 已由 safety_ready 保证，CAN 有效性保留。")
+def _xiaoge_gate_allows_park():
+  s = text("openpilot/system/manager/xiaoge_startup.py")
+  assert "sm['selfdriveState'].engageable" not in s, \
+    "gate 又用 engageable：P 档恒 False，YOLO/lane 永不启动"
+  assert "sm['carState'].canValid" in s, "gate 丢掉了 CAN 有效性保护"
+  assert "safety_ready" in s, "gate 丢掉了 safety 匹配保护"
+
+
 if __name__ == "__main__":
   sys.exit(main())
