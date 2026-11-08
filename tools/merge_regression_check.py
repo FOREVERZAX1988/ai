@@ -522,5 +522,13 @@ def _ui_fps_measured():
   assert "fps = rl.get_fps()" not in s, "仍在用 rl.get_fps()：限帧关闭后它会冻结在旧值"
 
 
+@check("A28 ui: steer rail schedule 不能每次 params 刷新都重建 CarControllerParams",
+       "2026-11-08 py-spy：get_steer_rail_schedule 每次都重建品牌的 CarControllerParams"
+       "（加载 DBC + CANParser），占 UI 进程 7% CPU；ui_state 每 0.5 s 调一次，而 CP 一趟不变。")
+def _steer_rail_schedule_cached():
+  s = text("openpilot/selfdrive/ui/sunnypilot/ui_state_zp.py")
+  assert "_steer_rail_cp" in s, "没有缓存 CP：steer rail schedule 会每 0.5 s 重建一次"
+
+
 if __name__ == "__main__":
   sys.exit(main())
