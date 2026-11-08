@@ -530,5 +530,15 @@ def _steer_rail_schedule_cached():
   assert "_steer_rail_fp" in s, "没有按指纹缓存：CP 每次是新对象，schedule 会每 0.5 s 重建一次"
 
 
+@check("A29 ui: YOLO 框 HUD 不能在渲染线程里阻塞等 0 Hz 通道",
+       "2026-11-08：object_box_hud._refresh 用 SubMaster.update() 默认 100 ms 超时，"
+       "在渲染线程里每 0.2 s 堵 100 ms，实测帧周期 22/50/155 ms（13 fps、摄像头画面一卡一卡）。"
+       "customReservedRawData0 是 0 Hz 通道，必须 update(0) 非阻塞读取。")
+def _yolo_hud_nonblocking():
+  s = text("openpilot/selfdrive/ui/sunnypilot/onroad/object_box_hud.py")
+  assert "self._sm.update(0)" in s, "YOLO HUD 又用回阻塞式 update()，会把 UI 拖回 13 fps"
+  assert "self._sm.update()" not in s, "YOLO HUD 仍在渲染线程里带默认 100 ms poll 超时"
+
+
 if __name__ == "__main__":
   sys.exit(main())
