@@ -414,5 +414,24 @@ def _capnp_duplicate_fields():
   assert not dup_nums, f"CarState 有重复字段序号：{dup_nums}"
 
 
+# ── 21. dev UI 单位纹理键必须跟随语言 ────────────────────────────────────────
+@check("A21 i18n: dev UI 单位纹理键跟随语言且查找可容错",
+       "2026-11-08：中文 po 补齐后 tr('m/s^2') 返回 'm/s²'、tr('km/h') 返回 '公里/时'，"
+       "而右侧 developer UI 的旋转单位纹理缓存仍按英文 msgid 建键；打开行车预览渲染第一行"
+       "加速度就 KeyError，manager 无限拉起 ui（设备 .79 实测 UI 重启循环）。这里静态锁住"
+       "契约，更细的回归见 openpilot/selfdrive/ui/tests/test_developer_ui_units.py。")
+def _dev_ui_translated_unit_keys():
+  p = "openpilot/selfdrive/ui/sunnypilot/onroad/developer_ui/__init__.py"
+  s = text(p)
+  assert "from openpilot.system.ui.lib.multilang import tr" in s, \
+    f"{p} 没有导入 tr，单位纹理键无法跟随语言"
+  assert "translated = tr(unit)" in s, \
+    f"{p} 的 _unit_textures 没有按 tr(unit) 建键，中文设备会 KeyError"
+  assert "self._unit_textures.get(element.unit)" in s, \
+    f"{p} 单位查找没有 .get() 容错，缺失单位会让整个 ui 进程崩溃"
+  assert "self._unit_textures[element.unit]" not in s, \
+    f"{p} 仍存在按下标直接取单位纹理的写法"
+
+
 if __name__ == "__main__":
   sys.exit(main())
