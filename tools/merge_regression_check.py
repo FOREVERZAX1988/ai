@@ -506,8 +506,10 @@ def _xiaoge_gate_allows_park():
 def _ui_frame_pacing():
   s = text("openpilot/system/ui/lib/application.py")
   assert "rl.set_target_fps(0)" in s, "UI 又交回 raylib 限帧，帧率会掉回 13"
-  assert "1.0 / self._target_fps) - (time.monotonic() - frame_start" in s, \
+  assert "period = 1.0 / self._target_fps" in s, \
     "render() 里没有按 frame_start 的补偿式 pacing"
+  assert "while time.monotonic() - frame_start < period" in s, \
+    "末段没有忙等：time.sleep 的定时器粒度会把 20 fps 拖到 17"
 
 
 @check("A27 ui: FPS 必须自己测量，不能读会被冻结的 rl.get_fps()",
