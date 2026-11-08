@@ -472,5 +472,19 @@ def _pandad_safety_self_heal():
     "fetchCarParams 没有以 ControlsReady 作为就绪判据"
 
 
+@check("A24 xiaoge: 视觉总开关必须登记，否则写入被拒、整条推理链路不启动",
+       "2026-11-08 实车：xiaoge_data.start_vision_server() 第一行就读 "
+       "CarrotXiaogeVisionEnabled，未设置直接 return，v_asm_server 永不启动，"
+       "customReservedRawData0 一条不发布，YOLO 障碍物框自然不显示。该 key 当时"
+       "根本没在 params_keys.h 登记，C++ Params 直接拒绝写入（返回 key 名）。")
+def _xiaoge_vision_param_registered():
+  h = text("openpilot/common/params_keys.h")
+  s = text("openpilot/sunnypilot/carrot/xiaoge_data.py")
+  assert '"CarrotXiaogeVisionEnabled"' in s, \
+    "xiaoge_data 没有读视觉总开关，链路可能又变成无条件启动"
+  assert '"CarrotXiaogeVisionEnabled"' in h, \
+    "CarrotXiaogeVisionEnabled 未在 params_keys.h 登记，写入会被拒绝、vision 永不启动"
+
+
 if __name__ == "__main__":
   sys.exit(main())
