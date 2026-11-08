@@ -107,14 +107,17 @@ def _param_keys():
 
 # ── 6. alert 文案要能被 potools 提取（f-string 拼出来的抓不到） ─────────────────
 @check("A6 i18n: chill/实验模式切换提示用两条 tr_noop 静态串",
-       "f\"Chill 模式已{'关闭' if ...}\": 提取器只能看到碎片，非中文 UI 永远显示源文案")
+       "f\"Chill 模式已{'关闭' if ...}\": 提取器只能看到碎片，非中文 UI 永远显示源文案。"
+       "1108 i18n 迁移后 msgid 改为英文（Chill Mode On/Off），判据随之更新，"
+       "「两条静态 tr_noop 串、不许 f-string 拼接」的契约不变")
 def _alert_tr_noop():
   s = code_only(text("openpilot/sunnypilot/selfdrive/selfdrived/events.py"))
-  # 2026-11-01: the zp chill rework replaced the experimental-mode switch with legacy chill,
-  # so the alert text is now "Chill 模式已开启/关闭" — still two static tr_noop literals.
-  assert 'tr_noop("Chill 模式已开启")' in s and 'tr_noop("Chill 模式已关闭")' in s, \
-    "events.py 的 chill 提示没有拆成两条 tr_noop"
-  assert 'f"Chill 模式已{' not in s, "还在用 f-string 拼 alert 文案"
+  # 2026-11-01: the zp chill rework replaced the experimental-mode switch with legacy chill.
+  # 2026-11-08: events 文案恢复英文 msgid，中文由 app_zh-*.po 提供。
+  assert re.search(r'''tr_noop\(["']Chill Mode On["']\)''', s) and \
+         re.search(r'''tr_noop\(["']Chill Mode Off["']\)''', s), \
+    "events.py 的 chill 提示没有拆成两条 tr_noop 静态串"
+  assert not re.search(r'''f["']Chill Mode''', s), "还在用 f-string 拼 alert 文案"
 
 
 # ── 7. 测试要断言 callback 的真实契约（源文案），不是 po 里的英文 ───────────────
@@ -125,9 +128,10 @@ def _alert_test():
   # Assist (2026-11-02) and no longer asserts this string, but the i18n contract lives in
   # events.py regardless -- potools needs two static literals, never a composed f-string.
   s = code_only(text("openpilot/sunnypilot/selfdrive/selfdrived/events.py"))
-  assert 'tr_noop("Chill 模式已关闭")' in s, "events.py 没把提示拆成两条静态串"
-  assert 'tr_noop("Chill 模式已开启")' in s, "events.py 没把提示拆成两条静态串"
-  assert 'f"Chill 模式已{' not in s, "还在用 f-string 拼 alert 文案"
+  # 1108 i18n 迁移：源文案改成英文 msgid，中文译文在 po；断言的仍是「静态串」契约。
+  assert re.search(r'''tr_noop\(["']Chill Mode Off["']\)''', s), "events.py 没把提示拆成两条静态串"
+  assert re.search(r'''tr_noop\(["']Chill Mode On["']\)''', s), "events.py 没把提示拆成两条静态串"
+  assert not re.search(r'''f["']Chill Mode''', s), "还在用 f-string 拼 alert 文案"
 
 
 # ── 8. 测试之间不能靠 sys.modules stub 互相污染 ────────────────────────────────
@@ -356,7 +360,7 @@ def _ruff_undefined_names():
   assert not bad, "以下位置引用了不存在的名字（读取即 NameError）：\n     " + "\n     ".join(bad[:10])
 
 
-@check("A19 i18n: 蓝牙扫描按钮的 Stop 必须译成「停止」，不是「停车」",
+@check("A19 i18n: Stop 译文 + events 文案迁移门禁",
        "bluetooth_settings.py:446 是扫描按钮：正在扫描时显示 tr(\"Stop\")，本意是"
        "「停止扫描」。上游把它译成「停车」（parking），语义完全不对。"
        "2026-10-31 实测：59d5f19501 时还是「停止」，合完 da9fe91aee 被上游覆盖回「停车」——"
@@ -374,6 +378,16 @@ def _stop_translation():
       f"{p}: Stop 译成了 {val!r}。蓝牙扫描按钮的本意是「停止扫描」，应为「停止」。"
       f"跑 ai/tools/zh_overrides.py 修，并把该 msgid 记进它的 OVERRIDES")
     assert "停" in val and "止" in val, f"{p}: Stop 的译文 {val!r} 看起来不是「停止」"
+
+  # 1108 i18n 迁移：上游 mouxa/test 是中文汉化分支，每轮合并都会把 events
+  # alert 文案重新变回硬编码中文、并把 po 里的中文译文冲掉。忘记重放的表现是
+  # 「设备上一直显示中文、切英文无效」，行为测试完全抓不到，所以放静态门槛。
+  sys.path.insert(0, str(ROOT / "ai" / "tools"))
+  from apply_events_i18n import run_check
+  problems = run_check()
+  assert not problems, (
+    "events i18n 未重放（源码有硬编码中文或中文 po 缺译文）。"
+    "合并上游后跑一次 ai/tools/apply_events_i18n.py 即可：\n     " + "\n     ".join(problems[:10]))
 
 
 # ── 20. opendbc 的 car.capnp 不许有重复字段 ───────────────────────────────────

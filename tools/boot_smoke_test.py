@@ -184,10 +184,11 @@ def _function_locals(node) -> set[str]:
 def i18n_check(root: str) -> list[str]:
     """events / mici UI 硬编码中文检查（排除注释与 docstring）：
     英文 msgid + po 翻译是汉化体系，硬编码中文会破坏语言切换"""
+    # 按目录扫而不是逐个文件列：1108 i18n 迁移时发现 events_zp.py 也藏着
+    # 34 处 alert 中文，写死文件名会漏。tests/ 里的中文断言不算 UI 文案。
     files = [
-        "openpilot/selfdrive/selfdrived/events.py",
-        "openpilot/sunnypilot/selfdrive/selfdrived/events.py",
-        "openpilot/sunnypilot/selfdrive/selfdrived/events_base.py",
+        "openpilot/selfdrive/selfdrived",
+        "openpilot/sunnypilot/selfdrive/selfdrived",
         "openpilot/selfdrive/ui/mici",
     ]
     issues = []
@@ -198,6 +199,8 @@ def i18n_check(root: str) -> list[str]:
         py_files = []
         if os.path.isdir(path):
             for dp, _, fs in os.walk(path):
+                if "tests" in dp.split(os.sep):
+                    continue
                 for f in fs:
                     if f.endswith(".py"):
                         py_files.append(os.path.join(dp, f))
