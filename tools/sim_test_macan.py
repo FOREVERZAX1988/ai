@@ -180,14 +180,14 @@ def detect_macan_interface_test() -> str | None:
 def skip_reason(target: str) -> str | None:
     """已知的「非 Macan / 环境错位」类失败，记录为 SKIP 而不是伪装成回归。
 
-    test_custom_cruise 是 Toyota 专属用例，依赖 opendbc(toyota) 的 SP 虚拟巡航按钮 API
-    (get_virtual_cruise_button / VIRTUAL_CRUISE_BUTTONS)。本仓 opendbc pin 所在的
-    mouxan master-c3 线没有该 API（SP 上游对应的引入提交已被 revert），模块导入即
-    ImportError。属 opendbc pin 与 SP 代码树的版本错位，与 Macan 纵向/横向逻辑无关
-    （详见 ai/docs/SUBMODULE_PIN_SKEW.md）。
-    注意：opendbc pin 每轮上游合并都会变（2026-11-08 已到 4223e8a3），这里不写死哈希；
-    下方 _probe 会在每轮仿真时动态确认 API 是否出现，一旦上游补齐就自动恢复执行该用例，
-    无需改本函数。
+    test_custom_cruise 依赖 opendbc(toyota) 的 SP 虚拟巡航按钮 API
+    (get_virtual_cruise_button / VIRTUAL_CRUISE_BUTTONS / TOYOTA_VIRTUAL_CRUISE_LONG_PRESS)。
+    2026-11-08 已在 fork opendbc 上补齐该 API，并在主仓测试里固定 ICBM latch 以匹配
+    fork 的 pcmCruiseSpeed 语义；该用例现已恢复执行（43 passed / 0 failed）。
+    这里保留动态 _probe 作为回归保护：若后续上游合并把 API 再次 revert 掉，会自动
+    退回 SKIP 并打印原因，而不是让整组仿真伪装成代码回归。
+    opendbc pin 每轮上游合并都会变，这里不写死哈希
+    （历史与本次处置见 ai/docs/SUBMODULE_PIN_SKEW.md）。
     """
     if not target.endswith("test_custom_cruise"):
         return None
