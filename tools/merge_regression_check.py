@@ -510,5 +510,15 @@ def _ui_frame_pacing():
     "render() 里没有按 frame_start 的补偿式 pacing"
 
 
+@check("A27 ui: FPS 必须自己测量，不能读会被冻结的 rl.get_fps()",
+       "2026-11-08 tizi：set_target_fps(0) 后 raylib 不再推进自己的帧计数，rl.get_fps() 停在 13，"
+       "每 5 s 报一次 FPS dropped；而 get_frame_time() 只有 34.5 ms（≈29 fps，补 sleep 后正好 20 fps）。"
+       "不修这个，限帧修好了日志也一直喊掉帧。")
+def _ui_fps_measured():
+  s = text("openpilot/system/ui/lib/application.py")
+  assert "self._fps_measured" in s, "没有自测 FPS 的状态"
+  assert "fps = rl.get_fps()" not in s, "仍在用 rl.get_fps()：限帧关闭后它会冻结在旧值"
+
+
 if __name__ == "__main__":
   sys.exit(main())
