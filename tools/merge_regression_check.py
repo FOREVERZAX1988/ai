@@ -433,5 +433,26 @@ def _dev_ui_translated_unit_keys():
     f"{p} 仍存在按下标直接取单位纹理的写法"
 
 
+@check("A22 VAG MLB: 重启/OTA 后复用持久 CarParams，跳过 EPS 的 UDS 指纹查询",
+       "2026-11-08 Macan 实车：CarParamsCache 是 CLEAR_ON_MANAGER_START，每次更新重启后"
+       "都会重跑完整 VIN/FW UDS 查询，其中 0x712 就是 EPS。该查询正好落在点火后 EPS 自检"
+       "窗口，EPS 锁存 EPS_HCA_Status=fault(2)，openpilot 显示 LKAS 故障直到车辆断电"
+       "（route 8：275 个 UDS 帧、HCA 3->2 于 0.56s；缓存命中的 route 7：0 个 UDS 帧）。"
+       "这里静态锁住缓存复用契约，行为回归见 selfdrive/car/tests/test_card_fw_cache.py。")
+def _vag_fw_cache_after_reboot():
+  p = "openpilot/selfdrive/car/card.py"
+  s = text(p)
+  assert "def cached_car_params_bytes" in s, \
+    f"{p} 缺少持久 CarParams 回退，更新重启后仍会重跑 FW 查询"
+  assert 'params.get("CarParamsPersistent")' in s, \
+    f"{p} 没有读取跨重启的 CarParamsPersistent"
+  assert 'cp.brand != "volkswagen"' in s, \
+    f"{p} 的持久缓存回退没有限定 VAG，会影响其它品牌"
+  assert "len(cp.carFw) == 0" in s and "not cp.carVin" in s, \
+    f"{p} 没有校验 VIN/FW 完整性，无效缓存会被 fingerprint 误信"
+  assert "cached_car_params_bytes(self.params)" in s, \
+    f"{p} 的 get_car 没有使用缓存回退"
+
+
 if __name__ == "__main__":
   sys.exit(main())
