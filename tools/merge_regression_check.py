@@ -454,5 +454,23 @@ def _vag_fw_cache_after_reboot():
     f"{p} 的 get_car 没有使用缓存回退"
 
 
+@check("A23 pandad: safety 配置不被 onroad 清扫卡死，且带超时重试",
+       "2026-11-08 Macan：FirmwareQueryDone 带 CLEAR_ON_ONROAD_TRANSITION，manager 的 onroad 清扫"
+       "可能在 card 唯一一次写入之后把它清掉；pandad 若继续以它为门槛，panda 整趟停在"
+       "ELM327/noOutput，VAG EPS 锁存 HCA fault（当日三次点火都没进 volkswagenMlb，"
+       "重启设备才恢复）。现在只认 ControlsReady，并在 3 s 内没配好时重走 multiplexing。")
+def _pandad_safety_self_heal():
+  h = text("openpilot/selfdrive/pandad/pandad.h")
+  s = text("openpilot/selfdrive/pandad/panda_safety.cc")
+  assert "retry_ticks_" in h, "PandaSafety 没有配置重试计数"
+  assert "SAFETY_CONFIG_RETRY_TICKS" in s, "panda_safety.cc 没有 3 s 重试常量"
+  assert "initialized_ && ++retry_ticks_ >= SAFETY_CONFIG_RETRY_TICKS" in s, \
+    "configureSafetyMode 没有超时重走 multiplexing，panda 会一直停在 noOutput"
+  assert 'if (!params_.getBool("FirmwareQueryDone"))' not in s, \
+    "fetchCarParams 仍以 FirmwareQueryDone 为门槛，onroad 清扫会把它清掉"
+  assert 'params_.getBool("ControlsReady")' in s, \
+    "fetchCarParams 没有以 ControlsReady 作为就绪判据"
+
+
 if __name__ == "__main__":
   sys.exit(main())
