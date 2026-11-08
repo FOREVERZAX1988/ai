@@ -36,3 +36,24 @@
 分析route里OP的减速请求(verz<0)：分类真减速/阈值抖动/其他，输出占比+健康度建议。
 用法：`python3 ai/tools/brake_classify.py 00000066 [--seg 10] [--min-frames 3] [--verbose]`
 阈值抖动>30%提示braking滞回未生效或planner噪声（对照：0066全route 40%帧/229窗口/真减速51%/阈值抖动35%——滞回修复前）。
+
+## 设备 `.79` 上跑仿真的正确口径（2026-11-08 定稿）
+
+历史上多次「仿真假失败」都源于环境口径不对，不是代码回归：
+
+| 项 | 正确值 | 踩过的坑 |
+|---|---|---|
+| Python | `/usr/local/venv/bin/python` | `/usr/bin/python3` 是系统 Python，没有 `raylib_nb` / `nanobind` / `pytest` |
+| pip 依赖目录 | `PYTHONPATH=/data/.pydeps` | 这是 `launch_chffrplus.sh` 的 `PYDEPS_DIR`（注释：放在 `$DIR` 外，overlay 更新不会清掉）。**不要**用 `/data/tmp/pydeps`，它会被清掉 → 缺 `pytest`/`aiohttp` → 按键组失败、`carrot_webrtcd` 假报 import 断链 |
+| VW safety | 必须带 `SAFETY_NO_SANITIZERS=1` | AGNOS 工具链缺 UBSan runtime，`libsafety.so` 在 `setUp` 阶段 dlopen 失败 → 成片 F，与代码无关 |
+| 编译 | `PATH=/usr/local/venv/bin:$PATH PYTHONPATH= scons -j2` | `-j4` 会 OOM；`PYTHONPATH` 带 pydeps 会污染构建 |
+| 仿真入口 | `PYTHONPATH=/data/.pydeps <venv-python> ai/tools/sim_test_macan.py` | 判据看 `SIM_EXIT=0` |
+
+`boot_smoke_test.py` 的 import 判据在**非 Linux 开发机**上会精确豁免
+`Params("/dev/shm/params")` 造成的 `Failed to ensure params path`（macOS 无 `/dev/shm`），
+并显式打印为 `[平台限制]`；Linux 设备上同样错误仍是硬错，其它 import 异常一律照旧失败。
+`OPTIONAL_MODULES`（Lite beepd / USE_WEBCAM camerad）的失败会带上原因文案，属预期。
+
+设备 `.git/hooks/post-merge` 在没有 `git-lfs` 时原本 `exit 2` 并刷警告，已改为静默
+`exit 0`（若装了 git-lfs 仍会执行 `git lfs post-merge`），原文件备份为
+`.git/hooks/post-merge.lfs-bak`。

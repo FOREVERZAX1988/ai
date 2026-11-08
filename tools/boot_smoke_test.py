@@ -48,6 +48,16 @@ OPTIONAL_MODULES = {
     "openpilot.system.camerad.webcam.camerad": "USE_WEBCAM 才启用（设备无 av 库属正常）",
 }
 
+# 非 Linux 开发机（macOS/Windows）没有 /dev/shm；ui_state 在模块导入期就构造
+# Params("/dev/shm/params")，必然抛 "Failed to ensure params path"。这是平台环境限制，
+# 不是代码断链。只在非 Linux 且错误精确来自该路径时跳过；Linux 设备上同样错误仍是硬错，
+# 其它任何 import 异常一律照旧计入失败。
+PLATFORM_LIMITED_ERRORS = ("Failed to ensure params path", "/dev/shm/params")
+
+
+def platform_limited(err: str) -> bool:
+  return sys.platform != "linux" and any(k in err for k in PLATFORM_LIMITED_ERRORS)
+
 
 def collect_modules() -> list[tuple[str, bool]]:
     sys.path.insert(0, OPENPILOT_ROOT)
@@ -290,20 +300,30 @@ def main() -> int:
 
     import_fail = []
     import_warn = []
+    platform_skip = []
     for m, optional in modules:
         err = import_check(m)
         if err:
             if optional:
                 import_warn.append((m, err))
-                print(f"  ⚠️ [可选] import 失败: {m}\n     {err}")
+                print(f"  ⚠️ [可选] import 失败: {m} —— {OPTIONAL_MODULES[m]}\n     {err}")
+            elif platform_limited(err):
+                platform_skip.append((m, err))
+                print(f"  ⚠️ [平台限制] {m}: 非 Linux 开发机无 /dev/shm，已跳过"
+                      f"（Linux 设备上同样错误仍算硬错）\n     {err}")
             else:
                 import_fail.append((m, err))
                 print(f"  ❌ import 失败: {m}\n     {err}")
         else:
             print(f"  ✅ import OK: {m}")
 
+    # find_spec 会导入父包，在 macOS 上会再撞一次 /dev/shm；这类模块没必要再走 AST。
+    # Linux 设备上 platform_skipped 恒为空，AST 覆盖面完全不变。
+    platform_skipped = {m for m, _ in platform_skip}
     ast_fail = []
     for m, optional in modules:
+        if m in platform_skipped:
+            continue
         try:
             spec = importlib.util.find_spec(m)
             if spec is None or spec.origin is None:
@@ -335,9 +355,14 @@ def main() -> int:
     print("\n" + "=" * 60)
     i18n_fail = bool(i18n_issues) and not I18N_WARN_ONLY
     if not import_fail and not ast_fail and not i18n_fail:
+        skip_parts = []
+        if import_warn:
+            skip_parts.append(f"{len(import_warn)} 个可选进程缺依赖已跳过")
+        if platform_skip:
+            skip_parts.append(f"{len(platform_skip)} 个非 Linux 平台限制模块已跳过")
         tail = f"；i18n 存量 {len(i18n_issues)} 处待迁移" if i18n_issues else ""
         print(f"🎉 启动冒烟通过：{len(modules)} 模块 import 无硬错 + AST 无未定义名称"
-              + (f"（{len(import_warn)} 个可选进程缺依赖已跳过）" if import_warn else "")
+              + ("（" + "、".join(skip_parts) + "）" if skip_parts else "")
               + tail)
         return 0
     else:
