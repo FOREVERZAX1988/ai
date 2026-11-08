@@ -499,5 +499,16 @@ def _xiaoge_gate_allows_park():
   assert "safety_ready" in s, "gate 丢掉了 safety 匹配保护"
 
 
+@check("A26 ui: 帧率由补偿式 pacing 控制，不交给 raylib 的 set_target_fps",
+       "2026-11-08 tizi：raylib 的 set_target_fps(20) 画完一帧后再睡满 50 ms，实测 13 fps"
+       "（77 ms = 27 画 + 50 睡），2026-11-05 起日志里 877 条 FPS dropped；GPU 只有 3.3% 忙、"
+       "CPU 25%，不是算力问题。改为 set_target_fps(0) + 按 frame_start 补偿，实测不再触发告警。")
+def _ui_frame_pacing():
+  s = text("openpilot/system/ui/lib/application.py")
+  assert "rl.set_target_fps(0)" in s, "UI 又交回 raylib 限帧，帧率会掉回 13"
+  assert "1.0 / self._target_fps) - (time.monotonic() - frame_start" in s, \
+    "render() 里没有按 frame_start 的补偿式 pacing"
+
+
 if __name__ == "__main__":
   sys.exit(main())
