@@ -530,5 +530,21 @@ def _steer_rail_schedule_cached():
   assert "_steer_rail_fp" in s, "没有按指纹缓存：CP 每次是新对象，schedule 会每 0.5 s 重建一次"
 
 
+@check("A30 ui: 中文字体 atlas 失败不得每次重建都重试并刷 ERROR",
+       "2026-11-09：设备 zh-CHS 的 OpFont-*-zh-CHS.fnt 实际存在（1780 字形），"
+       "但 raylib_nb 的 load_font_ex 无法加载大 BMFont，返回默认字体 texture id=2；"
+       "每次语言/字体缓存重建都重试并报 ERROR（当天 378 次）。上游 master 736fcd0951 "
+       "只修了 OTA 后 atlas 缺失的启动重建，未覆盖加载失败。两层防护都要在："
+       "launch 检测缺失重建 + UI 记录失败 atlas 后直接走 on-demand 烘焙。")
+def _font_atlas_failure_guard():
+  launch = text("launch_chffrplus.sh")
+  assert "OpFont-*-*.*" in launch, "launch 缺少字体 atlas 缺失检测（上游 736fcd0951）"
+  assert "fonts/process.py" in launch, "launch 缺少 atlas 生成器调用"
+  app = text("openpilot/system/ui/lib/application.py")
+  assert "_PREBAKED_FONT_FAILURES" in app, "UI 缺少失败 atlas 缓存"
+  assert "filename not in _PREBAKED_FONT_FAILURES" in app, "UI 仍在每次重建重试失败的 atlas"
+  assert "_PREBAKED_FONT_FAILURES.add(filename)" in app, "UI 没有记录加载失败的 atlas"
+
+
 if __name__ == "__main__":
   sys.exit(main())
