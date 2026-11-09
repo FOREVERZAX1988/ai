@@ -546,5 +546,23 @@ def _font_atlas_failure_guard():
   assert "_PREBAKED_FONT_FAILURES.add(filename)" in app, "UI 没有记录加载失败的 atlas"
 
 
+@check("A31 selfdrived: commIssue 日志只报真正参与 all_checks 的服务",
+       "2026-11-08：43 条 commIssue cloudlog 把 ignore_alive/ignore_valid 的服务"
+       "（alertDebug / lateralManeuverPlan / liveTracks 等）一起列出来，"
+       "让 6 次系统抖动的伴生日志看起来像全系统 IPC 故障，排查被带偏。"
+       "判定逻辑与上游 test 逐行一致、属安全保护，不动；只修诊断输出："
+       "按三个 ignore 集合过滤，并写明失败原因（not_alive / not_freq_ok / invalid_only）。")
+def _comm_issue_log_scope():
+  s = text("openpilot/selfdrive/selfdrived/selfdrived.py")
+  assert "'reason':" in s, "commIssue 日志没写失败原因，无法区分死进程与数据陈旧"
+  assert "s not in self.sm.ignore_valid" in s, "invalid 列表没过滤 ignore_valid，会列出无关服务"
+  assert "s not in self.sm.ignore_alive" in s, "not_alive / not_freq_ok 没过滤 ignore_alive"
+  assert "s not in self.sm.ignore_average_freq" in s, "not_freq_ok 没过滤 ignore_avg_freq"
+  # The check itself must stay upstream-equivalent: grace, all_checks gate and
+  # the three EventName branches are deliberately untouched.
+  assert "comm_issue = self.comm_issue_grace.update(" in s, "不得改动 commIssue 判定链"
+  assert "if not self.sm.all_checks() and no_system_errors and not big_model_settling:" in s, "不得放宽 all_checks 门禁"
+
+
 if __name__ == "__main__":
   sys.exit(main())
