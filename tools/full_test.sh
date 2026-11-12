@@ -34,6 +34,12 @@ trap 'rm -f "$LOCK"' EXIT
 
 cd "$ROOT"
 PY="$ROOT/.venv/bin/python"
+if [ ! -x "$PY" ] && [ -x /usr/local/venv/bin/python ]; then
+  # On a comma device there is no repo-local .venv; fall back to the device venv
+  # (numpy/capnp/raylib_nb live there). Plain `python3` has none of them, so a
+  # full discovery would report hundreds of bogus collection errors.
+  PY=/usr/local/venv/bin/python
+fi
 [ -x "$PY" ] || PY=python3
 export HOME=/tmp/cleanhome
 export PYTHONPATH="$ROOT:$ROOT/opendbc_repo:$ROOT/msgq_repo${PYTHONPATH:+:$PYTHONPATH}"
