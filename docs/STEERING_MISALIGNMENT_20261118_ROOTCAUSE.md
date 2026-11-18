@@ -55,3 +55,61 @@ yaw_rate_valid = msg.angularVelocityDevice.valid   # 没有检查 inputsOK！
 - **未推远程**：主线带 AGNOS 20.6 bump 未与设备对齐（见 MEMORY.md），推送时机由用户决定。
 - **locationd 层1 未根治**：临时故障报警可能仍偶发（陀螺仪真实偏差大是 Macan 硬件特性）。若要根治需改 `observation_values_invalid` 计数器机制（invalid +1 / valid ×0.9993 权重失衡），影响面大，建议观察 #1 修复后症状是否消失再决定。
 - 复测建议：装机后跑同一段路，看是否还有"转向系统未对准"；若有，再回头处理层1。
+
+---
+
+## 5. 【重要更正】2026-11-18 上午实测：上面的层1归因有误，故障另有一条主因
+
+本文第 2 节把「临时故障」归给 `sunnypilot/selfdrive/locationd/locationd.cc` 的陀螺仪交叉校验。
+**这条归因是错的**：该文件编出来的是 `locationd_llk`，它只发布 `liveLocationKalman`，**不发布 `deviceMotion`**。
+paramsd 消费的 `deviceMotion` 来自 Python 版 `openpilot/selfdrive/locationd/locationd.py`
+（`system/manager/process_config.py:395` 是 `PythonProcess`）。两份实现的 invalid 预算机制完全不同
+（C++ 阈值 0.5 / decay 0.9993；Python `INPUT_INVALID_LIMIT` 按频率缩放、gyro 阈值 9.5），
+拿 C++ 的常数去解释 Python 的行为，结论不成立。
+
+### 5.1 现场实测（route 00000036，2026-11-18 10:24–10:33）
+
+用户实时复现，全程抓到：
+
+| 时刻 | 事件 | 数值 |
+|---|---|---|
+| 10:27:53 | `paramsd Temporary Error` / TAKE CONTROL IMMEDIATELY | offset **-10.03°**，`angleOffsetValid=0`，`valid=0` |
+| 10:28:35 | `Steering misalignment detected` | offset **-12.21°** |
+| 10:29:44 | 倒车入库后告警消失 | offset **-9.02°**（低于 10° 阈值即判 valid） |
+
+`deviceMotion` 全程 `inputsOK=1 posenetOK=1 sensorsOK=1`，locationd 侧 `inv{'gyroscope': 0.0}`。
+**`inputsOK` 门控（本文第 3 节 #1）在这个故障模式下不生效**——它不是这个 bug 的原因也不是解药。
+它仍然是一个合理的防御（针对「上游确实否定输入」那条独立路径），故保留。
+
+### 5.2 真正的根因：低速把 yaw-rate 误差放大成转角误差
+
+rlog 逐帧 + 用生产 `VehicleParamsLearner` 离线重放（同一份 deviceMotion/carState，轨迹重合到 1° 内）：
+
+```
+t=165s v=4.2 steer= 3.8 offset=-3.76   (重放 -3.84)
+t=185s v=3.8 steer= 4.5 offset=-7.20   (重放 -7.29)
+t=200s v=3.6 steer=-7.5 offset=-10.50  (重放 -10.98)
+t=205s v=0.5            offset=-12.21  (重放 -12.80) -> 锁死
+```
+
+漂移 **100% 在 `ANGLE_OFFSET_FAST`** 上；慢状态 `ANGLE_OFFSET` 只走 -6.68 → -6.82。
+
+机理：学习器用 `δ ≈ yaw_rate × steerRatio × wheelbase / v` 反推几何。同一个 yaw-rate 误差，
+折算成转角误差按 1/v 放大——本车（sr 15.5 × 2.81 m）上 0.01 rad/s 在 **4 m/s 是 6.1°**，
+在 25 m/s 只有 **1.0°**。而 `MIN_ACTIVE_SPEED = 1.0` 就开始学，于是泊车/市区工况把放大 4–6 倍的
+噪声灌进 `ANGLE_OFFSET_FAST`；该状态过程噪声 0.25°/步、零观测标准差却有 10°（几乎没锚住），
+随机游走 8° 后把 total 顶过 `OFFSET_MAX=10°` → `angleOffsetValid=0` 且 `valid=0` → 两条告警同时具备条件。
+
+### 5.3 修复（commit 64171ffd5f）
+
+- `paramsd.py`: `MIN_ACTIVE_SPEED` 1.0 → **6.0**（约 21 km/h）。同一 route 的离线 A/B：
+  1.0 → 终值 -12.80°（报警区）；4.0 → -4.99°；6.0 → 无漂移。
+- **回退** `locationd.cc` 的阈值下限（改错模块，且只增加上游合并债）。`locationd_llk` 不参与本链路。
+- 新增回归 `test_low_speed_does_not_activate_learner`（3 m/s 不激活、8 m/s 激活）。
+- 一次性清除 `LiveParametersV2`（旧值 `angleOffsetDeg=-9.023 / average=-7.105` 是历次低速污染的棘轮累积；
+  `retrieve_initial_vehicle_params` 只校验 steerRatio，不校验角度偏移，所以坏值会跨行程继承）。
+
+### 5.4 更正「倒车就自己好了」的解释
+
+不是自愈。两层原因：①低于 10° 阈值即判 valid；②重新点火 paramsd 重启后从 Params 里继承
+`angleOffsetAverageDeg` 继续起步。这次同时清掉了缓存，下次从 0° 起步（实测直行中位约 0.8°）。
