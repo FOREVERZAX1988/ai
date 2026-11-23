@@ -423,14 +423,21 @@ def _capnp_duplicate_fields():
 def _dev_ui_translated_unit_keys():
   p = "openpilot/selfdrive/ui/sunnypilot/onroad/developer_ui/__init__.py"
   s = text(p)
-  assert "from openpilot.system.ui.lib.multilang import tr" in s, \
-    f"{p} 没有导入 tr，单位纹理键无法跟随语言"
-  assert "translated = tr(unit)" in s, \
-    f"{p} 的 _unit_textures 没有按 tr(unit) 建键，中文设备会 KeyError"
+  # 缓存查找必须容错：缺某个单位时不能让整个 ui 进程崩（2026-11-08 设备实测
+  # manager 无限拉起 ui）。这条契约与翻译无关，保持不变。
   assert "self._unit_textures.get(element.unit)" in s, \
     f"{p} 单位查找没有 .get() 容错，缺失单位会让整个 ui 进程崩溃"
-  assert "self._unit_textures[element.unit]" not in s, \
-    f"{p} 仍存在按下标直接取单位纹理的写法"
+
+  # 单位本身必须是 tr() 之后的译文，否则中文设备按英文 msgid 建键 → KeyError。
+  # 2026-11-23 修正：翻译已前移到 elements.py（self.unit = tr("km/h")），
+  # __init__.py 不再自己调 tr，原来断言 "translated = tr(unit)" 因此永远不成立
+  # ——那是 11-08 的实现形态，属于断言过时而非功能回归。改为核对 elements.py。
+  # 同时删掉 "self._unit_textures[element.unit]" 的 not-in 断言：写入侧
+  # `self._unit_textures[element.unit] = unit_texture` 本身就含这个子串，
+  # 该断言无法区分读/写，只会一直误报。
+  e = text("openpilot/selfdrive/ui/sunnypilot/onroad/developer_ui/elements.py")
+  assert "= tr(" in e, \
+    "elements.py 的单位没有走 tr()，中文设备会按英文 msgid 建键导致 KeyError"
 
 
 @check("A22 VAG MLB: 重启/OTA 后复用持久 CarParams，跳过 EPS 的 UDS 指纹查询",
